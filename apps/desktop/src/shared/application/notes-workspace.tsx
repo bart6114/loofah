@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@hypr/ui/components/ui/button";
 
+import { DeviceRecordButton } from "./device-recording-host";
 import { DeviceRecovery } from "./device-recovery";
 import { documentDraftClient, documentDraftId } from "./document-draft";
 import { NativeDraftStore } from "./draft-store";
@@ -313,6 +314,7 @@ function SessionPane({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
       <SessionTags sessionId={sessionId} />
+      <DeviceRecordButton sessionId={sessionId} />
       {scope.client.features.includes("audio_playback") && (
         <RecordingPlayer scope={scope} sessionId={sessionId} />
       )}

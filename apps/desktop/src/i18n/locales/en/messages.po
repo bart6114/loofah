@@ -64,6 +64,10 @@ msgstr "{0} words transcribed"
 msgid "{added} attachments added"
 msgstr "{added} attachments added"
 
+#: src/sidebar/timeline/stream-control.tsx
+msgid "{loaded} of {total} loaded"
+msgstr "{loaded} of {total} loaded"
+
 #. placeholder {0}: formatLanguageList(unsupportedLanguages)
 #: src/settings/ai/stt/select.tsx
 msgid "{model} can't transcribe {0}. Try another model or change your spoken languages."
@@ -80,6 +84,10 @@ msgstr "{model} can't transcribe all selected languages together. Try another mo
 #: src/session/components/note-input/transcript/renderer/speaker-assign.tsx
 msgid "{otherClusterCount, plural, one {Also apply to the other speaker on this channel} other {Also apply to the other # speakers on this channel}}"
 msgstr "{otherClusterCount, plural, one {Also apply to the other speaker on this channel} other {Also apply to the other # speakers on this channel}}"
+
+#: src/sidebar/timeline/index.tsx
+msgid "{sessionCount} loaded notes selected"
+msgstr "{sessionCount} loaded notes selected"
 
 #: src/session/components/session-tags.tsx
 msgid "+ Add tag"
@@ -237,6 +245,10 @@ msgstr "Attachments"
 #: src/settings/general/permissions.tsx
 msgid "Audio"
 msgstr "Audio"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Audio is saved on this device and awaiting upload."
+msgstr "Audio is saved on this device and awaiting upload."
 
 #: src/settings/ai/llm/tags.tsx
 msgid "Auto-apply tags with high confidence"
@@ -957,6 +969,10 @@ msgstr "Find a note..."
 msgid "Finish signing in in your browser…"
 msgstr "Finish signing in in your browser…"
 
+#: src/shared/application/device-recording-queue.tsx
+msgid "Finishing recording and saving device audio…"
+msgstr "Finishing recording and saving device audio…"
+
 #: src/shared/application/vault-processing.tsx
 msgid "Forget device request"
 msgstr "Forget device request"
@@ -1147,9 +1163,18 @@ msgstr "LM Studio or Ollama"
 msgid "Load current settings"
 msgstr "Load current settings"
 
+#: src/sidebar/timeline/stream-control.tsx
+msgid "Load earlier"
+msgstr "Load earlier"
+
+#: src/sidebar/timeline/stream-control.tsx
+msgid "Load later"
+msgstr "Load later"
+
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-attachments-pane.tsx
+#: src/sidebar/timeline/stream-control.tsx
 msgid "Load more"
 msgstr "Load more"
 
@@ -1169,6 +1194,7 @@ msgstr "Loading attachments…"
 msgid "Loading connection…"
 msgstr "Loading connection…"
 
+#: src/main/captured-workspace.tsx
 #: src/main/layout.tsx
 #: src/session/components/note-input/raw.tsx
 #: src/shared/application/notes-workspace.tsx
@@ -1197,6 +1223,10 @@ msgstr "Loading members…"
 msgid "Loading models..."
 msgstr "Loading models..."
 
+#: src/sidebar/timeline/stream-control.tsx
+msgid "Loading notes…"
+msgstr "Loading notes…"
+
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Loading preview…"
 msgstr "Loading preview…"
@@ -1208,6 +1238,10 @@ msgstr "Loading startup preferences…"
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Loading summary prompt..."
 msgstr "Loading summary prompt..."
+
+#: src/sidebar/timeline/index.tsx
+msgid "Loading tags…"
+msgstr "Loading tags…"
 
 #: src/session/components/note-input/transcript/loading.tsx
 msgid "Loading transcript..."
@@ -1679,11 +1713,20 @@ msgstr "Recent"
 msgid "Reconnect to save settings. Your changes stay in this form."
 msgstr "Reconnect to save settings. Your changes stay in this form."
 
+#: src/sidebar/timeline/index.tsx
+msgid "Reconnecting… Loaded notes remain available."
+msgstr "Reconnecting… Loaded notes remain available."
+
 #: src/session/components/outer-header/index.tsx
 msgid "Record"
 msgstr "Record"
 
+#: src/shared/application/device-recording-host.tsx
+msgid "Record audio"
+msgstr "Record audio"
+
 #: src/settings/general/index.tsx
+#: src/shared/application/device-recording-queue.tsx
 #: src/sidebar/settings.tsx
 msgid "Recording"
 msgstr "Recording"
@@ -1704,6 +1747,18 @@ msgstr "Recording and transcription still work. Set up summaries when you want t
 msgid "Recording deletion was not confirmed. Reload it before trying again."
 msgstr "Recording deletion was not confirmed. Reload it before trying again."
 
+#: src/shared/application/device-recording-queue.tsx
+msgid "Recording did not start."
+msgstr "Recording did not start."
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Recording interrupted. Saved audio is retained for recovery."
+msgstr "Recording interrupted. Saved audio is retained for recovery."
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Recording on this device."
+msgstr "Recording on this device."
+
 #: src/audio-player/provider.tsx
 msgid "Recording playback is unavailable."
 msgstr "Recording playback is unavailable."
@@ -1711,6 +1766,10 @@ msgstr "Recording playback is unavailable."
 #: src/main/about-dialog.tsx
 msgid "Recordings"
 msgstr "Recordings"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Recordings on this device"
+msgstr "Recordings on this device"
 
 #: src/shared/application/device-recovery.tsx
 msgid "Recovered Markdown"
@@ -1733,6 +1792,7 @@ msgid "Refine your search to see more results."
 msgstr "Refine your search to see more results."
 
 #: src/main/about-storage.tsx
+#: src/shared/application/device-recording-queue.tsx
 msgid "Refresh"
 msgstr "Refresh"
 
@@ -1889,6 +1949,10 @@ msgstr "Resume listening"
 msgid "Resume request"
 msgstr "Resume request"
 
+#: src/shared/application/device-recording-queue.tsx
+msgid "Resume upload"
+msgstr "Resume upload"
+
 #: src/shared/application/vault-processing.tsx
 msgid "Resuming…"
 msgstr "Resuming…"
@@ -1896,6 +1960,7 @@ msgstr "Resuming…"
 #: src/audio-player/provider.tsx
 #: src/main/about-storage.tsx
 #: src/main/audio-import-dialog.tsx
+#: src/main/captured-workspace.tsx
 #: src/main/layout.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
@@ -1907,6 +1972,8 @@ msgstr "Resuming…"
 #: src/shared/application/vault-attachment-uploads.tsx
 #: src/shared/application/vault-processing-settings.tsx
 #: src/shared/useNewNote.ts
+#: src/sidebar/timeline/index.tsx
+#: src/sidebar/timeline/stream-control.tsx
 msgid "Retry"
 msgstr "Retry"
 
@@ -2193,6 +2260,10 @@ msgstr "Show in Finder"
 msgid "Show in menu bar"
 msgstr "Show in menu bar"
 
+#: src/sidebar/timeline/index.tsx
+msgid "Show later dates ({laterCount})"
+msgstr "Show later dates ({laterCount})"
+
 #: src/settings/general/app-settings.tsx
 msgid "Show Loofah in the Dock and app switcher."
 msgstr "Show Loofah in the Dock and app switcher."
@@ -2295,6 +2366,11 @@ msgstr "Start with permissions"
 msgid "Starting"
 msgstr "Starting"
 
+#: src/shared/application/device-recording-host.tsx
+#: src/shared/application/device-recording-queue.tsx
+msgid "Starting recording…"
+msgstr "Starting recording…"
+
 #: src/shared/application/vault-processing.tsx
 msgid "Starting summary…"
 msgstr "Starting summary…"
@@ -2319,6 +2395,10 @@ msgstr "Stop automatically when the meeting app stops using the microphone."
 #: src/sidebar/timeline/item.tsx
 msgid "Stop listening"
 msgstr "Stop listening"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Stop recording"
+msgstr "Stop recording"
 
 #: src/settings/general/app-settings.tsx
 msgid "Stop recording when the meeting ends"
@@ -2517,9 +2597,17 @@ msgstr "The note changed. Review its saved date before saving your picked date."
 msgid "The note may already exist. Retry the same request before creating another."
 msgstr "The note may already exist. Retry the same request before creating another."
 
+#: src/sidebar/timeline/index.tsx
+msgid "The open note is outside this loaded timeline window."
+msgstr "The open note is outside this loaded timeline window."
+
 #: src/shared/application/vault-processing.tsx
 msgid "The preview is shortened. Copy to recover the complete text."
 msgstr "The preview is shortened. Copy to recover the complete text."
+
+#: src/sidebar/timeline/index.tsx
+msgid "The previous note is outside the refreshed window. Scroll position was reset."
+msgstr "The previous note is outside the refreshed window. Scroll position was reset."
 
 #: src/shared/application/vault-processing.tsx
 msgid "The provider returned an unusable summary."
@@ -2548,6 +2636,10 @@ msgstr "The summary could not be saved safely."
 #: src/shared/application/vault-processing.tsx
 msgid "The summary provider failed."
 msgstr "The summary provider failed."
+
+#: src/sidebar/timeline/index.tsx
+msgid "The timeline changed. Its loaded window was refreshed."
+msgstr "The timeline changed. Its loaded window was refreshed."
 
 #: src/shared/application/vault-processing.tsx
 msgid "The title save could not be confirmed. Review the saved note before using this title."
@@ -2582,6 +2674,11 @@ msgstr "This model supports English only. Choose another model or change your sp
 msgid "This model transcribes after recording."
 msgstr "This model transcribes after recording."
 
+#: src/settings/index.tsx
+#: src/shared/main/tab-content.tsx
+msgid "This operation is unavailable for this connection."
+msgstr "This operation is unavailable for this connection."
+
 #: src/shared/application/device-recovery.tsx
 msgid "This recovery copy has already been cleared."
 msgstr "This recovery copy has already been cleared."
@@ -2593,6 +2690,10 @@ msgstr "This removes the saved request from this device. It does not stop proces
 #: src/shared/application/vault-document-editor.tsx
 msgid "This server does not support the document editor. Upgrade the server, then reconnect."
 msgstr "This server does not support the document editor. Upgrade the server, then reconnect."
+
+#: src/sidebar/timeline/index.tsx
+msgid "This server does not support the timeline."
+msgstr "This server does not support the timeline."
 
 #: src/session/components/title-input.tsx
 msgid "This title changed or its save could not be confirmed. Your draft is kept."
@@ -2730,6 +2831,10 @@ msgstr "Unavailable saved server"
 msgid "Unavailable vault"
 msgstr "Unavailable vault"
 
+#: src/sidebar/timeline/index.tsx
+msgid "Undated"
+msgstr "Undated"
+
 #: src/session/components/session-date.tsx
 msgid "Unknown date"
 msgstr "Unknown date"
@@ -2832,6 +2937,15 @@ msgstr "Vault size by file type"
 #: src/main/about-storage.tsx
 msgid "Vault storage"
 msgstr "Vault storage"
+
+#: src/main/captured-workspace.tsx
+#: src/sidebar/timeline/index.tsx
+msgid "Vault unavailable"
+msgstr "Vault unavailable"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Verified on the server. The device copy is retained."
+msgstr "Verified on the server. The device copy is retained."
 
 #. placeholder {0}: info.data.appVersion
 #: src/main/about-dialog.tsx

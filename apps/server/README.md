@@ -10,6 +10,20 @@ An internal Core worker now tails the existing durable capture chunks through th
 
 Canonical batch conversion lives in `transcribe-core::transcript`; the existing `listener2_core::transcript` path re-exports it unchanged. The configured server uses the same timing, spacing, IDs, channel preparation and speaker-hint mapping without importing listener orchestration.
 
+The experimental saved-server desktop workspace can record audio for an existing
+note that has no recording. Capture stays on the device, uses durable private
+chunks, and uploads independently of editing or server connectivity. The device
+recording queue stays outside the signed-in vault view, so Stop and retained
+capture discovery do not require a live server session. A lost start reply keeps
+the same request UUID; closing a view does not stop recording. Reconnect to the
+original account/vault to resume a retained upload. Device audio is retained after
+independent canonical hash verification; automatic deletion is not enabled.
+
+This is not complete recording parity: automated live transcription/repair and
+summaries, offline pending-note controls, append, local audio export/recovery and
+long-duration/platform acceptance remain release gates. The shared main workspace
+adapter is implemented and tested but is not yet the selected remote startup UI.
+
 ## Desktop startup and server profiles
 
 Existing installations start in standalone mode: the existing local vault opens,

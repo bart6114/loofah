@@ -19,6 +19,14 @@ vi.mock("./device-recovery", () => ({
   DeviceRecovery: () => <div>Device recovery</div>,
 }));
 
+vi.mock("./device-recording-host", () => ({
+  DeviceRecordingHost: ({
+    children,
+  }: {
+    children: import("react").ReactNode;
+  }) => <>{children}</>,
+}));
+
 import {
   DesktopBootstrapRoot,
   loadDesktopBootstrap,

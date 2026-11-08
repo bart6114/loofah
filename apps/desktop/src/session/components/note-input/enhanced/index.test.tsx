@@ -13,6 +13,10 @@ function render(ui: ReactNode) {
   });
 }
 
+vi.mock("~/main/use-legacy-activity", () => ({
+  useLegacySessionActivity: () => ({ isAvailable: () => hoisted.legacy }),
+}));
+
 vi.mock("~/session/hooks/useSummarySource", () => ({
   useSummarySource: () => true,
 }));

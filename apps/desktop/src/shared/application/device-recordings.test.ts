@@ -4,6 +4,7 @@ const native = vi.hoisted(() => ({
   commands: {
     deviceRecordingStart: vi.fn(),
     deviceRecordingInventory: vi.fn(),
+    deviceRecordingRecoveryInventory: vi.fn(),
     deviceRecordingStatus: vi.fn(),
     deviceRecordingStop: vi.fn(),
     deviceRecordingResumeUpload: vi.fn(),
@@ -22,7 +23,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-import { createDeviceRecordingClient } from "./device-recordings";
+import {
+  createDeviceRecordingClient,
+  createDeviceRecordingMonitor,
+} from "./device-recordings";
 
 const scope = {
   server: "https://company.example",
@@ -137,4 +141,18 @@ it("fences callbacks and unsubscribes again after late native subscription admis
     [id],
   ]);
   expect(native.commands.deviceRecordingStop).not.toHaveBeenCalled();
+});
+
+it("lists retained device captures without selecting a signed-in destination", async () => {
+  const monitor = createDeviceRecordingMonitor();
+  native.commands.deviceRecordingRecoveryInventory.mockResolvedValue({
+    status: "ok",
+    data: [{ identity }],
+  });
+  expect(await monitor.recoveryInventory()).toEqual([{ identity }]);
+  expect(native.commands.deviceRecordingRecoveryInventory).toHaveBeenCalledWith(
+    false,
+  );
+  expect(native.commands.deviceRecordingStart).not.toHaveBeenCalled();
+  monitor.dispose();
 });

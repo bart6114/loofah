@@ -5,7 +5,11 @@ import {
   ApplicationRequestError,
   connectionClosed,
 } from "./errors";
-import type { FileMetadata, UploadAttachmentRequest } from "./protocol.gen";
+import type {
+  ApplicationError,
+  FileMetadata,
+  UploadAttachmentRequest,
+} from "./protocol.gen";
 import type { RequestOptions } from "./vault-client";
 
 import {
@@ -21,6 +25,8 @@ import {
   type AttachmentCopyAction,
   type RecordingWaveform,
   type DeviceAttachmentSource,
+  type CaptureLiveBinding,
+  type CaptureLiveEvent,
 } from "~/types/tauri.gen";
 
 type Reply<K extends RemoteReply["kind"]> = Extract<
@@ -427,13 +433,47 @@ export class NativeRemoteConnection {
     }
   }
 
-  async subscribe(
+  subscribe(
     vaultId: string,
     listener: (event: RemoteEvent) => void,
   ): Promise<() => Promise<void>> {
+    return this.subscribeChannel(vaultId, listener, (id, channel) =>
+      commands.remoteSubscribe(this.info.connection_id, vaultId, id, channel),
+    );
+  }
+
+  subscribeCaptureLive(
+    vaultId: string,
+    binding: CaptureLiveBinding,
+    after: number | null,
+    listener: (event: CaptureLiveEvent) => void,
+  ): Promise<() => Promise<void>> {
+    return this.subscribeChannel(vaultId, listener, (id, channel) =>
+      commands.remoteSubscribeCaptureLive(
+        this.info.connection_id,
+        vaultId,
+        id,
+        binding,
+        after,
+        channel,
+      ),
+    );
+  }
+
+  private async subscribeChannel<T extends RemoteEvent | CaptureLiveEvent>(
+    vaultId: string,
+    listener: (event: T) => void,
+    register: (
+      id: string,
+      channel: Channel<T>,
+    ) => Promise<
+      | { status: "ok"; data: null }
+      | { status: "error"; error: ApplicationError }
+    >,
+  ): Promise<() => Promise<void>> {
     this.assertOpen();
     const subscriptionId = crypto.randomUUID();
-    const channel = new Channel<RemoteEvent>();
+    const channel = new Channel<T>();
     let active = true;
     channel.onmessage = (event) => {
       if (
@@ -461,14 +501,7 @@ export class NativeRemoteConnection {
     };
     this.subscriptions.add(unsubscribe);
     try {
-      applicationResult(
-        await commands.remoteSubscribe(
-          this.info.connection_id,
-          vaultId,
-          subscriptionId,
-          channel,
-        ),
-      );
+      applicationResult(await register(subscriptionId, channel));
       if (this.closed) await unsubscribe();
       return unsubscribe;
     } catch (error) {

@@ -7,6 +7,7 @@ const native = vi.hoisted(() => ({
   remoteRequest: vi.fn(),
   remoteCancelRequest: vi.fn(),
   remoteSubscribe: vi.fn(),
+  remoteSubscribeCaptureLive: vi.fn(),
   remoteUnsubscribe: vi.fn(),
   remoteDisconnect: vi.fn(),
   remoteLogout: vi.fn(),
@@ -109,6 +110,10 @@ beforeEach(() => {
     data: { kind: "me", value: me },
   });
   native.remoteSubscribe.mockResolvedValue({ status: "ok", data: undefined });
+  native.remoteSubscribeCaptureLive.mockResolvedValue({
+    status: "ok",
+    data: null,
+  });
   native.remoteLogout.mockResolvedValue({ status: "ok", data: undefined });
   native.remoteAudioClose.mockResolvedValue(undefined);
   native.remoteAudioOpen.mockImplementation(async (_connection, id) => ({
@@ -543,6 +548,91 @@ describe("native remote connection", () => {
     await expect(connection.restore()).rejects.toBeInstanceOf(
       ApplicationRequestError,
     );
+  });
+
+  it("subscribes to exact live generation/cursor and retires delivery with its connection", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    const binding = {
+      capture_id: crypto.randomUUID(),
+      generation_id: crypto.randomUUID(),
+      capture_fingerprint: "1".repeat(64),
+      session_id: "note",
+      format: {
+        encoding: "pcm_f32_le" as const,
+        sample_rate: 16000,
+        channels: ["microphone" as const],
+      },
+    };
+    const listener = vi.fn();
+    const unsubscribe = await connection.subscribeCaptureLive(
+      "vault",
+      binding,
+      17,
+      listener,
+    );
+    const [id, vault, subscriptionId, actualBinding, after, channel] =
+      native.remoteSubscribeCaptureLive.mock.calls[0];
+    expect([id, vault, actualBinding, after]).toEqual([
+      "connection",
+      "vault",
+      binding,
+      17,
+    ]);
+    const event = {
+      kind: "page",
+      page: {
+        captions: [],
+        snapshot: { generation_id: binding.generation_id },
+      },
+    };
+    channel.onmessage(event);
+    expect(listener).toHaveBeenCalledWith(event);
+    await connection.disconnect();
+    channel.onmessage(event);
+    await unsubscribe();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(native.remoteUnsubscribe).toHaveBeenCalledExactlyOnceWith(
+      "connection",
+      subscriptionId,
+    );
+  });
+
+  it("cleans live subscription admission after the window connection has retired", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    let resolve!: (value: unknown) => void;
+    native.remoteSubscribeCaptureLive.mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const binding = {
+      capture_id: crypto.randomUUID(),
+      generation_id: crypto.randomUUID(),
+      capture_fingerprint: "1".repeat(64),
+      session_id: "note",
+      format: {
+        encoding: "pcm_f32_le" as const,
+        sample_rate: 16000,
+        channels: ["microphone" as const],
+      },
+    };
+    const listener = vi.fn();
+    const pending = connection.subscribeCaptureLive(
+      "vault",
+      binding,
+      null,
+      listener,
+    );
+    await connection.disconnect();
+    resolve({ status: "ok", data: null });
+    await pending;
+    native.remoteSubscribeCaptureLive.mock.calls[0][5].onmessage({
+      kind: "connection",
+      state: "connected",
+      error: null,
+    });
+    expect(listener).not.toHaveBeenCalled();
+    expect(native.remoteUnsubscribe).toHaveBeenCalledTimes(1);
   });
 
   it("signs out in native code and blocks pending responses from becoming active again", async () => {

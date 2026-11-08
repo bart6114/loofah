@@ -64,6 +64,10 @@ msgstr ""
 msgid "{added} attachments added"
 msgstr ""
 
+#: src/sidebar/timeline/stream-control.tsx
+msgid "{loaded} of {total} loaded"
+msgstr ""
+
 #. placeholder {0}: formatLanguageList(unsupportedLanguages)
 #: src/settings/ai/stt/select.tsx
 msgid "{model} can't transcribe {0}. Try another model or change your spoken languages."
@@ -79,6 +83,10 @@ msgstr ""
 
 #: src/session/components/note-input/transcript/renderer/speaker-assign.tsx
 msgid "{otherClusterCount, plural, one {Also apply to the other speaker on this channel} other {Also apply to the other # speakers on this channel}}"
+msgstr ""
+
+#: src/sidebar/timeline/index.tsx
+msgid "{sessionCount} loaded notes selected"
 msgstr ""
 
 #: src/session/components/session-tags.tsx
@@ -236,6 +244,10 @@ msgstr ""
 
 #: src/settings/general/permissions.tsx
 msgid "Audio"
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Audio is saved on this device and awaiting upload."
 msgstr ""
 
 #: src/settings/ai/llm/tags.tsx
@@ -957,6 +969,10 @@ msgstr ""
 msgid "Finish signing in in your browser…"
 msgstr ""
 
+#: src/shared/application/device-recording-queue.tsx
+msgid "Finishing recording and saving device audio…"
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "Forget device request"
 msgstr ""
@@ -1147,9 +1163,18 @@ msgstr ""
 msgid "Load current settings"
 msgstr ""
 
+#: src/sidebar/timeline/stream-control.tsx
+msgid "Load earlier"
+msgstr ""
+
+#: src/sidebar/timeline/stream-control.tsx
+msgid "Load later"
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-attachments-pane.tsx
+#: src/sidebar/timeline/stream-control.tsx
 msgid "Load more"
 msgstr ""
 
@@ -1169,6 +1194,7 @@ msgstr ""
 msgid "Loading connection…"
 msgstr ""
 
+#: src/main/captured-workspace.tsx
 #: src/main/layout.tsx
 #: src/session/components/note-input/raw.tsx
 #: src/shared/application/notes-workspace.tsx
@@ -1197,6 +1223,10 @@ msgstr ""
 msgid "Loading models..."
 msgstr ""
 
+#: src/sidebar/timeline/stream-control.tsx
+msgid "Loading notes…"
+msgstr ""
+
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Loading preview…"
 msgstr ""
@@ -1207,6 +1237,10 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Loading summary prompt..."
+msgstr ""
+
+#: src/sidebar/timeline/index.tsx
+msgid "Loading tags…"
 msgstr ""
 
 #: src/session/components/note-input/transcript/loading.tsx
@@ -1679,11 +1713,20 @@ msgstr ""
 msgid "Reconnect to save settings. Your changes stay in this form."
 msgstr ""
 
+#: src/sidebar/timeline/index.tsx
+msgid "Reconnecting… Loaded notes remain available."
+msgstr ""
+
 #: src/session/components/outer-header/index.tsx
 msgid "Record"
 msgstr ""
 
+#: src/shared/application/device-recording-host.tsx
+msgid "Record audio"
+msgstr ""
+
 #: src/settings/general/index.tsx
+#: src/shared/application/device-recording-queue.tsx
 #: src/sidebar/settings.tsx
 msgid "Recording"
 msgstr ""
@@ -1704,12 +1747,28 @@ msgstr ""
 msgid "Recording deletion was not confirmed. Reload it before trying again."
 msgstr ""
 
+#: src/shared/application/device-recording-queue.tsx
+msgid "Recording did not start."
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Recording interrupted. Saved audio is retained for recovery."
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Recording on this device."
+msgstr ""
+
 #: src/audio-player/provider.tsx
 msgid "Recording playback is unavailable."
 msgstr ""
 
 #: src/main/about-dialog.tsx
 msgid "Recordings"
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Recordings on this device"
 msgstr ""
 
 #: src/shared/application/device-recovery.tsx
@@ -1733,6 +1792,7 @@ msgid "Refine your search to see more results."
 msgstr ""
 
 #: src/main/about-storage.tsx
+#: src/shared/application/device-recording-queue.tsx
 msgid "Refresh"
 msgstr ""
 
@@ -1889,6 +1949,10 @@ msgstr ""
 msgid "Resume request"
 msgstr ""
 
+#: src/shared/application/device-recording-queue.tsx
+msgid "Resume upload"
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "Resuming…"
 msgstr ""
@@ -1896,6 +1960,7 @@ msgstr ""
 #: src/audio-player/provider.tsx
 #: src/main/about-storage.tsx
 #: src/main/audio-import-dialog.tsx
+#: src/main/captured-workspace.tsx
 #: src/main/layout.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
@@ -1907,6 +1972,8 @@ msgstr ""
 #: src/shared/application/vault-attachment-uploads.tsx
 #: src/shared/application/vault-processing-settings.tsx
 #: src/shared/useNewNote.ts
+#: src/sidebar/timeline/index.tsx
+#: src/sidebar/timeline/stream-control.tsx
 msgid "Retry"
 msgstr ""
 
@@ -2193,6 +2260,10 @@ msgstr ""
 msgid "Show in menu bar"
 msgstr ""
 
+#: src/sidebar/timeline/index.tsx
+msgid "Show later dates ({laterCount})"
+msgstr ""
+
 #: src/settings/general/app-settings.tsx
 msgid "Show Loofah in the Dock and app switcher."
 msgstr ""
@@ -2295,6 +2366,11 @@ msgstr ""
 msgid "Starting"
 msgstr ""
 
+#: src/shared/application/device-recording-host.tsx
+#: src/shared/application/device-recording-queue.tsx
+msgid "Starting recording…"
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "Starting summary…"
 msgstr ""
@@ -2318,6 +2394,10 @@ msgstr ""
 #: src/session/components/outer-header/index.tsx
 #: src/sidebar/timeline/item.tsx
 msgid "Stop listening"
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Stop recording"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
@@ -2517,8 +2597,16 @@ msgstr ""
 msgid "The note may already exist. Retry the same request before creating another."
 msgstr ""
 
+#: src/sidebar/timeline/index.tsx
+msgid "The open note is outside this loaded timeline window."
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "The preview is shortened. Copy to recover the complete text."
+msgstr ""
+
+#: src/sidebar/timeline/index.tsx
+msgid "The previous note is outside the refreshed window. Scroll position was reset."
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
@@ -2547,6 +2635,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "The summary provider failed."
+msgstr ""
+
+#: src/sidebar/timeline/index.tsx
+msgid "The timeline changed. Its loaded window was refreshed."
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
@@ -2582,6 +2674,11 @@ msgstr ""
 msgid "This model transcribes after recording."
 msgstr ""
 
+#: src/settings/index.tsx
+#: src/shared/main/tab-content.tsx
+msgid "This operation is unavailable for this connection."
+msgstr ""
+
 #: src/shared/application/device-recovery.tsx
 msgid "This recovery copy has already been cleared."
 msgstr ""
@@ -2592,6 +2689,10 @@ msgstr ""
 
 #: src/shared/application/vault-document-editor.tsx
 msgid "This server does not support the document editor. Upgrade the server, then reconnect."
+msgstr ""
+
+#: src/sidebar/timeline/index.tsx
+msgid "This server does not support the timeline."
 msgstr ""
 
 #: src/session/components/title-input.tsx
@@ -2730,6 +2831,10 @@ msgstr ""
 msgid "Unavailable vault"
 msgstr ""
 
+#: src/sidebar/timeline/index.tsx
+msgid "Undated"
+msgstr ""
+
 #: src/session/components/session-date.tsx
 msgid "Unknown date"
 msgstr ""
@@ -2831,6 +2936,15 @@ msgstr ""
 
 #: src/main/about-storage.tsx
 msgid "Vault storage"
+msgstr ""
+
+#: src/main/captured-workspace.tsx
+#: src/sidebar/timeline/index.tsx
+msgid "Vault unavailable"
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Verified on the server. The device copy is retained."
 msgstr ""
 
 #. placeholder {0}: info.data.appVersion

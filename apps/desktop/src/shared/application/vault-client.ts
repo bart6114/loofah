@@ -662,6 +662,14 @@ export async function connectLocalVault(): Promise<VaultClient> {
   };
 }
 
+export function remoteVaultScope(
+  server: string,
+  memberId: string,
+  vaultId: string,
+) {
+  return JSON.stringify(["remote", server, memberId, vaultId]);
+}
+
 export function connectRemoteVault(
   connection: NativeRemoteConnection,
   memberId: string,
@@ -669,12 +677,7 @@ export function connectRemoteVault(
 ): VaultClient {
   const vaultId = vault.id;
   return {
-    scope: JSON.stringify([
-      "remote",
-      connection.info.server,
-      memberId,
-      vaultId,
-    ]),
+    scope: remoteVaultScope(connection.info.server, memberId, vaultId),
     networkMode: "online",
     canEdit: vault.role !== "reader",
     attachmentPresentation: scopedAttachmentPresentation,

@@ -13,6 +13,10 @@ import {
   type DeviceCaptureStartRequest,
 } from "~/types/tauri.gen";
 
+export function createDeviceRecordingMonitor() {
+  return createMonitor().api;
+}
+
 export function createDeviceRecordingClient({
   scope,
   connectionId,
@@ -21,12 +25,9 @@ export function createDeviceRecordingClient({
   connectionId?: string;
 }) {
   const destination = Object.freeze({ ...scope });
-  const subscriptions = new Set<() => void>();
-  let disposed = false;
-  const assertOpen = () => {
-    if (disposed) throw connectionClosed();
-  };
+  const { api, assertOpen, isDisposed } = createMonitor();
   return {
+    ...api,
     async start(
       input: Omit<DeviceCaptureStartRequest, "scope">,
       { signal }: { signal?: AbortSignal } = {},
@@ -44,12 +45,39 @@ export function createDeviceRecordingClient({
           current_revision: null,
           mutation_outcome: "unknown",
         });
-      const result = await commands
-        .deviceRecordingStart(connectionId ?? null, request)
-        .catch(() => {
-          throw unknown();
-        });
-      if (disposed || signal?.aborted) throw unknown();
+      let result;
+      try {
+        result = await commands.deviceRecordingStart(
+          connectionId ?? null,
+          request,
+        );
+      } catch {
+        throw unknown();
+      }
+      if (isDisposed() || signal?.aborted) throw unknown();
+      return applicationResult(result);
+    },
+    async resumeUpload(identity: CaptureIdentity) {
+      assertOpen();
+      if (!connectionId) throw connectionClosed();
+      return applicationResult(
+        await commands.deviceRecordingResumeUpload(connectionId, identity),
+      );
+    },
+  };
+}
+
+function createMonitor() {
+  const subscriptions = new Set<() => void>();
+  let disposed = false;
+  const assertOpen = () => {
+    if (disposed) throw connectionClosed();
+  };
+  const api = {
+    async recoveryInventory(refresh = false) {
+      assertOpen();
+      const result = await commands.deviceRecordingRecoveryInventory(refresh);
+      assertOpen();
       return applicationResult(result);
     },
     async inventory() {
@@ -67,13 +95,6 @@ export function createDeviceRecordingClient({
     async stop(identity: CaptureIdentity) {
       return applicationResult(await commands.deviceRecordingStop(identity));
     },
-    async resumeUpload(identity: CaptureIdentity) {
-      assertOpen();
-      if (!connectionId) throw connectionClosed();
-      return applicationResult(
-        await commands.deviceRecordingResumeUpload(connectionId, identity),
-      );
-    },
     async subscribe(
       changed: () => void,
       { signal }: { signal?: AbortSignal } = {},
@@ -82,15 +103,17 @@ export function createDeviceRecordingClient({
       signal?.throwIfAborted();
       const id = crypto.randomUUID();
       let closed = false;
-      const unsubscribe = () => {
-        void commands.deviceRecordingUnsubscribe(id).catch(() => {});
+      const unsubscribe = async () => {
+        try {
+          await commands.deviceRecordingUnsubscribe(id);
+        } catch {}
       };
       const close = () => {
         if (closed) return;
         closed = true;
         subscriptions.delete(close);
         signal?.removeEventListener("abort", close);
-        unsubscribe();
+        void unsubscribe();
       };
       const channel = new Channel<number>();
       channel.onmessage = () => {
@@ -102,7 +125,7 @@ export function createDeviceRecordingClient({
         applicationResult(await commands.deviceRecordingSubscribe(id, channel));
         // Closing may precede native admission. Its late acknowledgment requires
         // another unsubscribe, while callbacks remain fenced throughout.
-        if (closed || disposed) unsubscribe();
+        if (closed || disposed) void unsubscribe();
         signal?.throwIfAborted();
         return close;
       } catch (error) {
@@ -116,4 +139,5 @@ export function createDeviceRecordingClient({
       for (const close of subscriptions) close();
     },
   };
+  return { api, assertOpen, isDisposed: () => disposed };
 }
