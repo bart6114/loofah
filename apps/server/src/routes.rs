@@ -215,6 +215,9 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
         capabilities.features.push("generated_titles".into());
         capabilities.features.push("processing_settings".into());
     }
+    if service.config.transcription.is_some() {
+        capabilities.features.push("batch_transcription_jobs".into());
+    }
     Json(capabilities)
 }
 async fn auth_config(State(service): State<Arc<Service>>) -> Json<RemoteAuthConfig> {
