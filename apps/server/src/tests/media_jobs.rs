@@ -282,6 +282,21 @@ async fn media_source_revision_and_payload_mismatch_never_enter_publication() {
         .0,
         StatusCode::CONFLICT
     );
+    let mut changed = SUBTITLE.as_bytes().to_vec();
+    changed[0] = b'2';
+    assert_eq!(
+        upload_bytes(
+            &fixture,
+            "alice",
+            vault,
+            &request,
+            admission["revision"].as_str().unwrap(),
+            changed
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
     let context = fixture.service.vault(vault).await.unwrap();
     assert!(
         !context
