@@ -16,10 +16,12 @@ Do not restore old stashes or cancel healthy builds/CI.
 
 - Integration: `/Volumes/T7/src/loofah-backend-separation`,
   `refactor/frontend-backend-separation`.
-- Last pushed: `09495af6fe2ec34164fd38be177b4849efe5d485`.
+- Previous published checkpoint: `09495af6fe2ec34164fd38be177b4849efe5d485`.
+  Verify the current published head through origin or PR metadata.
 - Draft PR: <https://github.com/bart6114/loofah/pull/123>.
 - Integrated source now includes startup `0f44dadda`, active-profile save fix
-  `b80001d47`, main attachments `5b27c9855` and CPU deployment `7cd59564f`.
+  `b80001d47`, main attachments `5b27c9855`, captured main host `77ead7fd3` and CPU
+  deployment `7cd59564f`.
 - Shared batch Core/CPU/HTTP operations are integrated through `013580cf3`;
   model-to-canonical CPU proof is from the actual configured Service on macOS.
 - Root's fixed native runner is
@@ -84,8 +86,8 @@ do not determine upload success or enter new saved references. Lists are paged;
 resource/copy actions are lazy. Local offline upload and Finder/Explorer behavior
 remain available through the local adapter. Unknown replies retain the same UUID
 and staged source for explicit retry. Root reviewed callbacks/ownership and the
-combined startup/attachment run passes 188 checks across 20 files; whole desktop
-typecheck passes. Worker proof covers 142 cases and 50/150/500 ms retirement.
+combined startup/attachment/main-host run passes 332 checks across 31 files;
+whole desktop typecheck passes. Worker proof covers 142 cases and 50/150/500 ms retirement.
 
 CPU deployment adds `Dockerfile.cpu` (Ubuntu 24.04 x64), a shared pinned Linux native
 setup and precise configured-Service runtime CI. Default notes-only image/job and
@@ -98,10 +100,11 @@ remain pending. No local Docker daemon/VM was started.
 Use the existing fixed trees; no new worktree per subtask.
 
 - A `frontend_distribution`: `/Volumes/T7/src/loofah-separation-document-editor-ui`.
-  Main attachment commit `ea81acb64` is integrated. Next: extract the real main
-  host with an explicit existing Scope, pure listener context and captured activity
-  input; Local wrapper preserves legacy services. Unknown activity skips cleanup.
-  No remote-main activation until timeline and unsafe affordances are migrated.
+  Main attachments and captured host `52303dd95` are integrated. The generic host
+  takes explicit Scope/AI/listener state and exact-Scope activity; Local preserves
+  legacy services, and unknown activity skips cleanup. Next: captured activity and
+  unsafe legacy capture/delete/window affordance guards. No Remote main activation
+  until bounded timeline browsing and the remaining gates are migrated.
 - B `backend_distribution`: `/Volumes/T7/src/loofah-separation-batch-transcription`.
   Portable uploader `15b36b838` and native coordinator source `d18e40922` are ready
   for Root review. Portable checks passed; native fixtures are SOURCE ONLY.
@@ -137,8 +140,9 @@ assertion. Linux typed-live CPU fixture hit its 10-second tail collector deadlin
 Root `4dc982502` increases only the real CPU drain budget with diagnostics. Both
 corrections need the next hosted run. Last entirely green head is `93dada10bb`.
 
-After finishing this coherent batch: integrate agent commits, regenerate only
-changed contracts, run affected checks, push once and update/read back PR head/body.
+The current startup/attachments/host/CPU-deployment batch has passed its affected
+checks. Push it once and update/read back PR head/body; fresh hosted results remain
+required. Subsequent capture/live/main activation work continues in parallel.
 The previous Windows run is finished, so there is no old-run wait requirement now.
 Do not claim completed platform QA from macOS tests or skipped speech-model jobs.
 
