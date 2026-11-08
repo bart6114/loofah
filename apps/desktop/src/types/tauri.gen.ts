@@ -3934,6 +3934,7 @@ export type SummaryJobRequest = {
   target: DocumentTarget;
   expected_revision: string;
   title_policy?: TitlePolicy;
+  only_if_empty?: boolean;
 };
 export type SummaryModelSelection = {
   provider_id: string;

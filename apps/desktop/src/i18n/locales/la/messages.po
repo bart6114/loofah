@@ -137,6 +137,10 @@ msgstr ""
 msgid "Add a meeting language to help transcription choose the right words."
 msgstr ""
 
+#: src/session/components/note-input/enhanced/empty-summary.tsx
+msgid "Add a note or transcript to generate a summary."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
 msgid "Add attachments"
@@ -307,6 +311,7 @@ msgstr ""
 msgid "Cancel date edit"
 msgstr ""
 
+#: src/session/components/note-input/header.tsx
 #: src/shared/application/device-recording-queue.tsx
 #: src/shared/application/vault-processing.tsx
 msgid "Cancel processing"
@@ -909,8 +914,8 @@ msgstr ""
 
 #: src/session/components/note-input/enhanced/empty-summary.tsx
 #: src/session/components/note-input/header.tsx
-msgid "Edit summary prompt"
-msgstr ""
+#~ msgid "Edit summary prompt"
+#~ msgstr ""
 
 #: src/shared/application/vault-sharing.tsx
 msgid "Editor"
@@ -946,8 +951,8 @@ msgid "Expand all"
 msgstr ""
 
 #: src/shared/application/desktop-bootstrap.tsx
-msgid "Experimental server workspace"
-msgstr ""
+#~ msgid "Experimental server workspace"
+#~ msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/outer-header/overflow/index.tsx
@@ -1012,6 +1017,10 @@ msgstr ""
 
 #: src/sidebar/settings.tsx
 msgid "General"
+msgstr ""
+
+#: src/session/components/note-input/enhanced/empty-summary.tsx
+msgid "Generate a summary from your notes or transcript."
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
@@ -1233,6 +1242,7 @@ msgstr ""
 
 #: src/main/captured-workspace.tsx
 #: src/main/layout.tsx
+#: src/session/components/note-input/enhanced/empty-summary.tsx
 #: src/session/components/note-input/raw.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-document-editor.tsx
@@ -1721,6 +1731,7 @@ msgstr ""
 msgid "Processing request"
 msgstr ""
 
+#: src/session/components/note-input/header.tsx
 #: src/shared/application/vault-processing-settings.tsx
 msgid "Processing settings"
 msgstr ""
@@ -2266,6 +2277,10 @@ msgstr ""
 msgid "Server processing was cancelled."
 msgstr ""
 
+#: src/shared/application/desktop-bootstrap.tsx
+msgid "Server workspace"
+msgstr ""
+
 #: src/session/components/note-input/header.tsx
 msgid "Session note views"
 msgstr ""
@@ -2556,6 +2571,10 @@ msgstr ""
 msgid "Summary generation"
 msgstr ""
 
+#: src/session/components/note-input/enhanced/empty-summary.tsx
+msgid "Summary generation is unavailable for this connection."
+msgstr ""
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary instructions"
 msgstr ""
@@ -2761,6 +2780,10 @@ msgstr ""
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
 msgid "This content changed elsewhere. Review the saved version before choosing."
+msgstr ""
+
+#: src/session/components/note-input/enhanced/empty-summary.tsx
+msgid "This document is not available for generation."
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx

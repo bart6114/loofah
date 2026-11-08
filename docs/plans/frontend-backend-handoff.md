@@ -22,22 +22,45 @@ existing managed Context and original lease. Its shutdown joins admitted owner
 work before the final Store flush. Generated contracts and full Native/platform
 validation remain integration gates; source checkpoints alone do not prove them.
 
-Completed continuation checks so far:
+Completed continuation checks so far (local logs are under the cache above):
 
-- Original-head frontend baseline: 2,563 tests in 279 files.
-- All four pending processing SDK TLS regressions.
-- First combined scoped Rust cohort: 27 passing cases across six packages,
-  including credentials, owner progress, device declarations and SDK transport.
-- Integrated provider/device frontend cohort: 75 tests across five files.
-- The following shared media cohort passed 81 cases and exposed one MP3 recovery
-  failure. The capture-only transcript guards responsible have been corrected;
-  the combined Native/library rerun is the next authoritative result.
+- Original-head frontend baseline: 2,563 tests in 279 files. The current shared
+  main/AI/device integration passes 2,577 tests in 280 files and desktop typecheck.
+- All four formerly pending processing SDK TLS regressions passed. The initial
+  provider/device frontend cohort passed 75 tests across five files.
+- The full twelve-package Native/library run passed 1,665 tests and exposed six
+  failures. Corrections cover Local CLI error/output/startup parity, absence-only
+  transcript guards, the managed owner socket fixture, and real live-capture
+  journal contention. Its failures are historical findings, not a current full
+  pass; repeat integrated qualification after the remaining changes.
+- A 145-case focused Native/Core/server cohort passed, including deterministic
+  live-ledger contention and Store Busy publication recovery, device processing
+  and captions, profile/capture gates, retained media recovery, and stopped
+  backup/restore compatibility checks.
+- Two actual configured CPU scenarios passed with a freshly downloaded and
+  SHA-256-verified `ggml-base-q8_0.bin`: canonical dual-channel batch transcription,
+  and live captions before seal followed by matching canonical promotion.
+- The seven-package all-target Cargo check passed. Later focused conditional
+  summary/Local ownership checks passed seven cases; the actual Native exporter
+  and two additional proof cases passed separately. Generated contracts came
+  from the real exporters. This is macOS evidence, not Windows qualification.
 
-Local shared lifecycle activation remains default OFF. Main Remote activation,
-complete CLI recovery/output parity, recording append, verified retention,
-backup/restore/upgrades, realistic production UX, sustained recording/network
-acceptance and final macOS/Windows/Linux qualification remain required. Local
-stays standalone, offline and login-free. Do not merge, release or bump versions.
+Saved Remote startup profiles now mount the shared main shell; the opt-in server
+notes dialog retains its smaller preview. Main summary/template controls and
+legacy automatic dispatch adapters use scoped shared jobs. The optional durable
+`only_if_empty` policy requires `conditional_summary_jobs`, keeps legacy request
+bytes unchanged when false, and conflicts before generation if the reviewed
+summary has filled or changed. This adapter work does not complete Native/Core
+automatic processing durability before producer start.
+
+Local shared lifecycle UI activation remains default OFF. Full managed Local CLI
+stale-channel deletion awaits the strict Native physical-resource host proof;
+the Core/Store proof interface defaults to refusal without it. Recording append,
+verified retention, complete Native automatic processing, realistic production UX,
+sustained recording/network acceptance and final macOS/Windows/Linux qualification
+remain required. Stopped backup/restore source and focused validation are present;
+full service upgrade acceptance is still pending. Local stays standalone, offline
+and login-free. Do not merge, release or bump versions.
 
 ## Transfer checkpoint (historical)
 

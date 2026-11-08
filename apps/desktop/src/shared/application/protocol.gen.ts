@@ -324,7 +324,7 @@ export type StartupPhase = { kind: "openingVault" } | { kind: "scanning"; sessio
 
 export type StartupStatus = { revision: number; vaultPath: string; isCloudStorage: boolean; phase: StartupPhase; migrationIssues: string[] }
 
-export type SummaryJobRequest = { session_id: string; target: DocumentTarget; expected_revision: string; title_policy?: TitlePolicy }
+export type SummaryJobRequest = { session_id: string; target: DocumentTarget; expected_revision: string; title_policy?: TitlePolicy; only_if_empty?: boolean }
 
 export type SummaryModelSelection = { provider_id: string; model_id: string; base_url: string }
 

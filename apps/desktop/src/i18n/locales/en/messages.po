@@ -137,6 +137,10 @@ msgstr "Actions for {0}"
 msgid "Add a meeting language to help transcription choose the right words."
 msgstr "Add a meeting language to help transcription choose the right words."
 
+#: src/session/components/note-input/enhanced/empty-summary.tsx
+msgid "Add a note or transcript to generate a summary."
+msgstr "Add a note or transcript to generate a summary."
+
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
 msgid "Add attachments"
@@ -307,6 +311,7 @@ msgstr "Cancel"
 msgid "Cancel date edit"
 msgstr "Cancel date edit"
 
+#: src/session/components/note-input/header.tsx
 #: src/shared/application/device-recording-queue.tsx
 #: src/shared/application/vault-processing.tsx
 msgid "Cancel processing"
@@ -909,8 +914,8 @@ msgstr "Edit date"
 
 #: src/session/components/note-input/enhanced/empty-summary.tsx
 #: src/session/components/note-input/header.tsx
-msgid "Edit summary prompt"
-msgstr "Edit summary prompt"
+#~ msgid "Edit summary prompt"
+#~ msgstr "Edit summary prompt"
 
 #: src/shared/application/vault-sharing.tsx
 msgid "Editor"
@@ -946,8 +951,8 @@ msgid "Expand all"
 msgstr "Expand all"
 
 #: src/shared/application/desktop-bootstrap.tsx
-msgid "Experimental server workspace"
-msgstr "Experimental server workspace"
+#~ msgid "Experimental server workspace"
+#~ msgstr "Experimental server workspace"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/outer-header/overflow/index.tsx
@@ -1013,6 +1018,10 @@ msgstr "Forget this device request?"
 #: src/sidebar/settings.tsx
 msgid "General"
 msgstr "General"
+
+#: src/session/components/note-input/enhanced/empty-summary.tsx
+msgid "Generate a summary from your notes or transcript."
+msgstr "Generate a summary from your notes or transcript."
 
 #: src/shared/application/vault-processing.tsx
 msgid "Generate a title if this note is untitled"
@@ -1233,6 +1242,7 @@ msgstr "Loading connection…"
 
 #: src/main/captured-workspace.tsx
 #: src/main/layout.tsx
+#: src/session/components/note-input/enhanced/empty-summary.tsx
 #: src/session/components/note-input/raw.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-document-editor.tsx
@@ -1721,6 +1731,7 @@ msgstr "Processing may already have started. Resume uses the original request."
 msgid "Processing request"
 msgstr "Processing request"
 
+#: src/session/components/note-input/header.tsx
 #: src/shared/application/vault-processing-settings.tsx
 msgid "Processing settings"
 msgstr "Processing settings"
@@ -2266,6 +2277,10 @@ msgstr "Server processing needs review. The device recording is retained."
 msgid "Server processing was cancelled."
 msgstr "Server processing was cancelled."
 
+#: src/shared/application/desktop-bootstrap.tsx
+msgid "Server workspace"
+msgstr "Server workspace"
+
 #: src/session/components/note-input/header.tsx
 msgid "Session note views"
 msgstr "Session note views"
@@ -2556,6 +2571,10 @@ msgstr "Summary failed"
 msgid "Summary generation"
 msgstr "Summary generation"
 
+#: src/session/components/note-input/enhanced/empty-summary.tsx
+msgid "Summary generation is unavailable for this connection."
+msgstr "Summary generation is unavailable for this connection."
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary instructions"
 msgstr "Summary instructions"
@@ -2762,6 +2781,10 @@ msgstr "This connection is no longer authorized."
 #: src/shared/application/vault-note-editor.tsx
 msgid "This content changed elsewhere. Review the saved version before choosing."
 msgstr "This content changed elsewhere. Review the saved version before choosing."
+
+#: src/session/components/note-input/enhanced/empty-summary.tsx
+msgid "This document is not available for generation."
+msgstr "This document is not available for generation."
 
 #: src/settings/general/storage/change-location.tsx
 msgid "This folder already has files in it"

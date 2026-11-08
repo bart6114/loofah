@@ -14,9 +14,19 @@ vi.mock("./remote", () => ({
   NativeRemoteConnection: { connect: mocks.connect },
 }));
 vi.mock("~/main/captured-workspace", () => ({
-  MainWorkspace: ({ client }: { client: { scope: string; canEdit: boolean } }) => {
+  MainWorkspace: ({
+    client,
+  }: {
+    client: { scope: string; canEdit: boolean };
+  }) => {
     mocks.workspace(client);
-    return <div data-testid="main-workspace" data-scope={client.scope} data-editable={client.canEdit} />;
+    return (
+      <div
+        data-testid="main-workspace"
+        data-scope={client.scope}
+        data-editable={client.canEdit}
+      />
+    );
   },
 }));
 vi.mock("./notes-workspace", () => ({
@@ -118,12 +128,21 @@ it("discovers the active startup profile once under StrictMode", async () => {
 it("mounts the shared main shell only for the explicitly selected Remote startup", async () => {
   const native = connection();
   const connectToServer = vi.fn().mockResolvedValue(native);
-  renderStartup({ initialServer: native.info.server, autoConnect: true, mainWorkspace: true, connectToServer });
+  renderStartup({
+    initialServer: native.info.server,
+    autoConnect: true,
+    mainWorkspace: true,
+    connectToServer,
+  });
   const workspace = await screen.findByTestId("main-workspace");
-  expect(workspace.dataset.scope).toBe(JSON.stringify(["remote", native.info.server, "alice", "private"]));
+  expect(workspace.dataset.scope).toBe(
+    JSON.stringify(["remote", native.info.server, "alice", "private"]),
+  );
   expect(screen.queryByTestId("workspace")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-  await waitFor(() => expect(screen.queryByTestId("main-workspace")).toBeNull());
+  await waitFor(() =>
+    expect(screen.queryByTestId("main-workspace")).toBeNull(),
+  );
   expect(native.signOut).toHaveBeenCalledOnce();
 });
 

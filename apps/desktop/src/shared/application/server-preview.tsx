@@ -15,12 +15,12 @@ import {
 import { DesktopStartupPreferences } from "./desktop-startup-preferences";
 import { ApplicationRequestError } from "./errors";
 import { VaultNotesWorkspace } from "./notes-workspace";
-
-import { MainWorkspace } from "~/main/captured-workspace";
 import type { Me, VaultInfo } from "./protocol.gen";
 import { NativeRemoteConnection } from "./remote";
 import { connectRemoteVault } from "./vault-client";
 import { CreateSharedVault, VaultSharing } from "./vault-sharing";
+
+import { MainWorkspace } from "~/main/captured-workspace";
 
 export default function ServerPreview() {
   const [open, setOpen] = useState(false);
