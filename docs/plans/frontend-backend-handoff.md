@@ -319,6 +319,28 @@ keep `--locked` and use normal approved dependency downloads as needed.
   native Windows x64/ARM64 installer/runtime checks. Linux headless/CPU/container
   qualification remains separate from Linux desktop, which is out of scope.
 
+## Managed Local transcription source checkpoint
+
+The Native Core transcription host uses the existing on-device Soniqo and Whisper
+model aliases, language policy, prepared-audio kernel, channel mapping and speaker
+detection. It never starts or replaces the legacy local HTTP STT server. Whisper
+loads retain an explicit verified model descriptor and preserve the compiled
+Metal/Vulkan policy; server CPU resource loading remains unchanged. New jobs keep
+the shared absent-only transcript contract and the Local zero-UUID self channel.
+
+Strict actor admission rejects capture, retirement, unknown actor state and legacy
+batch work. Starting live capture cancels admitted background inference without
+waiting for it; native work retains its source, original vault context and model
+reservation until actual completion. Repeated background jobs cannot acquire that
+reservation during cancellation or model release. App shutdown drains the Core
+worker and remaining native reservations. Missing models fail offline; the host
+does not download models or consult provider credentials.
+
+This is a source checkpoint pending the root-owned Native/Windows validation lane,
+not evidence of real model or physical recording acceptance. Explicit replacement
+of an existing transcript still uses the guarded legacy workflow; the absent-only
+job contract has not been weakened.
+
 ## Optional real CPU fixture on a new workstation
 
 The audio fixture is tracked at `crates/data/src/english_1/audio.wav`. The20-second test

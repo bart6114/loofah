@@ -66,6 +66,14 @@ pub fn spawn(app: AppHandle, store: Arc<SessionStore>) {
         {
             tracing::error!(%error, "local processing startup failed; vault notes remain available");
         }
+        if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>()
+            && let Err(error) = app
+                .state::<crate::local_transcription::LocalTranscriptionState>()
+                .start(app.clone(), &context)
+                .await
+        {
+            tracing::error!(%error, "local transcription startup failed; vault notes remain available");
+        }
         state.set_phase(StartupPhase::Ready);
         if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>() {
             let lease = app

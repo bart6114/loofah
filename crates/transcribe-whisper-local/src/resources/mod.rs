@@ -1,4 +1,4 @@
-//! Explicit CPU model ownership for trusted hosts. Model paths are operator configuration,
+//! Explicit model ownership for trusted hosts. Model paths are operator configuration,
 //! never client input. Provision model storage read-only for the owner's entire lifetime:
 //! before/after-load verification cannot prevent an operator modifying a mapped model later.
 //! This module performs no vault authorization, transcript publication or live transport.
@@ -151,6 +151,7 @@ struct CpuEngine {
     model: Arc<hypr_whisper_local::LoadedWhisper>,
     path: PathBuf,
     _file: File,
+    _owner: Option<Box<dyn Send + Sync>>,
 }
 
 impl Engine for CpuEngine {
@@ -251,6 +252,28 @@ impl Drop for OwnedBatch {
 
 impl WhisperResources {
     pub fn start_cpu(spec: ModelSpec, limits: Limits) -> Result<Self, ResourceError> {
+        Self::start_verified(spec, limits, Some(false), None)
+    }
+
+    /// Native desktop policy: use the compiled Metal/Vulkan accelerator when available.
+    pub fn start_device(spec: ModelSpec, limits: Limits) -> Result<Self, ResourceError> {
+        Self::start_verified(spec, limits, None, None)
+    }
+
+    pub fn start_device_owned(
+        spec: ModelSpec,
+        limits: Limits,
+        owner: Box<dyn Send + Sync>,
+    ) -> Result<Self, ResourceError> {
+        Self::start_verified(spec, limits, None, Some(owner))
+    }
+
+    fn start_verified(
+        spec: ModelSpec,
+        limits: Limits,
+        use_gpu: Option<bool>,
+        owner: Option<Box<dyn Send + Sync>>,
+    ) -> Result<Self, ResourceError> {
         validate(&spec, limits)?;
         Self::start(limits, move || {
             let (model, file) = load_verified(&spec, || {
@@ -258,16 +281,18 @@ impl WhisperResources {
                     .absolute_path
                     .to_str()
                     .ok_or(ResourceError::Invalid("model path"))?;
-                hypr_whisper_local::LoadedWhisper::builder()
-                    .model_path(path)
-                    .use_gpu(false)
-                    .build()
-                    .map_err(failed)
+                let builder = hypr_whisper_local::LoadedWhisper::builder().model_path(path);
+                let builder = match use_gpu {
+                    Some(gpu) => builder.use_gpu(gpu),
+                    None => builder,
+                };
+                builder.build().map_err(failed)
             })?;
             Ok(Arc::new(CpuEngine {
                 model: Arc::new(model),
                 path: spec.absolute_path,
                 _file: file,
+                _owner: owner,
             }))
         })
     }

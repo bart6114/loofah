@@ -25,11 +25,11 @@ pub use hypr_transcription_core::listener::{
     SessionLifecycleEvent as DeviceSessionLifecycleEvent,
     SessionProgressEvent as DeviceSessionProgressEvent,
     actors::{
-        CaptureMaintenanceGate, CaptureMaintenanceGuard, ChannelMode as DeviceChannelMode,
-        DeviceAppendReceipt, DeviceCaptureArgs, DeviceCaptureCompletion,
-        DeviceCaptureCompletionSnapshot, DeviceCaptureKey, DeviceCaptureReporter,
-        DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink, DeviceSinkError,
-        RootActor as DeviceCaptureRoot, RootArgs as DeviceCaptureRootArgs,
+        CaptureBackgroundGuard, CaptureMaintenanceGate, CaptureMaintenanceGuard,
+        ChannelMode as DeviceChannelMode, DeviceAppendReceipt, DeviceCaptureArgs,
+        DeviceCaptureCompletion, DeviceCaptureCompletionSnapshot, DeviceCaptureKey,
+        DeviceCaptureReporter, DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink,
+        DeviceSinkError, RootActor as DeviceCaptureRoot, RootArgs as DeviceCaptureRootArgs,
         RootMsg as DeviceCaptureRootMsg,
     },
 };

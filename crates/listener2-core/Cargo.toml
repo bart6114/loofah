@@ -15,6 +15,7 @@ hypr-fs-format = { workspace = true }
 hypr-language = { workspace = true }
 hypr-transcribe-core = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true }
+hypr-transcribe-whisper-local = { workspace = true }
 hypr-whisper-local-model = { workspace = true }
 
 hound = { workspace = true }
@@ -41,6 +42,5 @@ aspasia = "0.2.1"
 [dev-dependencies]
 axum = { workspace = true }
 hypr-data = { workspace = true }
-hypr-transcribe-whisper-local = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true }

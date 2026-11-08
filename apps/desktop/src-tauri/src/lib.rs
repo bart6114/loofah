@@ -16,6 +16,7 @@ mod job_submissions;
 mod legacy_db;
 mod legacy_llm;
 mod local_owner;
+mod local_transcription;
 mod processing;
 mod recording_meta;
 mod remote;
@@ -225,6 +226,7 @@ pub async fn main() {
         .manage(audio)
         .manage(chatgpt::ChatgptState::default())
         .manage(processing::ProcessingState::default())
+        .manage(local_transcription::LocalTranscriptionState::default())
         .manage(local_owner::LocalOwnerState::default())
         .manage(job_submissions::JobSubmissionState::default())
         .manage(device_vault_state::DeviceVaultState::default())
@@ -519,11 +521,18 @@ pub async fn main() {
                 return;
             }
 
+            app.state::<local_transcription::LocalTranscriptionState>()
+                .request_shutdown();
             let device = app.state::<device_recordings::DeviceRecordingState>();
             device.request_shutdown();
             let owner = app.state::<local_owner::LocalOwnerState>();
             owner.request_shutdown();
-            if device.initialized() || owner.initialized() {
+            if device.initialized()
+                || owner.initialized()
+                || app
+                    .state::<local_transcription::LocalTranscriptionState>()
+                    .initialized()
+            {
                 api.prevent_exit();
                 let _ = app.emit("device-recording-exit-pending", ());
                 if should_force_quit() || app.emit_to("main", APP_EXIT_REQUESTED_EVENT, ()).is_err()
@@ -560,6 +569,8 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            app.state::<local_transcription::LocalTranscriptionState>()
+                .request_shutdown();
             app.state::<local_owner::LocalOwnerState>()
                 .request_shutdown();
             app.state::<device_recordings::DeviceRecordingState>()

@@ -72,6 +72,8 @@ hypr-audio-actual = { workspace = true }
 hypr-audio-mock = { workspace = true, optional = true }
 hypr-fs-format = { workspace = true }
 hypr-host = { workspace = true }
+hypr-language = { workspace = true }
+hypr-listener2-core = { workspace = true }
 hypr-loofah-client = { workspace = true, features = ["os-credentials"] }
 hypr-loofah-core = { workspace = true }
 hypr-loofah-local-media = { workspace = true }
@@ -81,6 +83,7 @@ hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-supervisor = { workspace = true }
 hypr-tauri-utils = { workspace = true }
+hypr-transcribe-whisper-local = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true, features = ["tauri-events"] }
 

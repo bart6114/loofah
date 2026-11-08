@@ -45,6 +45,7 @@ struct FakeEngine {
     events: usize,
     panic: bool,
     calls: Arc<AtomicUsize>,
+    owner: Option<Arc<()>>,
 }
 
 impl Drop for FakeEngine {
@@ -99,6 +100,7 @@ fn fake(
         events,
         panic,
         calls: Arc::new(AtomicUsize::new(0)),
+        owner: None,
     }
 }
 
@@ -588,4 +590,42 @@ fn symlink_model_leaf_is_rejected() {
         verify_model(&model_spec(link, b"original")),
         Err(ResourceError::ModelChanged)
     ));
+}
+
+#[tokio::test]
+async fn native_admission_owner_outlives_cancelled_work_and_model_unload() {
+    let native = Arc::new(Gate::default());
+    let unload = Arc::new(Gate::default());
+    let owner = Arc::new(());
+    let weak = Arc::downgrade(&owner);
+    let mut engine = fake(Some(native.clone()), Some(unload.clone()), 0, false);
+    engine.owner = Some(owner);
+    let host = ready(engine).await;
+    let source_released = Arc::new(AtomicBool::new(false));
+    let batch = host
+        .start_batch(
+            host.try_batch().unwrap(),
+            source(SourceOwner {
+                released: source_released.clone(),
+                gate: None,
+            }),
+            ListenParams::default(),
+        )
+        .unwrap();
+    let mut completion = batch.observer();
+    native.entered().await;
+    let mut stopped = host.shutdown();
+    drop(batch);
+    assert!(weak.upgrade().is_some());
+    assert!(!source_released.load(Ordering::Acquire));
+    assert!(host.try_batch().is_err());
+    native.release();
+    let _ = finished(&mut completion).await;
+    unload.entered().await;
+    assert!(source_released.load(Ordering::Acquire));
+    assert!(weak.upgrade().is_some());
+    assert_ne!(stopped.snapshot().phase, ResourcePhase::Stopped);
+    unload.release();
+    phase(&mut stopped, ResourcePhase::Stopped).await;
+    assert!(weak.upgrade().is_none());
 }

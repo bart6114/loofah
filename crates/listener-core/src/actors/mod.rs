@@ -7,7 +7,7 @@ pub mod source;
 
 pub use device_completion::*;
 pub use listener::*;
-pub use maintenance::{CaptureMaintenanceGate, CaptureMaintenanceGuard};
+pub use maintenance::{CaptureBackgroundGuard, CaptureMaintenanceGate, CaptureMaintenanceGuard};
 pub use recorder::*;
 pub use root::*;
 pub use session::*;

@@ -785,6 +785,11 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     if let Some(processing) = app.try_state::<crate::processing::ProcessingState>() {
         processing.request_shutdown();
     }
+    if let Some(transcription) =
+        app.try_state::<crate::local_transcription::LocalTranscriptionState>()
+    {
+        transcription.request_shutdown();
+    }
     tauri::async_runtime::spawn(async move {
         while !app
             .state::<DeviceRecordingState>()
@@ -810,6 +815,14 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => tracing::error!(%error, "processing shutdown failed"),
                 Err(_) => tracing::warn!("processing exceeded app exit deadline"),
+            }
+        }
+        if let Some(transcription) =
+            app.try_state::<crate::local_transcription::LocalTranscriptionState>()
+        {
+            if let Err(error) = transcription.shutdown().await {
+                tracing::error!(%error, "local transcription shutdown failed");
+                return;
             }
         }
         crate::mark_exit_flush_complete();
