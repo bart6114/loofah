@@ -1,20 +1,12 @@
 # Run the Loofah server
 
-The server is experimental. It exposes authenticated vault, note, existing-content, search, attachment-upload, configured summary/title jobs, capture staging/publication and change-stream APIs. The full desktop connection experience, resilient remote recording and server transcription are still being implemented. The desktop's default local mode works without an account or server.
+The server is experimental. It exposes authenticated vault, note, existing-content, search, attachment-upload, configured summary/title and batch-transcription jobs, capture staging/publication and change-stream APIs. Resilient remote recording and live caption delivery remain under implementation. The desktop's default local mode works without an account or server.
 
-The existing Whisper implementation now exposes a cancellable Rust batch kernel without Tauri or device capture. JSON, SSE and internal callers share model/audio ownership and cancellation handling. This is an extraction boundary for server transcription; the server does not yet advertise a transcription endpoint or accept recordings for processing. The dedicated Linux CPU CI job passed the kernel and existing HTTP/live inference tests with a checksum-pinned model and verified generic CPU compilation. Server transcription wiring and complete platform acceptance remain open. The internal
-`WhisperResources` owner now verifies an operator-provisioned CPU model before and
-after loading, bounds admission, retains source/native ownership through actual
-batch completion, and drains model destruction on shutdown. Its optional progress
-queue is lossy while the complete terminal result remains available. The internal typed live facade now accepts exact f32 frames with bounded
-per-channel admission, explicit replay/gap handling, authoritative captions and
-separate bounded UI snapshots. Cancellation and finish retain native ownership
-through actual thread join. The existing s16 WebSocket API remains compatible.
-Authenticated Core jobs, durable caption promotion and remote capture wiring
-remain under implementation. Model paths stay operator configuration, not client
-request fields.
+Configured batch jobs use the shared cancellable Whisper kernel without Tauri or device capture. One operator-provisioned CPU model and bounded native capacity are shared across vaults. Core owns authenticated admission, a durable job journal, immutable recording copies and revision-checked canonical transcript publication; native work retains its source/model owners through actual completion. Model paths and hashes come from operator configuration, never client requests. See [CPU deployment](#optional-cpu-transcription) for the explicit build and configuration.
 
-Canonical batch transcript conversion lives in `transcribe-core::transcript`; the existing `listener2_core::transcript` path re-exports it unchanged. Trusted hosts can reuse the same timing, spacing, IDs and speaker-hint mapping without importing listener orchestration. This extraction adds no public transcription endpoint.
+The internal typed live facade accepts exact f32 frames with bounded per-channel admission, explicit replay/gap handling, authoritative captions and separate bounded UI snapshots. Cancellation and finish retain native ownership through actual thread join. This facade is not yet an authenticated server live-caption endpoint or a substitute for resilient remote recording. The existing s16 WebSocket adapter remains compatible.
+
+Canonical batch conversion lives in `transcribe-core::transcript`; the existing `listener2_core::transcript` path re-exports it unchanged. The configured server uses the same timing, spacing, IDs, channel preparation and speaker-hint mapping without importing listener orchestration.
 
 ## Desktop startup and server profiles
 
@@ -75,7 +67,7 @@ considering device cleanup. Neither upload acknowledgment nor this response alon
 authorizes deleting device audio; server raw source is retained. A lost reply is
 recovered through status and explicit identical retry without another file publish.
 These APIs are internal building blocks; remote recording controls, uploader
-lifecycle and server transcription remain in progress. The current service spool
+lifecycle and authenticated live-caption delivery remain in progress. The current service spool
 retains raw bytes with a default 2 GiB quota per vault and 64 capture entries;
 publication does not reclaim that quota. Verified retention/cleanup and sustained
 recording acceptance remain required before treating this as a continuous-use
@@ -93,9 +85,9 @@ The service derives the server, member and vault scope from its configuration an
 
 Chunks must declare 16 kHz PCM f32 little-endian with explicit channel ownership, be at most 1 MiB, and extend the accepted prefix or exactly replay an earlier chunk. A wrong descriptor or seal fails before admitting the mutation. The initial per-vault staging limits are 2 GiB, 64 captures and 32,768 chunks; capacity errors preserve existing bytes. Files live under persistent `runtime/{vault}/creates/captures`, outside canonical sessions, and belong in service backups. Verified staging cleanup and durable client upload orchestration remain required before enabling remote recording. These endpoints are not a remote-vault editing queue.
 
-The shared Rust core contains a durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator configuration wires allowed providers, host environment credentials and current catalog membership into authenticated document-body job APIs. The opt-in notes workspace has summary controls, existing template-output regeneration and durable device submission recovery. Shared processing settings/model selection are available in the opt-in workspace. Optional generated titles are implemented; owner-managed vault keys, streaming previews and server transcription remain unfinished. The existing local AI flow remains active.
+The shared Rust core contains a durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator configuration wires allowed providers, host environment credentials and current catalog membership into authenticated document-body job APIs. The opt-in notes workspace has summary controls, existing template-output regeneration and durable device submission recovery. Shared processing settings/model selection are available in the opt-in workspace. Optional generated titles are implemented; owner-managed vault keys and streaming previews remain unfinished. Configured CPU batch transcription uses the separate job APIs below. The existing local AI flow remains active.
 
-The shared summary generator reuses the existing Rust templates and handles early-validation retry, reasoning-block filtering, streamed tag-footer extraction and bullet normalization through injected source/model adapters. It requires an explicit model completion before applying output and drains cancelled attempts before releasing their resources. Confirmed late output after cancellation is retained privately without canonical application. Valid tag suggestions are retained with generated results for recovery. `VaultSummarySource` prepares canonical notes, transcripts, tag context and referenced managed images without a desktop session; it preserves local-owner behavior and distinguishes authenticated job members from recording owners. `ConfiguredSummaryGenerator` resolves the current vault's model once per job and preserves it across validation retries. Shared admission bounds running and waiting work across vaults, including work still draining after caller cancellation. Authenticated recording ingestion, generated titles and the main desktop AI workflow migration remain unfinished. Native IPC jobs use the same worker through the existing local vault context.
+The shared summary generator reuses the existing Rust templates and handles early-validation retry, reasoning-block filtering, streamed tag-footer extraction and bullet normalization through injected source/model adapters. It requires an explicit model completion before applying output and drains cancelled attempts before releasing their resources. Confirmed late output after cancellation is retained privately without canonical application. Valid tag suggestions are retained with generated results for recovery. `VaultSummarySource` prepares canonical notes, transcripts, tag context and referenced managed images without a desktop session; it preserves local-owner behavior and distinguishes authenticated job members from recording owners. `ConfiguredSummaryGenerator` resolves the current vault's model once per job and preserves it across validation retries. Shared admission bounds running and waiting work across vaults, including work still draining after caller cancellation. Resilient desktop recording uploads and the remaining main desktop AI workflow migration are unfinished; server capture staging/publication and configured batch transcription are separate implemented operations. Native IPC jobs use the same worker through the existing local vault context.
 
 Summary and existing template-output jobs apply generated tag suggestions with the current vault auto-apply policy through the same revision-checked operation as the body and stable task reconciliation. Recovery intents guard only the owned tag projection and merge registry additions against fresh canonical files, preserving unrelated metadata and unknown registry fields. Template regeneration preserves raw frontmatter, comments, title, template identity and order; missing outputs and legacy summaries cannot be regenerated through the template operation. Keep per-vault operation storage in backups: generated-summary and generated-template intents use schema 3, while earlier document and note intents retain schemas 1/2. Older executables cannot recover the new template intent kind. Recover or drain new intents with the current version before downgrading, or restore a complete pre-upgrade vault and operation-state backup. The canonical vault format is unchanged.
 
@@ -144,6 +136,50 @@ flushes retry with bounded backoff and retain the vault lock until successful.
 The example systemd unit still enforces `TimeoutStopSec=60`: a permanent storage
 failure can reach that external forced-stop limit. Allow more time when needed
 and check service errors before treating a backup as cleanly stopped.
+
+## Optional CPU transcription
+
+The default executable and [Dockerfile](Dockerfile) remain notes-only builds. CPU builds use `cargo build --locked --release -p loofah-server --features cpu-transcription` after the [pinned native setup](../../.github/actions/cli_native_setup/linux.sh). The explicit Linux x64 image provisions those dependencies; build it from the repository root:
+
+```bash
+docker build --platform linux/amd64 -f apps/server/Dockerfile.cpu -t loofah-server:cpu .
+```
+
+[Dockerfile.cpu](Dockerfile.cpu) uses Ubuntu 24.04 for its native builder and runtime, with the same checksum-pinned ONNX Runtime and GCC 14 setup as Linux CLI/CPU CI. The notes-only Debian image is unchanged. This initial CPU variant does not enable GPU acceleration, Linux desktop support or automatic model downloads.
+
+Provision a model file in a read-only directory, verify its byte length and SHA-256, and add an explicit `transcription` property to `server.json`. For the existing base-q8 fixture:
+
+```json
+{
+  "transcription": {
+    "model": "operator-base",
+    "model_path": "/models/ggml-base-q8_0.bin",
+    "model_size_bytes": 81768585,
+    "model_sha256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9"
+  }
+}
+```
+
+Mount that model directory read-only at `/models`, alongside the existing state, cache and configuration mounts. Use `TMPDIR=/var/cache/loofah` so owned audio preparation has writable scratch space on the cache volume. UID/GID `10001` needs read access to the model and write access to state/cache. Keep the model bytes unchanged for the service's lifetime; replacing a model requires a service restart. Omitting `transcription` loads no model. Supplying it to a notes-only build fails configuration validation.
+
+`batch_transcription_jobs` means this support is configured, including while a model is loading or unavailable. Notes remain available; jobs report `engine_unavailable` without a download, another provider or a local fallback. By default, one native workload is admitted across all vaults; busy capacity reports `resource_limit`. Operator bounds are `workload_groups` (default 1, maximum 8), per-vault `max_jobs` (256), `max_queued` (16) and `private_audio_bytes` (8 GiB). Increase native concurrency only after measuring CPU and memory use. Job history/source retention has no automatic cleanup API yet, so include private operation storage in backups and capacity planning.
+
+Authenticated batch APIs are below `/api/v1/vaults/{vault}`:
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/transcription/jobs` | Submit with a UUID `X-Request-ID`, `session_id`, `expected_recording_sha256`, `expected_transcript: "absent"`, configured `model`, and optional `languages`/`keywords`. |
+| GET | `/transcription/jobs` | List the submitting member's bounded job history. |
+| GET | `/transcription/jobs/{job}` | Poll durable status after a disconnect or lost response. |
+| GET | `/transcription/jobs/{job}/result` | Inspect a retained result bound to its job and session. |
+| POST | `/transcription/jobs/{job}/cancel` | Request cancellation; actual source/native work still drains. |
+| POST | `/transcription/jobs/{job}/resume` | Recheck and apply an existing retained result without rerunning inference. |
+
+Editors/owners submit and resume; reads remain private to the submitting member while they retain vault access. Accepted work survives the original login token's expiry/logout. Membership changes are checked during work and again before publication; membership loss cancels, and service stop interrupts. Publication requires the original recording and an absent canonical transcript. Existing transcripts, append/replacement, diarization configuration, pending-note creation and authenticated live captions require later explicit operations. Recording files, note content, metadata and attachments are preserved. Confirmed results can be retained without publication; output discarded by native cancellation is not guaranteed recoverable.
+
+Shutdown stops admission and requests cancellation early, retains vault/source ownership until actual Core/native/mapping work drains, then destroys the model. A response deadline reports pending work; it does not authorize process exit or resource reuse.
+
+The Linux CPU CI job is configured to verify a cached, checksum-pinned model and a nonempty exact test inventory, build the service once, and package that same release binary via the Dockerfile's explicit `ci-runtime` target. It runs the configured Service → Core → canonical-transcript case inside the Ubuntu runtime with read-only fixtures/model, no external network and hash/ABI readback. A successful run qualifies that exact runtime artifact; [BuildKit skips the unrelated builder stage](https://docs.docker.com/build/building/multi-stage/#differences-between-legacy-builder-and-buildkit). A successful full image build remains a separate deployment gate. macOS test results do not establish Linux container support.
 
 ## Optional processing host configuration
 
@@ -295,7 +331,7 @@ The additive `recording_waveforms` capability provides waveform JSON bound to th
 
 The desktop's native `loofah-media` adapter now owns opaque recording URLs. Credentials and server paths stay in Rust. Resources are bound to their originating window and connection, with at most 64 resources, eight per window and eight simultaneous byte responses. Each response contains at most 1 MiB. Closing a view, losing access, disconnecting, signing out or destroying its window releases owned work. A missing server lease can be reopened once; a changed recording hash refuses continuation. Native media delivery accepts only the app's trusted origin (or its configured debug origin).
 
-The `audio_playback` capability enables the common desktop player in the opt-in remote notes workspace. Both local and remote adapters use the same player and scoped resource/query lifecycle. Local playback retains device file URLs, cached local waveform helpers and its device capture/deletion guard; it requires no account or service. Remote playback uses authenticated native ranges and verified waveform JSON. Waveform failure uses flat precomputed peaks and media metadata, avoiding WaveSurfer's whole-file download/decode fallback. Revalidation preserves position and play state for the same remote SHA-256; a changed generation or capture transition resets playback. Recording ingestion, live transcription, other media operations and full main-shell migration remain unfinished. macOS native playback has been exercised at 50/150/500 ms RTT and across a backend restart; Windows WebView2 playback and production performance remain release gates.
+The `audio_playback` capability enables the common desktop player in the opt-in remote notes workspace. Both local and remote adapters use the same player and scoped resource/query lifecycle. Local playback retains device file URLs, cached local waveform helpers and its device capture/deletion guard; it requires no account or service. Remote playback uses authenticated native ranges and verified waveform JSON. Waveform failure uses flat precomputed peaks and media metadata, avoiding WaveSurfer's whole-file download/decode fallback. Revalidation preserves position and play state for the same remote SHA-256; a changed generation or capture transition resets playback. Resilient desktop recording uploads, authenticated live transcription, transcript repair/append and the remaining main-shell migration are unfinished. macOS native playback has been exercised at 50/150/500 ms RTT and across a backend restart; Windows WebView2 playback and production performance remain release gates.
 
 The additive `recording_delete` capability enables the same checked deletion operation over IPC and HTTPS. Remote deletion requires editor/owner access, a UUID `X-Request-Id` and the displayed recording's lowercase SHA-256 in `expected_sha256`. Local deletion reads the current revision only when requested and retains the device queue and active-capture guard; it needs no login. The response is `true` when a recording was deleted and `false` when it was already absent. A stale revision returns 409, while active recording/import or exhausted reader capacity returns retryable 503; these precondition refusals report `not_committed`. The player never queues an offline deletion or automatically retries an uncertain result. Reload before choosing to retry. An explicit retry with the same hash cannot delete different recording bytes; request IDs are trace identifiers for this operation, not durable deletion receipts.
 

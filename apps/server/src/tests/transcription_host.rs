@@ -180,6 +180,15 @@ impl PreparedTranscription for PreparedFake {
 async fn absent_operator_configuration_keeps_notes_without_a_transcription_runtime_or_model() {
     let fixture = Fixture::new().await;
     assert!(fixture.service.transcription_resource_observer().is_none());
+    let (_, capabilities) = fixture
+        .call("alice", "GET", "/api/v1/capabilities", None)
+        .await;
+    assert!(
+        !capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("batch_transcription_jobs"))
+    );
     let me = fixture.login("alice").await;
     let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
     seed(&context, b"Canonical audio").await;
@@ -301,6 +310,15 @@ async fn failed_configured_model_keeps_notes_and_reports_engine_unavailable_with
     )
     .await;
     let mut resources = fixture.service.transcription_resource_observer().unwrap();
+    let (_, capabilities) = fixture
+        .call("alice", "GET", "/api/v1/capabilities", None)
+        .await;
+    assert!(
+        capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("batch_transcription_jobs"))
+    );
     tokio::time::timeout(Duration::from_secs(15), async {
         while !matches!(
             resources.snapshot().phase,
@@ -311,6 +329,15 @@ async fn failed_configured_model_keeps_notes_and_reports_engine_unavailable_with
     })
     .await
     .unwrap();
+    let (_, capabilities) = fixture
+        .call("alice", "GET", "/api/v1/capabilities", None)
+        .await;
+    assert!(
+        capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("batch_transcription_jobs"))
+    );
     let me = fixture.login("alice").await;
     let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
     let directory = seed(&context, b"Canonical audio").await;
