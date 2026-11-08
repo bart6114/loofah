@@ -1,9 +1,12 @@
 use hypr_listener2_core::{BatchEvent, BatchParams, BatchProvider, BatchRuntime};
 use hypr_loofah_core::{
-    local_cli::{LocalCliArtifact, LocalMediaFuture, LocalMediaHost, MaterializedLocalArtifact},
+    local_cli::{
+        LocalCliArtifact, LocalMediaFuture, LocalMediaHost, LocalMediaTranscription,
+        MaterializedLocalArtifact,
+    },
     settings::AppConfig,
 };
-use hypr_loofah_protocol::{ApplicationError, ErrorCode, LocalCliProgress, TranscriptWithData};
+use hypr_loofah_protocol::{ApplicationError, ErrorCode, LocalCliProgress};
 use owhisper_interface::batch_stream::BatchStreamEvent;
 use std::{
     io::Seek,
@@ -71,7 +74,7 @@ impl LocalMediaHost for LocalMediaEngine {
         config: AppConfig,
         temporary: PathBuf,
         progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
-    ) -> LocalMediaFuture<TranscriptWithData> {
+    ) -> LocalMediaFuture<LocalMediaTranscription> {
         Box::pin(async move {
             let model = model(&config)?;
             let parsed = model
@@ -133,6 +136,7 @@ impl LocalMediaHost for LocalMediaEngine {
                 &mut new_id,
             )
             .ok_or_else(|| failure("No speech was detected in the audio."))
+            .map(Into::into)
         })
     }
 }

@@ -517,3 +517,23 @@ transcription owners through their drain path even when the CLI endpoint failed
 to bind. Manual media cancellation retains actual source/model tasks; Store flush
 and final worker shutdown follow those owned drains. This addition requires the
 combined Native/platform validation lane.
+Manual frontend audio/subtitle imports and retranscription now consume optional
+`VaultClient.media`. The old batch hook no longer creates or appends canonical
+transcripts, writes date metadata, or starts summary work. Regeneration captures
+its exact source before speaker-reset confirmation. Queue entries retain the
+actual VaultScope and original UUID; explicit retry recovers that request rather
+than importing again. Browser files use bounded device staging, and a profile
+replacement cannot retarget queued or delayed work. Local capture/live rendering
+keeps its separate capability gate. Eight focused frontend suites (86 tests) pass;
+full typechecking awaits current generated Native exports in the integration lane.
+
+Manual media keeps a completed, validated engine result separately from its
+publication permission. Cancellation or access loss during final drain retains
+that output before refusing canonical publication; the immutable source directory
+stays pinned through final digest validation. Read-only result IPC returns the
+original retained transcript (including conflicted output) without adopting current
+source state or retrying a model. ASR result reads are bounded to 64 MiB and verify
+receipt identity/digest; subtitle reads use the existing bounded parsed receipt.
+Source regressions cover final source ownership, cancellation/revocation, and
+historical result reads after canonical deletion. Shared Native validation remains
+required for this follow-up.

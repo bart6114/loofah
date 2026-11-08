@@ -244,3 +244,50 @@ impl LocalCli {
         }
     }
 }
+
+impl LocalCli {
+    pub async fn media_result(
+        &self,
+        request: &str,
+    ) -> Result<Option<TranscriptWithData>, ApplicationError> {
+        let status = self.media_status(request).await?;
+        let root = self
+            .context
+            .operations
+            .as_ref()
+            .ok_or_else(|| error(ErrorCode::Unavailable, "Local media state is unavailable"))?
+            .root
+            .clone();
+        let claim =
+            journal::Claim::recover(self.context.clone(), root.join("local-media"), request)
+                .await?;
+        let Some(bound) = claim.transcription() else {
+            return Ok(None);
+        };
+        let result = self
+            .context
+            .store
+            .retained_transcript_publication_result(
+                &root.join("transcript-publications"),
+                TranscriptPublicationIdentity {
+                    vault_id: self.context.events.vault_id(),
+                    namespace: "local-cli-transcribe".into(),
+                    request_id: uuid::Uuid::parse_str(request).unwrap(),
+                },
+            )
+            .await
+            .map_err(|cause| storage_error(cause, false))?;
+        if let Some(result) = &result {
+            if result.session_id != status.session_id
+                || result.id != bound.transcript_id
+                || result.words.len() != bound.words
+            {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "Original media result identity changed",
+                ));
+            }
+        }
+        Ok(result)
+    }
+}

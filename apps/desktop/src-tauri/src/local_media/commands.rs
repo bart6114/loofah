@@ -192,3 +192,12 @@ pub async fn application_local_media_summary_status<R: Runtime>(
         .manual_media_summary_status(&request_id)
         .await
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_local_media_result<R: Runtime>(
+    app: AppHandle<R>,
+    request_id: String,
+) -> Result<Option<TranscriptWithData>, ApplicationError> {
+    service(&app)?.result(&request_id).await
+}

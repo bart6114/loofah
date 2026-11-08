@@ -1,6 +1,8 @@
 use hypr_loofah_core::{
     VaultContext,
-    local_cli::{LocalCli, LocalCliArtifact, LocalMediaFuture, LocalMediaHost},
+    local_cli::{
+        LocalCli, LocalCliArtifact, LocalMediaFuture, LocalMediaHost, LocalMediaTranscription,
+    },
     manual_media_intents::{ManualMediaKind, ManualMediaSummaryDeclaration},
     settings::AppConfig,
 };
@@ -71,7 +73,7 @@ impl LocalMediaHost for NativeMediaHost {
         config: AppConfig,
         temporary: PathBuf,
         progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
-    ) -> LocalMediaFuture<TranscriptWithData> {
+    ) -> LocalMediaFuture<LocalMediaTranscription> {
         let context = self.context.clone();
         let stop = self.cancellation(&request_id);
         Box::pin(async move {
@@ -363,6 +365,19 @@ impl Service {
                 }
                 Err(cause) => Err(cause),
             },
+        }
+    }
+    pub async fn result(
+        &self,
+        request: &str,
+    ) -> Result<Option<TranscriptWithData>, ApplicationError> {
+        validate_request(request)?;
+        match self.cli.media_result(request).await {
+            Ok(result) => Ok(result),
+            Err(cause) if cause.code == ErrorCode::NotFound => {
+                self.cli.subtitle_result(request).await
+            }
+            Err(cause) => Err(cause),
         }
     }
     pub async fn status(&self, request: &str) -> Result<LocalMediaStatus, ApplicationError> {

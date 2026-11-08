@@ -421,9 +421,8 @@ impl PreparedTranscription for Prepared {
                 drain_model(resources).await;
             }
             let output = result?;
-            if runtime.is_cancelled() {
-                return Err(TranscriptionFailure::Interrupted);
-            }
+            // Core retains a completed result before applying cancellation/revocation
+            // to publication; cancellation must not erase known model output.
             let metadata = input.metadata;
             let mut new_id = || uuid::Uuid::new_v4().to_string();
             Ok(

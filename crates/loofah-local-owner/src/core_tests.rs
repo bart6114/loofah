@@ -1,10 +1,12 @@
 use super::*;
 use hypr_loofah_core::{
     VaultRuntime,
-    local_cli::{LocalCli, LocalCliArtifact, LocalMediaFuture, LocalMediaHost},
+    local_cli::{
+        LocalCli, LocalCliArtifact, LocalMediaFuture, LocalMediaHost, LocalMediaTranscription,
+    },
     settings::AppConfig,
 };
-use hypr_loofah_protocol::{LocalCliProgress, TranscriptWithData};
+use hypr_loofah_protocol::LocalCliProgress;
 
 struct PanicMedia {
     release: Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>,
@@ -42,7 +44,7 @@ impl LocalMediaHost for PanicMedia {
         _: AppConfig,
         _: PathBuf,
         _: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
-    ) -> LocalMediaFuture<TranscriptWithData> {
+    ) -> LocalMediaFuture<LocalMediaTranscription> {
         unreachable!()
     }
 }

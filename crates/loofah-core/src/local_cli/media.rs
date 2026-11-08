@@ -18,6 +18,19 @@ mod status;
 pub type LocalMediaFuture<T> =
     Pin<Box<dyn Future<Output = Result<T, ApplicationError>> + Send + 'static>>;
 
+pub struct LocalMediaTranscription {
+    pub transcript: TranscriptWithData,
+    pub publication_error: Option<ApplicationError>,
+}
+impl From<TranscriptWithData> for LocalMediaTranscription {
+    fn from(transcript: TranscriptWithData) -> Self {
+        Self {
+            transcript,
+            publication_error: None,
+        }
+    }
+}
+
 /// Device engines receive private inputs and return artifacts; only Core publishes canonical files.
 pub trait LocalMediaHost: Send + Sync + 'static {
     fn cancellation(&self, _request_id: &str) -> tokio_util::sync::CancellationToken {
@@ -41,7 +54,7 @@ pub trait LocalMediaHost: Send + Sync + 'static {
         config: crate::settings::AppConfig,
         temporary: PathBuf,
         progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
-    ) -> LocalMediaFuture<TranscriptWithData>;
+    ) -> LocalMediaFuture<LocalMediaTranscription>;
 }
 
 impl LocalCli {
@@ -534,6 +547,8 @@ impl LocalCli {
                 progress,
             )
             .await?;
+        let publication_error = generated.publication_error;
+        let generated = generated.transcript;
         let outcome = LocalTranscriptionOutcome {
             transcript_id: generated.id.clone(),
             words: generated.words.len(),
@@ -555,6 +570,13 @@ impl LocalCli {
             )
             .await
             .map_err(|cause| storage_error(cause, true))?;
+        if let Some(mut cause) = publication_error {
+            cause.mutation_outcome = Some(MutationOutcome::Unknown);
+            cause
+                .message
+                .push_str("; generated transcript is retained for explicit recovery");
+            return Err(cause);
+        }
         if host.cancellation(request_id).is_cancelled() {
             return Err(cancelled(true));
         }

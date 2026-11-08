@@ -541,7 +541,7 @@ impl LocalMediaHost for TestMedia {
         _: crate::settings::AppConfig,
         _: std::path::PathBuf,
         _: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
-    ) -> LocalMediaFuture<TranscriptWithData> {
+    ) -> LocalMediaFuture<LocalMediaTranscription> {
         self.transcriptions
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let edit = self.edit.clone();
@@ -549,10 +549,10 @@ impl LocalMediaHost for TestMedia {
             if let Some(path) = edit {
                 std::fs::write(path, br#"{"transcripts":[],"speaker_edit":"preserved"}"#).unwrap();
             }
-            Ok(serde_json::from_value(serde_json::json!({
+            Ok(serde_json::from_value::<TranscriptWithData>(serde_json::json!({
                 "id":"generated", "user_id":"owner", "created_at":"2026-11-08T10:00:00Z", "session_id":session_id,
                 "started_at":0, "ended_at":1000, "memo_md":"", "words":[{"id":"word", "text":"Hello", "start_ms":0, "end_ms":1000, "channel":0}], "speaker_hints":[]
-            })).unwrap())
+            })).unwrap().into())
         })
     }
 }
@@ -669,10 +669,11 @@ async fn owned_transcription_preserves_concurrent_speaker_edit_and_retains_gener
                 edit: Some(directory.join("transcript.json")),
             })),
     );
+    let request = uuid::Uuid::new_v4().to_string();
     let error = fixture
         .cli
         .execute(
-            uuid::Uuid::new_v4().to_string(),
+            request.clone(),
             LocalCliOperation::Transcribe {
                 session_id: session,
             },
@@ -702,6 +703,27 @@ async fn owned_transcription_preserves_concurrent_speaker_edit_and_retains_gener
             .to_string_lossy()
             .starts_with("transcript-result-")
     }));
+    let retained = fixture.cli.media_result(&request).await.unwrap().unwrap();
+    assert_eq!(retained.id, "generated");
+    assert_eq!(retained.words[0].text, "Hello");
+    let canonical_before = std::fs::read(directory.join("transcript.json")).unwrap();
+    assert!(fixture.cli.media_result(&request).await.unwrap().is_some());
+    assert_eq!(
+        std::fs::read(directory.join("transcript.json")).unwrap(),
+        canonical_before
+    );
+    std::fs::remove_dir_all(&directory).unwrap();
+    assert_eq!(
+        fixture
+            .cli
+            .media_result(&request)
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        retained.id
+    );
+    assert!(!directory.exists());
     fixture.stop().await;
 }
 

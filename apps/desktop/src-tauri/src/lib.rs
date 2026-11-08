@@ -702,6 +702,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             local_media::commands::application_local_media_import_subtitles::<tauri::Wry>,
             local_media::commands::application_local_media_list::<tauri::Wry>,
             local_media::commands::application_local_media_status::<tauri::Wry>,
+            local_media::commands::application_local_media_result::<tauri::Wry>,
             local_media::commands::application_local_media_cancel::<tauri::Wry>,
             local_media::commands::application_local_media_recover::<tauri::Wry>,
             local_media::commands::application_local_media_summary_status::<tauri::Wry>,

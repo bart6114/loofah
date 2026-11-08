@@ -8,7 +8,7 @@ use std::{io::Seek, sync::Arc};
 mod artifact;
 mod maintenance;
 mod media;
-pub use media::{LocalMediaFuture, LocalMediaHost};
+pub use media::{LocalMediaFuture, LocalMediaHost, LocalMediaTranscription};
 mod mutations;
 mod read_owner;
 mod subtitles;

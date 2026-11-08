@@ -55,6 +55,20 @@ impl VaultContext {
         prepared: PreparedLocalInference,
         cancel: CancellationToken,
     ) -> Result<TranscriptWithData, ApplicationError> {
+        let completed = self
+            .complete_local_inference(input, prepared, cancel)
+            .await?;
+        if let Some(cause) = completed.publication_error {
+            return Err(cause);
+        }
+        Ok(completed.transcript)
+    }
+    pub(super) async fn complete_local_inference(
+        self: &Arc<Self>,
+        input: LocalInferenceInput,
+        prepared: PreparedLocalInference,
+        cancel: CancellationToken,
+    ) -> Result<crate::local_cli::LocalMediaTranscription, ApplicationError> {
         let service = self.transcription_service()?;
         let PreparedLocalInference { prepared, request } = prepared;
         if request.session_id != input.session_id
@@ -123,9 +137,6 @@ impl VaultContext {
             let transcript = result
                 .map_err(|_| storage("Local inference worker lost"))?
                 .map_err(engine_error)?;
-            if stop.is_cancelled() {
-                return Err(engine_error(TranscriptionFailure::Interrupted));
-            }
             ledger::validate_result(&transcript)?;
             if transcript.session_id != metadata.session_id
                 || transcript.user_id != metadata.user_id
@@ -144,12 +155,15 @@ impl VaultContext {
             })
             .await
             .map_err(storage)??;
-            let _grant = service
-                .authorizer
-                .authorize(&work)
-                .await
-                .map_err(engine_error)?;
-            Ok(transcript)
+            let authorization = service.authorizer.authorize(&work).await;
+            let publication_error = authorization.err().map(engine_error).or_else(|| {
+                stop.is_cancelled()
+                    .then(|| engine_error(TranscriptionFailure::Interrupted))
+            });
+            Ok(crate::local_cli::LocalMediaTranscription {
+                transcript,
+                publication_error,
+            })
         }
         .await;
         done.cancel();

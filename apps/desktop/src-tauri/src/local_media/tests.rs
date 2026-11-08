@@ -129,7 +129,7 @@ impl LocalMediaHost for HeldMedia {
         _: AppConfig,
         _: PathBuf,
         _: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
-    ) -> LocalMediaFuture<TranscriptWithData> {
+    ) -> LocalMediaFuture<LocalMediaTranscription> {
         let entered = self.entered.clone();
         let release = self.release.clone();
         let released = self.released.clone();
@@ -140,7 +140,7 @@ impl LocalMediaHost for HeldMedia {
             let _permit = release.acquire().await.unwrap();
             drop(source);
             released.store(true, std::sync::atomic::Ordering::Release);
-            Ok(serde_json::from_value(serde_json::json!({"id":uuid::Uuid::new_v4().to_string(),"user_id":"00000000-0000-0000-0000-000000000000","session_id":session,"created_at":"2026-11-08T10:00:00Z","started_at":0,"ended_at":null,"memo_md":"","words":[{"id":"word","text":"Retained","start_ms":0,"end_ms":100,"channel":0}],"speaker_hints":[]})).unwrap())
+            Ok(serde_json::from_value::<TranscriptWithData>(serde_json::json!({"id":uuid::Uuid::new_v4().to_string(),"user_id":"00000000-0000-0000-0000-000000000000","session_id":session,"created_at":"2026-11-08T10:00:00Z","started_at":0,"ended_at":null,"memo_md":"","words":[{"id":"word","text":"Retained","start_ms":0,"end_ms":100,"channel":0}],"speaker_hints":[]})).unwrap().into())
         })
     }
 }
