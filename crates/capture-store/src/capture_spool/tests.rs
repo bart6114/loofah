@@ -82,11 +82,14 @@ fn publication(snapshot: &CaptureSnapshot) -> CapturePublication {
     }
 }
 async fn open(root: &Path) -> Arc<CaptureSpool> {
+    open_with_limits(root, CaptureSpoolLimits::default()).await
+}
+async fn open_with_limits(root: &Path, limits: CaptureSpoolLimits) -> Arc<CaptureSpool> {
     // An unrelated fork can retain a CLOEXEC lease until exec after the last
     // Rust owner drops. Negative ownership tests use CaptureSpool::open directly.
     tokio::time::timeout(Duration::from_secs(1), async {
         loop {
-            match CaptureSpool::open(root.into(), CaptureSpoolLimits::default()).await {
+            match CaptureSpool::open(root.into(), limits.clone()).await {
                 Ok(spool) => return spool,
                 Err(error) if error.code == ErrorCode::Unavailable && error.retryable => {
                     tokio::time::sleep(Duration::from_millis(5)).await;
@@ -721,9 +724,7 @@ async fn metadata_quota_failures_restore_cached_state_and_leave_the_previous_man
             max_bytes: disk_bytes(&root) + 1,
             ..CaptureSpoolLimits::default()
         };
-        let spool = CaptureSpool::open(root.clone(), limits.clone())
-            .await
-            .unwrap();
+        let spool = open_with_limits(&root, limits.clone()).await;
         let writer = spool.resume(id.clone()).await.unwrap();
         let error = match operation {
             "bind" => writer
@@ -749,7 +750,7 @@ async fn metadata_quota_failures_restore_cached_state_and_leave_the_previous_man
         assert_eq!(writer.snapshot().await.unwrap(), before, "{operation}");
         drop(writer);
         drop(spool);
-        let spool = CaptureSpool::open(root, limits).await.unwrap();
+        let spool = open_with_limits(&root, limits).await;
         assert_eq!(
             spool.resume(id).await.unwrap().snapshot().await.unwrap(),
             before,
@@ -3081,8 +3082,31 @@ async fn cleanup_request_survives_lost_remote_reply_without_authorizing_source_r
     );
 }
 
+#[test]
+fn completed_spool_calls_release_actual_root_lease_without_a_retry_window() {
+    // A concurrent crash-fixture fork may temporarily inherit every parent FD,
+    // including CLOEXEC leases. Create this test's roots only after the child
+    // exec so the assertion measures our actual owner rather than that window.
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "capture_spool::tests::immediate_spool_release_child",
+            "--ignored",
+            "--nocapture",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "isolated immediate lease regression failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[tokio::test]
-async fn completed_spool_calls_release_actual_root_lease_without_a_retry_window() {
+#[ignore = "isolated immediate ownership regression; parent test invokes this"]
+async fn immediate_spool_release_child() {
     for failed in [false, true] {
         for _ in 0..32 {
             let temp = test_directory();
@@ -3100,8 +3124,13 @@ async fn completed_spool_calls_release_actual_root_lease_without_a_retry_window(
             } else {
                 writer.append_chunk(0, 4, pcm(4)).await.unwrap();
             }
+            let released = Arc::downgrade(&spool);
             drop(writer);
             drop(spool);
+            assert!(
+                released.upgrade().is_none(),
+                "an operation retained its Rust spool owner after completion"
+            );
             // A successful join is completion evidence, not a request to poll
             // until a task's captured owner eventually disappears.
             let reopened = CaptureSpool::open(root, CaptureSpoolLimits::default())
