@@ -31,6 +31,7 @@ mod operations;
 pub use operations::InitialSessionMetadata;
 mod session_cleanup;
 mod session_lifecycle;
+pub use session_lifecycle::LocalSessionLifecycleHost;
 mod session_lifecycle_gate;
 mod session_summaries;
 mod tag_editing;

@@ -25,6 +25,7 @@ pub(super) struct Tree {
     pub revision: String,
     entries: Vec<Entry>,
     files: SnapshotFiles,
+    local_proof: Option<std::sync::Arc<super::local_proof::Inner>>,
 }
 
 fn stamp(meta: &Metadata) -> Vec<u8> {
@@ -50,6 +51,7 @@ fn manifest(
     directory: &Path,
     open: bool,
     limits: ContentLimits,
+    local: bool,
 ) -> Result<(Vec<Entry>, SnapshotFiles), StoreError> {
     let limit = if limits.metadata_bytes == usize::MAX {
         usize::MAX
@@ -69,9 +71,10 @@ fn manifest(
             let relative = parent.join(&name);
             let meta = entry.path().symlink_metadata().map_err(io_error)?;
             if parent.as_os_str().is_empty()
-                && name
-                    .to_str()
-                    .is_some_and(|name| SESSION_TRANSIENT_FILES.contains(&name))
+                && name.to_str().is_some_and(|name| {
+                    SESSION_TRANSIENT_FILES.contains(&name)
+                        && !(local && matches!(name, "audio_mic.wav" | "audio_spk.wav"))
+                })
             {
                 return Err(StoreError::Conflict(
                     "Recording intermediates require review".into(),
@@ -79,7 +82,9 @@ fn manifest(
             }
             let owned = !parent.as_os_str().is_empty()
                 || name.to_str().is_some_and(|name| {
-                    SESSION_OWNED_FILES.contains(&name) || SESSION_OWNED_DIRS.contains(&name)
+                    SESSION_OWNED_FILES.contains(&name)
+                        || SESSION_OWNED_DIRS.contains(&name)
+                        || (local && matches!(name, "audio_mic.wav" | "audio_spk.wav"))
                 });
             if owned && meta.file_type().is_symlink() {
                 return Err(StoreError::Io(
@@ -155,12 +160,14 @@ pub(super) fn prepare(
     relative: &Path,
     id: &str,
     limits: ContentLimits,
+    local_proof: Option<std::sync::Arc<super::local_proof::Inner>>,
 ) -> Result<Option<Tree>, LifecycleError> {
     if !safe_directory(vault, relative).map_err(rejected)? {
         return Ok(None);
     }
     let directory = vault.join(relative);
-    let (entries, files) = manifest(&directory, true, limits).map_err(rejected)?;
+    let (entries, files) =
+        manifest(&directory, true, limits, local_proof.is_some()).map_err(rejected)?;
     let meta = files
         .iter()
         .find(|(path, _)| path == Path::new("_meta.json"))
@@ -235,6 +242,7 @@ pub(super) fn prepare(
         revision,
         entries,
         files,
+        local_proof,
     };
     if !tree.unchanged(vault, relative, limits).map_err(rejected)? {
         return Err(rejected(StoreError::Conflict(
@@ -255,7 +263,7 @@ impl Tree {
             return Ok(false);
         }
         let directory = vault.join(relative);
-        let (entries, _) = manifest(&directory, false, limits)?;
+        let (entries, _) = manifest(&directory, false, limits, self.local_proof.is_some())?;
         if entries != self.entries {
             return Ok(false);
         }

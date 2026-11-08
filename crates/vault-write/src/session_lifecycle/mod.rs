@@ -8,6 +8,8 @@ use hypr_loofah_protocol::{
 use crate::{SessionStore, StoreError, VaultSnapshotGuard, operation_io};
 use receipts::{DeleteReceipt, Receipt, RestoreReceipt, State, Target};
 
+mod local_proof;
+pub use local_proof::LocalSessionLifecycleProof;
 mod receipts;
 mod tree;
 
@@ -104,10 +106,11 @@ impl SessionStore {
         &self,
         relative: PathBuf,
         id: String,
+        proof: Option<std::sync::Arc<local_proof::Inner>>,
     ) -> Result<Option<tree::Tree>, LifecycleError> {
         let vault = self.vault_base.clone();
         let limits = self.content_limits;
-        self.spawn_blocking(move || tree::prepare(&vault, &relative, &id, limits))
+        self.spawn_blocking(move || tree::prepare(&vault, &relative, &id, limits, proof))
             .await
             .map_err(|_| uncertain("Lifecycle reader stopped"))?
     }
@@ -141,6 +144,25 @@ impl SessionStore {
         documents: Option<&Path>,
         id: &str,
     ) -> Result<Option<SessionLifecycleSnapshot>, LifecycleError> {
+        self.read_session_lifecycle_with_proof(documents, id, None)
+            .await
+    }
+    pub async fn read_local_session_lifecycle(
+        &self,
+        documents: Option<&Path>,
+        id: &str,
+        proof: LocalSessionLifecycleProof,
+    ) -> Result<Option<SessionLifecycleSnapshot>, LifecycleError> {
+        let proof = self.check_local_lifecycle_proof(id, proof)?;
+        self.read_session_lifecycle_with_proof(documents, id, Some(proof))
+            .await
+    }
+    async fn read_session_lifecycle_with_proof(
+        &self,
+        documents: Option<&Path>,
+        id: &str,
+        proof: Option<std::sync::Arc<local_proof::Inner>>,
+    ) -> Result<Option<SessionLifecycleSnapshot>, LifecycleError> {
         crate::validate_session_id(id).map_err(rejected)?;
         let store = self.clone();
         let documents = documents.map(Path::to_path_buf);
@@ -149,7 +171,10 @@ impl SessionStore {
             let _owner = store.lifecycle_owner(&id, documents.as_deref()).await?;
             let source =
                 crate::paths::validated_session_dir(&id).map_err(|cause| rejected(cause.into()))?;
-            let Some(tree) = store.lifecycle_tree(source.clone(), id.clone()).await? else {
+            let Some(tree) = store
+                .lifecycle_tree(source.clone(), id.clone(), proof.clone())
+                .await?
+            else {
                 return Ok(None);
             };
             if store.deleted_sessions.lock().unwrap().contains(&id) {
@@ -304,6 +329,36 @@ impl SessionStore {
         documents: Option<&Path>,
         key: SessionLifecycleKey,
         input: DeleteSessionRequest,
+        checkpoint: C,
+    ) -> Result<DeleteSessionOutcome, LifecycleError>
+    where
+        C: FnMut(Stage) -> F + Send + 'static,
+        F: std::future::Future<Output = Result<(), StoreError>> + Send + 'static,
+    {
+        self.delete_session_with_proof(root, documents, key, input, None, checkpoint)
+            .await
+    }
+    pub async fn delete_local_session_checked(
+        &self,
+        root: &Path,
+        documents: Option<&Path>,
+        key: SessionLifecycleKey,
+        input: DeleteSessionRequest,
+        proof: LocalSessionLifecycleProof,
+    ) -> Result<DeleteSessionOutcome, LifecycleError> {
+        let proof = self.check_local_lifecycle_proof(&input.session_id, proof)?;
+        self.delete_session_with_proof(root, documents, key, input, Some(proof), |_| async {
+            Ok(())
+        })
+        .await
+    }
+    async fn delete_session_with_proof<C, F>(
+        &self,
+        root: &Path,
+        documents: Option<&Path>,
+        key: SessionLifecycleKey,
+        input: DeleteSessionRequest,
+        proof: Option<std::sync::Arc<local_proof::Inner>>,
         mut checkpoint: C,
     ) -> Result<DeleteSessionOutcome, LifecycleError>
     where
@@ -327,12 +382,14 @@ impl SessionStore {
             if let Some(receipt) = receipts::read::<DeleteReceipt>(receipt_path.clone()).await? {
                 receipts::validate(&receipt, &binding, &input)?;
                 receipts::validate_delete(&receipt, &key.vault_id, &token)?;
-                return store.recover_session_delete(receipt, &receipt_path).await;
+                return store
+                    .recover_session_delete(receipt, &receipt_path, proof)
+                    .await;
             }
             let source = crate::paths::validated_session_dir(&input.session_id)
                 .map_err(|cause| rejected(cause.into()))?;
             let tree = store
-                .lifecycle_tree(source.clone(), input.session_id.clone())
+                .lifecycle_tree(source.clone(), input.session_id.clone(), proof.clone())
                 .await?;
             let mut receipt = Receipt {
                 schema_version: 1,
@@ -490,6 +547,7 @@ impl SessionStore {
         &self,
         mut receipt: DeleteReceipt,
         path: &Path,
+        proof: Option<std::sync::Arc<local_proof::Inner>>,
     ) -> Result<DeleteSessionOutcome, LifecycleError> {
         match &receipt.state {
             State::Completed { outcome } => return Ok(outcome.clone()),
@@ -502,9 +560,13 @@ impl SessionStore {
             .ok_or_else(|| uncertain("Incomplete deletion intent"))?;
         let source_exists = exists(self, self.vault_base.join(&target.source)).await?;
         let tree = if !source_exists {
-            self.lifecycle_tree(target.trash.clone(), target.session_id.clone())
-                .await
-                .map_err(admitted)?
+            self.lifecycle_tree(
+                target.trash.clone(),
+                target.session_id.clone(),
+                proof.clone(),
+            )
+            .await
+            .map_err(admitted)?
         } else {
             None
         };
@@ -696,10 +758,12 @@ impl SessionStore {
                     outcome: DeleteSessionOutcome::Trashed { .. }
                 }
             ) {
-                store.recover_session_delete(deletion, &token_path).await?;
+                store
+                    .recover_session_delete(deletion, &token_path, None)
+                    .await?;
             }
             let trash = store
-                .lifecycle_tree(target.trash.clone(), target.session_id.clone())
+                .lifecycle_tree(target.trash.clone(), target.session_id.clone(), None)
                 .await?;
             let (snapshot, trash) = if let Some(trash) = trash {
                 let (guard, tree) = store
@@ -831,7 +895,7 @@ impl SessionStore {
             .ok_or_else(|| uncertain("Incomplete restore intent"))?;
         let trash_exists = exists(self, self.vault_base.join(&target.trash)).await?;
         let tree = if !trash_exists {
-            self.lifecycle_tree(target.source.clone(), target.session_id.clone())
+            self.lifecycle_tree(target.source.clone(), target.session_id.clone(), None)
                 .await
                 .map_err(admitted)?
         } else {

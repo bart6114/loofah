@@ -2,6 +2,82 @@ use hypr_loofah_protocol::ApplicationError;
 
 use crate::VaultContext;
 
+pub trait LocalSessionLifecycleHost: Send + Sync {
+    /// Must cover all producer starts, physical resources and pending persistence.
+    /// Missing/unknown inventories must reject; the owner lives through actual filesystem I/O.
+    fn admit<'a>(
+        &'a self,
+        context: &'a std::sync::Arc<VaultContext>,
+        session: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Box<dyn Send + Sync>, ApplicationError>>
+                + Send
+                + 'a,
+        >,
+    >;
+}
+
+struct StandaloneLocalHost;
+impl LocalSessionLifecycleHost for StandaloneLocalHost {
+    fn admit<'a>(
+        &'a self,
+        _: &'a std::sync::Arc<VaultContext>,
+        _: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Box<dyn Send + Sync>, ApplicationError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async { Ok(Box::new(()) as Box<dyn Send + Sync>) })
+    }
+}
+
+impl VaultContext {
+    pub fn configure_local_session_lifecycle_host(
+        &self,
+        host: std::sync::Arc<dyn LocalSessionLifecycleHost>,
+    ) -> Result<(), ApplicationError> {
+        self.local_lifecycle_host
+            .set(host)
+            .map_err(|_| crate::session_lifecycle_gate::session_lifecycle_busy())
+    }
+
+    /// Only standalone same-user owners without a Native producer host may use this.
+    pub fn enable_standalone_local_session_lifecycle(
+        &self,
+        lease: &hypr_storage::vault::VaultLease,
+    ) -> Result<(), ApplicationError> {
+        if !self
+            .lease_pin()
+            .is_some_and(|pin| std::sync::Arc::ptr_eq(&pin, &lease.pin()))
+        {
+            return Err(crate::session_lifecycle_gate::session_lifecycle_busy());
+        }
+        self.configure_local_session_lifecycle_host(std::sync::Arc::new(StandaloneLocalHost))
+    }
+
+    async fn local_lifecycle_proof(
+        self: &std::sync::Arc<Self>,
+        id: &str,
+        admission: tokio::sync::OwnedRwLockWriteGuard<()>,
+    ) -> Result<hypr_vault_write::LocalSessionLifecycleProof, ApplicationError> {
+        let host = self
+            .local_lifecycle_host
+            .get()
+            .ok_or_else(crate::session_lifecycle_gate::session_lifecycle_busy)?;
+        let owner = host.admit(self, id).await?;
+        let lease = self
+            .lease_pin()
+            .ok_or_else(crate::session_lifecycle_gate::session_lifecycle_busy)?;
+        self.store
+            .checked_local_lifecycle_proof(id, lease, Box::new((self.clone(), admission, owner)))
+            .map_err(lifecycle_error)
+    }
+}
+
 impl VaultContext {
     pub(crate) async fn ensure_session_jobs_idle(&self, id: &str) -> Result<(), ApplicationError> {
         if let Some(service) = self.processing.get() {
@@ -33,6 +109,48 @@ use hypr_vault_write::{LifecycleError, SessionLifecycleKey, SessionStore};
 use std::{future::Future, sync::Arc};
 
 impl VaultContext {
+    pub async fn read_local_session_lifecycle(
+        self: &Arc<Self>,
+        id: &str,
+    ) -> Result<SessionLifecycleSnapshot, ApplicationError> {
+        self.validate(id)?;
+        let context = self.clone();
+        let id = id.to_owned();
+        tokio::spawn(async move {
+            let _capacity = context
+                .media_readers
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| crate::session_lifecycle_gate::session_lifecycle_busy())?;
+            let change = context.try_session_lifecycle_change(&id)?;
+            context.ensure_session_jobs_idle(&id).await?;
+            context.ensure_capture_session_lifecycle_idle(&id).await?;
+            let proof = context.local_lifecycle_proof(&id, change).await?;
+            context
+                .store
+                .read_local_session_lifecycle(
+                    context.document_operation_root().as_deref(),
+                    &id,
+                    proof,
+                )
+                .await
+                .map_err(lifecycle_error)?
+                .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
+        })
+        .await
+        .map_err(|_| unknown("Local lifecycle reader stopped"))?
+    }
+
+    pub async fn delete_local_session(
+        self: &Arc<Self>,
+        namespace: String,
+        request_id: String,
+        input: DeleteSessionRequest,
+    ) -> Result<DeleteSessionOutcome, ApplicationError> {
+        self.delete_session_authorized_mode(namespace, request_id, input, || async { Ok(()) }, true)
+            .await
+    }
+
     pub async fn read_session_lifecycle(
         self: &Arc<Self>,
         id: &str,
@@ -92,6 +210,22 @@ impl VaultContext {
         F: FnOnce() -> U + Send + 'static,
         U: Future<Output = Result<G, ApplicationError>> + Send + 'static,
     {
+        self.delete_session_authorized_mode(namespace, request_id, input, authorize, false)
+            .await
+    }
+    async fn delete_session_authorized_mode<G, F, U>(
+        self: &Arc<Self>,
+        namespace: String,
+        request_id: String,
+        input: DeleteSessionRequest,
+        authorize: F,
+        local: bool,
+    ) -> Result<DeleteSessionOutcome, ApplicationError>
+    where
+        G: Send + 'static,
+        F: FnOnce() -> U + Send + 'static,
+        U: Future<Output = Result<G, ApplicationError>> + Send + 'static,
+    {
         hypr_loofah_protocol::validate_delete_session_request(&input)
             .map_err(|message| before(error(ErrorCode::Validation, message)))?;
         self.validate(&input.session_id).map_err(before)?;
@@ -126,7 +260,7 @@ impl VaultContext {
                     .clone()
                     .try_acquire_owned()
                     .map_err(|_| crate::session_lifecycle_gate::session_lifecycle_busy())?;
-                let _change = context.try_session_lifecycle_change(&input.session_id)?;
+                let change = context.try_session_lifecycle_change(&input.session_id)?;
                 context
                     .ensure_session_jobs_idle(&input.session_id)
                     .await
@@ -135,6 +269,23 @@ impl VaultContext {
                     .ensure_capture_session_lifecycle_idle(&input.session_id)
                     .await
                     .map_err(before)?;
+                if local {
+                    let proof = context
+                        .local_lifecycle_proof(&input.session_id, change)
+                        .await?;
+                    return context
+                        .store
+                        .delete_local_session_checked(
+                            &root,
+                            context.document_operation_root().as_deref(),
+                            key,
+                            input,
+                            proof,
+                        )
+                        .await
+                        .map_err(lifecycle_error);
+                }
+                let _change = change;
                 context
                     .store
                     .delete_session_checked(
@@ -330,3 +481,7 @@ fn lifecycle_error(cause: LifecycleError) -> ApplicationError {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "session_lifecycle/local_tests.rs"]
+mod local_tests;

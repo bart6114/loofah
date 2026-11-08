@@ -531,3 +531,154 @@ async fn a_retained_intent_never_reports_not_committed_when_later_admission_is_b
     ));
     assert!(store.vault_base.join("sessions/note/notes.md").exists());
 }
+
+#[tokio::test]
+async fn trusted_local_proof_is_bound_to_store_session_and_still_rejects_active_or_other_transients()
+ {
+    let (_root, store, _ops) = fixture().await;
+    let hypr_storage::vault::LeaseAttempt::Acquired(lease) =
+        hypr_storage::vault::VaultLease::try_acquire_existing(store.vault_base()).unwrap()
+    else {
+        panic!("fixture lease")
+    };
+    store.pin_vault_lease(&lease).unwrap();
+    let directory = store.vault_base.join("sessions/note");
+    std::fs::write(directory.join("audio_mic.wav"), b"retained raw").unwrap();
+    let proof = || {
+        store
+            .checked_local_lifecycle_proof("note", lease.pin(), Box::new(()))
+            .unwrap()
+    };
+    assert!(
+        store
+            .read_local_session_lifecycle(None, "other", proof())
+            .await
+            .is_err()
+    );
+    let other = SessionStore::new(store.vault_base.clone());
+    assert!(
+        other
+            .read_local_session_lifecycle(None, "note", proof())
+            .await
+            .is_err()
+    );
+    store.note_recording_active("note");
+    assert!(matches!(
+        store
+            .read_local_session_lifecycle(None, "note", proof())
+            .await,
+        Err(LifecycleError::Busy)
+    ));
+    store.release_recording_prepare("note").await.unwrap();
+    assert!(
+        store
+            .read_local_session_lifecycle(None, "note", proof())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    std::fs::write(directory.join("audio.wav.tmp"), b"unconfirmed encode").unwrap();
+    assert!(
+        store
+            .read_local_session_lifecycle(None, "note", proof())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        std::fs::read(directory.join("audio_mic.wav")).unwrap(),
+        b"retained raw"
+    );
+    assert_eq!(
+        std::fs::read(directory.join("audio.wav.tmp")).unwrap(),
+        b"unconfirmed encode"
+    );
+}
+
+#[tokio::test]
+async fn local_host_guard_survives_cancelled_waiter_until_owned_trash_move_finishes() {
+    use std::sync::Arc;
+    let (_root, store, ops) = fixture().await;
+    let hypr_storage::vault::LeaseAttempt::Acquired(lease) =
+        hypr_storage::vault::VaultLease::try_acquire_existing(store.vault_base()).unwrap()
+    else {
+        panic!("fixture lease")
+    };
+    store.pin_vault_lease(&lease).unwrap();
+    std::fs::write(
+        store.vault_base.join("sessions/note/audio_spk.wav"),
+        b"raw system",
+    )
+    .unwrap();
+    let snapshot = store
+        .read_local_session_lifecycle(
+            None,
+            "note",
+            store
+                .checked_local_lifecycle_proof("note", lease.pin(), Box::new(()))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let physical = Arc::new(tokio::sync::RwLock::new(()));
+    let proof = store
+        .checked_local_lifecycle_proof(
+            "note",
+            lease.pin(),
+            Box::new(physical.clone().write_owned().await),
+        )
+        .unwrap();
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let k = key();
+    let input = DeleteSessionRequest {
+        session_id: "note".into(),
+        expected_revision: snapshot.revision,
+    };
+    let task = {
+        let store = store.clone();
+        let ops = ops.clone();
+        let k = k.clone();
+        let input = input.clone();
+        let entered = entered.clone();
+        let release = release.clone();
+        tokio::spawn(async move {
+            store
+                .delete_session_with_proof(&ops, None, k, input, Some(proof.0), move |stage| {
+                    let entered = entered.clone();
+                    let release = release.clone();
+                    async move {
+                        if stage == Stage::Intent {
+                            entered.notify_one();
+                            let _release = release.acquire().await.unwrap();
+                        }
+                        Ok(())
+                    }
+                })
+                .await
+        })
+    };
+    entered.notified().await;
+    assert!(physical.clone().try_read_owned().is_err());
+    task.abort();
+    let _ = task.await;
+    assert!(physical.clone().try_read_owned().is_err());
+    release.add_permits(1);
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if physical.clone().try_read_owned().is_ok() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(matches!(
+        SessionStore::session_delete_replay(&ops, &k, &input)
+            .await
+            .unwrap(),
+        Some(DeleteSessionOutcome::Trashed { .. })
+    ));
+    assert!(!store.vault_base.join("sessions/note").exists());
+}
