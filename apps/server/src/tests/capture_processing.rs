@@ -3,6 +3,15 @@ use super::*;
 #[tokio::test]
 async fn notes_only_processing_refusal_preserves_raw_capture_and_creates_no_note() {
     let fixture = Fixture::new().await;
+    let (_, capabilities) = fixture
+        .call("alice", "GET", "/api/v1/capabilities", None)
+        .await;
+    assert!(
+        !capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("capture_processing"))
+    );
     let me = fixture.login("alice").await;
     let input = capture::input(&fixture, &me);
     assert_eq!(

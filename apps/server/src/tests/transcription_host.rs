@@ -190,6 +190,13 @@ async fn absent_operator_configuration_keeps_notes_without_a_transcription_runti
             .unwrap()
             .contains(&json!("batch_transcription_jobs"))
     );
+    assert_eq!(
+        capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("capture_processing")),
+        fixture.service.config.transcription.is_some()
+    );
     let me = fixture.login("alice").await;
     let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
     seed(&context, b"Canonical audio").await;
@@ -320,6 +327,13 @@ async fn failed_configured_model_keeps_notes_and_reports_engine_unavailable_with
             .unwrap()
             .contains(&json!("batch_transcription_jobs"))
     );
+    assert_eq!(
+        capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("capture_processing")),
+        fixture.service.config.transcription.is_some()
+    );
     assert!(
         capabilities["features"]
             .as_array()
@@ -344,6 +358,13 @@ async fn failed_configured_model_keeps_notes_and_reports_engine_unavailable_with
             .as_array()
             .unwrap()
             .contains(&json!("batch_transcription_jobs"))
+    );
+    assert_eq!(
+        capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("capture_processing")),
+        fixture.service.config.transcription.is_some()
     );
     let me = fixture.login("alice").await;
     let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
