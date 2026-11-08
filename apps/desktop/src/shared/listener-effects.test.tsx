@@ -112,3 +112,25 @@ it("cleans replaced navigation dependencies and handles registration rejection",
   expect(mocks.navigate).not.toHaveBeenCalled();
   hook.unmount();
 });
+
+it("routes both native new-note events through the captured creation action and ignores late events", async () => {
+  const hook = renderHook(useNavigationEvents);
+  await act(async () =>
+    mocks.registrations.forEach((registration) =>
+      registration.resolve(vi.fn()),
+    ),
+  );
+  const [navigate, openTab] = mocks.registrations;
+  act(() => {
+    navigate.handler({ payload: { path: "/app/new" } });
+    openTab.handler({ payload: { tab: { type: "sessions", id: "new" } } });
+  });
+  expect(mocks.openNewNote).toHaveBeenCalledTimes(2);
+  expect(mocks.openNew).not.toHaveBeenCalled();
+  hook.unmount();
+  act(() => {
+    navigate.handler({ payload: { path: "/app/new" } });
+    openTab.handler({ payload: { tab: { type: "sessions", id: "new" } } });
+  });
+  expect(mocks.openNewNote).toHaveBeenCalledTimes(2);
+});
