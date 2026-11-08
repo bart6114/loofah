@@ -1,10 +1,12 @@
 import { useLingui } from "@lingui/react/macro";
 import { useMemo } from "react";
 
+import { AttachmentResource } from "@hypr/editor/node-views";
 import { cn } from "@hypr/utils";
 
-import { useAttachmentResolver } from "~/session/hooks/useAttachmentResolver";
 import { useSessionRawMd } from "~/session/queries";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
+import { VaultAttachmentProvider } from "~/shared/application/vault-attachment-provider";
 
 type MemoImage = {
   key: string;
@@ -75,48 +77,52 @@ export function MemoImageStrip({
 }: {
   sessionId: string;
   className?: string;
-  onImageClick?: (src: string) => void;
+  onImageClick?: (src: string, attachmentId?: string) => void;
 }) {
   const { t } = useLingui();
   const rawMd = useSessionRawMd(sessionId);
-  const resolveAttachment = useAttachmentResolver(sessionId);
+  const owner = useVaultReadScope();
   const images = useMemo(() => collectMemoImages(rawMd), [rawMd]);
 
-  const resolved = images.flatMap((image) => {
-    const src =
-      (image.attachmentId
-        ? resolveAttachment(image.attachmentId)?.src
-        : null) ?? image.src;
-    return src ? [{ ...image, src }] : [];
-  });
-
-  if (resolved.length === 0) {
-    return null;
-  }
-
+  if (!owner.readable || images.length === 0) return null;
   return (
-    <div className={cn(["flex flex-wrap items-center gap-2", className])}>
-      {resolved.map((image) => (
-        <button
-          key={image.key}
-          type="button"
-          aria-label={t`Show image in note`}
-          onClick={() => onImageClick?.(image.src)}
-          className={cn([
-            "rounded-md",
-            "ring-offset-card hover:ring-border transition-shadow hover:ring-1 hover:ring-offset-2",
-            onImageClick ? "cursor-pointer" : "cursor-default",
-          ])}
-        >
-          <img
-            src={image.src}
-            alt={image.alt}
-            loading="lazy"
-            draggable={false}
-            className="border-border bg-card h-16 max-w-40 rounded-md border object-cover"
-          />
-        </button>
-      ))}
-    </div>
+    <VaultAttachmentProvider scope={owner.scope} sessionId={sessionId}>
+      <div className={cn(["flex flex-wrap items-center gap-2", className])}>
+        {images.map((image) => (
+          <AttachmentResource key={image.key} attachmentId={image.attachmentId}>
+            {(resolved) => {
+              const src = image.attachmentId
+                ? resolved?.src
+                : owner.scope.client.attachmentPresentation({ src: image.src })
+                    .src;
+              if (!src) return null;
+              return (
+                <button
+                  type="button"
+                  aria-label={t`Show image in note`}
+                  onClick={() => {
+                    if (owner.current())
+                      onImageClick?.(src, image.attachmentId ?? undefined);
+                  }}
+                  className={cn([
+                    "rounded-md",
+                    "ring-offset-card hover:ring-border ring-offset-2 hover:ring-1",
+                    onImageClick ? "cursor-pointer" : "cursor-default",
+                  ])}
+                >
+                  <img
+                    src={src}
+                    alt={image.alt}
+                    loading="lazy"
+                    draggable={false}
+                    className="border-border bg-card h-16 max-w-40 rounded-md border object-cover"
+                  />
+                </button>
+              );
+            }}
+          </AttachmentResource>
+        ))}
+      </div>
+    </VaultAttachmentProvider>
   );
 }

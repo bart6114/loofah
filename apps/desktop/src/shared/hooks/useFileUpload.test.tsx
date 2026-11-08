@@ -90,7 +90,8 @@ async function fixture(name = "local-one") {
   return {
     ...hook,
     scope,
-    queryClient,
+    queryClient: scope.queryClient,
+    rootClient: queryClient,
     prepare,
     upload,
     open,
@@ -122,16 +123,22 @@ it("routes a browser File through shared source preparation without whole-file b
   expect(f.upload).toHaveBeenCalledTimes(1);
   expect(result).toMatchObject({
     attachmentId: "clipboard.png",
-    url: "asset:/vault/local-one/sessions/session-1/attachments/clipboard.png",
-    attachment: { size: 7, extension: "png" },
+    url: "",
+    path: "",
+    attachment: { sizeBytes: 7, filename: "clipboard.png" },
   });
+  expect(f.rootClient.getQueryCache().getAll()).toEqual([]);
   expect(
-    f.queryClient.getQueryData(["session", "session-1", "attachment-paths"]),
-  ).toEqual([
-    expect.objectContaining({ attachmentId: "clipboard.png", size: 7 }),
-  ]);
+    f.scope.queryClient.getQueryData([
+      "vault",
+      f.scope.client.scope,
+      "attachment_list",
+      "session-1",
+    ]),
+  ).toBeUndefined();
   expect(f.close).toHaveBeenCalledTimes(1);
-  expect(f.closeResource).toHaveBeenCalledTimes(1);
+  expect(f.open).not.toHaveBeenCalled();
+  expect(f.closeResource).not.toHaveBeenCalled();
   expect(f.queryClient.getMutationCache().getAll()).toHaveLength(0);
 });
 
@@ -140,7 +147,7 @@ it("keeps native paths on the device and uploads locally even when browser netwo
   onlineManager.setOnline(false);
   await act(async () => {
     const result = await f.result.current.upload(candidate);
-    expect(result.attachment.size).toBe(4_000_000_000);
+    expect(result.attachment.sizeBytes).toBe(4_000_000_000);
   });
   expect(f.prepare.mock.calls[0][0]).toEqual(candidate);
   expect(f.upload.mock.calls[0][1].source).toEqual({
@@ -225,10 +232,7 @@ it("retains the original declaration, source and UUID on a lost acknowledgement 
 it("refuses work before a host is ready and never falls back to a different vault", async () => {
   const f = await fixture();
   host.scope = null;
-  f.rerender();
-  await act(async () => {
-    await expect(f.result.current.upload(candidate)).rejects.toThrow();
-  });
+  expect(() => f.rerender()).toThrow("immutable vault host");
   expect(f.prepare).not.toHaveBeenCalled();
   expect(f.upload).not.toHaveBeenCalled();
 });
@@ -239,12 +243,72 @@ it("clears retained host upload attempts when their scope ends, including after 
   await act(async () => {
     await expect(f.result.current.upload(candidate)).rejects.toThrow();
   });
-  const other = f.queryClient.getMutationCache().build(f.queryClient, {
+  const other = f.rootClient.getMutationCache().build(f.rootClient, {
     mutationKey: ["unrelated"],
     mutationFn: async () => {},
   });
   f.unmount();
   f.scope.dispose();
   expect(f.close).toHaveBeenCalledTimes(1);
-  expect(f.queryClient.getMutationCache().getAll()).toEqual([other]);
+  expect(f.queryClient.getMutationCache().getAll()).toEqual([]);
+  expect(f.rootClient.getMutationCache().getAll()).toEqual([other]);
+});
+
+it("returns the server-owned canonical filename without requiring any local resource path", async () => {
+  const f = await fixture();
+  f.upload.mockResolvedValueOnce({
+    filename: "diagram 1.png",
+    contentType: "image/png",
+    sizeBytes: 7,
+    sha256: "a".repeat(64),
+  });
+  await act(async () => {
+    expect(await f.result.current.upload(candidate)).toMatchObject({
+      attachmentId: "diagram 1.png",
+      url: "",
+      path: "",
+    });
+  });
+  expect(f.open).not.toHaveBeenCalled();
+});
+
+it("never inserts a completed old upload into a replacement host with identical session IDs", async () => {
+  const old = await fixture("same-scope");
+  let finish!: () => void;
+  old.upload.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        finish = () =>
+          done({
+            filename: "old.png",
+            contentType: "image/png",
+            sizeBytes: 7,
+            sha256: "a".repeat(64),
+          });
+      }),
+  );
+  let pending!: Promise<unknown>;
+  act(() => {
+    pending = old.result.current.upload(candidate);
+  });
+  const refused = expect(pending).rejects.toMatchObject({
+    detail: { mutation_outcome: "unknown" },
+  });
+  await waitFor(() => expect(old.upload).toHaveBeenCalledOnce());
+  const next = await fixture("same-scope");
+  old.rerender();
+  await act(async () => {
+    finish();
+    await refused;
+  });
+  expect(
+    next.scope.queryClient.getQueryData([
+      "vault",
+      next.scope.client.scope,
+      "attachment_list",
+      "session-1",
+    ]),
+  ).toBeUndefined();
+  expect(next.prepare).not.toHaveBeenCalled();
+  expect(next.upload).not.toHaveBeenCalled();
 });

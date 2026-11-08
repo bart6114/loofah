@@ -41,7 +41,7 @@ function failure() {
     mutation_outcome: "unknown",
   });
 }
-async function fixture(name = "first") {
+async function fixture(name = "first", mode: "always" | "online" = "always") {
   let event!: (value: VaultClientEvent) => void;
   const close = vi.fn().mockResolvedValue(undefined);
   const prepared: PreparedAttachmentUpload = {
@@ -53,7 +53,7 @@ async function fixture(name = "first") {
   const uploadAttachmentSource = vi.fn().mockResolvedValue(metadata);
   const client = {
     scope: name,
-    networkMode: "always",
+    networkMode: mode,
     canEdit: true,
     features: ["attachment_upload"],
     prepareAttachmentSource,
@@ -203,4 +203,34 @@ it("keeps failed attempts visible until explicit removal and closes their privat
   expect(f.close).toHaveBeenCalledTimes(1);
   f.scope.dispose();
   expect(f.close).toHaveBeenCalledTimes(1);
+});
+
+it("refuses remote offline writes before preparation and again after asynchronous source staging", async () => {
+  const f = await fixture("remote", "online");
+  onlineManager.setOnline(false);
+  await expect(f.result.current.upload(candidate)).rejects.toThrow();
+  expect(f.prepareAttachmentSource).not.toHaveBeenCalled();
+  onlineManager.setOnline(true);
+  let finish!: () => void;
+  f.prepareAttachmentSource.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        finish = () => done(f.prepared);
+      }),
+  );
+  let attempt!: Promise<unknown>;
+  act(() => {
+    attempt = f.result.current.upload(candidate);
+  });
+  const failed = expect(attempt).rejects.toThrow();
+  await waitFor(() => expect(f.prepareAttachmentSource).toHaveBeenCalledOnce());
+  onlineManager.setOnline(false);
+  await act(async () => {
+    finish();
+    await failed;
+  });
+  expect(f.uploadAttachmentSource).not.toHaveBeenCalled();
+  expect(f.close).not.toHaveBeenCalled();
+  f.scope.dispose();
+  expect(f.close).toHaveBeenCalledOnce();
 });

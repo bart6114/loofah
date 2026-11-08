@@ -20,7 +20,11 @@ vi.mock("@hypr/plugin-opener2", () => ({
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: host.uri }));
 vi.mock("@tauri-apps/api/path", () => ({ join: host.join }));
 
-import { openLocalAttachment, openRemoteAttachment } from "./attachments";
+import {
+  openLocalAttachmentDirectory,
+  openLocalAttachment,
+  openRemoteAttachment,
+} from "./attachments";
 import type { NativeRemoteConnection } from "./remote";
 
 const info = {
@@ -52,8 +56,8 @@ beforeEach(() => {
     (path: string, protocol = "asset") =>
       `${protocol}://localhost/${encodeURIComponent(path)}`,
   );
-  host.open.mockResolvedValue(undefined);
-  host.reveal.mockResolvedValue(undefined);
+  host.open.mockResolvedValue({ status: "ok", data: null });
+  host.reveal.mockResolvedValue({ status: "ok", data: null });
 });
 
 describe("client attachment resources", () => {
@@ -188,4 +192,42 @@ describe("client attachment resources", () => {
     expect(second.api.closeAttachment).toHaveBeenCalledTimes(1);
     expect(second.api.copyAttachment).not.toHaveBeenCalled();
   });
+});
+
+it.each([
+  "/client/vault/sessions/note/attachments",
+  "C:\\\\Users\\\\me\\\\vault\\\\sessions\\\\note\\\\attachments",
+])(
+  "opens the captured local directory on either desktop platform: %s",
+  async (path) => {
+    host.directory.mockResolvedValueOnce({ status: "ok", data: path });
+    await openLocalAttachmentDirectory("note");
+    expect(host.open).toHaveBeenCalledWith(path, null);
+  },
+);
+it("does not open a directory after cancellation, and reports native opener failures", async () => {
+  const controller = new AbortController();
+  host.directory.mockImplementationOnce(async () => {
+    controller.abort();
+    return { status: "ok", data: "/private" };
+  });
+  await expect(
+    openLocalAttachmentDirectory("note", { signal: controller.signal }),
+  ).rejects.toThrow();
+  expect(host.open).not.toHaveBeenCalled();
+  host.open.mockResolvedValueOnce({
+    status: "error",
+    error: "No opener available",
+  });
+  await expect(openLocalAttachmentDirectory("note")).rejects.toThrow(
+    "No opener available",
+  );
+  const resource = await openLocalAttachment("note", info.filename);
+  host.open.mockResolvedValueOnce({ status: "error", error: "Open failed" });
+  await expect(resource!.open()).rejects.toThrow("Open failed");
+  host.reveal.mockResolvedValueOnce({
+    status: "error",
+    error: "Reveal failed",
+  });
+  await expect(resource!.reveal()).rejects.toThrow("Reveal failed");
 });

@@ -69,12 +69,20 @@ import { connectLocalVault, connectRemoteVault } from "./vault-client";
 
 it("selects client asset presentation independently of editor components", async () => {
   const local = await connectLocalVault();
+  expect(local.openAttachmentDirectory).toBeTypeOf("function");
   expect(
     local.attachmentPresentation({
       src: "asset:/local.png",
       path: "/local.png",
     }).src,
   ).toBe("asset:/local.png");
+  expect(
+    local.attachmentPresentation({
+      attachmentId: "canonical.png",
+      src: "asset:/old-private.png",
+      path: "/old-private.png",
+    }),
+  ).toEqual({ src: undefined, open: undefined, reveal: undefined });
   const remote = connectRemoteVault(
     {
       info: { server: "https://example.com", capabilities: { features: [] } },
@@ -82,6 +90,7 @@ it("selects client asset presentation independently of editor components", async
     "member",
     { id: "vault", role: "editor" },
   );
+  expect(remote.openAttachmentDirectory).toBeUndefined();
   expect(
     remote.attachmentPresentation({
       src: "asset:/private.png",

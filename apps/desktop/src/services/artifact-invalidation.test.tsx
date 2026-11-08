@@ -39,7 +39,7 @@ afterEach(() => {
   cleanup();
 });
 
-it("invalidates exactly the affected session's path-backed queries on a artifact event", () => {
+it("keeps only legacy audio invalidation in the global window cache", () => {
   const { queryClient, handler } = mountWithSeededCache();
 
   act(() => handler({ payload: { entity: "artifacts", ids: ["s1"] } }));
@@ -48,12 +48,15 @@ it("invalidates exactly the affected session's path-backed queries on a artifact
     ["audio", "s1", "url"],
     ["audio", "s1", "peaks"],
     ["audio", "s1", "exist"],
-    ["session", "s1", "attachment-paths"],
   ]) {
     expect(queryClient.getQueryState(key)?.isInvalidated, key.join("/")).toBe(
       true,
     );
   }
+  expect(
+    queryClient.getQueryState(["session", "s1", "attachment-paths"])
+      ?.isInvalidated,
+  ).toBe(false);
   expect(queryClient.getQueryState(["audio", "s2", "url"])?.isInvalidated).toBe(
     false,
   );
@@ -79,10 +82,7 @@ it("invalidates deletion and restoration in every mounted window cache", () => {
   for (const lifecycle of ["deleted", "restored"]) {
     act(() => main.handler({ payload: { entity: "sessions", ids: ["s1"] } }));
     for (const { queryClient } of [main, standalone]) {
-      for (const key of [
-        ["audio", "s1", "url"],
-        ["session", "s1", "attachment-paths"],
-      ]) {
+      for (const key of [["audio", "s1", "url"]]) {
         expect(queryClient.getQueryState(key)?.isInvalidated, lifecycle).toBe(
           true,
         );

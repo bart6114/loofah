@@ -29,6 +29,19 @@ export type AttachmentResource = {
   close: () => Promise<void>;
 };
 
+export async function openLocalAttachmentDirectory(
+  sessionId: string,
+  options?: RequestOptions,
+): Promise<void> {
+  options?.signal?.throwIfAborted();
+  const directory = await fsSyncCommands.attachmentDir(sessionId);
+  if (directory.status === "error") throw new Error(directory.error);
+  options?.signal?.throwIfAborted();
+  const opened = await openerCommands.openPath(directory.data, null);
+  if (opened.status === "error") throw new Error(opened.error);
+  options?.signal?.throwIfAborted();
+}
+
 export async function openLocalAttachment(
   sessionId: string,
   attachmentId: string,
@@ -60,11 +73,13 @@ export async function openLocalAttachment(
     labels: { open: msg`Open file`, reveal: msg`Show file` },
     open: async (request) => {
       check(request);
-      await openerCommands.openPath(path, null);
+      const result = await openerCommands.openPath(path, null);
+      if (result.status === "error") throw new Error(result.error);
     },
     reveal: async (request) => {
       check(request);
-      await openerCommands.revealItemInDir(path);
+      const result = await openerCommands.revealItemInDir(path);
+      if (result.status === "error") throw new Error(result.error);
     },
     close: async () => {
       closed = true;

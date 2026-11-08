@@ -6,6 +6,7 @@ import {
 
 import {
   openLocalAttachment,
+  openLocalAttachmentDirectory,
   openRemoteAttachment,
   type AttachmentResource,
 } from "./attachments";
@@ -107,6 +108,10 @@ export type VaultClient = {
   readonly networkMode: "always" | "online";
   readonly canEdit: boolean;
   readonly attachmentPresentation: AttachmentPresentation;
+  openAttachmentDirectory?: (
+    sessionId: string,
+    options?: RequestOptions,
+  ) => Promise<void>;
   readonly features: readonly string[];
   processingPolicy: (options?: RequestOptions) => Promise<ProcessingPolicy>;
   processingSettings: (
@@ -375,7 +380,11 @@ export async function connectLocalVault(): Promise<VaultClient> {
     scope,
     networkMode: "always",
     canEdit: true,
-    attachmentPresentation: legacyAttachmentPresentation,
+    attachmentPresentation: (input) =>
+      input.attachmentId
+        ? scopedAttachmentPresentation(input)
+        : legacyAttachmentPresentation(input),
+    openAttachmentDirectory: openLocalAttachmentDirectory,
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
       ...(processingAvailable

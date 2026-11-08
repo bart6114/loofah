@@ -55,8 +55,39 @@ vi.mock("~/stt/useUploadFile", () => ({
   }),
 }));
 
+const capture = {
+  live: { sessionId: null, loading: false },
+  getSessionMode: () => "inactive",
+};
+const snapshot = { state: "connected", error: null };
+const scope = {
+  client: {
+    canEdit: true,
+    scope: "local",
+    features: ["attachment_upload", "legacy_desktop_transcript_controls"],
+  },
+  getSnapshot: () => snapshot,
+};
+vi.mock(
+  "~/shared/application/use-vault-read-scope",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("~/shared/application/use-vault-read-scope")
+    >()),
+    useVaultReadScope: () => ({ scope, current: () => true, readable: true }),
+  }),
+);
+vi.mock("~/stt/contexts", () => ({
+  useListenerStore: () => ({ getState: () => capture }),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  scope.client.features = [
+    "attachment_upload",
+    "legacy_desktop_transcript_controls",
+  ];
+  capture.getSessionMode = () => "inactive";
   mocks.config = null;
   mocks.nativeCallbacks = null;
 });
@@ -69,7 +100,9 @@ describe("useNoteFileHandlerConfig", () => {
     render(<Harness view={view} />);
     const event = { type: "drop", point: { x: 12, y: 34 } };
 
-    act(() => mocks.nativeCallbacks.onInternalDrag(event));
+    act(() => {
+      mocks.nativeCallbacks.onInternalDrag(event);
+    });
 
     expect(mocks.handleNativeEditorDrag).toHaveBeenCalledWith(view, event);
     expect(mocks.handleNativeFileDrop).not.toHaveBeenCalled();
@@ -78,24 +111,30 @@ describe("useNoteFileHandlerConfig", () => {
   it("shows native attachment, audio, and mixed hover hints", () => {
     render(<Harness />);
 
-    act(() => mocks.nativeCallbacks.onHoverPaths(["/tmp/script.py"]));
+    act(() => {
+      mocks.nativeCallbacks.onHoverPaths(["/tmp/script.py"]);
+    });
     expect(screen.getByText("Drop files here to attach to note")).toBeTruthy();
 
-    act(() => mocks.nativeCallbacks.onHoverPaths(["/tmp/clip.mp3"]));
+    act(() => {
+      mocks.nativeCallbacks.onHoverPaths(["/tmp/clip.mp3"]);
+    });
     expect(
       screen.getByText("Drop to upload and transcribe audio"),
     ).toBeTruthy();
 
-    act(() =>
-      mocks.nativeCallbacks.onHoverPaths(["/tmp/clip.mp3", "/tmp/script.py"]),
-    );
+    act(() => {
+      mocks.nativeCallbacks.onHoverPaths(["/tmp/clip.mp3", "/tmp/script.py"]);
+    });
     expect(
       screen.getByText(
         "Audio will be transcribed; other files will be attached.",
       ),
     ).toBeTruthy();
 
-    act(() => mocks.nativeCallbacks.onHoverEnd());
+    act(() => {
+      mocks.nativeCallbacks.onHoverEnd();
+    });
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -103,12 +142,12 @@ describe("useNoteFileHandlerConfig", () => {
     const view = createEditorView(7);
     render(<Harness view={view} />);
 
-    act(() =>
+    act(() => {
       mocks.nativeCallbacks.onDrop(["/tmp/two.pdf", "/tmp/one.png"], {
         x: 12,
         y: 34,
-      }),
-    );
+      });
+    });
 
     expect(view.posAtCoords).toHaveBeenCalledWith({ left: 12, top: 34 });
     expect(mocks.handleNativeFileDrop).toHaveBeenCalledWith(
@@ -139,12 +178,12 @@ describe("useNoteFileHandlerConfig", () => {
     );
     render(<Harness />);
 
-    act(() =>
+    act(() => {
       mocks.nativeCallbacks.onDrop(["/tmp/clip.mp3", "/tmp/script.py"], {
         x: 1,
         y: 1,
-      }),
-    );
+      });
+    });
 
     expect(mocks.processAudioPath).toHaveBeenCalledOnce();
     expect(mocks.processAudioPath).toHaveBeenCalledWith("/tmp/clip.mp3");
@@ -174,7 +213,9 @@ describe("useNoteFileHandlerConfig", () => {
     const view = createEditorView(7);
     Object.defineProperty(view, "editable", { value: false });
     render(<Harness view={view} />);
-    act(() => mocks.nativeCallbacks.onDrop(["/tmp/image.png"], { x: 1, y: 1 }));
+    act(() => {
+      mocks.nativeCallbacks.onDrop(["/tmp/image.png"], { x: 1, y: 1 });
+    });
     expect(mocks.handleNativeFileDrop).not.toHaveBeenCalled();
     expect(mocks.processAudioPath).not.toHaveBeenCalled();
   });
@@ -191,6 +232,19 @@ describe("useNoteFileHandlerConfig", () => {
       expect.any(Object),
     );
   });
+});
+
+it("keeps audio as a generic attachment when legacy transcription controls are unsupported", () => {
+  scope.client.features = ["attachment_upload"];
+  render(<Harness view={createEditorView(7)} />);
+  const file = new File(["audio"], "recording.wav", { type: "audio/wav" });
+  const result = mocks.config?.onPaste?.([file]);
+  expect(result).toBeUndefined();
+  expect(mocks.processAudioFile).not.toHaveBeenCalled();
+  act(() => {
+    mocks.nativeCallbacks.onHoverPaths(["C:\\\\device\\\\recording.wav"]);
+  });
+  expect(screen.getByText("Drop files here to attach to note")).toBeDefined();
 });
 
 function Harness({ view = createEditorView(null) }: { view?: EditorView }) {

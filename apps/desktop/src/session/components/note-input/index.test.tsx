@@ -1,7 +1,14 @@
 vi.mock("./enhanced/empty-summary", () => ({
   EmptySummary: () => <div>Empty summary</div>,
 }));
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NoteInput } from ".";
@@ -9,6 +16,8 @@ import { NoteInput } from ".";
 import type { EditorView } from "~/store/zustand/tabs/schema";
 
 const hoisted = vi.hoisted(() => ({
+  editorView: null as import("prosemirror-view").EditorView | null,
+  trailerChildren: null as import("react").ReactNode,
   editorTabs: [{ type: "raw" }, { type: "transcript" }] as EditorView[],
   hotkeys: [] as Array<{ keys: string; callback: () => void }>,
   enhancedHasProseMirror: true,
@@ -125,10 +134,13 @@ vi.mock("~/session/components/session-author-badge", () => ({
 
 vi.mock("~/session/components/session-people", () => ({
   SessionPeople: () => <div data-testid="session-people" />,
-  useSessionPeopleTitleTrailer: () => ({
-    element: document.createElement("div"),
-    portal: null,
-  }),
+  useSessionPeopleTitleTrailer: (
+    _sessionId: string,
+    children: import("react").ReactNode,
+  ) => {
+    hoisted.trailerChildren = children;
+    return { element: document.createElement("div"), portal: null };
+  },
 }));
 
 vi.mock("~/session/components/session-tags", () => ({
@@ -187,7 +199,7 @@ function formatEditorView(view: EditorView) {
 
 function createEditorRef() {
   return {
-    view: null,
+    view: hoisted.editorView,
     flushPendingChanges: hoisted.flushPendingChanges,
     commands: {
       focus: () => {},
@@ -242,6 +254,8 @@ describe("NoteInput tab selection", () => {
   });
 
   beforeEach(() => {
+    hoisted.editorView = null;
+    hoisted.trailerChildren = null;
     hoisted.editorTabs = [{ type: "raw" }, { type: "transcript" }];
     hoisted.hotkeys = [];
     hoisted.enhancedHasProseMirror = true;
@@ -499,4 +513,40 @@ describe("summary editing during capture", () => {
       hoisted.rawEditorProps[hoisted.rawEditorProps.length - 1]?.readOnly,
     ).not.toBe(true);
   });
+});
+
+it("navigates to the canonical image ID when the raw editor has a different runtime resource URL", async () => {
+  const { Children, isValidElement } = await import("react");
+  const target = document.createElement("img");
+  target.src = "loofah-media://new-lease";
+  const scroll = vi.fn();
+  target.scrollIntoView = scroll;
+  const descendants = vi.fn((visit: (node: unknown, pos: number) => void) =>
+    visit({ type: { name: "image" }, attrs: { attachmentId: "image.png" } }, 4),
+  );
+  hoisted.editorView = {
+    state: { doc: { descendants } },
+    nodeDOM: vi.fn(() => target),
+    isDestroyed: false,
+  } as unknown as import("prosemirror-view").EditorView;
+  const view = renderNoteInput({
+    currentTab: { type: "enhanced", id: "output" },
+  });
+  let navigate: ((src: string, id?: string) => void) | undefined;
+  const children = isValidElement<{ children: import("react").ReactNode }>(
+    hoisted.trailerChildren,
+  )
+    ? hoisted.trailerChildren.props.children
+    : hoisted.trailerChildren;
+  for (const child of Children.toArray(children))
+    if (
+      isValidElement<{ onImageClick?: typeof navigate }>(child) &&
+      child.props.onImageClick
+    )
+      navigate = child.props.onImageClick;
+  expect(navigate).toBeTypeOf("function");
+  act(() => navigate?.("loofah-media://obsolete-lease", "image.png"));
+  expect(view.handleTabChange).toHaveBeenCalledWith({ type: "raw" });
+  await waitFor(() => expect(scroll).toHaveBeenCalledOnce());
+  expect(descendants).toHaveBeenCalledOnce();
 });

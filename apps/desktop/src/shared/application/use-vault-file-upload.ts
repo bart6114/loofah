@@ -1,4 +1,8 @@
-import { useMutation, useMutationState } from "@tanstack/react-query";
+import {
+  onlineManager,
+  useMutation,
+  useMutationState,
+} from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import type { FileUploadCandidate } from "@hypr/editor/note";
@@ -12,6 +16,16 @@ import type { VaultScope } from "./vault-scope";
 
 function mutationKey(scope: VaultScope, sessionId: string) {
   return ["vault", scope.client.scope, "attachment_upload", sessionId] as const;
+}
+
+function assertUploadAvailable(scope: VaultScope) {
+  if (
+    scope.getSnapshot().state !== "connected" ||
+    !scope.client.canEdit ||
+    !scope.client.features.includes("attachment_upload") ||
+    (scope.client.networkMode === "online" && !onlineManager.isOnline())
+  )
+    throw stopped();
 }
 
 export function useVaultFileUpload(scope: VaultScope, sessionId: string) {
@@ -29,7 +43,9 @@ export function useVaultFileUpload(scope: VaultScope, sessionId: string) {
       retry: false,
       gcTime: Infinity,
       mutationFn: (attempt: Upload) =>
-        uploadAttachmentAttempt(scope, sessionId, attempt),
+        uploadAttachmentAttempt(scope, sessionId, attempt, () =>
+          assertUploadAvailable(scope),
+        ),
       onSuccess: () => {
         void scope.queryClient.invalidateQueries({
           queryKey: ["vault", scope.client.scope, "attachment_list", sessionId],
@@ -38,17 +54,17 @@ export function useVaultFileUpload(scope: VaultScope, sessionId: string) {
     },
     scope.queryClient,
   );
+  const { mutateAsync, reset } = mutation;
   return useCallback(
     (
       candidate: FileUploadCandidate,
       clientId: string = crypto.randomUUID(),
     ) => {
-      if (
-        scope.getSnapshot().state !== "connected" ||
-        !scope.client.canEdit ||
-        !scope.client.features.includes("attachment_upload")
-      )
-        return Promise.reject(stopped());
+      try {
+        assertUploadAvailable(scope);
+      } catch (error) {
+        return Promise.reject(error);
+      }
       const cache = scope.queryClient.getMutationCache();
       let attempt: Upload | undefined;
       for (const previous of cache.findAll({
@@ -61,9 +77,8 @@ export function useVaultFileUpload(scope: VaultScope, sessionId: string) {
           if (previous.state.status !== "pending") cache.remove(previous);
         }
       }
-      return mutation
-        .mutateAsync(attempt ?? { clientId, candidate })
-        .then((metadata) => {
+      return mutateAsync(attempt ?? { clientId, candidate }).then(
+        (metadata) => {
           for (const completed of cache.findAll({
             mutationKey: mutationKey(scope, sessionId),
             exact: true,
@@ -75,11 +90,12 @@ export function useVaultFileUpload(scope: VaultScope, sessionId: string) {
             )
               cache.remove(completed);
           }
-          mutation.reset();
+          reset();
           return metadata;
-        });
+        },
+      );
     },
-    [scope, sessionId, mutation.mutateAsync, mutation.reset],
+    [scope, sessionId, mutateAsync, reset],
   );
 }
 

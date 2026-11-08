@@ -22,7 +22,6 @@ import { useMentionConfig } from "~/editor-bridge/mention-config";
 import { openEditorLink } from "~/editor-bridge/open-editor-link";
 import { sessionMentionDropConfig } from "~/editor-bridge/session-mention-drop";
 import { SessionNodeView } from "~/editor-bridge/session-view";
-import { useAttachmentResolver } from "~/session/hooks/useAttachmentResolver";
 import { DeviceRecovery } from "~/shared/application/device-recovery";
 import {
   VaultNoteEditor,
@@ -109,13 +108,11 @@ const BoundRawEditor = forwardRef<NoteEditorRef, RawEditorProps>(
       },
       [onViewReady],
     );
-    const resolveAttachment = useAttachmentResolver(sessionId);
     const mentionConfig = useMentionConfig();
     const navigateMention = useMentionNavigation();
     const options = useMemo<VaultNoteEditorHost["editorOptions"]>(
       () => ({
         className: cn(["session-note-editor", className]),
-        resolveAttachment,
         mentionConfig,
         onMentionNavigate: navigateMention,
         sessionMentionDropConfig,
@@ -131,7 +128,6 @@ const BoundRawEditor = forwardRef<NoteEditorRef, RawEditorProps>(
       }),
       [
         className,
-        resolveAttachment,
         mentionConfig,
         navigateMention,
         onNavigateToTitle,

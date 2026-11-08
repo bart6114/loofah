@@ -9,7 +9,12 @@ const state = vi.hoisted(() => ({
   documentProps: [] as Record<string, unknown>[],
   previewProps: [] as Record<string, unknown>[],
   toast: vi.fn(),
-  scope: { client: { scope: "scope" } },
+  snapshot: { state: "connected", error: null },
+  scope: {
+    client: { scope: "scope", attachmentPresentation: () => ({}) },
+    getSnapshot: () => state.snapshot,
+    subscribe: () => () => {},
+  },
 }));
 vi.mock("~/shared/application/vault-provider", () => ({
   useVaultHost: () => ({ scope: state.scope, error: null }),

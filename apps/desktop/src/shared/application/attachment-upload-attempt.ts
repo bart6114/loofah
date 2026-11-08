@@ -15,7 +15,9 @@ export async function uploadAttachmentAttempt(
   scope: VaultScope,
   sessionId: string,
   attempt: AttachmentUploadAttempt,
+  assertAvailable?: () => void,
 ) {
+  assertAvailable?.();
   if (attempt.removed) throw attachmentUploadStopped();
   if (!attempt.prepared)
     attempt.prepared = await scope.prepareAttachmentSource(attempt.candidate);
@@ -23,6 +25,7 @@ export async function uploadAttachmentAttempt(
     void attempt.prepared.close().catch(() => {});
     throw attachmentUploadStopped();
   }
+  assertAvailable?.();
   const metadata = await scope.uploadAttachmentSource(
     sessionId,
     attempt.prepared,

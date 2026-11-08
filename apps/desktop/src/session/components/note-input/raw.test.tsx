@@ -106,7 +106,6 @@ describe("main raw note adapter", () => {
     expect(value.editorOptions).toMatchObject({
       className: "session-note-editor custom",
       fileHandlerConfig: fileHandler,
-      resolveAttachment: state.attachment,
       onMentionNavigate: state.navigate,
       syncContentWhenFocused: false,
     });
