@@ -28,10 +28,14 @@ impl MediaDispatcher {
             .await
             .get(request)
             .is_some_and(|task| !task.join.is_finished());
-        let result = if subtitle {
-            cli.subtitle_status(request).await
+        let result = if running {
+            None
         } else {
-            cli.media_status(request).await
+            Some(if subtitle {
+                cli.subtitle_status(request).await
+            } else {
+                cli.media_status(request).await
+            })
         };
         let mut media = match result {
             Some(Ok(status)) => status,
@@ -215,6 +219,9 @@ impl MediaDispatcher {
                     Arc::new(|_| {}),
                 )
                 .await;
+            if _result.is_ok() {
+                let _summary = self.complete_summary(request).await;
+            }
         }
         self.status(request).await
     }

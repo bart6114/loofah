@@ -11,6 +11,10 @@ pub(super) fn router() -> Router<Arc<Service>> {
             get(result),
         )
         .route(
+            "/vaults/{vault}/media/requests/{request}/summary",
+            get(summary_status),
+        )
+        .route(
             "/vaults/{vault}/media/requests/{request}/cancel",
             axum::routing::post(cancel),
         )
@@ -237,6 +241,19 @@ async fn upload(
             .await
             .map(Json)
             .map_err(Into::into)
+    })
+    .await
+}
+
+async fn summary_status(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, request)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &vault, true).await?;
+    let dispatcher = service.media_dispatcher(&vault, &access.member_id).await?;
+    content_read(&service, access, 1024 * 1024, async move {
+        dispatcher.summary_status(&request).await
     })
     .await
 }

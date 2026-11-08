@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 mod journal;
 mod source;
 mod status;
+mod summary;
 #[cfg(test)]
 mod tests;
 use journal::Admission;
@@ -129,9 +130,6 @@ impl MediaDispatcher {
         input: MediaDeclaration,
     ) -> Result<MediaAdmission, ApplicationError> {
         validate_media_declaration(&input).map_err(|s| error(ErrorCode::Validation, s))?;
-        if input.summary.is_some() {
-            return Err(unavailable("Remote media summary policy is not configured"));
-        }
         if self.stop.is_cancelled() {
             return Err(unavailable("Media service is stopping"));
         }
@@ -171,12 +169,17 @@ impl MediaDispatcher {
             return Err(unavailable("Media source quota exhausted"));
         }
         self.check_baseline(&input).await?;
-        let record = Admission::new(
+        let mut record = Admission::new(
             self.context.events.vault_id(),
             self.principal.clone(),
             input,
         );
+        let ready = record.phase;
+        record.phase = MediaPhase::Review;
         self.save(record.clone(), true).await?;
+        self.declare_summary(&record.declaration).await?;
+        record.phase = ready;
+        self.save(record.clone(), false).await?;
         if record.phase == MediaPhase::Ready {
             self.dispatch(record.clone()).await?;
         }
@@ -266,6 +269,9 @@ impl MediaDispatcher {
                 let artifact = owner.artifact(&record).await?;
                 cli.execute(request.clone(), operation, artifact, Arc::new(|_| {})).await
             }.await;
+            if _result.is_ok() {
+                let _summary = owner.complete_summary(&request).await;
+            }
             done.cancel();
             let _ = watcher.await;
             drop(access);
@@ -340,7 +346,7 @@ fn operation(input: &MediaDeclaration) -> Result<LocalCliOperation, ApplicationE
                     filename,
                     transcribe: *transcribe,
                     expected_metadata_revision: expected.metadata.revision.clone(),
-                    created_at: created_at.clone(),
+                    created_at: normalized_date(created_at)?,
                 },
                 (None, None) => LocalCliOperation::Import {
                     filename,
@@ -357,7 +363,7 @@ fn operation(input: &MediaDeclaration) -> Result<LocalCliOperation, ApplicationE
                     into: None,
                     transcribe: *transcribe,
                     metadata: LocalInitialSessionMetadata {
-                        created_at: created_at.clone(),
+                        created_at: normalized_date(created_at)?,
                         ..Default::default()
                     },
                 },
@@ -425,4 +431,18 @@ fn unavailable(message: &str) -> ApplicationError {
 }
 fn conflict(message: &str) -> ApplicationError {
     error(ErrorCode::Conflict, message)
+}
+
+fn normalized_date(value: &Option<String>) -> Result<Option<String>, ApplicationError> {
+    value
+        .as_deref()
+        .map(|value| {
+            chrono::DateTime::parse_from_rfc3339(value)
+                .map(|date| {
+                    date.with_timezone(&chrono::Utc)
+                        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+                })
+                .map_err(|_| error(ErrorCode::Validation, "Invalid imported audio date"))
+        })
+        .transpose()
 }
