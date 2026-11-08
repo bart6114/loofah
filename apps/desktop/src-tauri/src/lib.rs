@@ -710,6 +710,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application_export::application_export_session::<tauri::Wry>,
             application_export::remote_export_session::<tauri::Wry>,
             application_export::session_export_cancel::<tauri::Wry>,
+            application_export::session_export_owner::<tauri::Wry>,
             application::application_scope::<tauri::Wry>,
             application::application_processing_available::<tauri::Wry>,
             local_media::commands::application_local_media_available::<tauri::Wry>,

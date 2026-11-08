@@ -59,10 +59,11 @@ fn export_refuses_symlinked_download_directory() {
 async fn cancelled_exports_keep_shutdown_admission_until_physical_work_returns() {
     let state = SessionExportState::default();
     let request = uuid::Uuid::new_v4().to_string();
+    let epoch = state.owner("original").unwrap();
     let work = state
-        .admit("original", &request, CancellationToken::new())
+        .admit("original", &epoch, &request, CancellationToken::new())
         .unwrap();
-    state.cancel("other", &request);
+    state.cancel("other", &epoch, &request);
     assert!(work.check().is_ok());
     state.release_window("original");
     assert!(work.check().is_err());
@@ -77,15 +78,7 @@ async fn cancelled_exports_keep_shutdown_admission_until_physical_work_returns()
     waiting.await.unwrap();
     state.request_shutdown();
     assert!(!state.drain(Duration::from_millis(10)).await);
-    assert!(
-        state
-            .admit(
-                "new",
-                &uuid::Uuid::new_v4().to_string(),
-                CancellationToken::new()
-            )
-            .is_err()
-    );
+    assert!(state.owner("new").is_err());
     release.send(()).unwrap();
     task.await.unwrap();
     assert!(state.drain(Duration::from_secs(1)).await);
@@ -95,27 +88,30 @@ async fn cancelled_exports_keep_shutdown_admission_until_physical_work_returns()
 fn export_pre_admission_cancellation_is_window_scoped_and_cannot_be_evicted() {
     let state = SessionExportState::default();
     let request = uuid::Uuid::new_v4().to_string();
-    state.cancel("first", &request);
+    let epoch = state.owner("first").unwrap();
+    state.cancel("first", &epoch, &request);
     assert_eq!(
         state
-            .admit("first", &request, CancellationToken::new())
+            .admit("first", &epoch, &request, CancellationToken::new())
             .err()
             .unwrap()
             .code,
         ErrorCode::Cancelled
     );
+    let other_epoch = state.owner("other").unwrap();
     let other = state
-        .admit("other", &request, CancellationToken::new())
+        .admit("other", &other_epoch, &request, CancellationToken::new())
         .unwrap();
     assert!(other.check().is_ok());
     drop(other);
     for _ in 0..130 {
-        state.cancel("first", &uuid::Uuid::new_v4().to_string());
+        state.cancel("first", &epoch, &uuid::Uuid::new_v4().to_string());
     }
     assert!(
         state
             .admit(
                 "first",
+                &epoch,
                 &uuid::Uuid::new_v4().to_string(),
                 CancellationToken::new()
             )
@@ -123,17 +119,69 @@ fn export_pre_admission_cancellation_is_window_scoped_and_cannot_be_evicted() {
     );
     assert!(
         state
-            .admit("first", &request, CancellationToken::new())
+            .admit("first", &epoch, &request, CancellationToken::new())
             .is_err()
     );
     state.release_window("first");
+    let next = state.owner("first").unwrap();
+    assert_ne!(epoch, next);
+    assert!(
+        state
+            .admit("first", &epoch, &request, CancellationToken::new())
+            .is_err()
+    );
     assert!(
         state
             .admit(
                 "first",
+                &next,
                 &uuid::Uuid::new_v4().to_string(),
                 CancellationToken::new()
             )
             .is_ok()
     );
+}
+#[test]
+fn retired_export_window_cannot_rebind_or_cancel_the_replacement_generation() {
+    let state = SessionExportState::default();
+    let old = state.owner("window").unwrap();
+    let request = uuid::Uuid::new_v4().to_string();
+    let active = state
+        .admit("window", &old, &request, CancellationToken::new())
+        .unwrap();
+    state.release_window("window");
+    let current = state.owner("window").unwrap();
+    assert_ne!(old, current);
+    assert!(
+        state
+            .admit(
+                "window",
+                &old,
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new()
+            )
+            .is_err()
+    );
+    let mut published = false;
+    assert!(
+        active
+            .publish(|| {
+                published = true;
+                Ok(())
+            })
+            .is_err()
+    );
+    assert!(!published);
+    drop(active);
+    let replacement = state
+        .admit("window", &current, &request, CancellationToken::new())
+        .unwrap();
+    state.cancel("window", &old, &request);
+    replacement
+        .publish(|| {
+            published = true;
+            Ok(())
+        })
+        .unwrap();
+    assert!(published);
 }

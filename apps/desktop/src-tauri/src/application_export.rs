@@ -206,15 +206,25 @@ fn snapshot(
 
 #[tauri::command]
 #[specta::specta]
+pub fn session_export_owner<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::Window<R>,
+) -> Result<String, ApplicationError> {
+    app.state::<SessionExportState>().owner(window.label())
+}
+#[tauri::command]
+#[specta::specta]
 pub async fn application_export_session<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::Window<R>,
+    owner_id: String,
     request_id: String,
     input: SessionExportInput,
 ) -> Result<SessionExportResult, ApplicationError> {
     let source = Source::Local(crate::application::context(&app)?);
     let work = app.state::<SessionExportState>().admit(
         window.label(),
+        &owner_id,
         &request_id,
         CancellationToken::new(),
     )?;
@@ -227,15 +237,16 @@ pub async fn remote_export_session<R: tauri::Runtime>(
     window: tauri::Window<R>,
     connection_id: String,
     scope: CaptureScope,
+    owner_id: String,
     request_id: String,
     input: SessionExportInput,
 ) -> Result<SessionExportResult, ApplicationError> {
     let (client, profile, cancel, pending) = app
         .state::<crate::remote::RemoteState>()
         .admit_export(&connection_id, window.label(), &request_id)?;
-    let work = app
-        .state::<SessionExportState>()
-        .admit(window.label(), &request_id, cancel)?;
+    let work =
+        app.state::<SessionExportState>()
+            .admit(window.label(), &owner_id, &request_id, cancel)?;
     let on_drop = work.cancel.clone().drop_guard();
     let authority = client
         .bind_authenticated_scope(profile, scope, work.cancel.clone())
@@ -256,10 +267,11 @@ pub async fn remote_export_session<R: tauri::Runtime>(
 pub fn session_export_cancel<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::Window<R>,
+    owner_id: String,
     request_id: String,
 ) {
     app.state::<SessionExportState>()
-        .cancel(window.label(), &request_id);
+        .cancel(window.label(), &owner_id, &request_id);
 }
 async fn launch<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
@@ -409,7 +421,7 @@ async fn run<R: tauri::Runtime>(
         if let Some(guard) = &guard {
             guard.check_current()?;
         }
-        let path = files::publish(stage)?;
+        let path = work.publish(|| files::publish(stage))?;
         Ok(SessionExportResult {
             path: path.to_string_lossy().into_owned(),
         })

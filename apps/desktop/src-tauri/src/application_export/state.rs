@@ -17,19 +17,39 @@ struct Inner {
 #[derive(Default)]
 struct Registry {
     stopping: bool,
-    active: HashMap<(String, String), CancellationToken>,
-    cancelled: HashSet<(String, String)>,
-    cancellation_full: HashSet<String>,
+    owners: HashMap<String, String>,
+    active: HashMap<(String, String, String), CancellationToken>,
+    cancelled: HashSet<(String, String, String)>,
+    cancellation_full: HashSet<(String, String)>,
 }
 pub(super) struct ExportWork {
     state: SessionExportState,
-    key: (String, String),
+    key: (String, String, String),
     pub cancel: CancellationToken,
 }
 impl SessionExportState {
+    pub(super) fn owner(&self, window: &str) -> Result<String, ApplicationError> {
+        let mut state = self.0.state.lock().unwrap();
+        if state.stopping {
+            return Err(error(
+                ErrorCode::Unavailable,
+                "Export service is shutting down",
+            ));
+        }
+        if let Some(owner) = state.owners.get(window) {
+            return Ok(owner.clone());
+        }
+        if state.owners.len() >= 32 {
+            return Err(error(ErrorCode::ResourceLimit, "Too many export windows"));
+        }
+        let owner = uuid::Uuid::new_v4().to_string();
+        state.owners.insert(window.into(), owner.clone());
+        Ok(owner)
+    }
     pub(super) fn admit(
         &self,
         owner: &str,
+        epoch: &str,
         request: &str,
         parent: CancellationToken,
     ) -> Result<ExportWork, ApplicationError> {
@@ -41,14 +61,24 @@ impl SessionExportState {
             ));
         }
         let mut state = self.0.state.lock().unwrap();
-        let key = (owner.into(), request.into());
+        let key = (owner.into(), epoch.into(), request.into());
+        if state.owners.get(owner).map(String::as_str) != Some(epoch) {
+            return Err(error(
+                ErrorCode::Cancelled,
+                "The original export window is closed",
+            ));
+        }
         if state.stopping {
             return Err(error(
                 ErrorCode::Unavailable,
                 "Export service is shutting down",
             ));
         }
-        if state.cancelled.contains(&key) || state.cancellation_full.contains(owner) {
+        if state.cancelled.contains(&key)
+            || state
+                .cancellation_full
+                .contains(&(owner.into(), epoch.into()))
+        {
             return Err(error(
                 ErrorCode::Cancelled,
                 "This export request was cancelled",
@@ -83,21 +113,27 @@ impl SessionExportState {
     }
     pub fn release_window(&self, owner: &str) {
         let mut state = self.0.state.lock().unwrap();
-        state.cancelled.retain(|(window, _)| window != owner);
-        state.cancellation_full.remove(owner);
-        for ((window, _), token) in &state.active {
+        state.owners.remove(owner);
+        state.cancelled.retain(|(window, _, _)| window != owner);
+        state
+            .cancellation_full
+            .retain(|(window, _)| window != owner);
+        for ((window, _, _), token) in &state.active {
             if window == owner {
                 token.cancel();
             }
         }
     }
-    pub(super) fn cancel(&self, owner: &str, request: &str) {
+    pub(super) fn cancel(&self, owner: &str, epoch: &str, request: &str) {
         if !uuid::Uuid::parse_str(request).is_ok_and(|id| !id.is_nil() && id.to_string() == request)
         {
             return;
         }
         let mut state = self.0.state.lock().unwrap();
-        let key = (owner.to_owned(), request.to_owned());
+        if state.owners.get(owner).map(String::as_str) != Some(epoch) {
+            return;
+        }
+        let key = (owner.to_owned(), epoch.to_owned(), request.to_owned());
         if let Some(token) = state.active.get(&key) {
             token.cancel();
         }
@@ -106,11 +142,11 @@ impl SessionExportState {
         if state
             .cancelled
             .iter()
-            .filter(|(window, _)| window == owner)
+            .filter(|(window, generation, _)| window == owner && generation == epoch)
             .count()
             >= 128
         {
-            state.cancellation_full.insert(owner.into());
+            state.cancellation_full.insert((owner.into(), epoch.into()));
         } else {
             state.cancelled.insert(key);
         }
@@ -132,6 +168,27 @@ impl SessionExportState {
     }
 }
 impl ExportWork {
+    pub fn publish<T>(
+        &self,
+        commit: impl FnOnce() -> Result<T, ApplicationError>,
+    ) -> Result<T, ApplicationError> {
+        let registry = self.state.0.state.lock().unwrap();
+        self.check()?;
+        if registry.stopping
+            || registry.owners.get(&self.key.0) != Some(&self.key.1)
+            || !registry.active.contains_key(&self.key)
+        {
+            return Err(error(
+                ErrorCode::Cancelled,
+                "The original export window is closed",
+            ));
+        }
+        // Hold only for the already-staged, no-clobber filesystem commit so
+        // navigation cannot retire the window between admission and publication.
+        let result = commit();
+        drop(registry);
+        result
+    }
     pub fn check(&self) -> Result<(), ApplicationError> {
         if self.cancel.is_cancelled() {
             Err(error(ErrorCode::Cancelled, "Export cancelled"))
