@@ -60,8 +60,7 @@ impl LocalMediaHost for NativeMediaHost {
         temporary: PathBuf,
         progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
     ) -> LocalMediaFuture<LocalCliArtifact> {
-        hypr_loofah_local_media::LocalMediaEngine::new()
-            .normalize(source, filename, temporary, progress)
+        hypr_loofah_core::local_cli::normalize_media_artifact(source, filename, temporary, progress)
     }
     fn transcribe(
         &self,

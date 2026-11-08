@@ -5,6 +5,7 @@ impl LocalCli {
         &self,
         request_id: String,
     ) -> Result<LocalCliOutput, ApplicationError> {
+        let _authorization = self.authorize_media().await?;
         let parsed = uuid::Uuid::parse_str(&request_id)
             .ok()
             .filter(|id| !id.is_nil() && id.to_string() == request_id)
@@ -40,9 +41,11 @@ impl LocalCli {
         request_id: &str,
         parsed: uuid::Uuid,
     ) -> Result<LocalCliReply, ApplicationError> {
-        let _request =
-            self.context
-                .admit_session_lifecycle_request("local-media", "local-cli", parsed)?;
+        let _request = self.context.admit_session_lifecycle_request(
+            "local-media",
+            self.media_principal(),
+            parsed,
+        )?;
         let root = &self
             .context
             .operations
@@ -54,9 +57,12 @@ impl LocalCli {
                 )
             })?
             .root;
-        let claim =
-            journal::Claim::recover(self.context.clone(), root.join("local-media"), request_id)
-                .await?;
+        let claim = journal::Claim::recover(
+            self.context.clone(),
+            root.join(self.media_directory("local-media")),
+            request_id,
+        )
+        .await?;
         if let Some(result) = claim.result() {
             let unresolved = match result {
                 Err(cause) => cause.mutation_outcome == Some(MutationOutcome::Unknown),
@@ -105,9 +111,10 @@ impl LocalCli {
             }) => {
                 let session_id = match into {
                     Some(id) => id,
-                    None => self
-                        .context
-                        .created_session_id("local-cli-import", request_id)?,
+                    None => self.context.created_session_id(
+                        &self.media_namespace("local-cli-import"),
+                        request_id,
+                    )?,
                 };
                 let _admission = self.context.admit_session_work(&session_id).await?;
                 let import = claim.import().ok_or_else(|| unknown("No normalized import was durably bound; inspect the original session before an explicit new import"))?;
@@ -115,7 +122,7 @@ impl LocalCli {
                 if request.request_id != parsed
                     || request.session_id != session_id
                     || import.meta.id != session_id
-                    || request.namespace != "local-cli-import"
+                    || request.namespace != self.media_namespace("local-cli-import")
                     || request.vault_id != self.context.events.vault_id()
                     || request.expected != RecordingExpectation::AbsentImport
                 {
@@ -196,7 +203,7 @@ impl LocalCli {
         let plan = self.context.store.prepare_transcript_publication_status(
             &root.join("transcript-publications"),
             TranscriptPublicationIdentity {
-                vault_id: self.context.events.vault_id(), namespace: "local-cli-transcribe".into(),
+                vault_id: self.context.events.vault_id(), namespace: self.media_namespace("local-cli-transcribe"),
                 request_id: uuid::Uuid::parse_str(request_id).unwrap(),
             },
         ).await.map_err(|cause| storage_error(cause, false))?

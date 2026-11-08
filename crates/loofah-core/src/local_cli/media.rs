@@ -96,21 +96,17 @@ impl LocalCli {
         .collect::<String>();
         let _request = self.context.admit_session_lifecycle_request(
             "local-media",
-            "local-cli",
+            self.media_principal(),
             uuid::Uuid::parse_str(&request_id).unwrap(),
         )?;
+        drop(self.authorize_media().await?);
         let mut claim = journal::Claim::open(
             self.context.clone(),
-            root.join("local-media"),
+            root.join(self.media_directory("local-media")),
             &request_id,
             fingerprint,
             operation.clone(),
-            self.context.settings.read_current().await.map_err(|_| {
-                error(
-                    ErrorCode::Unavailable,
-                    "Cannot freeze Local transcription settings",
-                )
-            })?,
+            self.media_config().await?,
         )
         .await?;
         if let Some(result) = claim.result() {
@@ -270,10 +266,10 @@ impl LocalCli {
                 "Import into an existing meeting cannot override its metadata",
             ));
         }
-        let namespace = "local-cli-import";
+        let namespace = self.media_namespace("local-cli-import");
         let session_id = match &into {
             Some(id) => id.clone(),
-            None => self.context.created_session_id(namespace, request_id)?,
+            None => self.context.created_session_id(&namespace, request_id)?,
         };
         let _admission = self.context.admit_session_work(&session_id).await?;
         self.context
@@ -313,12 +309,13 @@ impl LocalCli {
         }
         let source_binding = serde_json::to_string(&(&filename, &source.sha256, source.size_bytes))
             .map_err(|_| error(ErrorCode::Validation, "Invalid import identity"))?;
+        let authorization = self.authorize_media().await?;
         let meta = match existing {
             Some(meta) => meta,
             None => {
                 self.context
                     .create_session_with_metadata(
-                        namespace.into(),
+                        namespace.clone(),
                         request_id.into(),
                         CreateSessionRequest {
                             title: title.unwrap_or_else(|| {
@@ -341,11 +338,12 @@ impl LocalCli {
                     .await?
             }
         };
+        drop(authorization);
         let normalized = host
             .normalize(
                 source,
                 filename,
-                root.join("local-media-artifacts"),
+                root.join(self.media_directory("local-media-artifacts")),
                 progress.clone(),
             )
             .await
@@ -396,6 +394,7 @@ impl LocalCli {
             .recheck()
             .await
             .map_err(|cause| storage_error(cause, true))?;
+        let _authorization = self.authorize_media().await?;
         ticket.committing();
         match plan
             .commit()
@@ -443,6 +442,7 @@ impl LocalCli {
                     .await;
             }
         }
+        drop(_authorization);
         let audio_path = self
             .context
             .store
@@ -517,6 +517,20 @@ impl LocalCli {
                 "Recording or transcript changed before manual transcription",
             ));
         }
+        if let Some(expected) = self
+            .media_scope
+            .as_ref()
+            .and_then(|scope| scope.baseline.as_ref())
+        {
+            if actual.transcript_revision != expected.transcript_revision
+                || actual.transcript_present != expected.transcript_present
+            {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "Original media transcript changed before inference",
+                ));
+            }
+        }
         let config = claim.config()?;
         let baseline = source.baseline();
         let audio = source.audio();
@@ -543,7 +557,7 @@ impl LocalCli {
                 session_id.into(),
                 audio,
                 config,
-                root.join("local-media-artifacts"),
+                root.join(self.media_directory("local-media-artifacts")),
                 progress,
             )
             .await?;
@@ -556,7 +570,7 @@ impl LocalCli {
         claim.bind_transcription(outcome.clone()).await?;
         let identity = TranscriptPublicationIdentity {
             vault_id: self.context.events.vault_id(),
-            namespace: "local-cli-transcribe".into(),
+            namespace: self.media_namespace("local-cli-transcribe"),
             request_id: uuid::Uuid::parse_str(request_id).unwrap(),
         };
         let plan = self
@@ -593,6 +607,7 @@ impl LocalCli {
                 "Original session was replaced; generated transcript is retained",
             ));
         }
+        let _authorization = self.authorize_media().await?;
         match plan
             .recheck()
             .await

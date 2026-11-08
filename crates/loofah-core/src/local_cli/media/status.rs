@@ -14,7 +14,7 @@ impl LocalCli {
             .as_ref()
             .ok_or_else(|| error(ErrorCode::Unavailable, "Local media state is unavailable"))?
             .root
-            .join("local-media");
+            .join(self.media_directory("local-media"));
         let claim = journal::Claim::recover(self.context.clone(), root, request).await?;
         let (kind, session) = match claim.operation() {
             Some(LocalCliOperation::Import { into, .. }) => (
@@ -23,7 +23,7 @@ impl LocalCli {
                     Some(session) => session,
                     None => self
                         .context
-                        .created_session_id("local-cli-import", request)?,
+                        .created_session_id(&self.media_namespace("local-cli-import"), request)?,
                 },
             ),
             Some(LocalCliOperation::ImportIntoChecked { session_id, .. }) => {
@@ -95,7 +95,7 @@ impl LocalCli {
             .as_ref()
             .ok_or_else(|| error(ErrorCode::Unavailable, "Local media state is unavailable"))?
             .root
-            .join("local-media");
+            .join(self.media_directory("local-media"));
         let pin = self.context.clone();
         let ids = tokio::task::spawn_blocking(move || {
             let _pin = pin;
@@ -184,7 +184,7 @@ impl LocalCli {
             .as_ref()
             .ok_or_else(|| error(ErrorCode::Unavailable, "Local media state is unavailable"))?
             .root
-            .join("local-media");
+            .join(self.media_directory("local-media"));
         let claim = journal::Claim::recover(self.context.clone(), root, request).await?;
         if !matches!(claim.result(), Some(Ok(_))) {
             return Err(error(
@@ -258,9 +258,12 @@ impl LocalCli {
             .ok_or_else(|| error(ErrorCode::Unavailable, "Local media state is unavailable"))?
             .root
             .clone();
-        let claim =
-            journal::Claim::recover(self.context.clone(), root.join("local-media"), request)
-                .await?;
+        let claim = journal::Claim::recover(
+            self.context.clone(),
+            root.join(self.media_directory("local-media")),
+            request,
+        )
+        .await?;
         let Some(bound) = claim.transcription() else {
             return Ok(None);
         };
@@ -271,7 +274,7 @@ impl LocalCli {
                 &root.join("transcript-publications"),
                 TranscriptPublicationIdentity {
                     vault_id: self.context.events.vault_id(),
-                    namespace: "local-cli-transcribe".into(),
+                    namespace: self.media_namespace("local-cli-transcribe"),
                     request_id: uuid::Uuid::parse_str(request).unwrap(),
                 },
             )

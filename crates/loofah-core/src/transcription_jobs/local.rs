@@ -69,6 +69,21 @@ impl VaultContext {
         prepared: PreparedLocalInference,
         cancel: CancellationToken,
     ) -> Result<crate::local_cli::LocalMediaTranscription, ApplicationError> {
+        self.complete_media_inference(
+            input,
+            prepared,
+            cancel,
+            crate::local_capture_intents::TRANSCRIPTION_OWNER.into(),
+        )
+        .await
+    }
+    pub(super) async fn complete_media_inference(
+        self: &Arc<Self>,
+        input: LocalInferenceInput,
+        prepared: PreparedLocalInference,
+        cancel: CancellationToken,
+        principal: String,
+    ) -> Result<crate::local_cli::LocalMediaTranscription, ApplicationError> {
         let service = self.transcription_service()?;
         let PreparedLocalInference { prepared, request } = prepared;
         if request.session_id != input.session_id
@@ -81,7 +96,7 @@ impl VaultContext {
         }
         let work = TranscriptionWork {
             job_id: input.request_id,
-            principal: crate::local_capture_intents::TRANSCRIPTION_OWNER.into(),
+            principal,
             request: request.clone(),
         };
         let access = service

@@ -28,6 +28,10 @@ fn validate(intent: &Intent) -> Result<(), ApplicationError> {
     canonical_uuid(&intent.transcript_id)?;
     validate_filename(&intent.filename)?;
     if intent.version != 1
+        || intent
+            .principal
+            .as_ref()
+            .is_some_and(|p| p.is_empty() || p.len() > 512 || p.chars().any(char::is_control))
         || intent.source_bytes > SOURCE_LIMIT
         || !is_transcription_sha256(&intent.source_sha256)
         || !is_transcription_sha256(&intent.transcript_revision)
@@ -134,7 +138,7 @@ pub(super) fn prepare(
         words.push(serde_json::json!({"id":uuid::Uuid::new_v4().to_string(),"text":cue.text,"start_ms":start,"end_ms":end,"channel":2}));
     }
     let transcript:TranscriptWithData=serde_json::from_value(serde_json::json!({
-        "id":intent.transcript_id,"session_id":intent.session_id,"user_id":uuid::Uuid::nil().to_string(),
+        "id":intent.transcript_id,"session_id":intent.session_id,"user_id":intent.principal.clone().unwrap_or_else(|| uuid::Uuid::nil().to_string()),
         "created_at":intent.created_at,"started_at":intent.started_at,"ended_at":null,
         "memo_md":intent.memo,"words":words,"speaker_hints":[]
     })).map_err(unknown)?;
@@ -174,7 +178,11 @@ pub(super) fn read_parsed(directory: &Path, intent: &Intent) -> Result<Parsed, A
         || transcript.created_at != intent.created_at
         || transcript.started_at != intent.started_at
         || transcript.memo_md != intent.memo
-        || transcript.user_id != uuid::Uuid::nil().to_string()
+        || transcript.user_id
+            != intent
+                .principal
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::nil().to_string())
     {
         return Err(unknown("Retained subtitle result identity changed"));
     }

@@ -33,6 +33,8 @@ struct Intent {
     transcript_id: String,
     created_at: String,
     started_at: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    principal: Option<String>,
     memo: String,
 }
 #[derive(Serialize, Deserialize)]
@@ -64,7 +66,7 @@ impl LocalCli {
         let request_uuid = canonical_uuid(&request)?;
         let _request = self.context.admit_session_lifecycle_request(
             "local-subtitles",
-            "local-cli",
+            self.media_principal(),
             request_uuid,
         )?;
         let root = self
@@ -78,12 +80,12 @@ impl LocalCli {
                 )
             })?
             .root
-            .join("local-subtitles");
+            .join(self.media_directory("local-subtitles"));
         let directory = root.join(&request);
         let publication_root = root.join("publications");
         let identity = TranscriptPublicationIdentity {
             vault_id: self.context.events.vault_id(),
-            namespace: "local-subtitles".into(),
+            namespace: self.media_namespace("local-subtitles"),
             request_id: request_uuid,
         };
         let path = directory.clone();
@@ -134,13 +136,19 @@ impl LocalCli {
         self.context
             .ensure_capture_session_lifecycle_idle(&session)
             .await?;
-        let host = self.context.local_lifecycle_host.get().ok_or_else(|| {
-            error(
-                ErrorCode::Unavailable,
-                "Local physical ownership proof is unavailable",
-            )
-        })?;
-        let _physical = host.admit(&self.context, &session).await?;
+        let _authorization = self.authorize_media().await?;
+        let _physical = if self.media_scope.is_none() {
+            let host = self.context.local_lifecycle_host.get().ok_or_else(|| {
+                error(
+                    ErrorCode::Unavailable,
+                    "Local physical ownership proof is unavailable",
+                )
+            })?;
+            Some(host.admit(&self.context, &session).await?)
+        } else {
+            // Server producers are registered in Core; no Native actor exists there.
+            None
+        };
         if let Some(existing) = &intent
             && let Some(plan) = self
                 .context
@@ -164,6 +172,21 @@ impl LocalCli {
             .or_else(|| artifact.as_ref().map(|value| value.sha256.clone()))
             .ok_or_else(|| unknown("Original subtitle source is unavailable"))?;
         let source = subtitle_source(&self.context, &session, source_sha.clone()).await?;
+        if let Some(expected) = self
+            .media_scope
+            .as_ref()
+            .and_then(|scope| scope.baseline.as_ref())
+        {
+            if source.transcript_revision() != expected.transcript_revision
+                || source.transcript_present() != expected.transcript_present
+                || source.session_created_at() != expected.metadata.meta.created_at
+            {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "Original subtitle baseline changed",
+                ));
+            }
+        }
         if let Some(existing) = &intent {
             check_source(existing, &source)?;
         } else {
@@ -191,10 +214,23 @@ impl LocalCli {
                 transcript_id: uuid::Uuid::new_v4().to_string(),
                 created_at: now.to_rfc3339(),
                 started_at: now.timestamp_millis() as f64,
+                principal: self
+                    .media_scope
+                    .as_ref()
+                    .map(|scope| scope.principal.clone()),
                 memo: crate::transcription_jobs::local_memo(&self.context, &session).await?,
             });
         }
         let intent = intent.unwrap();
+        drop(_authorization);
+        if self.media_scope.is_some()
+            && self
+                .media
+                .as_ref()
+                .is_some_and(|host| host.cancellation(&request).is_cancelled())
+        {
+            return Err(error(ErrorCode::Cancelled, "Subtitle import stopped"));
+        }
         let intent_copy = intent.clone();
         let path = directory.clone();
         let owner = self.context.clone();
@@ -205,6 +241,18 @@ impl LocalCli {
         .await
         .map_err(unknown)??;
         let words = parsed.transcript.words.len();
+        if self.media_scope.is_some()
+            && self
+                .media
+                .as_ref()
+                .is_some_and(|host| host.cancellation(&request).is_cancelled())
+        {
+            return Err(error(
+                ErrorCode::Cancelled,
+                "Subtitle import stopped; parsed output is retained",
+            ));
+        }
+        let _authorization = self.authorize_media().await?;
         let outcome = self
             .context
             .store
@@ -221,7 +269,7 @@ impl LocalCli {
     }
 }
 
-async fn subtitle_source(
+pub(super) async fn subtitle_source(
     context: &Arc<VaultContext>,
     session: &str,
     sha: String,

@@ -22,6 +22,38 @@ impl VaultContext {
         temporary: PathBuf,
         cancel: CancellationToken,
     ) -> Result<crate::local_cli::LocalMediaTranscription, ApplicationError> {
+        if config.current_stt_provider.as_deref() != Some("fmtr") {
+            return Err(error(
+                ErrorCode::Validation,
+                "Select an on-device transcription model in Settings",
+            ));
+        }
+        self.transcribe_scoped_media_artifact(
+            crate::local_capture_intents::TRANSCRIPTION_OWNER.into(),
+            request_id,
+            source,
+            filename,
+            session_id,
+            audio,
+            config,
+            temporary,
+            cancel,
+        )
+        .await
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn transcribe_scoped_media_artifact(
+        self: &Arc<Self>,
+        principal: String,
+        request_id: String,
+        source: LocalCliArtifact,
+        filename: String,
+        session_id: String,
+        audio: SessionAudio,
+        config: AppConfig,
+        temporary: PathBuf,
+        cancel: CancellationToken,
+    ) -> Result<crate::local_cli::LocalMediaTranscription, ApplicationError> {
         let context = self.clone();
         tokio::spawn(async move {
             if !uuid::Uuid::parse_str(&request_id)
@@ -35,12 +67,6 @@ impl VaultContext {
             }
             validate_session_id(&session_id)
                 .map_err(|_| error(ErrorCode::Validation, "Invalid Local media session"))?;
-            if config.current_stt_provider.as_deref() != Some("fmtr") {
-                return Err(error(
-                    ErrorCode::Validation,
-                    "Select an on-device transcription model in Settings",
-                ));
-            }
             let options = LocalTranscriptionOptions {
                 model: config
                     .current_stt_model
@@ -100,10 +126,11 @@ impl VaultContext {
                 owner: Box::new(materialized.clone()),
             };
             let result = context
-                .complete_local_inference(
+                .complete_media_inference(
                     input,
                     PreparedLocalInference { prepared, request },
                     cancel,
+                    principal,
                 )
                 .await;
             drop(materialized);

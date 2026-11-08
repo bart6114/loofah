@@ -107,6 +107,7 @@ impl LocalCli {
                 read_only: !session_only,
                 session_only,
                 media: None,
+                media_scope: None,
             }))
         })
         .await

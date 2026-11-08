@@ -9,7 +9,6 @@ use hypr_loofah_core::{
 use hypr_loofah_protocol::{ApplicationError, ErrorCode, LocalCliProgress};
 use owhisper_interface::batch_stream::BatchStreamEvent;
 use std::{
-    io::Seek,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -29,39 +28,7 @@ impl LocalMediaHost for LocalMediaEngine {
         temporary: PathBuf,
         progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
     ) -> LocalMediaFuture<LocalCliArtifact> {
-        Box::pin(async move {
-            tokio::task::spawn_blocking(move || {
-                let input = source.materialize(&filename, temporary)?;
-                let path = input.path();
-                report(&progress, "importing audio", 0);
-                let output = input.directory().join("audio.mp3");
-                hypr_fs_sync_core::audio::import_audio(
-                    &path,
-                    &input.directory().join("encode.tmp"),
-                    &output,
-                )
-                .map_err(failure)?;
-                let file = std::fs::File::open(output).map_err(failure)?;
-                let metadata = hypr_fs_sync_core::media::metadata_from_reader(
-                    "audio.mp3",
-                    "audio/mpeg",
-                    &file,
-                )
-                .map_err(failure)?;
-                let mut file = file;
-                file.rewind().map_err(failure)?;
-                report(&progress, "imported audio", 100);
-                Ok(LocalCliArtifact::new(
-                    file,
-                    metadata.size_bytes,
-                    metadata.sha256,
-                    None,
-                    Box::new(input),
-                ))
-            })
-            .await
-            .map_err(failure)?
-        })
+        hypr_loofah_core::local_cli::normalize_media_artifact(source, filename, temporary, progress)
     }
 
     fn transcribe(

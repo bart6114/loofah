@@ -11,7 +11,7 @@ impl LocalCli {
             .as_ref()
             .ok_or_else(|| unknown("Local operation storage unavailable"))?
             .root
-            .join("local-subtitles")
+            .join(self.media_directory("local-subtitles"))
             .join(request);
         let request = request.to_owned();
         let owner = self.context.clone();
@@ -43,7 +43,7 @@ impl LocalCli {
             .as_ref()
             .ok_or_else(|| unknown("Local operation storage unavailable"))?
             .root
-            .join("local-subtitles");
+            .join(self.media_directory("local-subtitles"));
         let directory = root.join(request);
         let path = directory.clone();
         let owner = self.context.clone();
@@ -64,7 +64,7 @@ impl LocalCli {
                 &root.join("publications"),
                 TranscriptPublicationIdentity {
                     vault_id: intent.vault_id.clone(),
-                    namespace: "local-subtitles".into(),
+                    namespace: self.media_namespace("local-subtitles"),
                     request_id: request_uuid,
                 },
             )
@@ -137,7 +137,7 @@ impl LocalCli {
             .as_ref()
             .ok_or_else(|| unknown("Local operation storage unavailable"))?
             .root
-            .join("local-subtitles");
+            .join(self.media_directory("local-subtitles"));
         let owner = self.context.clone();
         let ids = tokio::task::spawn_blocking(move || {
             let _owner = owner;

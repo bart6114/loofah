@@ -10,6 +10,12 @@ mod maintenance;
 mod media;
 pub use media::{LocalMediaFuture, LocalMediaHost, LocalMediaTranscription};
 mod mutations;
+mod normalization;
+mod remote;
+mod scope;
+pub use normalization::normalize_media_artifact;
+pub use remote::{MediaDispatcher, MediaLimits};
+pub use scope::MediaAuthorizer as MediaAuthorization;
 mod read_owner;
 mod subtitles;
 #[cfg(test)]
@@ -24,6 +30,7 @@ pub struct LocalCli {
     read_only: bool,
     session_only: bool,
     media: Option<Arc<dyn LocalMediaHost>>,
+    media_scope: Option<Arc<scope::MediaExecutionScope>>,
 }
 pub struct LocalCliOutput {
     pub reply: LocalCliReply,
@@ -43,6 +50,7 @@ impl LocalCli {
             read_only: false,
             session_only: false,
             media: None,
+            media_scope: None,
         })
     }
 

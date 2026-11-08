@@ -214,6 +214,7 @@ async fn subtitle_mutation_requires_original_physical_host_and_exclusive_lifecyc
 fn retained_parsing_reuses_original_ids_and_rejects_changed_declarations_or_source() {
     let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let intent = Intent {
+        principal: None,
         version: 1,
         vault_id: "vault".into(),
         request_id: uuid::Uuid::new_v4().to_string(),
@@ -259,6 +260,7 @@ async fn retained_subtitle_result_recovers_without_caller_file_and_never_rebinds
             .await
             .unwrap();
         let intent = Intent {
+            principal: None,
             version: 1,
             vault_id: f.runtime.context.events.vault_id(),
             request_id: request.clone(),
