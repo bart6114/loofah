@@ -10,6 +10,7 @@ const native = vi.hoisted(() => ({
     deviceRecordingFinishRecovery: vi.fn(),
     deviceRecordingExport: vi.fn(),
     deviceRecordingResumeUpload: vi.fn(),
+    deviceRecordingRetire: vi.fn(),
     deviceRecordingSubscribe: vi.fn(),
     deviceRecordingUnsubscribe: vi.fn(),
   },
@@ -182,4 +183,67 @@ it("lists retained device captures without selecting a signed-in destination", a
   );
   expect(native.commands.deviceRecordingStart).not.toHaveBeenCalled();
   monitor.dispose();
+});
+
+it("retirement is absent from recovery-only monitors and refuses offline or foreign scope before dispatch", async () => {
+  expect("retire" in createDeviceRecordingMonitor()).toBe(false);
+  const offline = createDeviceRecordingClient({ scope });
+  await expect(
+    offline.retire(identity, "cleanup", () => true),
+  ).rejects.toThrow();
+  const client = createDeviceRecordingClient({
+    scope,
+    connectionId: "original",
+  });
+  await expect(
+    client.retire(identity, "cleanup", () => false),
+  ).rejects.toThrow();
+  await expect(
+    client.retire(
+      { ...identity, scope: { ...scope, vault_id: "other" } },
+      "cleanup",
+      () => true,
+    ),
+  ).rejects.toMatchObject({ detail: { mutation_outcome: "not_committed" } });
+  expect(native.commands.deviceRecordingRetire).not.toHaveBeenCalled();
+});
+it("retirement keeps the original connection and request after unknown IPC completion and fences late owner results", async () => {
+  const client = createDeviceRecordingClient({
+    scope,
+    connectionId: "original",
+  });
+  native.commands.deviceRecordingRetire.mockRejectedValueOnce(
+    new Error("lost reply"),
+  );
+  await expect(
+    client.retire(identity, "same-cleanup", () => true),
+  ).rejects.toMatchObject({
+    detail: { request_id: "same-cleanup", mutation_outcome: "unknown" },
+  });
+  let finish!: (value: unknown) => void;
+  native.commands.deviceRecordingRetire.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  let current = true;
+  const pending = client.retire(identity, "same-cleanup", () => current);
+  current = false;
+  finish({
+    status: "ok",
+    data: { identity, retirement: { state: "retired" } },
+  });
+  await expect(pending).rejects.toMatchObject({
+    detail: { request_id: "same-cleanup", mutation_outcome: "unknown" },
+  });
+  expect(native.commands.deviceRecordingRetire.mock.calls).toEqual([
+    ["original", identity, "same-cleanup"],
+    ["original", identity, "same-cleanup"],
+  ]);
+  client.dispose();
+  await expect(
+    client.retire(identity, "same-cleanup", () => true),
+  ).rejects.toThrow();
+  expect(native.commands.deviceRecordingRetire).toHaveBeenCalledTimes(2);
 });

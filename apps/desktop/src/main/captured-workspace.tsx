@@ -6,6 +6,7 @@ import { CapturedMainLayout } from "./layout";
 import { useCapturedMainLifecycle } from "./lifecycle";
 import { CapturedMainShellFrame } from "./shell-frame";
 
+import { DeviceRecordingAccess } from "~/shared/application/device-recording-host";
 import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 import type { VaultClient } from "~/shared/application/vault-client";
 import {
@@ -38,6 +39,7 @@ export function MainWorkspace({
         if (change.kind === "catalog_changed") onCatalogChanged?.();
       }}
     >
+      <DeviceRecordingAccess />
       <ConnectedWorkspace
         deviceState={deviceState}
         managePins={managePins}

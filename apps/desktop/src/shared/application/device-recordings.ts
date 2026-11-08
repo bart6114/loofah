@@ -57,6 +57,51 @@ export function createDeviceRecordingClient({
       if (isDisposed() || signal?.aborted) throw unknown();
       return applicationResult(result);
     },
+    async retire(
+      identity: CaptureIdentity,
+      requestId: string,
+      isCurrent: () => boolean,
+    ) {
+      assertOpen();
+      if (!connectionId || !isCurrent()) throw connectionClosed();
+      if (
+        identity.scope.server !== destination.server ||
+        identity.scope.member_id !== destination.member_id ||
+        identity.scope.vault_id !== destination.vault_id
+      )
+        throw new ApplicationRequestError({
+          code: "conflict",
+          message:
+            "Select the recording's original server account and vault before cleanup.",
+          request_id: requestId,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: "not_committed",
+        });
+      const original = structuredClone(identity);
+      const unknown = () =>
+        new ApplicationRequestError({
+          code: "unavailable",
+          message:
+            "Check the original cleanup status before retrying. Its request has been retained.",
+          request_id: requestId,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: "unknown",
+        });
+      let result;
+      try {
+        result = await commands.deviceRecordingRetire(
+          connectionId,
+          original,
+          requestId,
+        );
+      } catch {
+        throw unknown();
+      }
+      if (isDisposed() || !isCurrent()) throw unknown();
+      return applicationResult(result);
+    },
     async resumeUpload(identity: CaptureIdentity) {
       assertOpen();
       if (!connectionId) throw connectionClosed();

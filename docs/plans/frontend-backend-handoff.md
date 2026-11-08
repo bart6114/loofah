@@ -149,7 +149,20 @@ this queues raw audio, not a general editable offline note. Upload and publicati
 remain authorized against the original destination. Signed-out recovery can
 export retained WAV audio without clobbering a destination, or explicitly prepare
 a stopped, timed prefix for later upload. Original PCM, checksum chain and identity
-are retained; automatic device cleanup is disabled.
+are retained by default; automatic device cleanup is disabled. Explicit **Free
+device audio** is available only for the original connected, editable Remote
+scope. Native persists the original cleanup UUID before contacting the server;
+Core verifies the original publication and actual child/source drains, and the
+SDK independently streams the canonical bytes before device retirement. The
+original profile generation, authenticated client, recording lease and exclusive
+source admission remain owned through exact private-file unlinks. A later
+intentional server replacement is permitted: the lease pins the verified file
+generation, not its pathname forever. Private spool files must not be externally
+edited; final identity/stamp checks establish unchanged ownership, not a second
+hash CAS. Declared cleanup keeps intact raw audio exportable; interrupted removal
+requires explicit same-UUID verification, and completed receipts cannot reopen
+raw authority. Startup never removes source files. Native/Windows acceptance and
+full source validation still gate completion of this retention slice.
 
 Shared checked session read/delete/restore is implemented across Core, Store,
 IPC, HTTPS, SDK and UI. **Local shared lifecycle activation remains default OFF.**

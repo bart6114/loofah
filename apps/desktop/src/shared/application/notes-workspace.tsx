@@ -18,7 +18,10 @@ import {
 
 import { Button } from "@hypr/ui/components/ui/button";
 
-import { DeviceRecordButton } from "./device-recording-host";
+import {
+  DeviceRecordButton,
+  DeviceRecordingAccess,
+} from "./device-recording-host";
 import { DeviceRecovery } from "./device-recovery";
 import { documentDraftClient, documentDraftId } from "./document-draft";
 import { NativeDraftStore } from "./draft-store";
@@ -55,6 +58,7 @@ export function VaultNotesWorkspace({
         if (change.kind === "catalog_changed") onCatalogChanged?.();
       }}
     >
+      <DeviceRecordingAccess />
       <WorkspaceHost />
     </VaultClientProvider>
   );

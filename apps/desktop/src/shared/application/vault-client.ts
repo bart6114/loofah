@@ -117,6 +117,7 @@ export type VaultClientEvent =
 
 export type VaultClient = {
   readonly scope: string;
+  readonly nativeConnectionId?: string;
   readonly networkMode: "always" | "online";
   readonly canEdit: boolean;
   readonly attachmentPresentation: AttachmentPresentation;
@@ -750,6 +751,7 @@ export function connectRemoteVault(
   const vaultId = vault.id;
   return {
     scope: remoteVaultScope(connection.info.server, memberId, vaultId),
+    nativeConnectionId: connection.info.connection_id,
     networkMode: "online",
     canEdit: vault.role !== "reader",
     providerCredentials:

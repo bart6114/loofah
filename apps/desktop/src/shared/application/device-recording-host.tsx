@@ -2,6 +2,9 @@ import { Trans } from "@lingui/react/macro";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
+  useCallback,
+  useMemo,
+  useSyncExternalStore,
   useContext,
   useEffect,
   useRef,
@@ -22,6 +25,8 @@ import {
   createDeviceRecordingMonitor,
 } from "./device-recordings";
 import { useVaultReadScope } from "./use-vault-read-scope";
+import { VaultHostContext } from "./vault-provider";
+import type { VaultScope } from "./vault-scope";
 
 import type {
   CaptureScope,
@@ -38,7 +43,20 @@ type DeviceRecordingOwner = {
   scopeKey: string;
   client: ReturnType<typeof createDeviceRecordingClient>;
 };
-const RecordingContext = createContext<DeviceRecordingOwner | null>(null);
+const RecordingContext = createContext<
+  | (DeviceRecordingOwner & { bindAccess: (scope: VaultScope) => () => void })
+  | null
+>(null);
+
+export function DeviceRecordingAccess() {
+  const recording = useContext(RecordingContext);
+  const scope = useContext(VaultHostContext)?.scope;
+  useEffect(
+    () => (scope && recording ? recording.bindAccess(scope) : undefined),
+    [scope, recording],
+  );
+  return null;
+}
 
 export function DeviceRecordingHost({
   profileId,
@@ -71,8 +89,49 @@ export function DeviceRecordingHost({
     return () => client.dispose();
   }, [destination]);
   const current = destination === owner?.destination ? owner : null;
+  const [access, setAccess] = useState<{
+    scope: VaultScope;
+    client: DeviceRecordingOwner["client"];
+  } | null>(null);
+  const bindAccess = useCallback(
+    (scope: VaultScope, client: DeviceRecordingOwner["client"]) => {
+      const next = { scope, client };
+      setAccess(next);
+      return () => setAccess((current) => (current === next ? null : current));
+    },
+    [],
+  );
+  const context = useMemo(
+    () =>
+      current
+        ? {
+            ...current,
+            bindAccess: (scope: VaultScope) =>
+              bindAccess(scope, current.client),
+          }
+        : null,
+    [current, bindAccess],
+  );
+  const connection = useSyncExternalStore(
+    useCallback(
+      (changed) => access?.scope.subscribe(changed) ?? (() => {}),
+      [access],
+    ),
+    useCallback(() => access?.scope.getSnapshot().state ?? "closed", [access]),
+  );
+  const cleanupCurrent = () =>
+    !!current &&
+    access?.client === current.client &&
+    access.scope.client.scope === current.scopeKey &&
+    access.scope.client.nativeConnectionId ===
+      current.destination.connectionId &&
+    access.scope.getSnapshot().state === "connected" &&
+    access.scope.client.canEdit &&
+    access.scope.client.features.includes("capture_retirement") &&
+    !!current.destination.connectionId;
+
   return (
-    <RecordingContext.Provider value={current}>
+    <RecordingContext.Provider value={context}>
       {current && (
         <PendingRecordButton
           key={current.scopeKey}
@@ -85,6 +144,12 @@ export function DeviceRecordingHost({
           profileId={profileId}
           client={monitor.client}
           selectedScope={destination?.scope ?? null}
+          retire={
+            connection === "connected" && cleanupCurrent()
+              ? (identity, requestId) =>
+                  current!.client.retire(identity, requestId, cleanupCurrent)
+              : undefined
+          }
           resumeUpload={
             current?.destination.connectionId
               ? current.client.resumeUpload

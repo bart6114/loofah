@@ -18,6 +18,7 @@ const native = vi.hoisted(() => ({
   }[],
   start: vi.fn(),
   resume: vi.fn(),
+  retire: vi.fn(),
   finish: vi.fn(),
   exportAudio: vi.fn(),
   cancelProcessing: vi.fn(),
@@ -49,6 +50,10 @@ vi.mock("./device-recordings", () => ({
       start: native.start,
       recoveryInventory: vi.fn(async () => native.records),
       resumeUpload: native.resume,
+      retire: (identity: unknown, request: string, current: () => boolean) => {
+        if (!current()) throw new Error("Original scope closed");
+        return native.retire(identity, request);
+      },
       dispose: vi.fn(),
     };
   },
@@ -56,6 +61,7 @@ vi.mock("./device-recordings", () => ({
 
 import {
   DeviceRecordButton,
+  DeviceRecordingAccess,
   DeviceRecordingHost,
 } from "./device-recording-host";
 import { ApplicationRequestError } from "./errors";
@@ -91,6 +97,7 @@ const record = (): import("~/types/tauri.gen").DeviceRecordingInfo => ({
   pcm_bytes: 128000,
   sealed: false,
   publication: null,
+  retirement: null,
   upload: null,
   processing: null,
   failure: null,
@@ -101,6 +108,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   native.start.mockReset().mockResolvedValue(record());
   native.finish.mockReset();
+  native.retire.mockReset();
   native.exportAudio.mockReset();
   native.cancelProcessing.mockReset().mockResolvedValue(true);
   native.records = [];
@@ -120,13 +128,16 @@ async function mount({
   scopeKey = "scope",
   active = false,
   strict = false,
+  nativeConnectionId = "original-connection",
+  features = ["capture_publication", "capture_retirement"],
 } = {}) {
   if (active) native.records = [record()];
   const backend = {
     scope: scopeKey,
+    nativeConnectionId,
     networkMode: "always",
     canEdit,
-    features: ["capture_publication"],
+    features,
     audioMetadata: vi.fn(async () => null),
     transcriptOverview: vi.fn(async () => ({
       has_words: false,
@@ -156,6 +167,7 @@ async function mount({
         <VaultHostContext.Provider
           value={{ scope, error: null, retry: () => {} }}
         >
+          <DeviceRecordingAccess />
           <DeviceRecordButton sessionId="note" />
         </VaultHostContext.Provider>
       </DeviceRecordingHost>
@@ -543,4 +555,173 @@ it("keeps recovery and export unavailable until active capture has finished savi
   ).toBeNull();
   expect(native.finish).not.toHaveBeenCalled();
   expect(native.exportAudio).not.toHaveBeenCalled();
+});
+
+function publishedRecord(): import("~/types/tauri.gen").DeviceRecordingInfo {
+  const value = record();
+  return {
+    ...value,
+    phase: "finished",
+    sealed: true,
+    publication: {
+      session_id: "note",
+      canonical_audio_sha256: "c".repeat(64),
+      canonical_audio_bytes: 128044,
+      source: {
+        capture_fingerprint: "a".repeat(64),
+        chunk_count: 1,
+        frames: value.frames,
+        pcm_bytes: value.pcm_bytes,
+        chain_digest: "b".repeat(64),
+        source_sha256: "d".repeat(64),
+      },
+    },
+  };
+}
+function cleanupReceipt(
+  value: import("~/types/tauri.gen").DeviceRecordingInfo,
+  request: string,
+  state: "declared" | "pending" | "retired",
+): import("~/types/tauri.gen").CaptureRetirementSnapshot {
+  return {
+    state,
+    remaining_chunks: state === "retired" ? 0 : 1,
+    request: {
+      cleanup_request_id: request,
+      identity: value.identity,
+      format: {
+        encoding: "pcm_f32_le",
+        sample_rate: 16000,
+        channels: ["microphone", "system_audio"],
+      },
+      source: value.publication!.source,
+      publication: value.publication!,
+      processing: null,
+    },
+  };
+}
+it("cleanup requires exact editable connected owner and never runs from startup, signed-out or foreign connection", async () => {
+  for (const options of [
+    { bound: false },
+    { canEdit: false },
+    { nativeConnectionId: "replacement" },
+    { features: ["capture_publication"] },
+    { scopeKey: "other" },
+  ]) {
+    native.records = [publishedRecord()];
+    const view = await mount(options);
+    await screen.findByText(
+      "Verified on the server. The device copy is retained.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Free device audio" }),
+    ).toBeNull();
+    expect(native.retire).not.toHaveBeenCalled();
+    view.unmount();
+  }
+  native.records = [publishedRecord()];
+  const { backend } = await mount();
+  await screen.findByRole("button", { name: "Free device audio" });
+  expect(native.retire).not.toHaveBeenCalled();
+  const receive = vi.mocked(backend.subscribe).mock.calls[0][0];
+  act(() =>
+    receive({ kind: "connection", state: "reconnecting", error: null }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Free device audio" }),
+    ).toBeNull(),
+  );
+  act(() => receive({ kind: "connection", state: "connected", error: null }));
+  await screen.findByRole("button", { name: "Free device audio" });
+  act(() =>
+    receive({ kind: "connection", state: "login_required", error: null }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Free device audio" }),
+    ).toBeNull(),
+  );
+  expect(native.retire).not.toHaveBeenCalled();
+});
+it("explicit cleanup retries the durable UUID after remount and fences retired upload and export controls", async () => {
+  const saved = publishedRecord();
+  saved.retirement = cleanupReceipt(saved, "original-cleanup", "declared");
+  native.records = [saved];
+  native.retire.mockRejectedValueOnce(
+    new Error("Verify the original cleanup again"),
+  );
+  const first = await mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Retry cleanup" }));
+  await screen.findByText("Verify the original cleanup again");
+  expect(native.retire).toHaveBeenCalledWith(
+    saved.identity,
+    "original-cleanup",
+  );
+  first.unmount();
+  native.retire.mockImplementation(async () => {
+    const retired = {
+      ...saved,
+      retirement: cleanupReceipt(saved, "original-cleanup", "retired"),
+    };
+    native.records = [retired];
+    return retired;
+  });
+  await mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Retry cleanup" }));
+  await screen.findByText(
+    "Server copy verified. Saved audio has been removed from this device.",
+  );
+  expect(native.retire.mock.calls).toEqual([
+    [saved.identity, "original-cleanup"],
+    [saved.identity, "original-cleanup"],
+  ]);
+  expect(
+    screen.queryByRole("button", { name: "Export saved audio" }),
+  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Resume upload" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Retry cleanup" })).toBeNull();
+  expect(native.exportAudio).not.toHaveBeenCalled();
+  expect(native.resume).not.toHaveBeenCalled();
+});
+it("unfinished source removal remains fenced and uncertain processing never enables cleanup", async () => {
+  const saved = publishedRecord();
+  saved.retirement = cleanupReceipt(saved, "original-cleanup", "pending");
+  native.records = [saved];
+  const view = await mount();
+  await screen.findByRole("button", { name: "Retry cleanup" });
+  expect(
+    screen.queryByRole("button", { name: "Export saved audio" }),
+  ).toBeNull();
+  expect(native.retire).not.toHaveBeenCalled();
+  view.unmount();
+  const unknown = processingRecord();
+  unknown.phase = "finished";
+  unknown.sealed = true;
+  unknown.publication = saved.publication;
+  unknown.processing!.status = {
+    capture_id: unknown.identity.capture_id,
+    capture_fingerprint: "a".repeat(64),
+    intent_id: unknown.identity.request_id,
+    session_id: "note",
+    model: "server-model",
+    request: unknown.processing!.declaration.request,
+    state: "uncertain",
+    live_generation_id: null,
+    repair_job_id: null,
+    summary_job_id: null,
+    transcript_publication: null,
+    failure: "storage",
+    created_at: "2026-11-08T00:00:00Z",
+    updated_at: "2026-11-08T00:00:00Z",
+  };
+
+  native.records = [unknown];
+  await mount();
+  const button = await screen.findByRole("button", {
+    name: "Free device audio",
+  });
+  expect((button as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(button);
+  expect(native.retire).not.toHaveBeenCalled();
 });
