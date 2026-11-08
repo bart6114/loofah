@@ -14,6 +14,7 @@ pub async fn run_owned_whisper_batch(
     params: BatchParams,
     resources: Arc<WhisperResources>,
 ) -> crate::Result<BatchRunOutput> {
+    let admission = resources.try_batch().map_err(failure)?;
     let prepared = audio::PreparedAudio::prepare(
         params.file_path.clone(),
         params.audio,
@@ -25,14 +26,14 @@ pub async fn run_owned_whisper_batch(
         prepared.pcm.channels as u8,
         prepared.pcm.sample_rate,
     );
-    let diarization =
-        diarize::SharedDiarization::for_file(Arc::new(diarize::SoniqoDiarizer), prepared.clone());
     let source =
         TrustedBatchSource::new(prepared.path.clone(), (prepared.clone(), runtime.clone()))
             .map_err(failure)?;
     let work = resources
-        .start_batch(resources.try_batch().map_err(failure)?, source, listen)
+        .start_batch(admission, source, listen)
         .map_err(failure)?;
+    let diarization =
+        diarize::SharedDiarization::for_file(Arc::new(diarize::SoniqoDiarizer), prepared.clone());
     let mut completion = work.observer();
     let result = loop {
         if runtime.is_cancelled() {
