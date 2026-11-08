@@ -302,6 +302,24 @@ impl RemoteClient {
         mutation: bool,
         cancel: CancellationToken,
     ) -> Result<T> {
+        self.capture_request_with_budget(
+            request,
+            request_id,
+            mutation,
+            cancel,
+            Duration::from_secs(35),
+        )
+        .await
+    }
+
+    pub(crate) async fn capture_request_with_budget<T: DeserializeOwned>(
+        self: &Arc<Self>,
+        request: reqwest::RequestBuilder,
+        request_id: &str,
+        mutation: bool,
+        cancel: CancellationToken,
+        budget: Duration,
+    ) -> Result<T> {
         let access = tokio::select! {
             _ = cancel.cancelled() => return Err(not_committed(cancelled())),
             _ = self.stop.cancelled() => return Err(not_committed(cancelled())),
@@ -311,7 +329,7 @@ impl RemoteClient {
             .bearer_auth(&access)
             .header("x-loofah-api-major", API_MAJOR.to_string())
             .header("x-request-id", request_id)
-            .timeout(Duration::from_secs(35));
+            .timeout(budget);
         let result = async {
             let response = request.send().await.map_err(|_| unavailable())?;
             if response.status() == reqwest::StatusCode::UNAUTHORIZED {

@@ -80,7 +80,7 @@ impl RemoteClient {
         drop(profile.guard_generation(&generation).await?);
         self.verify_retirement_member(&request, &cancel).await?;
         let response: hypr_loofah_protocol::CaptureIngestStatus = self
-            .capture_request(
+            .capture_request_with_budget(
                 self.http
                     .post(self.endpoint(&[
                         "vaults",
@@ -93,6 +93,10 @@ impl RemoteClient {
                 &request.cleanup_request_id,
                 true,
                 cancel.clone(),
+                // Retirement hashes the sealed source and durably syncs every unlink.
+                // Large captures outlive ordinary transport calls; cancellation still
+                // stops this waiter without claiming the server's owned work drained.
+                Duration::from_secs(300),
             )
             .await?;
         let response = self.capture_status_checked(

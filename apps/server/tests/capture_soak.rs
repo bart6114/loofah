@@ -144,7 +144,12 @@ fn token(issuer: &str) -> String {
     jsonwebtoken::encode(&h,&json!({"iss":issuer,"sub":"soak-operator","aud":"loofah-api","exp":millis()/1000+3600,"iat":millis()/1000,"scope":"openid profile loofah:access","name":"Soak fixture"}),&EncodingKey::from_rsa_pem(include_bytes!("fixtures/oidc-private.pem")).unwrap()).unwrap()
 }
 async fn provider() -> (String, tokio::task::JoinHandle<()>) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    provider_at(0).await
+}
+async fn provider_at(port: u16) -> (String, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+        .await
+        .unwrap();
     let issuer = format!("http://{}", listener.local_addr().unwrap());
     let metadata = json!({"issuer":issuer,"jwks_uri":format!("{issuer}/keys"),"authorization_endpoint":format!("{issuer}/authorize"),"token_endpoint":format!("{issuer}/token"),"code_challenge_methods_supported":["S256"]});
     let keys: Value = serde_json::from_str(include_str!("fixtures/jwks.json")).unwrap();
@@ -185,6 +190,9 @@ async fn forward(State(state): State<Arc<Faults>>, request: Request) -> Response
         if name != "host" && name != "content-length" {
             outbound = outbound.header(name, value);
         }
+    }
+    if path.ends_with("/retirement") {
+        outbound = outbound.timeout(Duration::from_secs(300));
     }
     let response = match outbound.body(bytes).send().await {
         Ok(v) => v,
@@ -248,6 +256,12 @@ async fn forward(State(state): State<Arc<Faults>>, request: Request) -> Response
     builder.body(Body::from(bytes)).unwrap()
 }
 async fn proxy(root: &Path) -> (String, Arc<Faults>, Vec<tokio::task::JoinHandle<()>>) {
+    proxy_at(root, 0).await
+}
+async fn proxy_at(
+    root: &Path,
+    port: u16,
+) -> (String, Arc<Faults>, Vec<tokio::task::JoinHandle<()>>) {
     let http = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let http_address = http.local_addr().unwrap();
     let state = Arc::new(Faults {
@@ -284,7 +298,9 @@ async fn proxy(root: &Path) -> (String, Arc<Faults>, Vec<tokio::task::JoinHandle
     .with_no_client_auth()
     .with_single_cert(certs, key)
     .unwrap();
-    let tls = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let tls = tokio::net::TcpListener::bind(("127.0.0.1", port))
+        .await
+        .unwrap();
     let origin = format!("https://localhost:{}/", tls.local_addr().unwrap().port());
     let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
     let tls_task = tokio::spawn(async move {
@@ -1055,4 +1071,115 @@ async fn observe_processing(
 }
 fn request_fingerprint(identity: &CaptureIdentity) -> String {
     capture_fingerprint(identity, &CaptureFormat::stereo())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "explicit existing failed-run cleanup retry, no capture or inference dispatch"]
+async fn capture_retirement_existing_replay() {
+    let root = root().canonicalize().unwrap();
+    let identity: CaptureIdentity =
+        serde_json::from_slice(&fs::read(root.join("identity.json")).unwrap()).unwrap();
+    let saved_config = fs::read_dir(&root)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("server-")
+                && path.extension().is_some_and(|ext| ext == "json")
+        })
+        .unwrap();
+    let config: Value = serde_json::from_slice(&fs::read(saved_config).unwrap()).unwrap();
+    let original_issuer = config["oidc"]["issuer"].as_str().unwrap();
+    let (issuer, oidc) = provider_at(
+        reqwest::Url::parse(original_issuer)
+            .unwrap()
+            .port()
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(issuer, original_issuer);
+    let (origin, faults, proxy_tasks) = proxy_at(
+        &root,
+        reqwest::Url::parse(&identity.scope.server)
+            .unwrap()
+            .port()
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(origin, identity.scope.server);
+    let mut server = server(&root, &origin, &issuer, &faults).await;
+    let connection = client(&origin).await;
+    assert_eq!(me(&connection).await.member.id, identity.scope.member_id);
+    let profiles = ConnectionProfiles::new(root.join("profiles")).unwrap();
+    let profile = profiles.open("soak").await.unwrap();
+    let spool = CaptureSpool::open(root.join("device"), CaptureSpoolLimits::default())
+        .await
+        .unwrap();
+    let admission = spool.admit_retirement(identity.clone()).await.unwrap();
+    let request = admission
+        .snapshot()
+        .retirement
+        .as_ref()
+        .expect("original cleanup declaration must exist")
+        .request
+        .clone();
+    assert_eq!(request.identity, identity);
+    let before = connection
+        .capture_processing_status(
+            &identity,
+            request.processing.as_ref().unwrap(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(before.state, CaptureProcessingState::Succeeded);
+    record(
+        &root,
+        json!({"explicit_retirement_resume":request.cleanup_request_id,"repair_job_id":before.repair_job_id,"paced":false,"new_capture_or_inference_dispatch":false}),
+    );
+    let started = Instant::now();
+    let proof = connection
+        .verify_capture_retirement(
+            profile.clone(),
+            profile.generation().await.unwrap(),
+            request.clone(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let retired = proof
+        .retire_device(admission, JoinedDeviceProcesses)
+        .await
+        .unwrap();
+    assert_eq!(
+        retired.retirement.as_ref().unwrap().state,
+        CaptureRetirementState::Retired
+    );
+    assert_eq!(retired.retirement.as_ref().unwrap().remaining_chunks, 0);
+    assert!(spool.resume(identity.clone()).await.is_err());
+    let after = connection
+        .capture_processing_status(
+            &identity,
+            request.processing.as_ref().unwrap(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        before, after,
+        "cleanup must not restart or change completed processing"
+    );
+    record(
+        &root,
+        json!({"explicit_retirement_resume_accepted":true,"cleanup_request_id":request.cleanup_request_id,"repair_job_id":after.repair_job_id,"elapsed_ms":started.elapsed().as_millis(),"retirement":retired.retirement,"server_rss":rss(server.id().unwrap())}),
+    );
+    stop(&mut server).await;
+    connection.disconnect();
+    oidc.abort();
+    for task in proxy_tasks {
+        task.abort();
+    }
 }

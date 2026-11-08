@@ -955,3 +955,9 @@ barrier is installed; existing Local deletion and undo remain available during
 that migration. Shared frontend lifecycle actions are being integrated.
 
 Verified original media uploads can be downloaded with `GET /api/v1/vaults/{vault}/media/requests/{request}/source` and the original `X-Loofah-Media-Revision`. This member-private, editor-authorized operation returns the exact declared bytes, length and SHA-256 without decoding, publishing or restarting a job. Incomplete or changed uploads are unavailable. Streams recheck access for every bounded chunk and retain the original vault and descriptor until actual I/O ends; clients must verify the complete digest before saving. A request in review because its configured model changed can therefore recover its source without adopting a new model or canonical baseline.
+
+Explicit capture retirement uses a bounded five-minute client request budget:
+large sealed captures require fresh source verification and durable per-chunk
+removal. Ordinary capture calls keep their 35-second transport deadline. A
+cancelled or lost reply does not mean server cleanup stopped; retain device audio
+and explicitly retry the original cleanup UUID after owned work drains.

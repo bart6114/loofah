@@ -21,6 +21,7 @@ struct Server {
     publishes: AtomicUsize,
     reads: AtomicUsize,
     closes: AtomicUsize,
+    retirement_delay_ms: AtomicUsize,
     publication: Mutex<Option<CapturePublication>>,
     canonical: Mutex<Vec<u8>>,
 }
@@ -42,6 +43,7 @@ impl Server {
             publishes: AtomicUsize::new(0),
             reads: AtomicUsize::new(0),
             closes: AtomicUsize::new(0),
+            retirement_delay_ms: AtomicUsize::new(0),
             publication: Mutex::new(None),
             canonical: Mutex::new(Vec::new()),
         })
@@ -962,6 +964,10 @@ async fn retire(
 ) -> Json<CaptureIngestStatus> {
     authenticated(&headers);
     assert_eq!(headers["x-request-id"], request.cleanup_request_id);
+    tokio::time::sleep(Duration::from_millis(
+        state.retirement_delay_ms.load(Ordering::SeqCst) as u64,
+    ))
+    .await;
     let mut status = state.status().await;
     assert_eq!(status.identity, request.identity);
     assert_eq!(status.seal, Some(request.source.clone()));
@@ -1153,4 +1159,72 @@ async fn cleanup_proof_rejects_profile_aba_interactive_login_and_closed_original
         assert!(writer.snapshot().await.unwrap().retirement.is_none());
         assert!(!writer.read_chunk(0).await.unwrap().bytes.is_empty());
     }
+}
+
+#[tokio::test]
+#[ignore = "real 35s ordinary request deadline versus 36s retirement response"]
+async fn cleanup_retirement_budget_outlives_ordinary_capture_timeout_without_changing_identity() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let server = Server::new(&root).await;
+    let (_fixture, client) = fixture(&server, None).await;
+    let (spool, profile, request) = retirement_source(&root, &client).await;
+    server.retirement_delay_ms.store(36_000, Ordering::SeqCst);
+    let started = std::time::Instant::now();
+    let result: Result<CaptureIngestStatus> = client
+        .capture_request(
+            client
+                .http
+                .post(
+                    client
+                        .endpoint(&[
+                            "vaults",
+                            "queued",
+                            "captures",
+                            &request.identity.capture_id,
+                            "retirement",
+                        ])
+                        .unwrap(),
+                )
+                .json(&request),
+            &request.cleanup_request_id,
+            true,
+            CancellationToken::new(),
+        )
+        .await;
+    assert!(result.is_err());
+    assert!(started.elapsed() >= Duration::from_secs(35));
+    assert!(
+        spool
+            .resume(request.identity.clone())
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .retirement
+            .is_none()
+    );
+    let started = std::time::Instant::now();
+    let proof = client
+        .verify_capture_retirement(
+            profile.clone(),
+            profile.generation().await.unwrap(),
+            request.clone(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert!(started.elapsed() >= Duration::from_secs(36));
+    let retired = proof
+        .retire_device(
+            spool
+                .admit_retirement(request.identity.clone())
+                .await
+                .unwrap(),
+            RetirementHost,
+        )
+        .await
+        .unwrap();
+    assert_eq!(retired.retirement.unwrap().request, request);
 }
