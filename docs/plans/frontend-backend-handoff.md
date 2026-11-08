@@ -872,3 +872,13 @@ capture waits for the pending confirmation. Evidence is under the local task cac
 was used. No merge, release, version bump or deployment has occurred.
 
 Server CPU admission now has an explicit opt-in reserved live partition within the existing operator total. `live_reserved_groups` defaults to zero; one-group legacy hosts still report live busy during batch work. Batch admission waits in a bounded FIFO host queue before source decoding/inference and honours cancellation or shutdown without dispatch/replay. ONNX accepts only legacy `(total=1,reserved=0)` or explicit `(2,1)`, separates its streaming-model snapshot from the mutable batch/diarizer mutex, and drains every group before destroying models. Whisper keeps its existing native total cap and carries the server permit inside the trusted native source owner; Local Metal/GPU/resource behavior is untouched. Source regressions cover total/partition bounds, FIFO/overflow/cancelled waiters, abandoned caller physical drain, panic admission closure, startup ownership, ONNX two-lane shutdown and strict configuration. Unit/platform and real CPU concurrency qualification are pending the coordinated Linux lane; no default capacity or memory increase is implied.
+
+The Remote home screen now enables recording from the mounted scoped device
+controller's actual readiness and imports from the editable connected media
+client, instead of the legacy Local feature gate. Unknown starts remain blocked
+until explicit original-request recovery, while the existing retry control keeps
+its frozen request. Public GitHub issue/PR resource tabs are device-only anonymous
+GET views and no longer require Local vault controls; Local onboarding keeps its
+existing gate. The 31-case home/captured-workspace/device/resource cohort and
+desktop typecheck passed. These are frontend/device changes, not new server
+GitHub credentials or a Remote-to-Local fallback.

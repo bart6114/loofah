@@ -7,6 +7,8 @@ import { cn } from "@hypr/utils";
 
 import { useLegacyDesktopAccess } from "./use-legacy-activity";
 
+import { useDeviceStartActions } from "~/shared/application/device-recording-controls";
+import { mediaControlsAvailable } from "~/shared/application/use-vault-read-scope";
 import { StandardContentWrapper } from "~/shared/main";
 import { useNewNote, useNewNoteAndListen } from "~/shared/useNewNote";
 import { useAudioImport } from "~/store/zustand/audio-import";
@@ -27,6 +29,13 @@ export function TabContentEmpty({
 function EmptyView() {
   const legacy = useLegacyDesktopAccess();
   const { isAvailable } = legacy;
+  const device = useDeviceStartActions();
+  const canRecord =
+    isAvailable() ||
+    (!!device?.canStart &&
+      legacy.scope.client.canEdit &&
+      legacy.scope.getSnapshot().state === "connected");
+  const canImport = mediaControlsAvailable(legacy.scope);
   const newNote = useNewNote({ behavior: "current" });
   const newNoteAndListen = useNewNoteAndListen({ behavior: "current" });
   const openCurrent = useTabs((state) => state.openCurrent);
@@ -40,8 +49,8 @@ function EmptyView() {
   );
 
   const openAudioImport = useCallback(() => {
-    if (isAvailable()) setAudioImportDialogOpen(true);
-  }, [setAudioImportDialogOpen, isAvailable]);
+    if (mediaControlsAvailable(legacy.scope)) setAudioImportDialogOpen(true);
+  }, [setAudioImportDialogOpen, legacy.scope]);
 
   return (
     <div
@@ -62,12 +71,12 @@ function EmptyView() {
             "N",
           ]}
           onClick={newNoteAndListen}
-          disabled={!isAvailable()}
+          disabled={!canRecord}
         />
         <ActionItem
           label={<Trans>Import Audio</Trans>}
           onClick={openAudioImport}
-          disabled={!isAvailable()}
+          disabled={!canImport}
         />
         <div className="bg-accent my-1 h-px" />
         <ActionItem

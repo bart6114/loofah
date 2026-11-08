@@ -35,7 +35,7 @@ export function MainTabContent({ tab }: { tab: Tab }) {
 function Content({ tab }: { tab: Tab }) {
   const access = useLegacyDesktopAccess();
   if (
-    (tab.type === "onboarding" || tab.type === "task") &&
+    tab.type === "onboarding" &&
     !access.isAvailable("legacy_desktop_session_controls")
   )
     return (

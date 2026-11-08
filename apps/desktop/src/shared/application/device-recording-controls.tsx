@@ -28,6 +28,7 @@ import type {
 } from "~/types/tauri.gen";
 
 export type DeviceStartActions = {
+  readonly canStart: boolean;
   startPending: (options?: {
     retry?: boolean;
     triggerAppIds?: string[];
@@ -108,6 +109,7 @@ export function DeviceRecordingControls({
     },
   });
   const active = inventory.data?.some(activeDeviceCapture) ?? true;
+  const canStart = !start.isPending && !active && inventory.isSuccess;
   const availability = useRef({ ready: inventory.isSuccess, active });
   availability.current = { ready: inventory.isSuccess, active };
   const startPending = useCallback(
@@ -172,7 +174,21 @@ export function DeviceRecordingControls({
     [recording, profileId, inventory.isSuccess, active, processing, start],
   );
   return (
-    <Actions.Provider value={recording ? { startPending } : null}>
+    <Actions.Provider
+      value={
+        recording
+          ? {
+              startPending,
+              canStart:
+                canStart &&
+                !(
+                  intent.current?.owner === recording &&
+                  !intent.current.complete
+                ),
+            }
+          : null
+      }
+    >
       {recording && (
         <div className="flex flex-col items-start gap-1">
           <DeviceProcessingOptions
@@ -185,7 +201,7 @@ export function DeviceRecordingControls({
           <Button
             size="sm"
             variant="outline"
-            disabled={start.isPending || active || !inventory.isSuccess}
+            disabled={!canStart}
             onClick={() => {
               void startPending({ retry: true }).catch(() => {});
             }}
