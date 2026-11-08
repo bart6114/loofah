@@ -418,3 +418,119 @@ async fn cancelled_media_upload_keeps_original_profile_until_actual_source_read_
 }
 
 mod source_export;
+
+#[tokio::test]
+async fn media_json_delayed_headers_do_not_hold_profile_commit_lock() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let fixture = Fixture::with_extra_routes(
+        Some(Duration::ZERO),
+        Router::new().route(
+            "/api/v1/vaults/vault/media/requests",
+            get({
+                let entered = entered.clone();
+                let release = release.clone();
+                move || {
+                    let entered = entered.clone();
+                    let release = release.clone();
+                    async move {
+                        entered.notify_one();
+                        release.notified().await;
+                        Json(Vec::<MediaRequestStatus>::new())
+                    }
+                }
+            }),
+        ),
+    )
+    .await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("media_jobs".into());
+    let root = tempfile::tempdir().unwrap();
+    let (authority, profile) =
+        authority(&fixture, &client, root.path(), CancellationToken::new()).await;
+    let task = tokio::spawn(async move { authority.list(None).await });
+    tokio::time::timeout(Duration::from_secs(2), entered.notified())
+        .await
+        .unwrap();
+    let original = profile.profile().await;
+    tokio::time::timeout(Duration::from_millis(200), profile.save(original))
+        .await
+        .unwrap()
+        .unwrap();
+    release.notify_one();
+    tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn queued_media_dispatch_rejects_original_profile_and_login_aba_before_http() {
+    for change in ["profile", "login"] {
+        let requests = Arc::new(AtomicUsize::new(0));
+        let seen = requests.clone();
+        let fixture = Fixture::with_extra_routes(
+            Some(Duration::ZERO),
+            Router::new().route(
+                "/api/v1/vaults/vault/media/requests",
+                get(move || {
+                    let seen = seen.clone();
+                    async move {
+                        seen.fetch_add(1, Ordering::SeqCst);
+                        Json(Vec::<MediaRequestStatus>::new())
+                    }
+                }),
+            ),
+        )
+        .await;
+        let mut client = fixture.client().await;
+        Arc::get_mut(&mut client)
+            .unwrap()
+            .capabilities
+            .features
+            .push("media_jobs".into());
+        let root = tempfile::tempdir().unwrap();
+        let (authority, profile) =
+            authority(&fixture, &client, root.path(), CancellationToken::new()).await;
+        // Freeze the already-bound authority behind a FIFO profile admission gate.
+        // The authorized profile edit is queued first, before a retained request.
+        let baseline = profile.generation().await.unwrap();
+        let gate = profile.guard_generation(&baseline).await.unwrap();
+        let original = profile.profile();
+        drop(original); // profile() would itself wait on this deliberately held gate.
+        if change == "profile" {
+            let value = baseline.profile().clone();
+            let update = profile.save(value);
+            tokio::pin!(update);
+            assert!(matches!(
+                futures_util::poll!(&mut update),
+                std::task::Poll::Pending
+            ));
+            let read = authority.list(None);
+            tokio::pin!(read);
+            assert!(matches!(
+                futures_util::poll!(&mut read),
+                std::task::Poll::Pending
+            ));
+            drop(gate);
+            update.await.unwrap();
+            assert!(read.await.is_err());
+        } else {
+            let read = authority.list(None);
+            tokio::pin!(read);
+            assert!(matches!(
+                futures_util::poll!(&mut read),
+                std::task::Poll::Pending
+            ));
+            fixture.login(&client).await;
+            drop(gate);
+            assert!(read.await.is_err());
+        }
+        assert_eq!(requests.load(Ordering::SeqCst), 0);
+    }
+}

@@ -294,6 +294,7 @@ impl MediaAuthority {
         request: &str,
         limit: usize,
     ) -> Result<T> {
+        let _window_work = self.client.begin_window_work()?;
         let mutation = method != Method::GET;
         let prepared = async {
             self.check_current().await?;
@@ -315,9 +316,9 @@ impl MediaAuthority {
         }
         .await
         .map_err(|e| outcome(e, request, mutation, false))?;
-        let (req, _guard) = prepared;
+        let (req, guard) = prepared;
         let work = async {
-            let response = req.send().await.map_err(|_| crate::unavailable())?;
+            let response = guard.send(req).await?;
             if !response.status().is_success() {
                 return Err(json_body::<ApplicationError>(response, 131_072)
                     .await

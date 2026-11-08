@@ -125,6 +125,30 @@ impl MediaAuthority {
     }
 }
 impl DispatchGuard {
+    pub(super) async fn send(
+        self: Arc<Self>,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response> {
+        self.check_current().map_err(|mut error| {
+            error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            error
+        })?;
+        let response = request.send();
+        tokio::pin!(response);
+        let first = std::future::poll_fn(|cx| {
+            std::task::Poll::Ready(std::future::Future::poll(response.as_mut(), cx))
+        })
+        .await;
+        // The original bearer is now admitted. Response headers, bodies and
+        // private file drains cannot retain the profile/login commit mutexes.
+        drop(self);
+        match first {
+            std::task::Poll::Ready(value) => value,
+            std::task::Poll::Pending => response.await,
+        }
+        .map_err(|_| crate::unavailable())
+    }
+
     pub fn check_current(&self) -> Result<()> {
         self.client.check_window_scope()?;
         if self.cancel.is_cancelled() || self.lifetime.is_cancelled() || self.client.is_closed() {
