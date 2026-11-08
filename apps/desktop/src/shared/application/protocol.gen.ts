@@ -13,6 +13,8 @@ export type ArtifactChange = { session_id: string; target: ArtifactTarget }
 
 export type ArtifactTarget = { kind: "recording" } | { kind: "attachments" } | { kind: "attachment"; attachment_id: string } | { kind: "all" }
 
+export type AssignTranscriptSpeakersRequest = { expected_revision: string; assignments: TranscriptSpeakerAssignment[] }
+
 export type AttachmentLease = { id: string; vault_id: string; session_id: string; attachment_id: string; metadata: FileMetadata; idle_timeout_secs: number }
 
 export type AttachmentPage = { files: FileInfo[]; next_cursor: string | null }
@@ -152,6 +154,8 @@ kind: string; title: string; template_id: string; sort_order: number;
  * Body only -- never includes the frontmatter block.
  */
 markdown: string }
+
+export type EnsurePersonRequest = { name: string }
 
 export type EnsureTagRequest = { name: string }
 
@@ -479,7 +483,13 @@ export type TitlePolicy = "preserve" | "generate_if_empty"
 
 export type Transcript = { id: string; started_at_ms: number; ended_at_ms: number | null; memo: string; text: string; words: JsonValue[]; speaker_hints: JsonValue[] }
 
+export type TranscriptEditorSaveOutcome = { kind: "saved"; snapshot: TranscriptEditorSnapshot } | { kind: "conflict"; snapshot: TranscriptEditorSnapshot }
+
+export type TranscriptEditorSnapshot = { session_id: string; session_created_at: string; revision: string; transcripts: TranscriptWithData[] }
+
 export type TranscriptOverview = { has_words: boolean; speaker_labels: string[]; started_at: number | null; ended_at: number | null }
+
+export type TranscriptSpeakerAssignment = { transcript_id: string; channel: number; speaker_index: number | null; speaker_label: string; anchor_word_id: string }
 
 export type TranscriptSpeakerHint = { id?: string | null; word_id: string; type: string; value?: JsonValue }
 

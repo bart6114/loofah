@@ -966,6 +966,51 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationTranscriptEditor(
+    sessionId: string,
+  ): Promise<Result<TranscriptEditorSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcript_editor", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAssignTranscriptSpeakers(
+    sessionId: string,
+    input: AssignTranscriptSpeakersRequest,
+  ): Promise<Result<TranscriptEditorSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_assign_transcript_speakers", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationEnsurePerson(
+    input: EnsurePersonRequest,
+  ): Promise<Result<PersonItem, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_ensure_person", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationDocuments(
     sessionId: string,
   ): Promise<Result<EnhancedDoc[], ApplicationError>> {
@@ -3223,6 +3268,10 @@ export type ArtifactTarget =
   | { kind: "attachments" }
   | { kind: "attachment"; attachment_id: string }
   | { kind: "all" };
+export type AssignTranscriptSpeakersRequest = {
+  expected_revision: string;
+  assignments: TranscriptSpeakerAssignment[];
+};
 export type AttachmentCopyAction = "save" | "open" | "reveal";
 export type AttachmentPage = { files: FileInfo[]; next_cursor: string | null };
 export type AttachmentTarget = {
@@ -3749,6 +3798,7 @@ export type EnhancedDocPatch = {
   expected_title?: string | null;
   expected_markdown?: string | null;
 };
+export type EnsurePersonRequest = { name: string };
 export type EnsureTagRequest = { name: string };
 export type ErrorCode =
   | "validation"
@@ -4253,6 +4303,14 @@ export type RemoteEvent =
     }
   | { kind: "change"; event: ChangeEvent };
 export type RemoteOperation =
+  | { kind: "transcript_editor"; vault_id: string; session_id: string }
+  | {
+      kind: "assign_transcript_speakers";
+      vault_id: string;
+      session_id: string;
+      input: AssignTranscriptSpeakersRequest;
+    }
+  | { kind: "ensure_person"; vault_id: string; input: EnsurePersonRequest }
   | { kind: "session_lifecycle"; vault_id: string; session_id: string }
   | { kind: "delete_session"; vault_id: string; input: DeleteSessionRequest }
   | { kind: "restore_session"; vault_id: string; input: RestoreSessionRequest }
@@ -4494,6 +4552,9 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "transcript_editor"; value: TranscriptEditorSnapshot }
+  | { kind: "transcript_editor_save"; value: TranscriptEditorSaveOutcome }
+  | { kind: "person"; value: PersonItem }
   | { kind: "session_created"; value: SessionMeta }
   | { kind: "session_lifecycle"; value: SessionLifecycleSnapshot }
   | { kind: "session_delete"; value: DeleteSessionOutcome }
@@ -4973,11 +5034,27 @@ export type TranscriptDelta = {
   new_hints: TranscriptSpeakerHint[];
   started_at_ms: number;
 };
+export type TranscriptEditorSaveOutcome =
+  | { kind: "saved"; snapshot: TranscriptEditorSnapshot }
+  | { kind: "conflict"; snapshot: TranscriptEditorSnapshot };
+export type TranscriptEditorSnapshot = {
+  session_id: string;
+  session_created_at: string;
+  revision: string;
+  transcripts: TranscriptWithData[];
+};
 export type TranscriptOverview = {
   has_words: boolean;
   speaker_labels: string[];
   started_at: number | null;
   ended_at: number | null;
+};
+export type TranscriptSpeakerAssignment = {
+  transcript_id: string;
+  channel: number;
+  speaker_index: number | null;
+  speaker_label: string;
+  anchor_word_id: string;
 };
 export type TranscriptSpeakerHint = {
   id?: string | null;
