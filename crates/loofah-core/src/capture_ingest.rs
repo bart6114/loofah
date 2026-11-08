@@ -365,3 +365,6 @@ fn not_committed(mut cause: ApplicationError) -> ApplicationError {
 #[cfg(test)]
 #[path = "capture_ingest/tests.rs"]
 mod tests;
+
+#[path = "capture_ingest/wav.rs"]
+mod wav;

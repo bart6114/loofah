@@ -7699,6 +7699,7 @@ dependencies = [
  "chrono",
  "fs-sync-core",
  "futures-util",
+ "hound",
  "image",
  "loofah-protocol",
  "mime_guess",
