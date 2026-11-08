@@ -912,11 +912,6 @@ msgstr "Edit"
 msgid "Edit date"
 msgstr "Edit date"
 
-#: src/session/components/note-input/enhanced/empty-summary.tsx
-#: src/session/components/note-input/header.tsx
-#~ msgid "Edit summary prompt"
-#~ msgstr "Edit summary prompt"
-
 #: src/shared/application/vault-sharing.tsx
 msgid "Editor"
 msgstr "Editor"
@@ -949,10 +944,6 @@ msgstr "Existing title kept."
 #: src/sidebar/timeline/index.tsx
 msgid "Expand all"
 msgstr "Expand all"
-
-#: src/shared/application/desktop-bootstrap.tsx
-#~ msgid "Experimental server workspace"
-#~ msgstr "Experimental server workspace"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/outer-header/overflow/index.tsx
