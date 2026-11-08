@@ -7,6 +7,7 @@ pub mod jobs;
 pub mod local_cli;
 pub mod local_session_work;
 pub mod processing_settings;
+pub mod provider_credentials;
 pub mod search;
 pub mod settings;
 pub mod startup;

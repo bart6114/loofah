@@ -12,6 +12,7 @@ mod note_editor;
 mod processing;
 mod processing_api;
 mod processing_settings;
+mod provider_credentials;
 mod recording;
 mod recording_delete;
 mod restore;

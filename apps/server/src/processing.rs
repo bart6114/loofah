@@ -90,7 +90,6 @@ impl ProcessingConfig {
                             c == b'_' || c.is_ascii_uppercase() || index > 0 && c.is_ascii_digit()
                         })
                 })
-                || definition.requires_key && provider.api_key_env.is_none()
             {
                 return Err(
                     "Invalid processing provider, model allowlist or credential reference".into(),
@@ -171,7 +170,9 @@ impl ProcessingHost {
                 provider: definition.wire,
                 base_url: base_url.clone(),
                 model: provider.models[0].clone(),
-                api_key: api_key.clone(),
+                api_key: api_key
+                    .clone()
+                    .or_else(|| definition.requires_key.then(|| "validation-only".into())),
                 allow_insecure_http: provider.allow_insecure_http,
             })
             .map_err(|_| {
@@ -218,10 +219,30 @@ impl ProcessingHost {
                     .collect(),
                 allow_custom_templates: self.allow_custom_templates,
             })?;
+        let credentials = runtime
+            .context
+            .configure_provider_credentials(
+                self.models
+                    .0
+                    .values()
+                    .map(|binding| {
+                        hypr_loofah_core::provider_credentials::ProviderCredentialPolicy {
+                            provider_id: binding.config.id.clone(),
+                            endpoint: binding.base_url.clone(),
+                            operator_key: binding.api_key.clone(),
+                        }
+                    })
+                    .collect(),
+            )
+            .await?;
+        let models = Arc::new(VaultModels {
+            operator: self.models.clone(),
+            credentials,
+        });
         let generator = Arc::new(ConfiguredSummaryGenerator::new(
             &runtime.context,
             SummaryIdentity::JobMember,
-            self.models.clone(),
+            models,
             self.admission.clone(),
             self.allow_custom_templates,
         ));
@@ -236,6 +257,83 @@ impl ProcessingHost {
     }
 }
 
+struct VaultModels {
+    operator: Arc<OperatorModels>,
+    credentials: Arc<hypr_loofah_core::provider_credentials::ProviderCredentials>,
+}
+
+impl OperatorModels {
+    fn binding(
+        &self,
+        selection: &LlmSelection,
+    ) -> std::result::Result<&Binding, ProcessingJobFailure> {
+        let binding = self
+            .0
+            .get(&selection.provider_id)
+            .ok_or(ProcessingJobFailure::ProviderUnavailable)?;
+        if !binding.config.models.contains(&selection.model_id) {
+            return Err(ProcessingJobFailure::ProviderUnavailable);
+        }
+        if !selection.base_url.is_empty()
+            && !hypr_loofah_core::processing_settings::same_endpoint(
+                &selection.base_url,
+                &binding.base_url,
+            )
+        {
+            return Err(ProcessingJobFailure::AccessDenied);
+        }
+        Ok(binding)
+    }
+}
+
+fn resolve_model(
+    binding: &Binding,
+    selection: LlmSelection,
+    api_key: Option<String>,
+) -> std::result::Result<SummaryModel, ProcessingJobFailure> {
+    let definition =
+        provider_definition(&binding.config.id).ok_or(ProcessingJobFailure::ProviderUnavailable)?;
+    if definition.requires_key && api_key.is_none() {
+        return Err(ProcessingJobFailure::ProviderUnavailable);
+    }
+    let model = HttpModel::new(HttpModelConfig {
+        provider: definition.wire,
+        base_url: binding.base_url.clone(),
+        model: selection.model_id,
+        api_key,
+        allow_insecure_http: binding.config.allow_insecure_http,
+    })?;
+    Ok(SummaryModel {
+        model: Arc::new(model),
+        include_images: binding.config.include_images,
+    })
+}
+
+impl SummaryModels for VaultModels {
+    fn resolve(
+        &self,
+        selection: LlmSelection,
+        cancel: CancellationToken,
+    ) -> JobFuture<'_, std::result::Result<SummaryModel, ProcessingJobFailure>> {
+        Box::pin(async move {
+            if cancel.is_cancelled() {
+                return Err(ProcessingJobFailure::Interrupted);
+            }
+            let binding = self.operator.binding(&selection)?;
+            let key = self
+                .credentials
+                .resolve(selection.provider_id.clone())
+                .await
+                .map_err(|_| ProcessingJobFailure::ProviderUnavailable)?;
+            if cancel.is_cancelled() {
+                return Err(ProcessingJobFailure::Interrupted);
+            }
+            resolve_model(binding, selection, key)
+        })
+    }
+}
+
+#[cfg(test)]
 impl SummaryModels for OperatorModels {
     fn resolve(
         &self,
@@ -246,34 +344,8 @@ impl SummaryModels for OperatorModels {
             if cancel.is_cancelled() {
                 return Err(ProcessingJobFailure::Interrupted);
             }
-            let binding = self
-                .0
-                .get(&selection.provider_id)
-                .ok_or(ProcessingJobFailure::ProviderUnavailable)?;
-            if !binding.config.models.contains(&selection.model_id) {
-                return Err(ProcessingJobFailure::ProviderUnavailable);
-            }
-            if !selection.base_url.is_empty()
-                && !hypr_loofah_core::processing_settings::same_endpoint(
-                    &selection.base_url,
-                    &binding.base_url,
-                )
-            {
-                return Err(ProcessingJobFailure::AccessDenied);
-            }
-            let definition = provider_definition(&binding.config.id)
-                .ok_or(ProcessingJobFailure::ProviderUnavailable)?;
-            let model = HttpModel::new(HttpModelConfig {
-                provider: definition.wire,
-                base_url: binding.base_url.clone(),
-                model: selection.model_id,
-                api_key: binding.api_key.clone(),
-                allow_insecure_http: binding.config.allow_insecure_http,
-            })?;
-            Ok(SummaryModel {
-                model: Arc::new(model),
-                include_images: binding.config.include_images,
-            })
+            let binding = self.binding(&selection)?;
+            resolve_model(binding, selection, binding.api_key.clone())
         })
     }
 }

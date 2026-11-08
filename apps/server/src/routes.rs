@@ -26,6 +26,7 @@ mod capture_processing;
 mod document_editor;
 mod jobs;
 mod processing_settings;
+mod provider_credentials;
 mod session_cleanup;
 mod session_lifecycle;
 mod session_summaries;
@@ -43,6 +44,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .merge(document_editor::router())
         .merge(jobs::router())
         .merge(processing_settings::router())
+        .merge(provider_credentials::router())
         .merge(session_cleanup::router())
         .merge(session_lifecycle::router())
         .merge(session_summaries::router())
@@ -226,6 +228,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
         capabilities.features.push("template_output_jobs".into());
         capabilities.features.push("generated_titles".into());
         capabilities.features.push("processing_settings".into());
+        capabilities.features.push("provider_credentials".into());
     }
     if service.config.transcription.is_some() {
         capabilities

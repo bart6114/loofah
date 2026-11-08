@@ -22,6 +22,8 @@ mod capture_processing;
 pub use capture_processing::*;
 mod jobs;
 pub use jobs::*;
+mod provider_credentials;
+pub use provider_credentials::*;
 mod processing_settings;
 pub use processing_settings::*;
 mod transcript_overview;

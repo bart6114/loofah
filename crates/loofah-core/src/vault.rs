@@ -26,6 +26,8 @@ pub struct VaultContext {
     pub(crate) media_readers: Arc<tokio::sync::Semaphore>,
     pub(crate) upload_writers: Arc<tokio::sync::Semaphore>,
     pub(crate) processing: std::sync::OnceLock<crate::jobs::ProcessingService>,
+    pub(crate) provider_credentials:
+        tokio::sync::OnceCell<Arc<crate::provider_credentials::ProviderCredentials>>,
     pub(crate) processing_policy: std::sync::OnceLock<hypr_loofah_protocol::ProcessingPolicy>,
     pub(crate) transcription: std::sync::OnceLock<crate::transcription_jobs::TranscriptionService>,
     pub(crate) capture_live: std::sync::OnceLock<Arc<crate::capture_live::CaptureLiveService>>,
@@ -56,6 +58,7 @@ impl VaultContext {
             upload_writers: Arc::new(tokio::sync::Semaphore::new(2)),
             processing: std::sync::OnceLock::new(),
             processing_policy: std::sync::OnceLock::new(),
+            provider_credentials: tokio::sync::OnceCell::new(),
             transcription: std::sync::OnceLock::new(),
             capture_live: std::sync::OnceLock::new(),
             capture_processing: std::sync::OnceLock::new(),
