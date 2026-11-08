@@ -162,4 +162,6 @@ impl<R: tauri::Runtime> SummaryModels for LocalModels<R> {
 }
 
 #[cfg(test)]
+mod ollama_acceptance;
+#[cfg(test)]
 mod tests;

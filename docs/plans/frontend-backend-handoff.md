@@ -665,3 +665,18 @@ Telemetry callbacks use a nonblocking bounded cache; UI reads select the complet
 original capture identity. Floating views copy their rendered capture key into
 the Stop event; legacy Local listeners ignore keyed events. The Remote event and
 overlay host is still being connected, and Recording settings remain gated.
+
+An opt-in Native acceptance case now covers configured Local Ollama through the
+production `ProcessingState` / `LocalModels` / `DeviceSecrets` constructor and
+shared Core jobs. It declares the existing automatic manual-media parent before
+a checked SRT import, verifies generated summary/title publication and exact
+original note/transcript bytes, replays one original child, and verifies that a
+short transcript is skipped. No account, credential-store plugin, download or
+provider substitute is installed by the test. Set `LOOFAH_TEST_OLLAMA_BASE_URL`
+to an explicit loopback `http://.../v1` endpoint and `LOOFAH_TEST_OLLAMA_MODEL` to
+an already downloaded model, then select the ignored
+`processing::ollama_acceptance::configured_local_ollama_publishes_automatic_summary_and_title_without_login`
+case on the existing stable Native test graph. Both successful and failed
+assertions drain real summary/title work before releasing the disposable vault.
+This source checkpoint has formatting validation only; root-lane execution is
+pending and does not replace physical microphone or platform GUI acceptance.
