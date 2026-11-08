@@ -336,10 +336,7 @@ async fn restored_interrupted_legacy_document_write_recovers_before_reads_and_fu
             .join("runtime")
             .join(vault)
             .join("creates/document-saves")
-            .join(format!(
-                "{}.json",
-                capture::hash(session.as_bytes().to_vec())
-            ));
+            .join(format!("{}.json", capture::hash(session.as_bytes())));
         let intent = json!({"schema_version":version,"session_id":session,"target":target,"before_revision":before.revision,"after_revision":after.revision,"before_tasks_hash":capture::hash(task_bytes),"tasks":tasks});
         hypr_storage::fs::atomic_write(&pending_path, &intent.to_string()).unwrap();
         let original = storage_hashes(&stopped.config.storage_root);

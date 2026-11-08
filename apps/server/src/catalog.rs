@@ -57,11 +57,14 @@ struct State {
     gates: BTreeMap<String, Arc<RwLock<()>>>,
 }
 
+#[cfg(test)]
+type CommitPause =
+    Arc<std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>>;
+
 #[derive(Clone)]
 pub struct Catalog {
     #[cfg(test)]
-    pub(crate) pause:
-        Arc<std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>>,
+    pub(crate) pause: CommitPause,
     _lease: Arc<std::fs::File>,
     path: PathBuf,
     state: Arc<Mutex<State>>,

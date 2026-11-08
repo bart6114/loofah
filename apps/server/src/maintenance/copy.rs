@@ -236,15 +236,14 @@ pub(super) fn verify_inventory(root: &Path, expected: &Inventory) -> Result<()> 
         if let Some(parent) = Path::new(name)
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
-        {
-            if !matches!(
+            && !matches!(
                 expected.get(&relative_name(parent)?),
                 Some(Entry::Directory { .. })
-            ) {
-                return Err(MaintenanceError(
-                    "Backup inventory is missing a parent directory",
-                ));
-            }
+            )
+        {
+            return Err(MaintenanceError(
+                "Backup inventory is missing a parent directory",
+            ));
         }
     }
     let mut actual = inventory(root)?;

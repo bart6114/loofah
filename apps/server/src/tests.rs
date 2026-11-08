@@ -1785,10 +1785,9 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
             .await
             .unwrap()
             .unwrap()
+            && ids.contains(&created.meta.id)
         {
-            if ids.contains(&created.meta.id) {
-                break;
-            }
+            break;
         }
     }
     let RemoteReply::Note(current) = request(
