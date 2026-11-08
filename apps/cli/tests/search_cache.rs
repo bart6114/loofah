@@ -40,7 +40,7 @@ fn response(output: &Output) -> Value {
 fn first_vault_commands_initialize_before_dispatch_and_keep_stdout_clean() {
     for args in [
         vec!["sessions", "list"],
-        vec!["sessions", "rename", "a", "Changed"],
+        vec!["sessions", "new", "--title", "Created"],
         vec!["tags", "list"],
         vec!["sessions", "search", "initial"],
     ] {
@@ -57,21 +57,6 @@ fn first_vault_commands_initialize_before_dispatch_and_keep_stdout_clean() {
         assert_eq!(events.last().unwrap()["phase"], "ready");
         let cache = hypr_search_cache::Cache::for_vault(vault.path()).unwrap();
         assert!(cache.status().ready);
-        if args[1] == "rename" {
-            assert_eq!(
-                cache
-                    .search(hypr_search_cache::SearchRequest {
-                        query: "Changed".into(),
-                        collection: None,
-                        filters: Default::default(),
-                        options: Default::default(),
-                        limit: 10,
-                    })
-                    .unwrap()
-                    .count,
-                1
-            );
-        }
         let repeat = run(vault.path(), &["sessions", "list"]);
         response(&repeat);
         assert!(repeat.stderr.is_empty());
@@ -79,14 +64,19 @@ fn first_vault_commands_initialize_before_dispatch_and_keep_stdout_clean() {
 }
 
 #[test]
-fn per_id_reads_do_not_initialize_global_search_or_migrate_config() {
+fn per_id_operations_do_not_initialize_global_search_or_migrate_config() {
     let vault = tempfile::tempdir().unwrap();
     seed(vault.path());
     let config =
         r#"{"current_stt_provider":"am","current_stt_model":"am-parakeet-v3","future":42}"#;
     std::fs::write(vault.path().join("config.json"), config).unwrap();
     let cache = hypr_search_cache::Cache::for_vault(vault.path()).unwrap();
-    for args in [vec!["sessions", "get", "a"], vec!["sessions", "path", "a"]] {
+    for args in [
+        vec!["sessions", "get", "a"],
+        vec!["sessions", "path", "a"],
+        vec!["sessions", "rename", "a", "Changed"],
+        vec!["sessions", "delete", "a"],
+    ] {
         let output = run(vault.path(), &args);
         response(&output);
         assert!(output.stderr.is_empty());
@@ -252,13 +242,19 @@ fn failed_first_initialization_never_dispatches_a_write() {
     let vault = tempfile::tempdir().unwrap();
     seed(vault.path());
     std::fs::write(vault.path().join("sessions/a/transcript.json"), "malformed").unwrap();
-    let output = run(vault.path(), &["sessions", "rename", "a", "Changed"]);
+    let output = run(vault.path(), &["sessions", "new", "--title", "Changed"]);
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     let meta: Value =
         serde_json::from_slice(&std::fs::read(vault.path().join("sessions/a/_meta.json")).unwrap())
             .unwrap();
     assert_eq!(meta["title"], "Original");
+    assert_eq!(
+        std::fs::read_dir(vault.path().join("sessions"))
+            .unwrap()
+            .count(),
+        1
+    );
     assert!(
         !hypr_search_cache::Cache::for_vault(vault.path())
             .unwrap()
@@ -334,6 +330,9 @@ fn reconciliation_failure_reports_persisted_write_without_success_output() {
     let error: Value = serde_json::from_slice(&write.stderr).unwrap();
     assert_eq!(error["error"]["write_persisted"], true);
     assert_eq!(error["error"]["session_ids"], json!(["a"]));
+    assert_eq!(error["error"]["mutation_outcome"], "persisted");
+    assert_eq!(error["error"]["retryable"], false);
+    assert!(error["error"]["request_id"].as_str().is_some());
     let meta: Value =
         serde_json::from_slice(&std::fs::read(vault.path().join("sessions/a/_meta.json")).unwrap())
             .unwrap();
@@ -376,4 +375,24 @@ fn direct_writes_reconcile_only_the_affected_sessions() {
     response(&run(vault.path(), &["sessions", "delete", "a"]));
     assert!(broken.join("_meta.json").exists());
     assert!(!run(vault.path(), &["sessions", "list"]).status.success());
+}
+
+#[cfg(unix)]
+#[test]
+fn per_id_rename_without_a_cache_does_not_require_session_enumeration() {
+    use std::os::unix::fs::PermissionsExt;
+    let vault = tempfile::tempdir().unwrap();
+    seed(vault.path());
+    let sessions = vault.path().join("sessions");
+    std::fs::set_permissions(&sessions, std::fs::Permissions::from_mode(0o100)).unwrap();
+    let renamed = run(vault.path(), &["sessions", "rename", "a", "Changed"]);
+    std::fs::set_permissions(&sessions, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(response(&renamed)["data"]["title"], "Changed");
+    assert!(renamed.stderr.is_empty());
+    assert!(
+        !hypr_search_cache::Cache::for_vault(vault.path())
+            .unwrap()
+            .path()
+            .exists()
+    );
 }

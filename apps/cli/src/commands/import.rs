@@ -66,7 +66,6 @@ pub async fn run(
         return Err(crate::profiles::unexpected());
     };
     let session_id = meta.id.clone();
-    output::track_write(&session_id)?;
     let mut data = serde_json::json!({ "id": session_id, "title": meta.title, "created_at": meta.created_at, "audio": audio_path });
     let mut exit_code = 0;
     if let Some(transcription) = transcription {

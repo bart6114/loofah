@@ -21,6 +21,7 @@ pub const LOCAL_CLI_NAMESPACE: &str = "local-cli";
 pub struct LocalCli {
     context: Arc<VaultContext>,
     read_only: bool,
+    session_only: bool,
     media: Option<Arc<dyn LocalMediaHost>>,
 }
 pub struct LocalCliOutput {
@@ -39,6 +40,7 @@ impl LocalCli {
         Ok(Self {
             context,
             read_only: false,
+            session_only: false,
             media: None,
         })
     }
@@ -52,6 +54,15 @@ impl LocalCli {
         use LocalCliOperationKind::*;
         if self.read_only {
             return read_owner::operations();
+        }
+        if self.session_only {
+            let mut operations = read_owner::operations();
+            operations.extend([
+                LocalCliOperationKind::SaveMetadata,
+                LocalCliOperationKind::SessionLifecycle,
+                LocalCliOperationKind::DeleteSession,
+            ]);
+            return operations;
         }
         let mut operations = vec![
             AgentList,
@@ -117,6 +128,15 @@ impl LocalCli {
         }
         let dispatcher = self.clone();
         let original_request_id = request_id.clone();
+        let completion_request = match &operation {
+            LocalCliOperation::RecoverMedia { request_id } => request_id.clone(),
+            _ => request_id.clone(),
+        };
+        let note_session = match &operation {
+            LocalCliOperation::SaveNote { session_id, .. }
+            | LocalCliOperation::AppendNote { session_id, .. } => Some(session_id.clone()),
+            _ => None,
+        };
         let media_request = matches!(
             &operation,
             LocalCliOperation::Import { .. }
@@ -152,24 +172,53 @@ impl LocalCli {
                 }
                 panic!("Local operation supervisor was cancelled: {cause}");
             });
-        result
-            .map(|mut output| {
-                if let LocalCliReply::Imported {
-                    transcription: Some(Err(cause)),
-                    ..
-                } = &mut output.reply
-                {
-                    identify_media_error(cause, &original_request_id);
-                }
-                output
-            })
-            .map_err(|mut cause| {
-                identify_error(&mut cause, &original_request_id);
-                if media_request {
-                    identify_media_error(&mut cause, &original_request_id);
-                }
-                cause
-            })
+        let mut output = result.map_err(|mut cause| {
+            identify_error(&mut cause, &original_request_id);
+            if media_request {
+                identify_media_error(&mut cause, &original_request_id);
+            }
+            cause
+        })?;
+        if let LocalCliReply::Imported {
+            transcription: Some(Err(cause)),
+            ..
+        } = &mut output.reply
+        {
+            identify_media_error(cause, &completion_request);
+        }
+        let affected = match &output.reply {
+            LocalCliReply::MetadataSaved {
+                outcome: MetadataSaveOutcome::Saved(snapshot),
+            }
+            | LocalCliReply::TagDelta {
+                outcome: MetadataSaveOutcome::Saved(snapshot),
+                ..
+            } => Some(snapshot.meta.id.clone()),
+            LocalCliReply::NoteSaved {
+                outcome: NoteSaveOutcome::Saved(_),
+            } => note_session,
+            LocalCliReply::SessionCreated { meta } | LocalCliReply::Imported { meta, .. } => {
+                Some(meta.id.clone())
+            }
+            LocalCliReply::SessionDeleted { session_id, .. }
+            | LocalCliReply::Transcribed { session_id, .. } => Some(session_id.clone()),
+            _ => None,
+        };
+        if let Some(session) = affected
+            && self.context.search.cache().await.is_ok()
+            && let Err(cause) = self
+                .context
+                .search
+                .reconcile(Some(vec![session.clone()]))
+                .await
+        {
+            output.reply = LocalCliReply::WritePersisted {
+                request_id: completion_request,
+                session_ids: vec![session],
+                reason: cause.to_string(),
+            };
+        }
+        Ok(output)
     }
 
     async fn dispatch(
@@ -264,7 +313,11 @@ impl LocalCli {
                 LocalCliReply::SessionCreated { meta }
             }
             LocalCliOperation::SessionLifecycle { session_id } => {
-                let snapshot = context.read_session_lifecycle(&session_id).await?;
+                context.read_metadata(&session_id).await?;
+                let snapshot = context
+                    .read_session_lifecycle(&session_id)
+                    .await
+                    .map_err(local_lifecycle_error)?;
                 LocalCliReply::SessionLifecycle {
                     session_id: snapshot.session_id,
                     revision: snapshot.revision,
@@ -284,7 +337,8 @@ impl LocalCli {
                         request_id.clone(),
                         input.clone(),
                     )
-                    .await?
+                    .await
+                    .map_err(local_lifecycle_error)?
                 {
                     DeleteSessionOutcome::Trashed { .. } => {
                         let details = context
@@ -444,4 +498,14 @@ fn identify_media_error(cause: &mut ApplicationError, request_id: &str) {
     {
         cause.message.push_str(&format!("; inspect or finish this request with loof sessions recover {id}; inference will not be repeated"));
     }
+}
+
+fn local_lifecycle_error(mut cause: ApplicationError) -> ApplicationError {
+    if cause.code == ErrorCode::Conflict
+        && cause.mutation_outcome == Some(MutationOutcome::NotCommitted)
+        && cause.current_revision.is_none()
+    {
+        cause.code = ErrorCode::Validation;
+    }
+    cause
 }

@@ -10,6 +10,7 @@ pub enum Error {
         "Vault write persisted, but command completion failed: {reason}. Do not repeat the write; run loof init to refresh the cache"
     )]
     WritePersisted {
+        request_id: String,
         reason: String,
         session_ids: Vec<String>,
     },
@@ -118,7 +119,16 @@ impl Error {
             response["error"]["current_revision"] = serde_json::json!(error.current_revision);
             response["error"]["mutation_outcome"] = serde_json::json!(error.mutation_outcome);
         }
-        if let Self::WritePersisted { session_ids, .. } = self {
+        if let Self::WritePersisted {
+            request_id,
+            session_ids,
+            ..
+        } = self
+        {
+            response["error"]["request_id"] = serde_json::json!(request_id);
+            response["error"]["mutation_outcome"] =
+                serde_json::json!(hypr_loofah_protocol::MutationOutcome::Persisted);
+            response["error"]["retryable"] = serde_json::json!(false);
             response["error"]["write_persisted"] = serde_json::json!(true);
             response["error"]["session_ids"] = serde_json::json!(session_ids);
         }

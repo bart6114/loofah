@@ -5,9 +5,12 @@ pub mod meetings;
 pub mod tags;
 pub mod transcribe;
 
+#[cfg(test)]
 use std::path::Path;
 
+#[cfg(test)]
 use crate::{Error, Result};
+#[cfg(test)]
 use hypr_vault_write::{SessionMeta, SessionStore};
 
 /// Caller-provided metadata for a new session. Timestamps are already
@@ -26,6 +29,7 @@ pub(crate) struct NewSessionOptions {
 /// Create a session the same way the desktop frontend does: a `crypto.randomUUID()`-style
 /// id plus a full `_meta.json`. A collision is practically impossible, but never clobber
 /// an existing session: retry a few times, then give up rather than overwrite.
+#[cfg(test)]
 pub(crate) async fn create_session(
     vault: &Path,
     store: &SessionStore,
@@ -75,7 +79,6 @@ pub(crate) async fn create_session(
         skill: options.skill,
         extra: Default::default(),
     };
-    crate::output::track_write(&meta.id)?;
     store
         .create_session_meta(&meta)
         .await

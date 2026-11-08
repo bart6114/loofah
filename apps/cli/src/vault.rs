@@ -3,13 +3,6 @@ use std::path::{Path, PathBuf};
 
 use crate::{Args, Error, Result};
 
-pub(crate) fn local_store(path: &Path) -> hypr_vault_write::SessionStore {
-    hypr_vault_write::SessionStore::with_content_limits(
-        path.to_path_buf(),
-        hypr_vault_write::ContentLimits::unlimited(),
-    )
-}
-
 pub(crate) fn cache_for_vault(path: &Path) -> Result<hypr_search_cache::Cache> {
     #[cfg(test)]
     {

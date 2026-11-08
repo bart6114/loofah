@@ -72,7 +72,7 @@ content.
 
 ## Local search cache
 
-List/search commands and writes automatically build a missing or incompatible local Tantivy cache before running; desktop shares the same cache. Per-session reads such as `sessions get`, `sessions path`, and `sessions export` do not initialize global search or migrate settings. Idle MCP startup waits until a query needs the vault. First use may take longer, with progress on stderr. `loof --json init` explicitly builds, repairs, or refreshes the cache for an existing vault; it does not create a vault. Help, version, and `doctor` do not initialize the cache.
+List/search commands and writes automatically build a missing or incompatible local Tantivy cache before running; desktop shares the same cache. Per-session reads, `sessions rename`, and `sessions delete` do not initialize global search or migrate settings. They reconcile only an affected session when a ready projection already exists. Idle MCP startup waits until a query needs the vault. First use may take longer, with progress on stderr. `loof --json init` explicitly builds, repairs, or refreshes the cache for an existing vault; it does not create a vault. Help, version, and `doctor` do not initialize the cache.
 
 With `--json`, initialization streams NDJSON progress on stderr; stdout contains only the requested command's response. Explicit `init` returns one final JSON response. Search and lists reconcile changes before querying; writes finish reconciliation before reporting success. A `write_persisted` error means the write was saved: do not repeat it; resolve the reported issue and run `init`. A `cache_busy` error is retryable.
 

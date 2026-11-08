@@ -68,7 +68,27 @@ impl VaultRuntime {
             cache_root.to_owned(),
             operation_root.to_owned(),
             None,
-            Some((lease, content_limits)),
+            Some((lease, content_limits, None)),
+        )
+        .await
+    }
+
+    pub async fn open_leased_with_ready_cache(
+        id: String,
+        lease: hypr_storage::vault::VaultLease,
+        cache_root: &Path,
+        operation_root: &Path,
+        content_limits: hypr_vault_write::ContentLimits,
+        cache: hypr_search_cache::Cache,
+    ) -> Result<Self, StoreError> {
+        let vault = lease.canonical_vault().to_owned();
+        Self::open_owned(
+            id,
+            vault,
+            cache_root.to_owned(),
+            operation_root.to_owned(),
+            None,
+            Some((lease, content_limits, Some(cache))),
         )
         .await
     }
@@ -101,6 +121,7 @@ impl VaultRuntime {
         admitted: Option<(
             hypr_storage::vault::VaultLease,
             hypr_vault_write::ContentLimits,
+            Option<hypr_search_cache::Cache>,
         )>,
     ) -> Result<Self, StoreError> {
         // Dropping a request detaches this owner; nested blocking recovery/migration
@@ -121,20 +142,31 @@ impl VaultRuntime {
         admitted: Option<(
             hypr_storage::vault::VaultLease,
             hypr_vault_write::ContentLimits,
+            Option<hypr_search_cache::Cache>,
         )>,
     ) -> Result<Self, StoreError> {
         let vault = vault.to_path_buf();
         let operations = operation_root.to_path_buf();
-        let (vault, lease, operation_root, content_limits) =
+        let (vault, lease, operation_root, content_limits, ready_cache) =
             tokio::task::spawn_blocking(move || {
-                let (lease, limits) = match admitted {
-                    Some((lease, limits)) => {
+                let (lease, limits, ready_cache) = match admitted {
+                    Some((lease, limits, cache)) => {
                         if lease.canonical_vault() != vault.as_path() {
                             return Err(StoreError::Conflict(
                                 "Acquired lease belongs to another vault".into(),
                             ));
                         }
-                        (lease, limits)
+                        if let Some(cache) = &cache {
+                            if cache.vault().canonicalize().map_err(io_error)? != vault {
+                                return Err(StoreError::Conflict(
+                                    "Ready cache belongs to another vault".into(),
+                                ));
+                            }
+                            cache
+                                .check()
+                                .map_err(|cause| StoreError::Io(cause.to_string()))?;
+                        }
+                        (lease, limits, cache)
                     }
                     None => {
                         std::fs::create_dir_all(&vault).map_err(io_error)?;
@@ -150,7 +182,7 @@ impl VaultRuntime {
                                     ));
                                 }
                             };
-                        (lease, hypr_vault_write::ContentLimits::default())
+                        (lease, hypr_vault_write::ContentLimits::default(), None)
                     }
                 };
                 let vault = lease.canonical_vault().to_owned();
@@ -158,7 +190,7 @@ impl VaultRuntime {
                 // ancestor aliases once; private descendants still use strict guards.
                 std::fs::create_dir_all(&operations).map_err(io_error)?;
                 let operations = std::fs::canonicalize(operations).map_err(io_error)?;
-                Ok((vault, lease, operations, limits))
+                Ok((vault, lease, operations, limits, ready_cache))
             })
             .await
             .map_err(|error| StoreError::Io(error.to_string()))??;
@@ -198,7 +230,11 @@ impl VaultRuntime {
             store.clone(),
             startup.clone(),
             Arc::new(ConfigState::load_with_vault_lease(&lease)),
-            Arc::new(SearchService::default()),
+            Arc::new(
+                ready_cache
+                    .map(SearchService::with_ready_cache)
+                    .unwrap_or_default(),
+            ),
         )
         .with_operation_storage(operation_root.to_path_buf());
         context.lease = Some(lease_pin);

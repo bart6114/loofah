@@ -25,7 +25,6 @@ pub async fn run(vault: &Path, id: &str, json: bool) -> Result<()> {
     else {
         return Err(crate::profiles::unexpected());
     };
-    output::track_write(&session_id)?;
     output::emit(&if json {
         output::json(
             "transcribe",

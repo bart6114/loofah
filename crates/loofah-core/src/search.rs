@@ -34,6 +34,13 @@ impl Default for SearchService {
 }
 
 impl SearchService {
+    pub(crate) fn with_ready_cache(cache: Cache) -> Self {
+        Self {
+            cache: RwLock::new(Some(cache)),
+            initialization: tokio::sync::watch::channel(Some(Ok(()))).0,
+        }
+    }
+
     pub async fn initialize(&self, global: &Path, vault: &Path) -> Result<(), SearchError> {
         let result = async {
             let cache = Cache::new(global, vault)?;
@@ -100,6 +107,10 @@ impl SearchService {
             return;
         }
         loop {
+            if self.cache.read().await.is_some() {
+                ready();
+                break;
+            }
             match self.initialize(global, vault).await {
                 Ok(()) => {
                     ready();

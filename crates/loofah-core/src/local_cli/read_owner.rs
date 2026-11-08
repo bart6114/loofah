@@ -21,9 +21,37 @@ impl LocalCli {
         lease: hypr_storage::vault::VaultLease,
         operation_root: std::path::PathBuf,
     ) -> Result<Arc<Self>, ApplicationError> {
+        Self::open_restricted_owner(lease, operation_root, None, false).await
+    }
+
+    pub async fn open_session_owner(
+        lease: hypr_storage::vault::VaultLease,
+        operation_root: std::path::PathBuf,
+        cache: Option<hypr_search_cache::Cache>,
+    ) -> Result<Arc<Self>, ApplicationError> {
+        Self::open_restricted_owner(lease, operation_root, cache, true).await
+    }
+
+    async fn open_restricted_owner(
+        lease: hypr_storage::vault::VaultLease,
+        operation_root: std::path::PathBuf,
+        cache: Option<hypr_search_cache::Cache>,
+        session_only: bool,
+    ) -> Result<Arc<Self>, ApplicationError> {
         tokio::spawn(async move {
             let context = tokio::task::spawn_blocking(move || {
                 let root = lease.canonical_vault().to_owned();
+                if let Some(cache) = &cache {
+                    if cache.vault().canonicalize().ok().as_ref() != Some(&root) {
+                        return Err(error(
+                            ErrorCode::Validation,
+                            "Cache and owner vault do not match",
+                        ));
+                    }
+                    cache
+                        .check()
+                        .map_err(|cause| error(ErrorCode::Unavailable, &cause.to_string()))?;
+                }
                 std::fs::create_dir_all(&operation_root).map_err(|_| {
                     error(
                         ErrorCode::Unavailable,
@@ -51,7 +79,11 @@ impl LocalCli {
                     store,
                     crate::startup::StartupState::new(Some(&root)),
                     Arc::new(settings),
-                    Arc::new(crate::search::SearchService::default()),
+                    Arc::new(
+                        cache
+                            .map(crate::search::SearchService::with_ready_cache)
+                            .unwrap_or_default(),
+                    ),
                 )
                 .with_vault_lease(lease)?
                 .with_operation_storage(operation_root);
@@ -69,7 +101,8 @@ impl LocalCli {
             context.startup.set_phase(StartupPhase::Ready);
             Ok(Arc::new(Self {
                 context,
-                read_only: true,
+                read_only: !session_only,
+                session_only,
                 media: None,
             }))
         })

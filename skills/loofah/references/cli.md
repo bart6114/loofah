@@ -12,7 +12,7 @@ loof --json sessions note MEETING_ID --kind note
 loof --json sessions note MEETING_ID --kind summary
 ```
 
-List/search and writes automatically initialize a missing or incompatible cache. Per-session reads do not initialize global search or migrate settings; idle MCP does not open the vault. JSON progress streams on stderr; stdout contains only the requested command's response. Search/lists refresh changes automatically. Use `loof --json init` for explicit setup or repair.
+List/search and writes automatically initialize a missing or incompatible cache. Per-session reads, rename, and delete do not initialize global search or migrate settings; idle MCP does not open the vault. JSON progress streams on stderr; stdout contains only the requested command's response. Search/lists refresh changes automatically. Use `loof --json init` for explicit setup or repair.
 
 `doctor` exits with status 1 when its response contains `ready: false`. Inside a vault it also restores the root `AGENTS.md` agent guide when missing or stale (reported as `agents_md`).
 

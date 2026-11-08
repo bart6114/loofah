@@ -197,6 +197,11 @@ impl LocalCliOperation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LocalCliReply {
+    WritePersisted {
+        request_id: String,
+        session_ids: Vec<String>,
+        reason: String,
+    },
     AgentList {
         page: AgentPage,
     },
@@ -335,6 +340,20 @@ impl LocalCliOperationKind {
     pub fn accepts_reply(&self, reply: &LocalCliReply, has_blob: bool) -> bool {
         if has_blob != matches!(reply, LocalCliReply::Attachment { .. }) {
             return false;
+        }
+        if matches!(reply, LocalCliReply::WritePersisted { .. }) {
+            return matches!(
+                self,
+                Self::SaveMetadata
+                    | Self::SaveNote
+                    | Self::AppendNote
+                    | Self::TagDelta
+                    | Self::CreateSession
+                    | Self::DeleteSession
+                    | Self::Import
+                    | Self::Transcribe
+                    | Self::RecoverMedia
+            );
         }
         matches!(
             (self, reply),

@@ -78,6 +78,15 @@ impl LocalGateway {
                             ),
                             None,
                         )
+                    } else if per_id_mutation(&operation.kind()) {
+                        let cache = self.ready_cache(lease.clone()).await?;
+                        (
+                            Dispatcher::Application(
+                                LocalCli::open_session_owner(lease.clone(), operations, cache)
+                                    .await?,
+                            ),
+                            None,
+                        )
                     } else {
                         let cache = self.cache.clone();
                         let cache_owner = lease.clone();
@@ -97,14 +106,26 @@ impl LocalGateway {
                         if initializing {
                             crate::output::startup_progress("initializing", started);
                         }
-                        let runtime = VaultRuntime::open_leased(
-                            format!("local:{key}"),
-                            lease.clone(),
-                            &self.cache_base()?,
-                            &operations,
-                            hypr_vault_write::ContentLimits::unlimited(),
-                        )
-                        .await
+                        let runtime = if initializing {
+                            VaultRuntime::open_leased(
+                                format!("local:{key}"),
+                                lease.clone(),
+                                &self.cache_base()?,
+                                &operations,
+                                hypr_vault_write::ContentLimits::unlimited(),
+                            )
+                            .await
+                        } else {
+                            VaultRuntime::open_leased_with_ready_cache(
+                                format!("local:{key}"),
+                                lease.clone(),
+                                &self.cache_base()?,
+                                &operations,
+                                hypr_vault_write::ContentLimits::unlimited(),
+                                self.cache.clone(),
+                            )
+                            .await
+                        }
                         .map_err(|cause| {
                             Error::operation("open local vault owner", cause.to_string())
                         })?;
@@ -233,10 +254,39 @@ impl LocalGateway {
             }
             (Ok(response), Ok(())) => Ok(response),
         }?;
+        if let Ok(hypr_loofah_protocol::LocalCliReply::WritePersisted {
+            request_id,
+            session_ids,
+            reason,
+        }) = &response.response.result
+        {
+            return Err(Error::WritePersisted {
+                request_id: request_id.clone(),
+                session_ids: session_ids.clone(),
+                reason: reason.clone(),
+            });
+        }
         if let Err(cause) = &response.response.result {
             return Err(Error::local(cause.clone()));
         }
         Ok(response)
+    }
+
+    async fn ready_cache(
+        &self,
+        owner: hypr_storage::vault::VaultLease,
+    ) -> Result<Option<hypr_search_cache::Cache>> {
+        let cache = self.cache.clone();
+        tokio::task::spawn_blocking(move || {
+            let _owner = owner;
+            match cache.check() {
+                Ok(()) => Ok(Some(cache)),
+                Err(hypr_search_cache::Error::NotReady) => Ok(None),
+                Err(cause) => Err(Error::Cache(cause)),
+            }
+        })
+        .await
+        .map_err(|cause| Error::operation("inspect local search", cause.to_string()))?
     }
 
     fn cache_base(&self) -> Result<PathBuf> {
@@ -276,6 +326,15 @@ impl LocalGateway {
             EndpointRoot::system().map_err(owner_error)
         }
     }
+}
+
+fn per_id_mutation(kind: &LocalCliOperationKind) -> bool {
+    matches!(
+        kind,
+        LocalCliOperationKind::SaveMetadata
+            | LocalCliOperationKind::SessionLifecycle
+            | LocalCliOperationKind::DeleteSession
+    )
 }
 
 fn per_id_read(kind: &LocalCliOperationKind) -> bool {

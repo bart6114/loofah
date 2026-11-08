@@ -111,7 +111,7 @@ If CLI access is unavailable or the user requests MCP, use connected Loofah MCP 
 
 Run `loof doctor` first to verify the CLI can reach the vault (it also repairs
 a missing or stale `AGENTS.md`). Always pass `--json` for machine-readable
-output. List/search and writes automatically initialize a missing or incompatible local cache, with progress on stderr. Per-session reads do not initialize global search or migrate settings; idle MCP does not open the vault. Use `loof --json init` for repair. Search and lists refresh changes automatically; successful writes are searchable.
+output. List/search and writes automatically initialize a missing or incompatible local cache, with progress on stderr. Per-session reads, rename, and delete do not initialize global search or migrate settings; idle MCP does not open the vault. Use `loof --json init` for repair. Search and lists refresh changes automatically; successful writes are searchable.
 
 | Command | Purpose |
 | --- | --- |
