@@ -468,6 +468,9 @@ async fn changed_or_unbound_operator_model_never_reinterprets_retained_media_sou
         );
         record.model_sha256 = original;
         fixture.media.save(record, false).await.unwrap();
+        let review = fixture.media.status(&request).await.unwrap();
+        assert_eq!(review.phase, MediaPhase::Review);
+        assert!(review.media.unwrap().error.is_some());
         let received = fixture
             .media
             .receive(request.clone(), admitted.revision, bytes.as_slice())

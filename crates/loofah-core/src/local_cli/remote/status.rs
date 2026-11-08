@@ -64,6 +64,7 @@ impl MediaDispatcher {
             },
             Some(Err(cause)) => return Err(cause),
         };
+        let model_review = self.check_model_binding(&record).err();
         let phase = if running {
             media.state = LocalMediaState::Running;
             MediaPhase::Running
@@ -75,6 +76,10 @@ impl MediaDispatcher {
                 LocalMediaState::Succeeded => MediaPhase::Succeeded,
                 LocalMediaState::Failed => MediaPhase::Failed,
                 LocalMediaState::Cancelled => MediaPhase::Cancelled,
+                _ if model_review.is_some() => {
+                    media.error = media.error.or(model_review);
+                    MediaPhase::Review
+                }
                 _ if matches!(record.phase, MediaPhase::Receiving | MediaPhase::Ready) => {
                     record.phase
                 }
