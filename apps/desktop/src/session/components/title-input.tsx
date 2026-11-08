@@ -1,6 +1,11 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useForm, useStore } from "@tanstack/react-form";
-import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
+import {
+  onlineManager,
+  useIsMutating,
+  useMutation,
+  useQuery,
+} from "@tanstack/react-query";
 import { usePrevious } from "@uidotdev/usehooks";
 import {
   type CSSProperties,
@@ -131,9 +136,7 @@ const TitleInputInner = memo(
     ) => {
       const { t } = useLingui();
       const mounted = useRef(false);
-      const token = useRef(
-        liveSessionTitleDraft(scope, sessionId)?.owner ?? {},
-      ).current;
+      const token = useRef({}).current;
       const initial = useRef(liveSessionTitleDraft(scope, sessionId)).current;
       useLayoutEffect(() => {
         mounted.current = true;
@@ -146,12 +149,26 @@ const TitleInputInner = memo(
         () => onlineManager.isOnline(),
       );
       const active = () => mounted.current && current();
-      const available = () =>
+      const connected = () =>
         active() &&
         scope.getSnapshot().state === "connected" &&
         scope.client.canEdit &&
         scope.client.features.includes("metadata_edit") &&
         (scope.client.networkMode === "always" || onlineManager.isOnline());
+      const available = () => {
+        const draft = liveSessionTitleDraft(scope, sessionId);
+        return connected() && (!draft || draft.owner === token);
+      };
+      const titleMutationKey = [
+        "vault",
+        scope.client.scope,
+        "title_write",
+        sessionId,
+      ];
+      const titlePending = useIsMutating(
+        { mutationKey: titleMutationKey },
+        scope.queryClient,
+      );
       const options = scope.metadataOptions(sessionId);
       const metadata = useQuery(
         {
@@ -188,7 +205,7 @@ const TitleInputInner = memo(
         {
           networkMode: "always",
           retry: false,
-          mutationKey: ["vault", scope.client.scope, "title_write", sessionId],
+          mutationKey: titleMutationKey,
           mutationFn: async (draft: LiveTitleDraft) => {
             if (!available()) throw connectionClosed();
             const guard = captureSessionTitleGuard(scope, sessionId, active);
@@ -292,6 +309,7 @@ const TitleInputInner = memo(
       const submitting = useStore(form.store, (state) => state.isSubmitting);
       const entry = useLiveSessionTitleDraft(scope, sessionId);
       const ownDraft = entry?.owner === token ? entry : undefined;
+      const foreignDraft = entry && entry.owner !== token ? entry : undefined;
       const pendingWrite = useRef(false);
       pendingWrite.current = write.isPending || submitting;
       useEffect(
@@ -323,13 +341,14 @@ const TitleInputInner = memo(
         !!ownDraft?.uncertain ||
         stale ||
         (!!write.data && !write.data.canonical);
-      const disabled =
+      const connectionDisabled =
         !current() ||
         scope.getSnapshot().state !== "connected" ||
         !scope.client.canEdit ||
         !scope.client.features.includes("metadata_edit") ||
         (!online && scope.client.networkMode !== "always") ||
         storeTitle === undefined;
+      const disabled = !!foreignDraft || connectionDisabled;
       const [isOverflowing, setIsOverflowing] = useState(false);
       const [overflowDistance, setOverflowDistance] = useState(0);
       const [showStartFade, setShowStartFade] = useState(false);
@@ -339,13 +358,15 @@ const TitleInputInner = memo(
       const wasGenerating = usePrevious(isGenerating);
       const [showRevealAnimation, setShowRevealAnimation] = useState(false);
       useEffect(() => {
-        if (wasGenerating && !isGenerating && !ownDraft) {
+        if (wasGenerating && !isGenerating && !entry) {
           setShowRevealAnimation(true);
           const timer = setTimeout(() => setShowRevealAnimation(false), 1000);
           return () => clearTimeout(timer);
         }
-      }, [wasGenerating, isGenerating, ownDraft]);
-      const title = ownDraft ? values.title : (storeTitle ?? "");
+      }, [wasGenerating, isGenerating, entry]);
+      const title = ownDraft
+        ? values.title
+        : (foreignDraft?.title ?? storeTitle ?? "");
       const capture = (value: string) => {
         if (!available() || !metadata.data) return;
         if (!ownDraft) {
@@ -374,6 +395,25 @@ const TitleInputInner = memo(
           !needsReview
         )
           void form.handleSubmit().catch(() => {});
+      };
+      const continueDraft = () => {
+        const draft = liveSessionTitleDraft(scope, sessionId);
+        if (
+          !connected() ||
+          !draft ||
+          draft.owner === token ||
+          scope.queryClient
+            .getMutationCache()
+            .findAll({ mutationKey: titleMutationKey, status: "pending" })
+            .length
+        )
+          return;
+        form.setFieldValue("title", draft.title);
+        form.setFieldValue("revision", draft.revision);
+        form.setFieldValue("baselineTitle", draft.baselineTitle);
+        write.reset();
+        review.reset();
+        useLiveTitle.getState().handoffTitle(draft, token);
       };
       const reviewSaved = () => {
         if (!available() || write.isPending || review.isPending) return;
@@ -674,11 +714,11 @@ const TitleInputInner = memo(
                     ? "overflow-x-auto whitespace-nowrap"
                     : "truncate"),
                 showHoverReveal && "text-transparent caret-transparent",
-                isGenerating && !ownDraft && "hidden",
-                showRevealAnimation && !ownDraft && "animate-reveal-left",
+                isGenerating && !entry && "hidden",
+                showRevealAnimation && !entry && "animate-reveal-left",
               ])}
             />
-            {isGenerating && !ownDraft ? (
+            {isGenerating && !entry ? (
               <span className="text-muted-foreground animate-pulse">
                 <Trans>Generating title...</Trans>
               </span>
@@ -702,6 +742,15 @@ const TitleInputInner = memo(
               </div>
             ) : null}
           </div>
+          {foreignDraft ? (
+            <button
+              type="button"
+              disabled={connectionDisabled || titlePending > 0}
+              onClick={continueDraft}
+            >
+              <Trans>Continue editing draft</Trans>
+            </button>
+          ) : null}
           {needsReview ? (
             <div role="alert" className="text-muted-foreground text-xs">
               <p>

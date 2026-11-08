@@ -21,6 +21,7 @@ function key(scope: VaultScope, sessionId: string) {
 export const useLiveTitle = create<{
   titles: Record<string, LiveTitleDraft[]>;
   setTitle: (draft: LiveTitleDraft) => void;
+  handoffTitle: (previous: LiveTitleDraft, owner: object) => void;
   clearTitle: (draft: LiveTitleDraft) => void;
   replaceTitle: (previous: LiveTitleDraft, draft: LiveTitleDraft) => void;
 }>((set) => ({
@@ -29,6 +30,8 @@ export const useLiveTitle = create<{
     set((state) => {
       const id = key(draft.scope, draft.sessionId);
       const previous = state.titles[id] ?? [];
+      const captured = previous.find((value) => value.scope === draft.scope);
+      if (captured && captured.owner !== draft.owner) return state;
       return {
         titles: {
           ...state.titles,
@@ -36,6 +39,20 @@ export const useLiveTitle = create<{
             ...previous.filter((value) => value.scope !== draft.scope),
             draft,
           ],
+        },
+      };
+    }),
+  handoffTitle: (previous, owner) =>
+    set((state) => {
+      const id = key(previous.scope, previous.sessionId);
+      const entries = state.titles[id];
+      if (!entries?.includes(previous)) return state;
+      return {
+        titles: {
+          ...state.titles,
+          [id]: entries.map((value) =>
+            value === previous ? { ...value, owner } : value,
+          ),
         },
       };
     }),

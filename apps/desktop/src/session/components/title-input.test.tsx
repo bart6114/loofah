@@ -391,6 +391,9 @@ describe("captured title persistence", () => {
       </host.Host>,
     );
     await waitFor(() => expect(input().value).toBe("Committed, reply lost"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue editing draft" }),
+    );
     expect(
       screen.getByRole("button", { name: "Review saved title" }),
     ).toBeDefined();
@@ -445,7 +448,75 @@ describe("captured title persistence", () => {
       stop();
     }
   });
-  it("does not let a delayed saved reply clear newer typing or a second title editor", async () => {
+  it("never replaces another mounted field's pending draft merely by focusing, and offers explicit handoff", async () => {
+    let finish!: () => void;
+    const stop = registerWriteFlusher(
+      sessionEditorFlushKey(host.client.scope, "session-1"),
+      () =>
+        new Promise<void>((done) => {
+          finish = done;
+        }),
+    );
+    const content = (first: boolean) => (
+      <host.Host>
+        {first ? <TitleInput key="first" tab={tab} /> : null}
+        <TitleInput key="second" tab={{ ...tab, slotId: "second" }} />
+      </host.Host>
+    );
+    try {
+      const view = render(content(true));
+      await waitFor(() =>
+        expect(
+          (screen.getAllByRole("textbox")[0] as HTMLInputElement).readOnly,
+        ).toBe(false),
+      );
+      const [first, second] = screen.getAllByRole(
+        "textbox",
+      ) as HTMLInputElement[];
+      fireEvent.focus(first);
+      fireEvent.change(first, { target: { value: "Private unsent title" } });
+      fireEvent.blur(first);
+      await waitFor(() => expect(finish).toBeDefined());
+      const original = liveSessionTitleDraft(host.scope, "session-1");
+      fireEvent.focus(second);
+      expect(second.readOnly).toBe(true);
+      expect(second.value).toBe("Private unsent title");
+      expect(liveSessionTitleDraft(host.scope, "session-1")).toBe(original);
+      expect(
+        (
+          screen.getAllByRole("button", {
+            name: "Continue editing draft",
+          })[0] as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      view.rerender(content(false));
+      expect(liveSessionTitleDraft(host.scope, "session-1")?.title).toBe(
+        "Private unsent title",
+      );
+      await act(async () => finish());
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole("button", {
+              name: "Continue editing draft",
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false),
+      );
+      expect(host.saveMetadata).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Continue editing draft" }),
+      );
+      expect(input().readOnly).toBe(false);
+      expect(input().value).toBe("Private unsent title");
+      expect(liveSessionTitleDraft(host.scope, "session-1")?.revision).toBe(
+        original?.revision,
+      );
+    } finally {
+      stop();
+    }
+  });
+  it("does not let a delayed reply clear newer typing while a second title field observes read-only", async () => {
     let finish!: () => void;
     host.saveMetadata.mockImplementationOnce(
       (_id, request) =>
@@ -480,12 +551,14 @@ describe("captured title persistence", () => {
     fireEvent.change(first, { target: { value: "First request" } });
     fireEvent.blur(first);
     await waitFor(() => expect(host.saveMetadata).toHaveBeenCalledOnce());
-    fireEvent.focus(second);
-    fireEvent.change(second, { target: { value: "Newer second draft" } });
+    expect(second.readOnly).toBe(true);
+    fireEvent.focus(first);
+    fireEvent.change(first, { target: { value: "Newer owner draft" } });
     await act(async () => finish());
-    expect(second.value).toBe("Newer second draft");
+    expect(first.value).toBe("Newer owner draft");
+    expect(second.value).toBe("Newer owner draft");
     expect(liveSessionTitleDraft(host.scope, "session-1")?.title).toBe(
-      "Newer second draft",
+      "Newer owner draft",
     );
     expect(host.saveMetadata).toHaveBeenCalledOnce();
   });

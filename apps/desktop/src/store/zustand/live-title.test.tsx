@@ -96,3 +96,20 @@ it("shows only the captured scope preview and hides it permanently on terminal a
   );
   expect(view.result.current).toBe("Untitled");
 });
+
+it("refuses implicit competing ownership and preserves all state through an exact explicit handoff", () => {
+  const value = fixture();
+  const pending = { ...value.draft, uncertain: true };
+  useLiveTitle.getState().replaceTitle(value.draft, pending);
+  const other = {};
+  useLiveTitle
+    .getState()
+    .setTitle({ ...pending, owner: other, title: "Saved baseline" });
+  expect(liveSessionTitleDraft(value.host.scope, "same")).toBe(pending);
+  useLiveTitle.getState().handoffTitle(pending, other);
+  const handed = liveSessionTitleDraft(value.host.scope, "same");
+  expect(handed).toEqual({ ...pending, owner: other });
+  useLiveTitle.getState().clearTitle(pending);
+  useLiveTitle.getState().handoffTitle(pending, {});
+  expect(liveSessionTitleDraft(value.host.scope, "same")).toBe(handed);
+});
