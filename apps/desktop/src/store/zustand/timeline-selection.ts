@@ -10,6 +10,7 @@ interface TimelineSelectionState {
   selectRange: (flatItemKeys: string[], targetId: string) => void;
   selectAll: (ids: string[]) => void;
   clear: () => void;
+  reconcile: (visibleIds: string[]) => void;
   isSelected: (id: string) => boolean;
 }
 
@@ -72,6 +73,14 @@ export function createTimelineSelectionStore() {
         });
       },
       clear: () => update({ selectedIds: [], anchorId: null }),
+      reconcile: (visibleIds) => {
+        const visible = new Set(visibleIds);
+        const { selectedIds, anchorId } = get();
+        const next = selectedIds.filter((id) => visible.has(id));
+        const anchor = anchorId && visible.has(anchorId) ? anchorId : null;
+        if (next.length !== selectedIds.length || anchor !== anchorId)
+          update({ selectedIds: next, anchorId: anchor });
+      },
       isSelected: (id) => get().selectedIds.includes(id),
     };
   });

@@ -105,3 +105,16 @@ it("isolates identical note IDs and clears retired stores without reviving captu
     anchorId: "session-same",
   });
 });
+
+it("reconciles only loaded/visible rows without auto-selecting appended pages or retaining a hidden range anchor", () => {
+  const store = createTimelineSelectionStore();
+  store.getState().selectAll(["session-a", "session-b"]);
+  store.getState().reconcile(["session-a", "session-b", "session-c"]);
+  expect(store.getState().selectedIds).toEqual(["session-a", "session-b"]);
+  store.getState().reconcile(["session-b", "session-c"]);
+  expect(store.getState().selectedIds).toEqual(["session-b"]);
+  expect(store.getState().anchorId).toBeNull();
+  store.getState().selectRange(["session-b", "session-c"], "session-c");
+  expect(store.getState().selectedIds).toEqual(["session-c"]);
+  store.dispose();
+});

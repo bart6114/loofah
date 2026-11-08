@@ -315,8 +315,17 @@ const SessionItem = memo(
       !selected && !isLive && (isFinalizing || isEnhancing || isBatching);
 
     const displayTime = useMemo(
-      () => formatDisplayTime(item.data.created_at, precision, timezone),
-      [item.data.created_at, precision, timezone],
+      () =>
+        item.data.timestamp_ms === null
+          ? (item.data.created_at ?? "")
+          : formatDisplayTime(
+              item.data.timestamp_ms === undefined
+                ? item.data.created_at
+                : new Date(item.data.timestamp_ms).toISOString(),
+              precision,
+              timezone,
+            ),
+      [item.data.created_at, item.data.timestamp_ms, precision, timezone],
     );
     const muted = isTimelineItemInFuture(item);
 

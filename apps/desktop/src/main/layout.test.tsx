@@ -12,6 +12,11 @@ import {
   scopedFixture,
 } from "~/store/zustand/tabs/scoped-test-utils";
 
+vi.mock("~/sidebar/timeline/owner", () => ({
+  TimelineOwnerProvider: ({ children }: { children: React.ReactNode }) =>
+    children,
+}));
+
 const mocks = vi.hoisted(() => ({
   scope: null as VaultScope | null,
   error: null as Error | null,

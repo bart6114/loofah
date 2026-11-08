@@ -22,6 +22,7 @@ import {
 import type { VaultScope } from "~/shared/application/vault-scope";
 import { useNavigationEvents } from "~/shared/hooks/useNavigationEvents";
 import { OpenNoteDialogProvider } from "~/shared/open-note-dialog";
+import { TimelineOwnerProvider } from "~/sidebar/timeline/owner";
 import type { AITaskStore } from "~/store/zustand/ai-task";
 import type { ListenerStore } from "~/store/zustand/listener";
 import type { TabsDeviceState } from "~/store/zustand/tabs/device-state";
@@ -144,21 +145,23 @@ export function CapturedMainLayout({
         deviceState={deviceState}
         managePins={managePins}
       >
-        <MainHostContext.Provider
-          value={{ scope, listenerStore, activity, takeInitialSession }}
-        >
-          <ListenerContextProvider store={listenerStore}>
-            <SearchEngineProvider>
-              <OpenNoteDialogProvider>
-                <ShellProvider>
-                  <AITaskProvider store={aiTaskStore}>
-                    {children}
-                  </AITaskProvider>
-                </ShellProvider>
-              </OpenNoteDialogProvider>
-            </SearchEngineProvider>
-          </ListenerContextProvider>
-        </MainHostContext.Provider>
+        <TimelineOwnerProvider>
+          <MainHostContext.Provider
+            value={{ scope, listenerStore, activity, takeInitialSession }}
+          >
+            <ListenerContextProvider store={listenerStore}>
+              <SearchEngineProvider>
+                <OpenNoteDialogProvider>
+                  <ShellProvider>
+                    <AITaskProvider store={aiTaskStore}>
+                      {children}
+                    </AITaskProvider>
+                  </ShellProvider>
+                </OpenNoteDialogProvider>
+              </SearchEngineProvider>
+            </ListenerContextProvider>
+          </MainHostContext.Provider>
+        </TimelineOwnerProvider>
       </ScopedTabsProvider>
     </VaultHostContext.Provider>
   );
