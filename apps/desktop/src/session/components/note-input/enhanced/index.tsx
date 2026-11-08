@@ -10,7 +10,8 @@ import { StreamingView } from "./streaming";
 
 import { useAITaskTask } from "~/ai/hooks";
 import { hasStoredNoteContent } from "~/session/components/shared";
-import { useEnhancedNote } from "~/session/queries";
+import { useEnhancedNote, useEnhancedDocumentTarget } from "~/session/queries";
+import { useVaultHost } from "~/shared/application/vault-provider";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 
 export const Enhanced = forwardRef<
@@ -42,7 +43,12 @@ export const Enhanced = forwardRef<
     ref,
   ) => {
     const taskId = createTaskId(enhancedNoteId, "enhance");
-    const { status, error, streamedText } = useAITaskTask(taskId, "enhance");
+    const task = useAITaskTask(taskId, "enhance");
+    const { scope } = useVaultHost();
+    const legacy = scope?.client.features.includes("legacy_desktop_enhance");
+    const status = legacy ? task.status : undefined;
+    const error = legacy ? task.error : undefined;
+    const streamedText = legacy ? task.streamedText : "";
     // The task can finish before the coalesced index event refreshes the old summary cache.
     const generationId = useMemo(
       () => (status === "success" ? crypto.randomUUID() : undefined),
@@ -53,12 +59,21 @@ export const Enhanced = forwardRef<
       generationId,
       sessionId,
     );
+    const target = useEnhancedDocumentTarget(sessionId, enhancedNoteId);
     const content = enhancedNote?.content;
 
     const hasContent = hasStoredNoteContent(content);
     const isAwaitingPersistedContent =
       status === "success" && streamedText.trim().length > 0 && !hasContent;
     const showStreaming = status === "generating" || isAwaitingPersistedContent;
+
+    if (target === null)
+      return (
+        <p role="alert">
+          This document cannot be identified safely. Editing and regeneration
+          are unavailable.
+        </p>
+      );
 
     if (status === "error") {
       return (
@@ -68,16 +83,6 @@ export const Enhanced = forwardRef<
           error={error}
         />
       );
-    }
-
-    if (!enhancedNote) {
-      return showStreaming ? (
-        <StreamingView
-          sessionId={sessionId}
-          sessionTitle={sessionTitle}
-          enhancedNoteId={enhancedNoteId}
-        />
-      ) : null;
     }
 
     if (showStreaming) {
@@ -90,7 +95,7 @@ export const Enhanced = forwardRef<
       );
     }
 
-    if (!hasContent) {
+    if (enhancedNote && !hasContent) {
       return (
         <EmptySummary
           titleTrailerElement={titleTrailerElement}
@@ -109,7 +114,7 @@ export const Enhanced = forwardRef<
         sessionTitle={sessionTitle}
         enhancedNoteId={enhancedNoteId}
         fileHandlerConfig={fileHandlerConfig}
-        content={enhancedNote.content}
+        content={enhancedNote?.content ?? ""}
         generationId={generationId}
         onNavigateToTitle={onNavigateToTitle}
         onViewReady={onViewReady}

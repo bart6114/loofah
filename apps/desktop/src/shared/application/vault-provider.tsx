@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { documentEditorDrafts } from "./document-editor-draft";
 import { noteDrafts } from "./note-draft";
 import { noteEditorDrafts } from "./note-editor-draft";
 import type { Change } from "./protocol.gen";
@@ -69,6 +70,7 @@ export function VaultClientProvider({
     const current = new VaultScope(client);
     noteDrafts.retainScope(client.scope);
     noteEditorDrafts.retainScope(client.scope);
+    documentEditorDrafts.retainScope(client.scope);
     const stop = current.onChange((event) => {
       if (changed.current.client === client) changed.current.onChange?.(event);
     });
@@ -79,6 +81,7 @@ export function VaultClientProvider({
       current.dispose();
       noteDrafts.releaseScope(current.client.scope);
       noteEditorDrafts.releaseScope(current.client.scope);
+      documentEditorDrafts.releaseScope(current.client.scope);
     };
   }, [client]);
   return (

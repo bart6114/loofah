@@ -10,8 +10,8 @@ export function useEnhancedNotes(sessionId: string) {
   return useMemo(() => notes.map((note) => note.id), [notes]);
 }
 
-export function useEnhancedNote(enhancedNoteId: string) {
-  const note = useSqliteEnhancedNote(enhancedNoteId);
+export function useEnhancedNote(enhancedNoteId: string, sessionId: string) {
+  const note = useSqliteEnhancedNote(enhancedNoteId, undefined, sessionId);
 
   return {
     title: note?.title,

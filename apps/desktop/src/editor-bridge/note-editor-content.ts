@@ -9,6 +9,7 @@ import {
   hydrateTaskContent,
   normalizeTaskContent,
   type TaskRecord,
+  type TaskSource,
 } from "@hypr/editor/tasks";
 
 import { taskInputToRecord, taskRecordToInput } from "./task-records";
@@ -21,7 +22,10 @@ import { ApplicationRequestError } from "~/shared/application/errors";
 import type { EditorText } from "~/shared/application/note-editor-draft";
 
 export function noteEditorContent(sessionId: string, draft: EditorText) {
-  const source = { type: "session_raw_note", id: sessionId };
+  return editorContent({ type: "session_raw_note", id: sessionId }, draft);
+}
+
+export function editorContent(source: TaskSource, draft: EditorText) {
   const records = draft.tasks.map((task) => taskInputToRecord(source, task));
   if (records.some((record) => record === null))
     throw unsupported(
@@ -53,7 +57,18 @@ export function captureNoteEditorContent(
   content: JSONContent,
   tasks: readonly TaskRecord[],
 ): EditorText {
-  const source = { type: "session_raw_note", id: sessionId };
+  return captureEditorContent(
+    { type: "session_raw_note", id: sessionId },
+    content,
+    tasks,
+  );
+}
+
+export function captureEditorContent(
+  source: TaskSource,
+  content: JSONContent,
+  tasks: readonly TaskRecord[],
+): EditorText {
   if (
     tasks.some(
       (task) => task.sourceType !== source.type || task.sourceId !== source.id,

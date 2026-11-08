@@ -1,5 +1,6 @@
 import { onlineManager } from "@tanstack/react-query";
 
+import { documentEditorDrafts } from "./document-editor-draft";
 import { NativeDraftStore } from "./draft-store";
 import { noteEditorDraftId, noteEditorDrafts } from "./note-editor-draft";
 import type { VaultClient } from "./vault-client";
@@ -29,7 +30,12 @@ export function draftSessionId(id: string): string {
     const resource: unknown = JSON.parse(id);
     if (
       Array.isArray(resource) &&
-      ["summary", "template_output", "note_editor"].includes(resource[0]) &&
+      (["summary", "template_output", "note_editor"].includes(resource[0]) ||
+        (resource[0] === "document_editor" &&
+          ((resource.length === 3 && resource[2] === "summary") ||
+            (resource.length === 4 &&
+              resource[2] === "template_output" &&
+              typeof resource[3] === "string")))) &&
       typeof resource[1] === "string"
     )
       return resource[1];
@@ -45,6 +51,7 @@ export function captureSessionCleanupGuard(
   const client = scope.client;
   const key = noteEditorDraftId(sessionId);
   const draft = noteEditorDrafts.get(client.scope, key);
+  const documents = documentEditorDrafts.forSession(client.scope, sessionId);
   const store = new NativeDraftStore(client.scope);
   let disposed = false;
   let prepared = false;
@@ -84,6 +91,17 @@ export function captureSessionCleanupGuard(
       if (snapshot.dirty || snapshot.conflict || draft.recovery().uncertain)
         return false;
     }
+    const latestDocuments = documentEditorDrafts.forSession(
+      client.scope,
+      sessionId,
+    );
+    if (latestDocuments.some((value) => !documents.includes(value)))
+      return false;
+    for (const document of documents) {
+      const state = document.getSnapshot();
+      if (state.dirty || state.conflict || document.recovery().uncertain)
+        return false;
+    }
     return !hasUnsavedSessionNoteDrafts(client.scope, sessionId);
   };
   const canDelete = () => {
@@ -113,6 +131,9 @@ export function captureSessionCleanupGuard(
       await flushDatabaseWrites([
         sessionEditorFlushKey(client.scope, sessionId),
         draftWriteQueueKey(client, sessionId),
+        ...documents.map((value) =>
+          draftWriteQueueKey(client, value.sessionId),
+        ),
       ]);
       if (!current() || !clean()) return false;
       const recovery = await store.inventory();

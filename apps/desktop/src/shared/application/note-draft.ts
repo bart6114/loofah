@@ -111,7 +111,7 @@ export class NoteDrafts extends DraftRegistry<NoteDraft> {
   }
 
   restore(client: NoteDraftClient, recovery: NoteDraftRecovery): NoteDraft {
-    if (recovery.editorTasks)
+    if (recovery.editorTasks || recovery.documentEditor)
       throw new Error(
         "This recovery copy requires the editor with task support",
       );

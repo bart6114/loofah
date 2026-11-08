@@ -1,6 +1,10 @@
 import { onlineManager } from "@tanstack/react-query";
 
 import { documentDraftId } from "./document-draft";
+import {
+  documentEditorDraftId,
+  documentEditorDrafts,
+} from "./document-editor-draft";
 import { NativeDraftStore } from "./draft-store";
 import { ApplicationRequestError } from "./errors";
 import { noteDrafts } from "./note-draft";
@@ -27,6 +31,13 @@ export function captureSessionGenerationGuard(
   const captured = [
     { read: () => noteDrafts.get(client.scope, sessionId) },
     { read: () => noteDrafts.get(client.scope, documentId) },
+    {
+      read: () =>
+        documentEditorDrafts.get(
+          client.scope,
+          documentEditorDraftId(sessionId, target),
+        ),
+    },
     {
       read: () =>
         noteEditorDrafts.get(client.scope, noteEditorDraftId(sessionId)),
@@ -105,6 +116,7 @@ export function captureSessionGenerationGuard(
           sessionEditorFlushKey(client.scope, sessionId),
           draftWriteQueueKey(client, sessionId),
           draftWriteQueueKey(client, documentId),
+          draftWriteQueueKey(client, documentEditorDraftId(sessionId, target)),
         ]);
         clean();
         const inventory = await new NativeDraftStore(client.scope).inventory();

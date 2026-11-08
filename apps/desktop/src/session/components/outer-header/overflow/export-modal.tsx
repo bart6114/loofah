@@ -21,7 +21,11 @@ import { cn } from "@hypr/utils";
 import { formatDate, formatDuration } from "./export-utils";
 
 import { useTranscriptExportSegments } from "~/session/components/note-input/transcript/export-data";
-import { useEnhancedNote, useSession } from "~/session/queries";
+import {
+  useEnhancedDocumentTarget,
+  useEnhancedNote,
+  useSession,
+} from "~/session/queries";
 import type { EditorView } from "~/store/zustand/tabs/schema";
 import { useSessionTranscriptMetadata } from "~/stt/queries";
 
@@ -60,7 +64,14 @@ export function ExportModal({
   const rawMd = session?.raw_md;
 
   const enhancedNoteId = currentView.type === "enhanced" ? currentView.id : "";
-  const enhancedNoteContent = useEnhancedNote(enhancedNoteId)?.content;
+  const selectedTarget = useEnhancedDocumentTarget(sessionId, enhancedNoteId);
+  const blockedDocument =
+    includeSummary && currentView.type === "enhanced" && !selectedTarget;
+  const enhancedNoteContent = useEnhancedNote(
+    enhancedNoteId,
+    undefined,
+    sessionId,
+  )?.content;
   const participantNames: string[] = EMPTY_PARTICIPANT_NAMES;
 
   const metadataQuery = useSessionTranscriptMetadata(sessionId);
@@ -223,6 +234,11 @@ export function ExportModal({
     refetch,
   }: ReturnType<typeof useTranscriptExportSegments>) => (
     <>
+      {blockedDocument && (
+        <p role="alert">
+          This document cannot be identified safely. Export is unavailable.
+        </p>
+      )}
       {(error || metadataQuery.error) && (
         <div role="alert" className="text-sm">
           <Trans>Couldn't prepare export.</Trans>{" "}
@@ -246,6 +262,7 @@ export function ExportModal({
           })
         }
         disabled={
+          blockedDocument ||
           isPending ||
           isLoading ||
           metadataQuery.isPending ||

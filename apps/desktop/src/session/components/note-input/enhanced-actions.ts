@@ -14,6 +14,9 @@ import {
   hasSummarySource,
 } from "~/services/enhancer/source";
 import { loadSessionContentSnapshot } from "~/session/content-queries";
+import { useEnhancedDocumentTarget } from "~/session/queries";
+import { captureSessionGenerationGuard } from "~/shared/application/session-generation-guard";
+import { useVaultHost } from "~/shared/application/vault-provider";
 import { flushDatabaseWrites } from "~/shared/write-queue";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 
@@ -25,6 +28,8 @@ export function useEnhancedNoteActions({
   sessionId: string;
 }) {
   const model = useLanguageModel();
+  const { scope } = useVaultHost();
+  const target = useEnhancedDocumentTarget(sessionId, enhancedNoteId ?? "");
   const taskId = enhancedNoteId
     ? createTaskId(enhancedNoteId, "enhance")
     : null;
@@ -36,6 +41,13 @@ export function useEnhancedNoteActions({
       return;
     }
 
+    if (!scope?.client.features.includes("legacy_desktop_enhance")) {
+      sonnerToast.error(
+        "This connection does not support desktop summary generation.",
+      );
+      return;
+    }
+
     if (!model) {
       sonnerToast.error(
         "Set up summaries in Settings before regenerating this summary.",
@@ -43,7 +55,16 @@ export function useEnhancedNoteActions({
       return;
     }
 
+    const guard =
+      target &&
+      scope.client.canEdit &&
+      scope.client.features.includes("document_editor_write")
+        ? captureSessionGenerationGuard(scope, sessionId, target)
+        : null;
     try {
+      if (!guard)
+        throw new Error("This document is not available for generation.");
+      await guard.prepare();
       await flushDatabaseWrites([`session:${sessionId}:note`]);
       const snapshot = await loadSessionContentSnapshot(sessionId);
       if (
@@ -54,6 +75,7 @@ export function useEnhancedNoteActions({
         return;
       }
 
+      guard.assertReady();
       if (!isMainAITaskHostWindow()) {
         const result = await requestMainEnhance(sessionId, {
           targetNoteId: enhancedNoteId,
@@ -76,11 +98,13 @@ export function useEnhancedNoteActions({
       });
     } catch (error) {
       sonnerToast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      guard?.dispose();
     }
-  }, [enhancedNoteId, model, enhanceTask.start, sessionId]);
+  }, [enhancedNoteId, model, enhanceTask.start, sessionId, scope, target]);
 
   const onCancel = useCallback(() => {
-    if (!taskId) {
+    if (!taskId || !scope?.client.features.includes("legacy_desktop_enhance")) {
       return;
     }
 
@@ -90,12 +114,27 @@ export function useEnhancedNoteActions({
     }
 
     enhanceTask.cancel();
-  }, [enhanceTask.cancel, taskId]);
+  }, [enhanceTask.cancel, taskId, scope]);
 
   return {
-    isGenerating: enhanceTask.isGenerating,
-    isError: enhanceTask.isError,
-    error: enhanceTask.error,
+    generationUnavailable: !scope?.client.features.includes(
+      "legacy_desktop_enhance",
+    ),
+    canRegenerate:
+      !!scope &&
+      !!target &&
+      scope.client.canEdit &&
+      scope.client.features.includes("document_editor_write") &&
+      scope.client.features.includes("legacy_desktop_enhance"),
+    isGenerating:
+      !!scope?.client.features.includes("legacy_desktop_enhance") &&
+      enhanceTask.isGenerating,
+    isError:
+      !!scope?.client.features.includes("legacy_desktop_enhance") &&
+      enhanceTask.isError,
+    error: scope?.client.features.includes("legacy_desktop_enhance")
+      ? enhanceTask.error
+      : undefined,
     onRegenerate,
     onCancel,
   };

@@ -173,6 +173,23 @@ vi.mock("~/session/hooks/useEnhancedNotes", () => ({
   useEnsureDefaultSummary: vi.fn(),
 }));
 
+vi.mock("~/shared/application/vault-provider", () => ({
+  useVaultHost: () => ({
+    scope: {
+      client: {
+        canEdit: true,
+        features: ["document_editor_write", "legacy_desktop_enhance"],
+      },
+    },
+  }),
+}));
+vi.mock("~/shared/application/session-generation-guard", () => ({
+  captureSessionGenerationGuard: () => ({
+    prepare: async () => {},
+    assertReady: () => {},
+    dispose: () => {},
+  }),
+}));
 vi.mock("~/services/enhancer", () => ({
   getEnhancerService: () => ({ enhance: hoisted.enhance }),
 }));
@@ -184,7 +201,12 @@ vi.mock("~/session/queries", () => ({
     templateId: "template-1",
     title: "Customer Call",
   }),
-  useEnhancedNoteRecords: () => [{ id: "note-1" }],
+  useEnhancedNoteRecords: () => [{ id: "note-1", title: "Customer Call" }],
+  useEnhancedNoteTitle: () => "Customer Call",
+  useEnhancedDocumentTarget: () => ({
+    kind: "template_output",
+    document_id: "note-1",
+  }),
   useSession: () => ({ raw_md: "" }),
 }));
 

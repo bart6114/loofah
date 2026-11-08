@@ -18,6 +18,7 @@ import {
   type NoteEditorProps,
   type NoteEditorRef,
 } from "@hypr/editor/note";
+import type { TaskSource } from "@hypr/editor/tasks";
 import { Button } from "@hypr/ui/components/ui/button";
 import { cn } from "@hypr/utils";
 
@@ -27,17 +28,18 @@ import {
   editorText,
   noteEditorDraftId,
   noteEditorDrafts,
-  type NoteEditorDraft,
+  type EditorText,
 } from "./note-editor-draft";
 import type { NoteEditorSnapshot } from "./protocol.gen";
+import type { RevisionDraft } from "./revision-draft";
 import { useDraftPersistence } from "./use-draft-persistence";
 import { useVaultNoteFileHandler } from "./use-vault-note-file-handler";
 import { VaultAttachmentProvider } from "./vault-attachment-provider";
 import type { VaultScope } from "./vault-scope";
 
 import {
-  captureNoteEditorContent,
-  noteEditorContent,
+  captureEditorContent,
+  editorContent,
 } from "~/editor-bridge/note-editor-content";
 import { openEditorLink } from "~/editor-bridge/open-editor-link";
 import {
@@ -214,6 +216,39 @@ function EditorDraft(props: LoadedEditorProps) {
       };
     }
   });
+  const { scope, sessionId } = props;
+  const source = useMemo<TaskSource>(
+    () => ({ type: "session_raw_note", id: sessionId }),
+    [sessionId],
+  );
+  const retain = useCallback(
+    () =>
+      loaded.draft
+        ? noteEditorDrafts.retainDraft(
+            scope.client.scope,
+            noteEditorDraftId(sessionId),
+            loaded.draft,
+          )
+        : () => {},
+    [loaded.draft, scope, sessionId],
+  );
+  const settled = useCallback(() => {
+    if (
+      ["access_denied", "login_required", "closed"].includes(
+        scope.getSnapshot().state,
+      )
+    )
+      noteEditorDrafts.clearSaved(scope.client.scope);
+    else
+      noteEditorDrafts.sweepDraft(
+        scope.client.scope,
+        noteEditorDraftId(sessionId),
+      );
+  }, [scope, sessionId]);
+  const confirm = useCallback(
+    (saved: NoteEditorSnapshot) => scope.confirmNoteEditor(sessionId, saved),
+    [scope, sessionId],
+  );
   if (!loaded.draft)
     return (
       <div role="alert">
@@ -223,10 +258,23 @@ function EditorDraft(props: LoadedEditorProps) {
         </pre>
       </div>
     );
-  return <EditorFields {...props} draft={loaded.draft} />;
+  return (
+    <VaultEditorFields
+      {...props}
+      draft={loaded.draft}
+      source={source}
+      recoveryId={noteEditorDraftId(sessionId)}
+      viewKey={JSON.stringify(["vault-note", scope.client.scope, sessionId])}
+      retain={retain}
+      onSettled={settled}
+      confirmSnapshot={confirm}
+      revision={editorRevision}
+      snapshotSource={props.note}
+    />
+  );
 }
 
-function EditorFields({
+export function VaultEditorFields<S extends NoteEditorSnapshot>({
   scope,
   sessionId,
   note,
@@ -237,6 +285,15 @@ function EditorFields({
   recoveryError,
   store,
   draft,
+  source,
+  recoveryId,
+  viewKey,
+  retain,
+  onSettled,
+  confirmSnapshot,
+  revision,
+  snapshotSource,
+  allowFileUploads = true,
   onActiveDraft,
   onSelectSession,
   editorRef,
@@ -244,29 +301,41 @@ function EditorFields({
   showSaveControls = true,
   onSaveError,
   layout = "pane",
-}: LoadedEditorProps & { draft: NoteEditorDraft }) {
+}: Omit<LoadedEditorProps, "note"> & {
+  note: S;
+  draft: RevisionDraft<S, EditorText> & { recovery: () => NoteDraftRecovery };
+  source: TaskSource;
+  recoveryId: string;
+  viewKey: string;
+  retain: () => () => void;
+  onSettled: () => void;
+  confirmSnapshot: (snapshot: S) => Promise<void>;
+  revision: (snapshot: S) => string;
+  snapshotSource: unknown;
+  allowFileUploads?: boolean;
+}) {
   const fileUploads = useVaultNoteFileHandler(
     scope,
     sessionId,
-    !editorOptions?.fileHandlerConfig &&
+    allowFileUploads &&
+      !editorOptions?.fileHandlerConfig &&
       scope.client.canEdit &&
       !!scope.client.features?.includes("attachment_upload"),
     editorOptions,
   );
-  const viewKey = JSON.stringify(["vault-note", scope.client.scope, sessionId]);
   const confirm = useCallback(
-    async (saved: NoteEditorSnapshot) => {
+    async (saved: S) => {
       try {
         acknowledgeNoteDraft(
           viewKey,
-          noteEditorContent(sessionId, editorText(saved)).content,
+          editorContent(source, editorText(saved)).content,
         );
       } catch {
         // A future node must not discard the rendered draft.
       }
-      await scope.confirmNoteEditor(sessionId, saved);
+      await confirmSnapshot(saved);
     },
-    [scope, sessionId, viewKey],
+    [source, viewKey, confirmSnapshot],
   );
   const { snapshot, connection, editable, persist, save, resolve } =
     useDraftPersistence({
@@ -277,31 +346,19 @@ function EditorFields({
       available,
       recovery,
       store,
-      recoveryId: noteEditorDraftId(sessionId),
+      recoveryId,
       autosave: false,
-      onSettled: () => {
-        if (
-          ["access_denied", "login_required", "closed"].includes(
-            scope.getSnapshot().state,
-          )
-        )
-          noteEditorDrafts.clearSaved(scope.client.scope);
-        else
-          noteEditorDrafts.sweepDraft(
-            scope.client.scope,
-            noteEditorDraftId(sessionId),
-          );
-      },
+      onSettled,
     });
   const model = useMemo(() => {
     try {
-      return { value: noteEditorContent(sessionId, snapshot.draft) };
+      return { value: editorContent(source, snapshot.draft) };
     } catch (error) {
       return {
         error: error instanceof Error ? error : new Error(String(error)),
       };
     }
-  }, [sessionId, snapshot.draft]);
+  }, [source, snapshot.draft]);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const { initialDraft, confirmedDraft } = usePendingNoteDraft(
     viewKey,
@@ -317,22 +374,22 @@ function EditorFields({
   editing.current = editable && !resolve.isPending && !!model.value;
   useLayoutEffect(() => {
     active.current = true;
-    const release = noteEditorDrafts.retainDraft(
-      scope.client.scope,
-      noteEditorDraftId(sessionId),
-      draft,
-    );
+    const release = retain();
     return () => {
       active.current = false;
       release();
     };
-  }, [draft, scope.client.scope, sessionId]);
+  }, [retain]);
   useEffect(() => {
-    onActiveDraft(noteEditorDraftId(sessionId));
-  }, [onActiveDraft, sessionId]);
+    onActiveDraft(recoveryId);
+  }, [onActiveDraft, recoveryId]);
   useEffect(() => {
-    if (scope.queryClient.getQueryData(queryKey) === note) draft.receive(note);
-  }, [draft, note, scope, queryKey]);
+    if (
+      snapshotSource !== undefined &&
+      scope.queryClient.getQueryData(queryKey) === snapshotSource
+    )
+      draft.receive(note);
+  }, [draft, note, scope, queryKey, snapshotSource]);
   const wasReady = useRef(false);
   const ready = editable && !resolve.isPending;
   const { mutate: saveNow, mutateAsync: saveAsync, isPending: saving } = save;
@@ -370,10 +427,10 @@ function EditorFields({
         return;
       captureNoteDraft(viewKey, getContent);
       draft.capture(() =>
-        captureNoteEditorContent(sessionId, getContent(), model.value!.tasks),
+        captureEditorContent(source, getContent(), model.value!.tasks),
       );
     },
-    [draft, sessionId, model.value, editorEpoch, viewKey, scope],
+    [draft, source, model.value, editorEpoch, viewKey, scope],
   );
   const change = useCallback(
     async (content: JSONContent) => {
@@ -385,18 +442,17 @@ function EditorFields({
       )
         throw new Error("Editing is paused");
       draft.capture(() =>
-        captureNoteEditorContent(sessionId, content, model.value!.tasks),
+        captureEditorContent(source, content, model.value!.tasks),
       );
       return persistNoteDraft(viewKey, content, async () => {
         await saveAsync();
         return () => {
           const current = draft.getSnapshot();
-          return noteEditorContent(sessionId, editorText(current.baseline))
-            .content;
+          return editorContent(source, editorText(current.baseline)).content;
         };
       });
     },
-    [draft, sessionId, model.value, saveAsync, editorEpoch, viewKey, scope],
+    [draft, source, model.value, saveAsync, editorEpoch, viewKey, scope],
   );
   const chooseServer = () => {
     if (!snapshot.conflict) return;
@@ -404,7 +460,7 @@ function EditorFields({
     generation.current += 1;
     const next = generation.current;
     resolve.mutate(
-      { keep: false, revision: editorRevision(snapshot.conflict) },
+      { keep: false, revision: revision(snapshot.conflict) },
       {
         onSettled: () => {
           if (!draft.getSnapshot().dirty) discardNoteDraft(viewKey);
@@ -437,8 +493,10 @@ function EditorFields({
             <NoteEditor
               {...editorOptions}
               fileHandlerConfig={
-                editorOptions?.fileHandlerConfig ??
-                fileUploads.fileHandlerConfig
+                allowFileUploads
+                  ? (editorOptions?.fileHandlerConfig ??
+                    fileUploads.fileHandlerConfig)
+                  : undefined
               }
               onViewReady={fileUploads.onViewReady}
               onViewDisposed={fileUploads.onViewDisposed}
@@ -511,7 +569,7 @@ function EditorFields({
                 onClick={() =>
                   resolve.mutate({
                     keep: true,
-                    revision: editorRevision(snapshot.conflict!),
+                    revision: revision(snapshot.conflict!),
                   })
                 }
               >

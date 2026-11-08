@@ -1,5 +1,11 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 
 import {
   json2md,
@@ -10,10 +16,13 @@ import {
 import { useTaskStorageOptional } from "@hypr/editor/task-storage";
 import { hydrateTaskContent } from "@hypr/editor/tasks";
 
+import { taskItemToRecord } from "~/editor-bridge/task-records";
 import { waitForPendingSoftDelete } from "~/session/pending-soft-deletes";
 import { useSessionSummaries } from "~/session/summary-queries";
 import { ensureFirstLineTitle } from "~/session/title-content";
 import { getApplicationClient } from "~/shared/application/client";
+import { documentEditorBaseline } from "~/shared/application/document-editor-draft";
+import type { DocumentTarget } from "~/shared/application/protocol.gen";
 import { useVaultHost } from "~/shared/application/vault-provider";
 import { useIndexQuery } from "~/shared/index-query";
 import { DEFAULT_USER_ID, id } from "~/shared/utils";
@@ -145,85 +154,144 @@ export function useSessionHasTranscript(sessionId: string): boolean {
   return useTranscriptOverview(sessionId).data?.has_words ?? false;
 }
 
+const terminalDocumentStates = new Set([
+  "closed",
+  "access_denied",
+  "login_required",
+  "incompatible",
+]);
+function useDocumentScope() {
+  const { scope } = useVaultHost();
+  if (!scope) throw new Error("Documents require an immutable vault host");
+  const owner = useRef({
+    scope,
+    retired: terminalDocumentStates.has(scope.getSnapshot().state),
+  }).current;
+  if (owner.scope !== scope) owner.retired = true;
+  const subscribe = useCallback(
+    (changed: () => void) =>
+      owner.scope.subscribe(() => {
+        if (terminalDocumentStates.has(owner.scope.getSnapshot().state))
+          owner.retired = true;
+        changed();
+      }),
+    [owner],
+  );
+  const connection = useSyncExternalStore(subscribe, owner.scope.getSnapshot);
+  if (terminalDocumentStates.has(connection.state)) owner.retired = true;
+  return {
+    scope: owner.scope,
+    readable:
+      !owner.retired &&
+      (connection.state === "connected" || connection.state === "reconnecting"),
+  };
+}
+function useSessionDocuments(sessionId: string) {
+  const owner = useDocumentScope();
+  const query = useQuery(
+    {
+      ...owner.scope.documentsOptions(sessionId),
+      enabled: !!sessionId && owner.readable,
+    },
+    owner.scope.queryClient,
+  );
+  return {
+    ...owner,
+    data: sessionId && owner.readable ? query.data : undefined,
+  };
+}
 export function useEnhancedNoteRecords(
   sessionId: string,
 ): EnhancedNoteRecord[] {
-  const { data = EMPTY_ENHANCED_NOTES } = useIndexQuery({
-    // Doc events carry the session id, not the doc id.
-    entity: "docs",
-    ids: [sessionId],
-    queryKey: ["session-enhanced-docs", sessionId],
-    queryFn: async () => {
-      const result =
-        await getApplicationClient().store.sessionEnhancedDocs(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return result.data.map(mapEnhancedDoc);
-    },
-    enabled: Boolean(sessionId),
-  });
-  return sessionId ? data : EMPTY_ENHANCED_NOTES;
+  const { data } = useSessionDocuments(sessionId);
+  return useMemo(
+    () => data?.map(mapEnhancedDoc) ?? EMPTY_ENHANCED_NOTES,
+    [data],
+  );
 }
-
+export function useEnhancedNoteTitle(
+  sessionId: string,
+  enhancedNoteId: string,
+) {
+  const { data } = useSessionDocuments(sessionId);
+  return useMemo(() => {
+    const matches = data?.filter(
+      (doc) => doc.id === enhancedNoteId && doc.session_id === sessionId,
+    );
+    return matches?.length === 1 ? matches[0].title : undefined;
+  }, [data, sessionId, enhancedNoteId]);
+}
+export function useEnhancedDocumentTarget(
+  sessionId: string,
+  enhancedNoteId: string,
+): DocumentTarget | null | undefined {
+  const { data } = useSessionDocuments(sessionId);
+  return useMemo(() => {
+    if (!data) return undefined;
+    if (!enhancedNoteId) return null;
+    const matches = data.filter(
+      (doc) => doc.id === enhancedNoteId && doc.session_id === sessionId,
+    );
+    if (matches.length !== 1) return null;
+    const doc = matches[0];
+    if (doc.kind === "template_output" && doc.id === sessionId) return null;
+    return doc.kind === "summary"
+      ? { kind: "summary" }
+      : { kind: "template_output", document_id: doc.id };
+  }, [data, sessionId, enhancedNoteId]);
+}
 export function useEnhancedNote(
   enhancedNoteId: string,
-  generationId?: string,
-  sessionId?: string,
+  generationId: string | undefined,
+  sessionId: string,
 ): EnhancedNoteRecord | null {
-  const taskStorage = useTaskStorageOptional();
-  const { data = null } = useIndexQuery({
-    entity: ["docs", "tasks"],
-    ids: sessionId ? [sessionId] : undefined,
-    refetchOnMount: "always",
-    queryKey: generationId
-      ? ["enhanced-doc", enhancedNoteId, generationId]
-      : ["enhanced-doc", enhancedNoteId],
-    queryFn: async () => {
-      const isSummary = sessionId !== undefined && enhancedNoteId === sessionId;
-      let note: EnhancedNoteRecord;
-      if (isSummary) {
-        const result =
-          await getApplicationClient().store.sessionSummaryGet(sessionId);
-        if (result.status === "error") throw new Error(result.error);
-        if (result.data === null) return null;
-        note = mapEnhancedDoc({
-          id: sessionId,
-          session_id: sessionId,
-          kind: "summary",
-          title: "Summary",
-          template_id: "",
-          sort_order: 0,
-          markdown: result.data,
-        });
-      } else {
-        const result =
-          await getApplicationClient().store.enhancedDocGet(enhancedNoteId);
-        if (result.status === "error") throw new Error(result.error);
-        if (!result.data) return null;
-        note = mapEnhancedDoc(result.data);
-      }
-      const source = {
-        type: note.id === note.sessionId ? "session_summary" : "enhanced_note",
-        id: enhancedNoteId,
-      };
-      const loadedTasks = await taskStorage?.loadSource?.(source);
-      if (taskStorage && note.content) {
-        note.content = JSON.stringify(
-          hydrateTaskContent({
-            content: JSON.parse(note.content),
-            sourceTasks: loadedTasks ?? taskStorage.getTasksForSource(source),
-            getTask: (id) =>
-              loadedTasks?.find((task) => task.taskId === id) ??
-              taskStorage.getTask(id),
-          }),
-        );
-      }
-      return note;
-    },
-    enabled: Boolean(enhancedNoteId),
-  });
-  return enhancedNoteId ? data : null;
+  const { scope, readable } = useDocumentScope();
+  const target = useEnhancedDocumentTarget(sessionId, enhancedNoteId);
+  const options = useMemo(
+    () => scope.documentEditorOptions(sessionId, target ?? { kind: "summary" }),
+    [scope, sessionId, target],
+  );
+  const supported = scope.client.features.includes("document_editor_read");
+  const query = useQuery(
+    { ...options, enabled: !!sessionId && !!target && readable && supported },
+    scope.queryClient,
+  );
+  useEffect(() => {
+    if (generationId && target && readable && supported)
+      void scope.queryClient.invalidateQueries({
+        queryKey: options.queryKey,
+        exact: true,
+      });
+  }, [scope, generationId, target, readable, supported, options.queryKey]);
+  return useMemo(() => {
+    if (
+      !target ||
+      !readable ||
+      !supported ||
+      query.error ||
+      !query.data?.document.document
+    )
+      return null;
+    try {
+      documentEditorBaseline(sessionId, target, query.data);
+    } catch {
+      return null;
+    }
+    const note = mapEnhancedDoc(query.data.document.document);
+    const tasks = query.data.tasks.tasks.map(taskItemToRecord);
+    if (tasks.some((task) => task === null)) return null;
+    const records = tasks.filter((task) => task !== null);
+    const byId = new Map(records.map((task) => [task.taskId, task]));
+    if (note.content)
+      note.content = JSON.stringify(
+        hydrateTaskContent({
+          content: parseJsonContent(note.content),
+          sourceTasks: records,
+          getTask: (id) => byId.get(id) ?? null,
+        }),
+      );
+    return note;
+  }, [sessionId, target, readable, supported, query.error, query.data]);
 }
 
 export function useUpdateEnhancedNoteContent(

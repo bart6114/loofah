@@ -17,6 +17,26 @@ vi.mock("~/session/hooks/useSummarySource", () => ({
   useSummarySource: () => true,
 }));
 vi.mock("~/shared/config", () => ({ useConfigValue: () => "" }));
+vi.mock("~/shared/application/vault-provider", () => ({
+  useVaultHost: () => ({
+    scope: {
+      client: {
+        canEdit: true,
+        features: [
+          "document_editor_write",
+          ...(hoisted.legacy ? ["legacy_desktop_enhance"] : []),
+        ],
+      },
+    },
+  }),
+}));
+vi.mock("~/shared/application/session-generation-guard", () => ({
+  captureSessionGenerationGuard: () => ({
+    prepare: async () => {},
+    assertReady: () => {},
+    dispose: () => {},
+  }),
+}));
 vi.mock("~/services/enhancer", () => ({ getEnhancerService: vi.fn() }));
 vi.mock("~/ai/task-window-sync", () => ({
   isMainAITaskHostWindow: () => true,
@@ -54,6 +74,7 @@ const hoisted = vi.hoisted(() => ({
     status: "success",
     providerId: "openrouter",
   } as LLMConnectionStatus,
+  legacy: true,
   content: "",
   noteExists: true,
   awaitingGenerationRead: false,
@@ -87,6 +108,7 @@ vi.mock("~/ai/hooks", () => ({
 }));
 
 vi.mock("~/session/queries", () => ({
+  useEnhancedDocumentTarget: () => ({ kind: "summary" }),
   useEnhancedNote: (_id: string, generationId?: string) => {
     if (generationId) {
       hoisted.generationReads.push(generationId);
@@ -170,6 +192,7 @@ describe("Enhanced", () => {
   });
 
   beforeEach(() => {
+    hoisted.legacy = true;
     hoisted.enhanceTask = undefined;
     hoisted.titleTask = undefined;
     hoisted.llmStatus = {
@@ -466,13 +489,14 @@ describe("Enhanced", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("waits for store hydration and mounts the editor with stored content", () => {
+  it("keeps the compound host mounted during hydration so it can display device recovery", () => {
     hoisted.noteExists = false;
     const view = render(
       <Enhanced sessionId="session-1" enhancedNoteId="note-1" />,
     );
 
-    expect(screen.queryByText("Enhanced editor")).toBeNull();
+    const mountId = screen.getByTestId("enhanced-editor").dataset.mountId;
+    expect(screen.getByText("Enhanced editor")).not.toBeNull();
 
     hoisted.noteExists = true;
     hoisted.awaitingGenerationRead = false;
@@ -482,5 +506,20 @@ describe("Enhanced", () => {
 
     expect(screen.getByText("Enhanced editor")).not.toBeNull();
     expect(screen.getByText("Stored summary")).not.toBeNull();
+    expect(screen.getByTestId("enhanced-editor").dataset.mountId).toBe(mountId);
+  });
+  it("does not expose local same-ID streaming or errors under a host without the legacy capability", () => {
+    hoisted.legacy = false;
+    hoisted.content = "Canonical scoped content";
+    hoisted.enhanceTask = {
+      status: "generating",
+      streamedText: "Private local meeting",
+      error: undefined,
+      currentStep: undefined,
+      isGenerating: true,
+    };
+    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
+    expect(screen.queryByText("Private local meeting")).toBeNull();
+    expect(screen.getByText("Canonical scoped content")).toBeDefined();
   });
 });

@@ -24,9 +24,11 @@ import {
   deleteEnhancedNote,
   useEnhancedNote,
   useEnhancedNoteRecords,
+  useEnhancedNoteTitle,
   useSession,
 } from "~/session/queries";
 import { useOpenSummaryPrompt } from "~/settings/use-open-summary-prompt";
+import { useVaultHost } from "~/shared/application/vault-provider";
 import {
   type MenuItemDef,
   useNativeContextMenu,
@@ -316,6 +318,7 @@ function HeaderViewEnhanced({
   if (!isActive) {
     return (
       <HeaderViewEnhancedInactive
+        sessionId={sessionId}
         enhancedNoteId={enhancedNoteId}
         onClick={onClick}
       />
@@ -332,26 +335,32 @@ function HeaderViewEnhanced({
   );
 }
 
-function useEnhancedViewTitle(enhancedNoteId: string) {
-  const enhancedNote = useEnhancedNote(enhancedNoteId);
-  return { viewTitle: enhancedNote?.title?.trim() || "Summary" };
+function useEnhancedViewTitle(sessionId: string, enhancedNoteId: string) {
+  const title = useEnhancedNoteTitle(sessionId, enhancedNoteId);
+  return { viewTitle: title?.trim() || "Summary" };
 }
 
 function useEnhancedViewGenerating(enhancedNoteId: string) {
   const taskId = createTaskId(enhancedNoteId, "enhance");
   const enhanceTask = useAITaskTask(taskId, "enhance");
 
-  return enhanceTask.isGenerating;
+  const { scope } = useVaultHost();
+  return (
+    !!scope?.client.features.includes("legacy_desktop_enhance") &&
+    enhanceTask.isGenerating
+  );
 }
 
 function HeaderViewEnhancedInactive({
+  sessionId,
   onClick = () => {},
   enhancedNoteId,
 }: {
   enhancedNoteId: string;
+  sessionId: string;
   onClick?: () => void;
 }) {
-  const { viewTitle } = useEnhancedViewTitle(enhancedNoteId);
+  const { viewTitle } = useEnhancedViewTitle(sessionId, enhancedNoteId);
   const isGenerating = useEnhancedViewGenerating(enhancedNoteId);
 
   return (
@@ -384,13 +393,20 @@ function HeaderViewEnhancedActive({
   canRemove?: boolean;
   onRemove?: () => void;
 }) {
-  const { isGenerating, isError, onRegenerate } = useEnhanceLogic(
-    sessionId,
-    enhancedNoteId,
-  );
+  const {
+    generationUnavailable,
+    canRegenerate,
+    isGenerating,
+    isError,
+    onRegenerate,
+  } = useEnhanceLogic(sessionId, enhancedNoteId);
   const hasSource = useSummarySource(sessionId);
-  const content = useEnhancedNote(enhancedNoteId)?.content;
-  const { viewTitle } = useEnhancedViewTitle(enhancedNoteId);
+  const content = useEnhancedNote(
+    enhancedNoteId,
+    undefined,
+    sessionId,
+  )?.content;
+  const { viewTitle } = useEnhancedViewTitle(sessionId, enhancedNoteId);
   const noteMarkdown = useMemo(() => getStoredNoteMarkdown(content), [content]);
 
   const handleCopy = useCallback(() => {
@@ -416,9 +432,11 @@ function HeaderViewEnhancedActive({
       },
       {
         id: `regenerate-enhanced-${enhancedNoteId}`,
-        text: "Regenerate",
+        text: generationUnavailable
+          ? "Regenerate (unsupported by this connection)"
+          : "Regenerate",
         action: handleRegenerate,
-        disabled: isGenerating || !hasSource,
+        disabled: isGenerating || !hasSource || !canRegenerate,
       },
     ];
 
@@ -434,15 +452,17 @@ function HeaderViewEnhancedActive({
         id: `remove-enhanced-${enhancedNoteId}`,
         text: "Remove",
         action: () => {
-          onRemove?.();
+          if (canRegenerate) onRemove?.();
         },
-        disabled: isGenerating || !onRemove,
+        disabled: isGenerating || !onRemove || !canRegenerate,
       });
     }
 
     return items;
   }, [
     canRemove,
+    canRegenerate,
+    generationUnavailable,
     enhancedNoteId,
     handleCopy,
     handleRegenerate,

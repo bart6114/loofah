@@ -31,7 +31,11 @@ export function useCurrentNoteHasContent(
   const hasTranscript = useHasTranscript(sessionId);
   const rawMd = useSession(sessionId)?.raw_md;
   const enhancedNoteId = currentView.type === "enhanced" ? currentView.id : "";
-  const enhancedContent = useEnhancedNote(enhancedNoteId)?.content;
+  const enhancedContent = useEnhancedNote(
+    enhancedNoteId,
+    undefined,
+    sessionId,
+  )?.content;
 
   if (currentView.type === "summary") return false;
 

@@ -35,6 +35,7 @@ vi.mock("~/session/queries", () => ({
     raw_md: "",
   }),
   useEnhancedNote: () => null,
+  useEnhancedDocumentTarget: () => ({ kind: "summary" }),
 }));
 vi.mock("~/people/queries", () => ({ usePeople: () => [] }));
 vi.mock("@hypr/plugin-transcription", () => ({

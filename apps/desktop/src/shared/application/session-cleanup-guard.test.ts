@@ -2,12 +2,15 @@ import { onlineManager } from "@tanstack/react-query";
 import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+import { documentEditorDrafts } from "./document-editor-draft";
 import { NativeDraftStore } from "./draft-store";
+import { editorText } from "./note-editor-draft";
 import { noteEditorDraftId, noteEditorDrafts } from "./note-editor-draft";
 import type { NoteEditorSnapshot, SaveNoteEditorRequest } from "./protocol.gen";
 import {
   captureSessionCleanupGuard,
   draftWriteQueueKey,
+  draftSessionId,
   sessionEditorFlushKey,
 } from "./session-cleanup-guard";
 import type { VaultScope } from "./vault-scope";
@@ -318,4 +321,52 @@ it("invalidates the candidate if a different draft replaces the captured registr
   expect(
     noteEditorDrafts.get(client.scope, noteEditorDraftId(sessionId)),
   ).not.toBe(draft);
+});
+
+it.each(["summary", "template_output"] as const)(
+  "blocks cleanup on compound %s edits for the physical session owner",
+  async (kind) => {
+    const context = fixture();
+    const target =
+      kind === "summary" ? { kind } : { kind, document_id: "output" };
+    const draft = documentEditorDrafts.open(
+      { ...context.client, saveDocumentEditor: vi.fn() },
+      context.sessionId,
+      target,
+      {
+        ...baseline("Enhanced body"),
+        metadata: {
+          meta: {
+            id: context.sessionId,
+            title: "",
+            created_at: "",
+            started_at: null,
+            ended_at: null,
+            tags: [],
+          },
+          revision: "m0",
+        },
+      },
+    );
+    draft.edit({
+      ...editorText(draft.getSnapshot().baseline),
+      markdown: "Unsent Enhanced edits",
+    });
+    const captured = captureSessionCleanupGuard(
+      context.scope,
+      context.sessionId,
+      { isOpen: () => false },
+    );
+    guards.push(captured);
+    await expect(captured.prepare()).resolves.toBe(false);
+    expect(inventory).not.toHaveBeenCalled();
+  },
+);
+it("recognizes only valid compound recovery owner coordinates", () => {
+  expect(draftSessionId('["document_editor","owner","summary"]')).toBe("owner");
+  expect(
+    draftSessionId('["document_editor","owner","template_output","output"]'),
+  ).toBe("owner");
+  const wrong = '["document_editor","owner","unknown"]';
+  expect(draftSessionId(wrong)).toBe(wrong);
 });

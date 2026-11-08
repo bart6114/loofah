@@ -7,6 +7,8 @@ import { normalizeTaskContent } from "@hypr/editor/tasks";
 import {
   captureNoteEditorContent,
   noteEditorContent,
+  editorContent,
+  captureEditorContent,
 } from "./note-editor-content";
 import { taskItemToRecord } from "./task-records";
 
@@ -265,3 +267,41 @@ describe("transport independent main-editor content bridge", () => {
     }
   });
 });
+
+it.each([
+  { type: "session_summary", id: "note" },
+  { type: "enhanced_note", id: "manual-output" },
+] as const)(
+  "captures rich document task intent only for the supplied $type source",
+  (source) => {
+    const input = draft();
+    const rendered = editorContent(source, input);
+    expect(rendered.tasks[0]).toMatchObject({
+      sourceType: source.type,
+      sourceId: source.id,
+      dueDate: "2027-01-01",
+      status: "in_progress",
+    });
+    const node = taskNodes(rendered.content)[0];
+    node.content![0].content![0].text = "Document task changed";
+    const saved = captureEditorContent(
+      source,
+      rendered.content,
+      rendered.tasks,
+    );
+    expect(saved.title).toBe("Title");
+    expect(saved.tasks[0]).toMatchObject({
+      id: "stable-task",
+      text: "Document task changed",
+      due_at: "2027-01-01",
+      status: "in_progress",
+    });
+    expect(() =>
+      captureEditorContent(
+        { type: "enhanced_note", id: "foreign" },
+        rendered.content,
+        rendered.tasks,
+      ),
+    ).toThrow("different note");
+  },
+);

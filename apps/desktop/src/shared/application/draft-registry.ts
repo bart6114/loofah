@@ -64,6 +64,10 @@ export class DraftRegistry<
   sweep(scope: string) {
     if (!this.scopes.has(scope)) this.clearSaved(scope);
   }
+  *values(scope: string): Iterable<D> {
+    for (const draft of this.drafts.values())
+      if (draft.scope === scope) yield draft;
+  }
   get(scope: string, id: string): D | undefined {
     return this.drafts.get(JSON.stringify([scope, id]));
   }

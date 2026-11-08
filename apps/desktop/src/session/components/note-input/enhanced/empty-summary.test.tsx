@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   enhance: vi.fn(),
   remote: vi.fn(),
   openPrompt: vi.fn(),
+  prepare: vi.fn(),
+  assertReady: vi.fn(),
+  dispose: vi.fn(),
 }));
 vi.mock("~/ai/hooks", () => ({
   useLLMConnectionStatus: () =>
@@ -32,7 +35,26 @@ vi.mock("~/services/enhancer", () => ({
 vi.mock("~/session/hooks/useSummarySource", () => ({
   useSummarySource: () => mocks.hasSource,
 }));
-vi.mock("~/session/queries", () => ({ useEnhancedNote: () => null }));
+vi.mock("~/session/queries", () => ({
+  useEnhancedDocumentTarget: () => ({ kind: "summary" }),
+}));
+vi.mock("~/shared/application/vault-provider", () => ({
+  useVaultHost: () => ({
+    scope: {
+      client: {
+        canEdit: true,
+        features: ["document_editor_write", "legacy_desktop_enhance"],
+      },
+    },
+  }),
+}));
+vi.mock("~/shared/application/session-generation-guard", () => ({
+  captureSessionGenerationGuard: () => ({
+    prepare: mocks.prepare,
+    assertReady: mocks.assertReady,
+    dispose: mocks.dispose,
+  }),
+}));
 vi.mock("~/shared/config", () => ({ useConfigValue: () => "template-1" }));
 vi.mock("./config-error", () => ({
   ConfigError: () => <div>Set up Intelligence</div>,
@@ -53,6 +75,7 @@ function mount() {
 describe("EmptySummary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.prepare.mockResolvedValue(undefined);
     mocks.hasSource = false;
     mocks.model = {};
     mocks.main = true;
@@ -112,5 +135,29 @@ describe("EmptySummary", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Generate summary" }));
     await waitFor(() => expect(mocks.enhance).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not dispatch generation while the captured editor flush is pending", async () => {
+    mocks.hasSource = true;
+    let finish!: () => void;
+    mocks.prepare.mockImplementationOnce(
+      () =>
+        new Promise<void>((done) => {
+          finish = done;
+        }),
+    );
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Generate summary" }));
+    await waitFor(() => expect(mocks.prepare).toHaveBeenCalledOnce());
+    expect(mocks.enhance).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByRole("button", { name: "Starting summary…" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    finish();
+    await waitFor(() => expect(mocks.enhance).toHaveBeenCalledOnce());
+    expect(mocks.assertReady).toHaveBeenCalledOnce();
+    expect(mocks.dispose).toHaveBeenCalledOnce();
   });
 });

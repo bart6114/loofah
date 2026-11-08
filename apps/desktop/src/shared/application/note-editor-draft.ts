@@ -44,7 +44,7 @@ export function editorText(snapshot: NoteEditorSnapshot): EditorText {
   };
 }
 
-function taskIntentKey(tasks: TaskInput[]): string {
+export function editorTaskIntentKey(tasks: TaskInput[]): string {
   return hashKey([
     tasks
       .map(({ id, source_order, status, text, body, due_at }) => ({
@@ -65,7 +65,8 @@ function sameText(draft: EditorText, snapshot: NoteEditorSnapshot): boolean {
   return (
     draft.markdown === (snapshot.note.markdown ?? "") &&
     draft.title === snapshot.note.title &&
-    taskIntentKey(draft.tasks) === taskIntentKey(snapshot.tasks.tasks)
+    editorTaskIntentKey(draft.tasks) ===
+      editorTaskIntentKey(snapshot.tasks.tasks)
   );
 }
 
@@ -162,6 +163,8 @@ export class NoteEditorDraft extends RevisionDraft<
       throw new Error(
         "This draft belongs to a different account, vault or note",
       );
+    if (recovery.documentEditor)
+      throw new Error("This recovery copy requires the document editor");
     if (!recovery.editorTasks)
       throw new Error("This recovery copy does not contain editor task state");
     return new NoteEditorDraft(

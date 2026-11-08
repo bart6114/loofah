@@ -2,8 +2,10 @@ import { onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { documentDraftClient, documentDraftId } from "./document-draft";
+import { documentEditorDrafts } from "./document-editor-draft";
 import { NativeDraftStore } from "./draft-store";
 import { noteDrafts } from "./note-draft";
+import { editorText } from "./note-editor-draft";
 import type { DocumentTarget } from "./protocol.gen";
 import { sessionEditorFlushKey } from "./session-cleanup-guard";
 import { captureSessionGenerationGuard } from "./session-generation-guard";
@@ -309,4 +311,79 @@ it("refuses an unreadable recovery inventory and a permission loss during save c
   await expect(retired.guard.prepare()).rejects.toThrow("Confirm or recover");
   expect(retired.raw.getSnapshot().baseline.markdown).toBe("Owned save");
   expect(() => retired.guard.assertReady()).toThrow("Confirm or recover");
+});
+
+function enhancedDraft(
+  context: ReturnType<typeof fixture>,
+  target: DocumentTarget = { kind: "summary" },
+) {
+  return documentEditorDrafts.open(context.client, "same", target, {
+    note: note("Enhanced body", "d0"),
+    metadata: {
+      meta: {
+        id: "same",
+        title: "",
+        created_at: "",
+        started_at: null,
+        ended_at: null,
+        tags: [],
+      },
+      revision: "m0",
+    },
+    tasks: { tasks: [], revision: "t0" },
+  });
+}
+it.each([
+  { kind: "summary" },
+  { kind: "template_output", document_id: "output" },
+] as const)(
+  "refuses dirty compound $kind edits and a replacement created after capture",
+  async (target) => {
+    const context = fixture(target);
+    const draft = enhancedDraft(context, target);
+    const captured = captureSessionGenerationGuard(
+      context.scope,
+      "same",
+      target,
+    );
+    stops.push(() => captured.dispose());
+    draft.edit({
+      ...editorText(draft.getSnapshot().baseline),
+      markdown: "First 500ms typing",
+    });
+    await expect(captured.prepare()).rejects.toMatchObject({
+      detail: { mutation_outcome: "not_committed" },
+    });
+    await expect(context.guard.prepare()).rejects.toThrow("Confirm or recover");
+  },
+);
+it("latches compound target edits after preparation even when they return to their old text", async () => {
+  const context = fixture();
+  const draft = enhancedDraft(context);
+  const captured = captureSessionGenerationGuard(context.scope, "same", {
+    kind: "summary",
+  });
+  stops.push(() => captured.dispose());
+  await captured.prepare();
+  const original = editorText(draft.getSnapshot().baseline);
+  draft.edit({ ...original, title: "New title" });
+  draft.edit(original);
+  expect(() => captured.assertReady()).toThrow("Confirm or recover");
+});
+it("rejects version3 compound recovery inventory for the owning session", async () => {
+  const context = fixture();
+  inventory.mockResolvedValue([
+    {
+      sessionId: JSON.stringify([
+        "document_editor",
+        "same",
+        "template_output",
+        "output",
+      ]),
+      id: "recovery",
+      title: "",
+      uncertain: false,
+    },
+  ]);
+  await expect(context.guard.prepare()).rejects.toThrow("Confirm or recover");
 });
