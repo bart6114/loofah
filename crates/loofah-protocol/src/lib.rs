@@ -18,6 +18,8 @@ mod capture;
 pub use capture::*;
 mod capture_live;
 pub use capture_live::*;
+mod capture_processing;
+pub use capture_processing::*;
 mod jobs;
 pub use jobs::*;
 mod processing_settings;
