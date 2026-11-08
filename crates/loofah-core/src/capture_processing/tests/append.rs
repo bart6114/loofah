@@ -204,3 +204,138 @@ async fn lost_suffix_output_stays_uncertain_on_restart_and_never_repeats_inferen
     );
     runtime.shutdown().await.unwrap();
 }
+
+#[derive(Default)]
+struct LostWaiter {
+    entered: Notify,
+    release: Notify,
+    drained: Notify,
+}
+struct PreparedLostWaiter(Arc<LostWaiter>);
+impl TranscriptionEngine for Arc<LostWaiter> {
+    fn prepare<'a>(
+        &'a self,
+        _: &'a TranscriptionJobRequest,
+        _: CancellationToken,
+    ) -> TranscriptionFuture<'a, Result<Box<dyn PreparedTranscription>, TranscriptionFailure>> {
+        let owner = self.clone();
+        Box::pin(async move {
+            Ok(Box::new(PreparedLostWaiter(owner)) as Box<dyn PreparedTranscription>)
+        })
+    }
+}
+impl PreparedTranscription for PreparedLostWaiter {
+    fn transcribe(
+        self: Box<Self>,
+        input: TranscriptionInput,
+        _: CancellationToken,
+    ) -> TranscriptionFuture<
+        'static,
+        Result<hypr_vault_read::TranscriptWithData, TranscriptionFailure>,
+    > {
+        let (_, source_owner) = input.source.into_parts();
+        let host = self.0;
+        tokio::spawn(async move {
+            host.entered.notify_one();
+            host.release.notified().await;
+            drop(source_owner);
+            host.drained.notify_one();
+        });
+        panic!("injected lost append host waiter after native source admission")
+    }
+}
+#[tokio::test]
+async fn append_host_panic_does_not_finish_shutdown_or_release_lease_before_actual_source_work() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let mut runtime = open_runtime(&root).await;
+    let auth = Arc::new(Auth(false.into()));
+    let host = Arc::new(LostWaiter::default());
+    runtime
+        .prepare_capture_processing(policy("a"), auth.clone())
+        .await
+        .unwrap();
+    runtime
+        .enable_transcription(Arc::new(host.clone()), auth, Default::default())
+        .await
+        .unwrap();
+    runtime.start_capture_processing();
+    let source = append_capture(&runtime.context, &root, false).await;
+    submit(&runtime.context, &source, false).await;
+    seal(&runtime.context, &source).await;
+    tokio::time::timeout(Duration::from_secs(20), host.entered.notified())
+        .await
+        .unwrap();
+    let CaptureTarget::AppendSession { admission, .. } = &source.identity.target else {
+        unreachable!()
+    };
+    let replay = runtime
+        .context
+        .prepare_capture_append_authorized(MEMBER.into(), admission.request.clone(), || async {
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert_eq!(&replay, admission);
+    let mut shutdown = tokio::spawn(runtime.shutdown());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), &mut shutdown)
+            .await
+            .is_err()
+    );
+    let lease = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open(root.join("vault/.loofah-vault.lock"))
+        .unwrap();
+    assert!(lease.try_lock().is_err());
+    host.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(20), host.drained.notified())
+        .await
+        .unwrap();
+    let _outcome = tokio::time::timeout(Duration::from_secs(20), shutdown)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        hound::WavReader::open(root.join("vault/sessions/append-note/audio.wav"))
+            .unwrap()
+            .duration(),
+        16001
+    );
+}
+
+#[tokio::test]
+async fn busy_engine_preflight_reuses_retained_suffix_without_admitting_inference() {
+    let (temp, runtime, batch, _, _) = fixture().await;
+    batch.prepare_busy.store(true, Ordering::Release);
+    let root = temp.path().canonicalize().unwrap();
+    let source = append_capture(&runtime.context, &root, false).await;
+    submit(&runtime.context, &source, false).await;
+    let sealed = seal(&runtime.context, &source).await;
+    let original = runtime
+        .context
+        .capture_append_source(&source.identity, false)
+        .await
+        .unwrap();
+    let inference = original.directory().join("core-inference.wav");
+    let dispatch = original.directory().join("core-inference-dispatch.json");
+    tokio::time::timeout(Duration::from_secs(20), async {
+        while !inference.is_file() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(!dispatch.exists());
+    assert_eq!(batch.calls.load(Ordering::Acquire), 0);
+    batch.prepare_busy.store(false, Ordering::Release);
+    publish_when_ready(&runtime.context, &source, sealed).await;
+    assert_eq!(
+        terminal(&runtime.context, &source).await.state,
+        CaptureProcessingState::Succeeded
+    );
+    assert_eq!(batch.calls.load(Ordering::Acquire), 1);
+    drop(original);
+    runtime.shutdown().await.unwrap();
+}

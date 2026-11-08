@@ -88,14 +88,14 @@ pub(super) async fn step(
     };
     service
         .append
-        .completed(&record.identity.capture_id)
+        .completed(&record.snapshot.capture_fingerprint)
         .await?;
     if service
         .append
         .0
         .lock()
         .map_err(storage)?
-        .contains_key(&record.identity.capture_id)
+        .contains_key(&record.snapshot.capture_fingerprint)
     {
         record.snapshot.state = CaptureProcessingState::Repairing;
         return Ok(false);
@@ -209,12 +209,10 @@ pub(super) async fn step(
         .await
         .map_err(unknown)?
     });
-    service
-        .append
-        .0
-        .lock()
-        .map_err(storage)?
-        .insert(record.identity.capture_id.clone(), Task { stop, join });
+    service.append.0.lock().map_err(storage)?.insert(
+        record.snapshot.capture_fingerprint.clone(),
+        Task { stop, join },
+    );
     record.snapshot.state = CaptureProcessingState::Repairing;
     Ok(false)
 }
@@ -355,7 +353,11 @@ pub(super) async fn cancel(
     record: &ledger::Record,
 ) -> Result<bool, ApplicationError> {
     let service = context.capture_processing_service()?;
-    if !service.append.cancel(&record.identity.capture_id).await? {
+    if !service
+        .append
+        .cancel(&record.snapshot.capture_fingerprint)
+        .await?
+    {
         return Ok(false);
     }
     let original = context

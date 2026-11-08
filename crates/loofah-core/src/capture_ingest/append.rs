@@ -82,8 +82,6 @@ impl VaultContext {
             let _permit = permit;
             let _request = request;
             let grant = authorize().await?;
-            let _session = context.try_session_lifecycle_change(&input.session_id)?;
-            context.ensure_recording_publication_ready(&input.session_id)?;
             let source = context
                 .store
                 .prepare_recording_append_source(&root, identity(&input)?, &input.session_id)
@@ -105,6 +103,8 @@ impl VaultContext {
             if let Some(existing) = existing {
                 return Ok(existing);
             }
+            let _session = context.try_session_lifecycle_change(&input.session_id)?;
+            context.ensure_recording_publication_ready(&input.session_id)?;
             context.ensure_session_jobs_idle(&input.session_id).await?;
             context
                 .ensure_capture_session_lifecycle_idle(&input.session_id)
@@ -378,17 +378,37 @@ impl VaultContext {
         let temporary = original
             .directory()
             .join(format!("core-inference-{}.wav", uuid::Uuid::new_v4()));
-        let (mut reader, producer) = verified.reader(self.clone(), writer);
-        let pin = self.clone();
         let expected_sha = verified.artifact_sha256.clone();
         let expected_bytes = verified.artifact_size_bytes;
         let output_path = path.clone();
+        let pin = self.clone();
+        let retained = tokio::task::spawn_blocking(move || {
+            let _pin = pin;
+            match std::fs::symlink_metadata(&output_path) {
+                Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                Err(cause) => Err(io(cause)),
+                Ok(_) => {
+                    verify_private_wave(&output_path, &expected_sha, expected_bytes)?;
+                    Ok(true)
+                }
+            }
+        })
+        .await
+        .map_err(io)??;
+        if retained {
+            return Ok(CaptureSuffixSource {
+                original,
+                path,
+                sha256: verified.artifact_sha256,
+                seal,
+            });
+        }
+        let (mut reader, producer) = verified.reader(self.clone(), writer);
+        let pin = self.clone();
+        let expected_sha = verified.artifact_sha256.clone();
+        let output_path = path.clone();
         let prepared = tokio::task::spawn_blocking(move || {
             let _pin = pin;
-            if std::fs::symlink_metadata(&output_path).is_ok() {
-                verify_private_wave(&output_path, &expected_sha, expected_bytes)?;
-                return Ok::<_, ApplicationError>(());
-            }
             let mut file = File::create_new(&temporary).map_err(io)?;
             std::io::copy(&mut reader, &mut file).map_err(io)?;
             file.sync_all().map_err(io)?;
