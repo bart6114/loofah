@@ -1312,3 +1312,261 @@ async fn dropping_pending_creation_waiter_keeps_owned_creation_binding_and_publi
     drop(writer);
     fixture.stop().await;
 }
+
+#[tokio::test]
+async fn lifecycle_inventory_covers_other_members_pending_future_targets_and_original_bindings() {
+    let mut fixture = Fixture::new().await;
+    let (_, future) = fixture.pending().await;
+    fixture
+        .writer()
+        .await
+        .bind_session("other".into())
+        .await
+        .unwrap();
+    let mut foreign = fixture.input.clone();
+    foreign.identity.scope.member_id = "another-member".into();
+    foreign.identity.capture_id = uuid::Uuid::new_v4().to_string();
+    foreign.identity.request_id = uuid::Uuid::new_v4().to_string();
+    foreign.identity.target = CaptureTarget::ExistingSession {
+        session_id: "foreign-member-target".into(),
+        expected_audio_sha256: None,
+    };
+    fixture
+        .context()
+        .begin_capture_authorized("another-member".into(), foreign, || async { Ok(()) })
+        .await
+        .unwrap();
+    fixture.stop().await;
+    fixture.context = Some(leased_context(&fixture.vault, &fixture.operations).await);
+    for session in ["note", "other", future.as_str(), "foreign-member-target"] {
+        let _exclusive = fixture
+            .context()
+            .try_session_lifecycle_change(session)
+            .unwrap();
+        let error = fixture
+            .context()
+            .ensure_capture_session_lifecycle_idle(session)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Unavailable);
+        assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    }
+    let exclusive = fixture
+        .context()
+        .try_session_lifecycle_change("unrelated")
+        .unwrap();
+    fixture
+        .context()
+        .ensure_capture_session_lifecycle_idle("unrelated")
+        .await
+        .unwrap();
+    drop(exclusive);
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn verified_publication_releases_lifecycle_inventory_but_unknown_publication_never_does() {
+    let mut fixture = Fixture::new().await;
+    fixture.publish().await.unwrap();
+    let exclusive = fixture
+        .context()
+        .try_session_lifecycle_change("note")
+        .unwrap();
+    fixture
+        .context()
+        .ensure_capture_session_lifecycle_idle("note")
+        .await
+        .unwrap();
+    fixture.context().recording_publications.block_all();
+    assert_eq!(
+        fixture
+            .context()
+            .ensure_capture_session_lifecycle_idle("note")
+            .await
+            .unwrap_err()
+            .mutation_outcome,
+        Some(MutationOutcome::NotCommitted)
+    );
+    assert!(
+        fixture
+            .context()
+            .ensure_capture_session_lifecycle_idle("unrelated")
+            .await
+            .is_err()
+    );
+    drop(exclusive);
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn unsafe_reopened_capture_inventory_fails_closed_without_touching_raw_files() {
+    let mut fixture = Fixture::new().await;
+    fixture.stop().await;
+    let unsafe_entry = fixture.operations.join("captures/unrecognized-scope");
+    std::fs::write(&unsafe_entry, b"retain unexpected data").unwrap();
+    fixture.context = Some(leased_context(&fixture.vault, &fixture.operations).await);
+    let exclusive = fixture
+        .context()
+        .try_session_lifecycle_change("unrelated")
+        .unwrap();
+    let error = fixture
+        .context()
+        .ensure_capture_session_lifecycle_idle("unrelated")
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Unavailable);
+    assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert_eq!(
+        std::fs::read(unsafe_entry).unwrap(),
+        b"retain unexpected data"
+    );
+    drop(exclusive);
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn dropped_capture_admission_waiter_cannot_bypass_exclusive_lifecycle_or_lose_durable_start()
+{
+    let mut fixture = Fixture::new().await;
+    let (_, session) = fixture.pending().await;
+    let mut input = fixture.input.clone();
+    input.identity.capture_id = uuid::Uuid::new_v4().to_string();
+    input.identity.request_id = uuid::Uuid::new_v4().to_string();
+    let exclusive = fixture
+        .context()
+        .try_session_lifecycle_change(&session)
+        .unwrap();
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let context = fixture.context().clone();
+    let declaration = input.clone();
+    let mut caller = tokio::spawn({
+        let entered = entered.clone();
+        async move {
+            context
+                .begin_capture_authorized("member".into(), declaration, move || async move {
+                    entered.notify_one();
+                    Ok(())
+                })
+                .await
+        }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(10), entered.notified())
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(25), &mut caller)
+            .await
+            .is_err()
+    );
+    let spool = fixture
+        .context()
+        .capture_ingestion
+        .get()
+        .unwrap()
+        .spool
+        .get()
+        .unwrap()
+        .clone();
+    assert!(
+        !spool
+            .request_exists(&input.identity.request_id)
+            .await
+            .unwrap()
+    );
+    caller.abort();
+    assert!(caller.await.unwrap_err().is_cancelled());
+    drop(exclusive);
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if spool
+                .request_exists(&input.identity.request_id)
+                .await
+                .unwrap()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let snapshot = spool
+        .resume(input.identity.clone())
+        .await
+        .unwrap()
+        .snapshot()
+        .await
+        .unwrap();
+    assert_eq!(snapshot.identity, input.identity);
+    assert_eq!(
+        snapshot.first_admitted_audio_observed_at_ms,
+        Some(input.first_admitted_audio_observed_at_ms)
+    );
+    drop(spool);
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn dropped_note_creation_waiter_retains_shared_lifecycle_guard_through_real_commit() {
+    let mut fixture = Fixture::new().await;
+    let request = uuid::Uuid::new_v4();
+    let (key, session) = crate::operations::creation_identity("member", request);
+    let held = fixture.context().store.lock_snapshot().await;
+    let context = fixture.context().clone();
+    let caller = tokio::spawn(async move {
+        context
+            .create_session(
+                "member".into(),
+                request.to_string(),
+                hypr_loofah_protocol::CreateSessionRequest {
+                    title: "Retain owned create".into(),
+                    markdown: "Keep accepted content".into(),
+                },
+            )
+            .await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !fixture.operations.join(format!("{key}.json")).exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(
+        fixture
+            .context()
+            .try_session_lifecycle_change(&session)
+            .is_err()
+    );
+    caller.abort();
+    assert!(caller.await.unwrap_err().is_cancelled());
+    assert!(
+        fixture
+            .context()
+            .try_session_lifecycle_change(&session)
+            .is_err()
+    );
+    drop(held);
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if let Ok(exclusive) = fixture.context().try_session_lifecycle_change(&session) {
+                drop(exclusive);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        fixture
+            .context()
+            .read_note(&session)
+            .await
+            .unwrap()
+            .markdown
+            .as_deref(),
+        Some("Keep accepted content")
+    );
+    fixture.stop().await;
+}

@@ -89,6 +89,13 @@ reads. Known uncertain sessions remain gated; an ambiguous directory scan gates
 recordings vault-wide while notes remain usable. Completed receipts do not recreate
 later-deleted recordings. Unknown attachments and unclaimed stages are preserved.
 
+Session lifecycle admission also protects actual note creation, capture staging,
+binding and publication work. Checked session changes use a non-waiting exclusive
+permit and refuse retained unpublished captures, ambiguous publication evidence
+or unfinished live generations, including after raw recording publication. This
+checks the service's private vault-wide staging inventory without exposing other
+members' captures or removing raw files.
+
 A published response contains the exact source seal, session ID, canonical SHA-256
 and byte count. Verify a separate authenticated canonical artifact read before
 considering device cleanup. Neither upload acknowledgment nor this response alone

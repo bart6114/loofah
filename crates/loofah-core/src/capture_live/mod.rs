@@ -101,11 +101,10 @@ impl CaptureLiveService {
 
 impl VaultContext {
     pub fn ensure_capture_processing_ready(&self, session: &str) -> Result<(), ApplicationError> {
-        if self
-            .capture_live
-            .get()
-            .is_some_and(|service| service.journal.blocks(session))
-        {
+        if self.capture_live.get().is_some_and(|service| {
+            service.failed.load(std::sync::atomic::Ordering::Acquire)
+                || service.journal.blocks(session)
+        }) {
             return Err(unavailable(
                 "Capture transcription is not ready for source processing",
             ));
@@ -162,6 +161,7 @@ impl VaultContext {
                 _ => return Err(error(ErrorCode::Validation, "Live processing requires an existing session with absent recording baseline")),
             };
             context.validate(&session)?;
+            let session_admission=context.admit_session_work(&session).await?;
             // Replays do not reread/edit note metadata or restart a native engine.
             match service.journal.get(member.clone(), request_id.clone()).await {
                 Ok(old) => {
@@ -185,6 +185,7 @@ impl VaultContext {
             if service.stop.is_cancelled() { return Err(unavailable("Live processing is stopping")); }
             let record = ledger::Record::new(source.identity, source.format, request, request_id.clone(), session, observation, &memo);
             let (record, fresh) = service.journal.admit(record, memo).await?;
+            drop(session_admission);
             if fresh {
                 let cancel = service.stop.child_token();
                 let task_cancel = cancel.clone();

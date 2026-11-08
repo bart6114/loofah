@@ -491,7 +491,8 @@ impl Journal {
             || self.0.records.lock().map_or(true, |records| {
                 records.values().any(|r| {
                     r.snapshot.session_id == session
-                        && (!r.snapshot.state.is_terminal()
+                        && (r.commit_pending
+                            || !r.snapshot.state.is_terminal()
                             || r.snapshot.state == CaptureLiveState::Uncertain)
                 })
             })

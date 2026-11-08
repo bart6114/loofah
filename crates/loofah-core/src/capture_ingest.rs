@@ -12,8 +12,11 @@ use tokio::sync::{OnceCell, Semaphore};
 
 use super::{VaultContext, error};
 
+#[path = "capture_ingest/lifecycle.rs"]
+mod lifecycle;
 #[path = "capture_ingest/publication/mod.rs"]
 pub(crate) mod publication;
+use lifecycle::target_session_id;
 
 pub(super) struct CaptureIngestion {
     server: String,
@@ -108,6 +111,7 @@ impl VaultContext {
         G: Send + 'static,
         F: Future<Output = Result<G, ApplicationError>> + Send + 'static,
     {
+        let context = self.clone();
         self.capture_action(member_id, authorize, move |spool, scope| async move {
             if input.identity.scope != scope {
                 return Err(rejected(
@@ -115,6 +119,9 @@ impl VaultContext {
                     "Capture identity does not match the authenticated vault scope",
                 ));
             }
+            let _admission = context
+                .admit_session_work(&target_session_id(&input.identity)?)
+                .await?;
             let writer = spool
                 .begin_with_observation(
                     input.identity,
@@ -170,8 +177,12 @@ impl VaultContext {
                 "Capture chunk does not match its declaration",
             ));
         }
+        let context = self.clone();
         self.capture_action(member_id, authorize, move |spool, scope| async move {
             let writer = find(&spool, scope, &capture_id).await?;
+            let _admission = context
+                .admit_session_work(&target_session_id(writer.identity())?)
+                .await?;
             let snapshot = writer.snapshot().await?;
             if descriptor.capture_fingerprint != snapshot.capture_fingerprint {
                 return Err(rejected(
@@ -245,8 +256,12 @@ impl VaultContext {
         F: Future<Output = Result<G, ApplicationError>> + Send + 'static,
     {
         validate_id(&capture_id)?;
+        let context = self.clone();
         self.capture_action(member_id, authorize, move |spool, scope| async move {
             let writer = find(&spool, scope, &capture_id).await?;
+            let _admission = context
+                .admit_session_work(&target_session_id(writer.identity())?)
+                .await?;
             writer.seal_if_matches(seal).await?;
             status(writer.snapshot().await?)
         })

@@ -1049,3 +1049,172 @@ async fn already_sealed_capture_never_starts_a_substitute_live_generation() {
     assert_eq!(fake.calls.load(Ordering::Acquire), 0);
     assert!(!root.join("live").join(id).exists());
 }
+
+#[tokio::test]
+async fn lifecycle_exclusion_keeps_live_and_uncertain_generations_blocked_after_raw_publication() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let fake = Fake::new();
+    let context = context(&root, fake.clone(), Auth::new()).await;
+    let (input, request, id) = begin(&context).await;
+    let record = ledger::Record::new(
+        input.identity.clone(),
+        input.format.clone(),
+        request,
+        id.clone(),
+        "session".into(),
+        input.first_admitted_audio_observed_at_ms,
+        "",
+    );
+    let service = context.capture_live.get().unwrap();
+    service.journal.admit(record, String::new()).await.unwrap();
+    append(&context, &input, 1).await;
+    let writer = context
+        .capture_writer(MEMBER.into(), input.identity.capture_id.clone())
+        .await
+        .unwrap();
+    let seal = writer.seal().await.unwrap();
+    context
+        .publish_capture_authorized(
+            MEMBER.into(),
+            input.identity.capture_id.clone(),
+            seal,
+            || async { Ok(()) },
+        )
+        .await
+        .unwrap();
+    assert!(writer.snapshot().await.unwrap().publication.is_some());
+    let exclusive = context.try_session_lifecycle_change("session").unwrap();
+    assert!(
+        context
+            .ensure_capture_session_lifecycle_idle("session")
+            .await
+            .is_err()
+    );
+    service
+        .journal
+        .change(id.clone(), |r| {
+            r.snapshot.state = CaptureLiveState::Interrupted;
+            r.snapshot.failure = Some(CaptureLiveFailure::Interrupted);
+        })
+        .await
+        .unwrap();
+    context
+        .ensure_capture_session_lifecycle_idle("session")
+        .await
+        .unwrap();
+    service
+        .journal
+        .change(id.clone(), |r| {
+            r.snapshot.state = CaptureLiveState::Uncertain;
+            r.snapshot.failure = Some(CaptureLiveFailure::Storage);
+            r.commit_pending = true;
+        })
+        .await
+        .unwrap();
+    assert!(
+        context
+            .ensure_capture_session_lifecycle_idle("session")
+            .await
+            .is_err()
+    );
+    service
+        .journal
+        .change(id, |r| {
+            r.snapshot.state = CaptureLiveState::Interrupted;
+            r.snapshot.failure = Some(CaptureLiveFailure::Interrupted);
+            r.commit_pending = false;
+        })
+        .await
+        .unwrap();
+    service.failed.store(true, Ordering::Release);
+    assert!(
+        context
+            .ensure_capture_session_lifecycle_idle("session")
+            .await
+            .is_err()
+    );
+    assert_eq!(fake.calls.load(Ordering::Acquire), 0);
+    drop(exclusive);
+}
+
+#[tokio::test]
+async fn dropped_live_start_waiter_respects_exclusive_lifecycle_and_durably_admits_before_inference()
+ {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let fake = Fake::new();
+    let context = context(&root, fake.clone(), Auth::new()).await;
+    let (input, request, id) = begin(&context).await;
+    let exclusive = context.try_session_lifecycle_change("session").unwrap();
+    let entered = Arc::new(Notify::new());
+    let owned = context.clone();
+    let capture = input.identity.capture_id.clone();
+    let generation = id.clone();
+    let mut caller = tokio::spawn({
+        let entered = entered.clone();
+        async move {
+            owned
+                .start_capture_live_authorized(
+                    MEMBER.into(),
+                    capture,
+                    generation,
+                    request,
+                    move || async move {
+                        entered.notify_one();
+                        Ok(())
+                    },
+                )
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(10), entered.notified())
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(25), &mut caller)
+            .await
+            .is_err()
+    );
+    assert_eq!(fake.calls.load(Ordering::Acquire), 0);
+    assert!(!root.join("live").join(&id).exists());
+    caller.abort();
+    assert!(caller.await.unwrap_err().is_cancelled());
+    drop(exclusive);
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while fake.calls.load(Ordering::Acquire) == 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let exclusive = context.try_session_lifecycle_change("session").unwrap();
+    assert!(
+        context
+            .ensure_capture_session_lifecycle_idle("session")
+            .await
+            .is_err()
+    );
+    drop(exclusive);
+    fake.released.add_permits(1);
+    context
+        .cancel_capture_live_authorized(
+            MEMBER.into(),
+            input.identity.capture_id.clone(),
+            id.clone(),
+            || async { Ok(()) },
+        )
+        .await
+        .unwrap();
+    until(&context, &input.identity.capture_id, &id, |s| {
+        s.state.is_terminal()
+    })
+    .await;
+    context
+        .capture_live
+        .get()
+        .unwrap()
+        .shutdown()
+        .await
+        .unwrap();
+}

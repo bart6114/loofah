@@ -105,6 +105,7 @@ impl crate::VaultContext {
             let writer = find(&spool, scope, &capture_id).await?;
             let snapshot = writer.snapshot().await?;
             let session = target_session(&snapshot)?;
+            let _admission = context.admit_session_work(&session).await?;
             if snapshot.seal.as_ref() != Some(&expected) {
                 return Err(rejected(ErrorCode::Conflict, "Capture seal changed"));
             }
@@ -349,17 +350,8 @@ fn target_session(snapshot: &super::CaptureSnapshot) -> Result<String, Applicati
             ErrorCode::Validation,
             "Capture publication only supports an absent recording target",
         )),
-        CaptureTarget::PendingSession { create_request_id } => {
-            let request_id = uuid::Uuid::parse_str(create_request_id)
-                .ok()
-                .filter(|id| !id.is_nil())
-                .ok_or_else(|| {
-                    rejected(ErrorCode::Validation, "Invalid capture creation identifier")
-                })?;
-            let (_, expected) = crate::operations::creation_identity(
-                &snapshot.identity.scope.member_id,
-                request_id,
-            );
+        CaptureTarget::PendingSession { .. } => {
+            let expected = super::target_session_id(&snapshot.identity)?;
             if snapshot
                 .session_id
                 .as_ref()

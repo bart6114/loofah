@@ -101,6 +101,9 @@ impl VaultContext {
         let context = self.clone();
         // A lost response must not cancel a file commit between its durable intent and receipt.
         tokio::spawn(async move {
+            let _admission = context
+                .admit_session_work(&creation_identity(&namespace, request_id).1)
+                .await?;
             let operations = context.operations.as_ref().ok_or_else(|| {
                 error(
                     ErrorCode::Unavailable,
@@ -140,6 +143,9 @@ impl VaultContext {
         let created_at = observed_at_ms.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let context = self.clone();
         tokio::spawn(async move {
+            let _admission = context
+                .admit_session_work(&creation_identity(&namespace, request_id).1)
+                .await?;
             let operations = context.operations.as_ref().ok_or_else(|| {
                 error(
                     ErrorCode::Unavailable,
