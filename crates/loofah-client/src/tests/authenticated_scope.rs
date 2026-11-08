@@ -58,7 +58,7 @@ async fn selected_scope_rechecks_original_session_authorization_without_personal
     let fixture=Fixture::with_extra_routes(Some(Duration::ZERO),Router::new().route("/api/v1/vaults/shared-vault/sessions/note",get(move|State(provider):State<Arc<Provider>>|{let seen=seen.clone();async move{
         seen.fetch_add(1,Ordering::SeqCst);
         if provider.denied.load(Ordering::SeqCst) {return (StatusCode::FORBIDDEN,Json(failure(ErrorCode::Forbidden,"Membership revoked"))).into_response();}
-        Json(json!({"meta":{"id":"note","title":"Original shared session","created_at":"2026-11-08T00:00:00Z","tags":[]},"note":{"markdown":"Original","revision":"0".repeat(64)}})).into_response()
+        Json(json!({"meta":{"id":"note","title":"Original shared session","created_at":"2026-11-08T00:00:00Z","tags":[]},"note":{"markdown":"Original","title":"Original shared session","revision":"0".repeat(64)}})).into_response()
     }}))).await;
     let client = fixture.client().await;
     fixture.login(&client).await;
