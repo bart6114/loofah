@@ -62,11 +62,10 @@ pub(crate) fn ensure_directory(path: &Path) -> Result<(), StoreError> {
 
 pub(crate) fn sync_parent(path: &Path) -> Result<(), StoreError> {
     #[cfg(unix)]
-    std::fs::File::open(
+    hypr_storage::fs::sync_directory(
         path.parent()
             .ok_or_else(|| StoreError::Io("Missing operation parent".into()))?,
     )
-    .and_then(|file| file.sync_all())
     .map_err(io_error)?;
     #[cfg(not(unix))]
     let _ = path;

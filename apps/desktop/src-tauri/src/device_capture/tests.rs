@@ -567,7 +567,7 @@ async fn managed_native_lifecycle_requires_registered_idle_actor_and_original_pe
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .unwrap();
     crate::local_owner::configure_lifecycle(app.handle(), &context).unwrap();
-    let cli = LocalCli::new(context.clone()).unwrap();
+    let cli = Arc::new(LocalCli::new(context.clone()).unwrap());
     let lifecycle = || LocalCliOperation::SessionLifecycle {
         session_id: "note".into(),
     };

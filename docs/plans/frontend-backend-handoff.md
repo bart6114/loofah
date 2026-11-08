@@ -33,6 +33,14 @@ Completed continuation checks so far (local logs are under the cache above):
   transcript guards, the managed owner socket fixture, and real live-capture
   journal contention. Its failures are historical findings, not a current full
   pass; repeat integrated qualification after the remaining changes.
+- A subsequent complete twelve-package Native/library run passed **1,710 tests**
+  with 16 explicit ignored cases and zero failures. This supersedes the earlier
+  six-failure run for that source checkpoint. The later Native maintenance and
+  permission corrections passed 56 focused tests; all six CLI integration targets
+  passed 32 tests, including complete-session trash/recovery, restricted parent
+  permissions, first-cache initialization and persisted-write reporting.
+- The actual server executable passed startup/SIGTERM and both maintenance command
+  integration tests. Locale extraction and strict compilation passed.
 - A 145-case focused Native/Core/server cohort passed, including deterministic
   live-ledger contention and Store Busy publication recovery, device processing
   and captions, profile/capture gates, retained media recovery, and stopped
@@ -53,9 +61,9 @@ bytes unchanged when false, and conflicts before generation if the reviewed
 summary has filled or changed. This adapter work does not complete Native/Core
 automatic processing durability before producer start.
 
-Local shared lifecycle UI activation remains default OFF. Full managed Local CLI
-stale-channel deletion awaits the strict Native physical-resource host proof;
-the Core/Store proof interface defaults to refusal without it. Recording append,
+Local shared lifecycle UI activation remains default OFF. Managed Local CLI
+stale-channel deletion now uses the tested strict Native physical-resource host
+proof; unregistered or uncertain hosts refuse. Recording append,
 verified retention, complete Native automatic processing, realistic production UX,
 sustained recording/network acceptance and final macOS/Windows/Linux qualification
 remain required. Stopped backup/restore source and focused validation are present;
@@ -126,7 +134,7 @@ build several Native graphs concurrently. Keep source frozen during each build.
 Do not cancel unrelated or hosted builds. The local interruptions in this handoff
 were explicitly authorized by the user's pause request.
 
-## Current behavior and important limitations
+## Transfer-time behavior and limitations (historical)
 
 The default desktop acquires its canonical vault lease before settings migration.
 Context, Store and settings retain the original descriptor through actual I/O.

@@ -408,3 +408,34 @@ mod exclusive_rename_tests {
         assert_eq!(std::fs::read(to.join("payload")).unwrap(), b"keep source");
     }
 }
+
+#[cfg(unix)]
+pub fn sync_directory(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    let file = {
+        use std::os::unix::fs::OpenOptionsExt;
+        // A search-only handle supports fsync without granting directory enumeration.
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_SEARCH | libc::O_NOFOLLOW)
+            .open(path)?
+    };
+    #[cfg(not(target_os = "macos"))]
+    let file = std::fs::File::open(path)?;
+    file.sync_all()
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod directory_sync_tests {
+    #[test]
+    fn syncing_a_searchable_directory_does_not_require_listing_permission() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o300)).unwrap();
+        let sync = super::sync_directory(root.path());
+        let listing = std::fs::read_dir(root.path());
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(sync.is_ok(), "{sync:?}");
+        assert!(listing.is_err());
+    }
+}

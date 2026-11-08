@@ -471,6 +471,27 @@ impl SessionStore {
                 .await
                 .map_err(|_| uncertain("Trash preparation stopped"))?
                 .map_err(rejected)?;
+            let sync_source = vault.join(&source);
+            let sync_trash = trash.clone();
+            store
+                .spawn_blocking(move || {
+                    #[cfg(unix)]
+                    if sync_source
+                        .parent()
+                        .ok_or_else(|| StoreError::Io("Missing session parent".into()))?
+                        .metadata()
+                        .map_err(io_error)?
+                        .permissions()
+                        .readonly()
+                    {
+                        return Err(StoreError::Io("Session parent is not writable".into()));
+                    }
+                    operation_io::sync_parent(&sync_source)?;
+                    operation_io::sync_parent(&sync_trash)
+                })
+                .await
+                .map_err(|_| uncertain("Lifecycle sync admission stopped"))?
+                .map_err(rejected)?;
             let target = Target {
                 session_id: input.session_id.clone(),
                 source: source.clone(),

@@ -304,7 +304,7 @@ impl LocalGateway {
     fn app_local_data(&self) -> Result<PathBuf> {
         #[cfg(test)]
         {
-            return Ok(self.cache_base()?.join("app-local"));
+            Ok(self.cache_base()?.join("app-local"))
         }
         #[cfg(not(test))]
         {
@@ -323,7 +323,7 @@ impl LocalGateway {
                 .or_else(|| std::env::var_os("RUNNER_TEMP"))
                 .map(PathBuf::from)
                 .unwrap_or_else(std::env::temp_dir);
-            return EndpointRoot::new(base.join("loofah-cli-owner-tests")).map_err(owner_error);
+            EndpointRoot::new(base.join("loofah-cli-owner-tests")).map_err(owner_error)
         }
         #[cfg(not(test))]
         {

@@ -85,8 +85,11 @@ impl LocalCli {
                             .unwrap_or_default(),
                     ),
                 )
-                .with_vault_lease(lease)?
+                .with_vault_lease(lease.clone())?
                 .with_operation_storage(operation_root);
+                if session_only {
+                    context.enable_standalone_local_session_lifecycle(&lease)?;
+                }
                 Ok::<_, ApplicationError>(Arc::new(context))
             })
             .await

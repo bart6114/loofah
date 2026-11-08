@@ -209,19 +209,17 @@ fn incompatible_cache_is_rebuilt_automatically_but_corruption_requires_repair() 
     assert_eq!(response(&search)["data"][0]["session_id"], "a");
     assert!(!search.stderr.is_empty());
     std::fs::write(&pointer, "../invalid").unwrap();
-    for args in [vec!["sessions", "list"]] {
-        let output = run(vault.path(), &args);
-        assert!(!output.status.success());
-        assert!(output.stdout.is_empty());
-        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-        assert_eq!(error["error"]["code"], "cache_corrupt");
-        assert!(
-            error["error"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("loof init")
-        );
-    }
+    let output = run(vault.path(), &["sessions", "list"]);
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "cache_corrupt");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("loof init")
+    );
     let (responses, stderr) = mcp_search(vault.path());
     assert!(responses[0].get("error").is_none());
     assert_eq!(responses[1]["error"]["code"], -32603);
