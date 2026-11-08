@@ -217,6 +217,14 @@ msgstr "кушымта"
 msgid "Appearance"
 msgstr ""
 
+#: src/shared/application/device-recording-host.tsx
+msgid "Append audio"
+msgstr ""
+
+#: src/shared/application/device-recording-host.tsx
+msgid "Append to the verified recording. Enable transcription to include the new audio in the transcript."
+msgstr ""
+
 #: src/shared/application/vault-processing-settings.tsx
 msgid "Apply high-confidence tag suggestions"
 msgstr ""
@@ -313,6 +321,7 @@ msgstr ""
 
 #: src/session/components/note-input/header.tsx
 #: src/shared/application/device-recording-queue.tsx
+#: src/shared/application/vault-media-processing.tsx
 #: src/shared/application/vault-processing.tsx
 msgid "Cancel processing"
 msgstr ""
@@ -325,12 +334,24 @@ msgstr ""
 msgid "Cancel summary"
 msgstr ""
 
+#: src/shared/application/vault-transcription.tsx
+msgid "Cancel transcription"
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "Cancelled"
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Cancelling"
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Cancelling summary"
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Cancelling transcription"
 msgstr ""
 
 #: src/onboarding/folder-location.tsx
@@ -383,7 +404,7 @@ msgid "Choose a connection"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
-msgid "Choose a file format and what to include."
+msgid "Choose a file format and which saved content to include."
 msgstr ""
 
 #: src/shared/application/vault-sharing.tsx
@@ -423,6 +444,10 @@ msgstr ""
 msgid "Choose light, dark, or match your system setting."
 msgstr ""
 
+#: src/shared/application/vault-media-processing.tsx
+msgid "Choose original file to resume upload"
+msgstr ""
+
 #: src/onboarding/folder-location.tsx
 #: src/settings/general/storage/change-location.tsx
 #: src/shared/startup-boundary.tsx
@@ -440,6 +465,14 @@ msgstr ""
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
 msgid "Choosing…"
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Cleanup is requested. Device audio is retained until verification finishes."
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Cleanup was interrupted. Reconnect to the original vault and retry verification."
 msgstr ""
 
 #: src/main/audio-import-dialog.tsx
@@ -569,6 +602,8 @@ msgid "Continue editing draft"
 msgstr ""
 
 #: src/main/about-debug.tsx
+#: src/shared/application/vault-media-processing.tsx
+#: src/shared/application/vault-transcription.tsx
 msgid "Copied"
 msgstr ""
 
@@ -604,8 +639,16 @@ msgstr ""
 msgid "Copy my vault here"
 msgstr ""
 
+#: src/shared/application/vault-media-processing.tsx
+msgid "Copy retained transcript"
+msgstr ""
+
 #: src/shared/application/device-recovery.tsx
 msgid "Copy saved text"
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Copy saved transcript"
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
@@ -705,10 +748,6 @@ msgstr ""
 msgid "Couldn’t open attachments in Finder"
 msgstr ""
 
-#: src/session/components/outer-header/overflow/export-modal.tsx
-msgid "Couldn't prepare export."
-msgstr ""
-
 #: src/settings/general/theme.tsx
 msgid "Couldn't save your appearance. Please try again."
 msgstr ""
@@ -731,6 +770,11 @@ msgstr ""
 
 #: src/shared/useNewNote.ts
 msgid "Creating note..."
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Creating summary"
 msgstr ""
 
 #: src/shared/application/device-recording-queue.tsx
@@ -951,7 +995,7 @@ msgid "Export"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
-msgid "Export failed. Please try again."
+msgid "Export is unavailable for this connection."
 msgstr ""
 
 #: src/shared/application/device-recording-queue.tsx
@@ -1004,6 +1048,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Forget this device request?"
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Free device audio"
 msgstr ""
 
 #: src/sidebar/settings.tsx
@@ -1119,10 +1167,6 @@ msgstr ""
 msgid "In {totalSeconds}s"
 msgstr ""
 
-#: src/session/components/outer-header/overflow/export-modal.tsx
-msgid "Include"
-msgstr ""
-
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Included automatically with on-device transcription — no setup needed."
 msgstr ""
@@ -1213,6 +1257,10 @@ msgstr ""
 #: src/shared/application/vault-attachments-pane.tsx
 #: src/sidebar/timeline/stream-control.tsx
 msgid "Load more"
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Load more transcription jobs"
 msgstr ""
 
 #: src/shared/startup-boundary.tsx
@@ -1350,6 +1398,30 @@ msgstr ""
 
 #: src/main/about-storage.tsx
 msgid "Measurement stopped before all files could be counted. Shares show measured files only."
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Media processing"
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Media processing cancelled"
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Media processing failed"
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Media processing needs review"
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Media queued"
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Media saved"
 msgstr ""
 
 #: src/sidebar/timeline/index.tsx
@@ -1496,6 +1568,10 @@ msgstr ""
 msgid "No results found."
 msgstr ""
 
+#: src/shared/application/vault-media-processing.tsx
+msgid "No retained transcript is available for this request."
+msgstr ""
+
 #: src/shared/application/device-recovery.tsx
 msgid "No saved recovery drafts."
 msgstr ""
@@ -1506,6 +1582,10 @@ msgstr ""
 
 #: src/shared/application/device-recording-queue.tsx
 msgid "No speech was found."
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "No speech was found. Your recording is kept."
 msgstr ""
 
 #: src/shared/application/vault-processing-settings.tsx
@@ -1682,20 +1762,16 @@ msgstr ""
 msgid "Prepare saved audio for upload"
 msgstr ""
 
-#: src/session/components/outer-header/overflow/export-modal.tsx
-msgid "Preparing export..."
-msgstr ""
-
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Preparing file…"
 msgstr ""
 
-#: src/shared/application/vault-processing.tsx
-msgid "Preparing summary"
+#: src/shared/application/vault-transcription.tsx
+msgid "Preparing recording"
 msgstr ""
 
-#: src/session/components/outer-header/overflow/export-modal.tsx
-msgid "Preparing transcript..."
+#: src/shared/application/vault-processing.tsx
+msgid "Preparing summary"
 msgstr ""
 
 #: src/main/about-debug.tsx
@@ -1716,6 +1792,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Processing may already have started. Resume uses the original request."
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Processing media"
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
@@ -1798,6 +1878,7 @@ msgstr ""
 
 #: src/settings/general/index.tsx
 #: src/shared/application/device-recording-queue.tsx
+#: src/shared/application/vault-recording-processing.tsx
 #: src/sidebar/settings.tsx
 msgid "Recording"
 msgstr ""
@@ -1818,6 +1899,10 @@ msgstr ""
 msgid "Recording deletion was not confirmed. Reload it before trying again."
 msgstr ""
 
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Recording did not start"
+msgstr ""
+
 #: src/shared/application/device-recording-queue.tsx
 msgid "Recording did not start."
 msgstr ""
@@ -1834,12 +1919,48 @@ msgstr ""
 msgid "Recording playback is unavailable."
 msgstr ""
 
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Recording processing"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Recording processing complete"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Recording processing needs review"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Recording processing skipped"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Recording processing stopped because the saved content changed"
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "Recordings"
 msgstr ""
 
 #: src/shared/application/device-recording-queue.tsx
 msgid "Recordings on this device"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Recover recording processing"
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Recover request"
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Recover saved request"
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Recover saved result"
 msgstr ""
 
 #: src/shared/application/device-recovery.tsx
@@ -2041,11 +2162,13 @@ msgstr ""
 #: src/session/components/note-input/enhanced/enhance-error.tsx
 #: src/session/components/note-input/raw.tsx
 #: src/session/components/note-input/transcript/loading.tsx
-#: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/settings/ai/stt/diarization-status.tsx
 #: src/shared/application/vault-attachment-provider.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
+#: src/shared/application/vault-media-processing.tsx
 #: src/shared/application/vault-processing-settings.tsx
+#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/vault-transcription.tsx
 #: src/shared/useNewNote.ts
 #: src/sidebar/timeline/index.tsx
 #: src/sidebar/timeline/stream-control.tsx
@@ -2059,9 +2182,17 @@ msgstr ""
 msgid "Retry {0}"
 msgstr ""
 
+#: src/shared/application/device-recording-queue.tsx
+msgid "Retry cleanup"
+msgstr ""
+
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-sharing.tsx
 msgid "Retry creation"
+msgstr ""
+
+#: src/shared/application/device-recording-host.tsx
+msgid "Retry the saved append request with its original recording and processing choices."
 msgstr ""
 
 #: src/session/components/session-date.tsx
@@ -2160,12 +2291,20 @@ msgstr ""
 msgid "Saving date…"
 msgstr ""
 
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Saving recording"
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "Saving summary"
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Saving title…"
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Saving transcript"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -2250,6 +2389,10 @@ msgstr ""
 #: src/shared/application/desktop-startup-preferences.tsx
 #: src/shared/application/server-preview.tsx
 msgid "Server address"
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Server copy verified. Saved audio has been removed from this device."
 msgstr ""
 
 #: src/shared/application/server-preview.tsx
@@ -2546,6 +2689,10 @@ msgstr ""
 msgid "Summary"
 msgstr ""
 
+#: src/shared/application/vault-media-processing.tsx
+msgid "Summary cancelled"
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "Summary changed"
 msgstr ""
@@ -2562,8 +2709,16 @@ msgstr ""
 msgid "Summary generation"
 msgstr ""
 
+#: src/shared/application/vault-media-processing.tsx
+msgid "Summary generation failed"
+msgstr ""
+
 #: src/session/components/note-input/enhanced/empty-summary.tsx
 msgid "Summary generation is unavailable for this connection."
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Summary generation was interrupted"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -2603,6 +2758,11 @@ msgstr ""
 msgid "Summary provider"
 msgstr ""
 
+#: src/shared/application/vault-media-processing.tsx
+msgid "Summary queued"
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
 #: src/shared/application/vault-processing.tsx
 msgid "Summary saved"
 msgstr ""
@@ -2716,12 +2876,20 @@ msgstr ""
 msgid "The previous note is outside the refreshed window. Scroll position was reset."
 msgstr ""
 
+#: src/shared/application/vault-transcription.tsx
+msgid "The previous transcription request was not confirmed. Recover it before starting another."
+msgstr ""
+
 #: src/shared/application/vault-provider-credentials.tsx
 msgid "The provider endpoint changed. Its previous vault key is inactive."
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "The provider returned an unusable summary."
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "The recording or transcript changed. Generated content did not replace your changes."
 msgstr ""
 
 #: src/settings/ai/llm/configure.tsx
@@ -2740,6 +2908,10 @@ msgstr ""
 msgid "The summary changed during generation. View the generated text to recover it."
 msgstr ""
 
+#: src/shared/application/vault-media-processing.tsx
+msgid "The summary changed. Generated content was not applied."
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "The summary could not be saved safely."
 msgstr ""
@@ -2754,6 +2926,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "The title save could not be confirmed. Review the saved note before using this title."
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "The transcription outcome needs review. Your recording is kept."
 msgstr ""
 
 #: src/shared/application/vault-processing-settings.tsx
@@ -2773,12 +2949,20 @@ msgstr ""
 msgid "This content changed elsewhere. Review the saved version before choosing."
 msgstr ""
 
+#: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "This document cannot be identified safely. Export is unavailable."
+msgstr ""
+
 #: src/session/components/note-input/enhanced/empty-summary.tsx
 msgid "This document is not available for generation."
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
 msgid "This folder already has files in it"
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "This media request is no longer available."
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
@@ -2859,6 +3043,10 @@ msgstr ""
 msgid "Transcribe on the server"
 msgstr ""
 
+#: src/shared/application/vault-transcription.tsx
+msgid "Transcribe saved recording"
+msgstr ""
+
 #: src/settings/ai/stt/timing.tsx
 msgid "Transcribe when the recording ends."
 msgstr ""
@@ -2872,15 +3060,40 @@ msgstr ""
 msgid "Transcribing on the server."
 msgstr ""
 
+#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/vault-transcription.tsx
+msgid "Transcribing recording"
+msgstr ""
+
 #: src/session/components/note-input/header.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/shared/application/notes-workspace.tsx
 msgid "Transcript"
 msgstr ""
 
+#: src/shared/application/vault-transcription.tsx
+msgid "Transcript saved"
+msgstr ""
+
 #: src/settings/ai/stt/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Transcription"
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Transcription cancelled"
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Transcription failed. Your recording is kept."
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Transcription is currently unavailable for this connection."
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Transcription jobs"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
@@ -2903,12 +3116,20 @@ msgstr ""
 msgid "Transcription not set up"
 msgstr ""
 
+#: src/shared/application/vault-transcription.tsx
+msgid "Transcription queued"
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "Transcription runs on your device"
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
 msgid "Transcription timing"
+msgstr ""
+
+#: src/shared/application/vault-transcription.tsx
+msgid "Transcription was interrupted. Review the saved request."
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -3078,6 +3299,14 @@ msgstr ""
 msgid "Verified on the server. The device copy is retained."
 msgstr ""
 
+#: src/shared/application/device-recording-queue.tsx
+msgid "Verify the server copy, then remove this device's saved audio."
+msgstr ""
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Verifying server copy…"
+msgstr ""
+
 #. placeholder {0}: info.data.appVersion
 #: src/main/about-dialog.tsx
 msgid "Version {0}"
@@ -3089,6 +3318,10 @@ msgstr ""
 
 #: src/shared/application/device-recording-queue.tsx
 msgid "Waiting for the complete recording to finish processing."
+msgstr ""
+
+#: src/shared/application/vault-media-processing.tsx
+msgid "Waiting for the original media upload"
 msgstr ""
 
 #: src/main/about-storage.tsx
