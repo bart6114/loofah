@@ -56,6 +56,7 @@ async fn local_ipc_jobs_use_the_shared_worker_and_anonymous_model_without_login(
         .unwrap();
     context.store.ensure_summary("note").await.unwrap();
     let input = SummaryJobRequest {
+        title_policy: Default::default(),
         session_id: "note".into(),
         target: DocumentTarget::Summary,
         expected_revision: context
@@ -206,6 +207,7 @@ async fn only_the_fixed_local_principal_can_authorize_device_jobs() {
     let mut work = JobWork {
         principal: PRINCIPAL.into(),
         request: SummaryJobRequest {
+            title_policy: Default::default(),
             session_id: "note".into(),
             target: DocumentTarget::Summary,
             expected_revision: "revision".into(),

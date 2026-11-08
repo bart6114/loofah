@@ -20,6 +20,7 @@ impl Fixture {
 
 async fn input(context: &hypr_loofah_core::VaultContext) -> SummaryJobRequest {
     SummaryJobRequest {
+        title_policy: Default::default(),
         session_id: "note".into(),
         target: DocumentTarget::Summary,
         expected_revision: context
@@ -122,6 +123,7 @@ async fn public_jobs_replay_after_application_and_return_bound_private_recovery_
     assert_eq!(result.session_id, "note");
     assert_eq!(result.markdown, "# Release\n- Ship Friday.");
     let invalid_target = SummaryJobRequest {
+        title_policy: Default::default(),
         session_id: "note".into(),
         target: DocumentTarget::TemplateOutput {
             document_id: "../output".into(),
@@ -777,6 +779,7 @@ async fn native_sdk_rejects_an_unsupported_job_capability_before_authentication_
             RemoteOperation::SubmitSummaryJob {
                 vault_id: uuid::Uuid::new_v4().to_string(),
                 input: SummaryJobRequest {
+                    title_policy: Default::default(),
                     session_id: "note".into(),
                     target: DocumentTarget::Summary,
                     expected_revision: "revision".into(),

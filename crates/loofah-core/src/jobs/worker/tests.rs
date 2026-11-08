@@ -147,6 +147,7 @@ impl Fixture {
     async fn request(&self, target: DocumentTarget) -> SummaryJobRequest {
         let baseline = self.context.read_document("note", &target).await.unwrap();
         SummaryJobRequest {
+            title_policy: Default::default(),
             session_id: "note".into(),
             target,
             expected_revision: baseline.revision,

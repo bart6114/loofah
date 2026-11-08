@@ -106,6 +106,7 @@ async fn submit(context: &hypr_loofah_core::VaultContext, member: &str) -> Proce
             member.into(),
             uuid::Uuid::new_v4().to_string(),
             SummaryJobRequest {
+                title_policy: Default::default(),
                 session_id: "note".into(),
                 target: DocumentTarget::Summary,
                 expected_revision: baseline.revision,

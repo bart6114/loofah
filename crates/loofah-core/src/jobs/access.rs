@@ -113,6 +113,7 @@ impl JobJournal {
                 session_id: record.request.session_id.clone(),
                 target: record.request.target.clone(),
                 markdown: output.markdown,
+                title: None,
                 suggested_tags: output.suggested_tags.map(|tags| {
                     tags.into_iter()
                         .map(|tag| ProcessingTagSuggestion {

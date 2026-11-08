@@ -50,6 +50,7 @@ fn work(principal: &str) -> JobWork {
     JobWork {
         principal: principal.into(),
         request: SummaryJobRequest {
+            title_policy: Default::default(),
             session_id: "note".into(),
             target: DocumentTarget::Summary,
             expected_revision: "revision".into(),

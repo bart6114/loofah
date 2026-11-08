@@ -116,6 +116,7 @@ mod tests {
             .unwrap();
         let scope = "local:fixture".to_owned();
         let input = SummaryJobRequest {
+            title_policy: Default::default(),
             session_id: "note".into(),
             target,
             expected_revision: "baseline".into(),

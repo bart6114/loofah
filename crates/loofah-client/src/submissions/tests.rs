@@ -3,6 +3,7 @@ use hypr_loofah_protocol::ProcessingPhase;
 
 fn input() -> SummaryJobRequest {
     SummaryJobRequest {
+        title_policy: Default::default(),
         session_id: "note".into(),
         target: DocumentTarget::Summary,
         expected_revision: "baseline".into(),

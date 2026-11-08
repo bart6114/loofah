@@ -100,6 +100,7 @@ fn work() -> JobWork {
     JobWork {
         principal: "local-owner".into(),
         request: hypr_loofah_protocol::SummaryJobRequest {
+            title_policy: Default::default(),
             session_id: "note".into(),
             target: hypr_loofah_protocol::DocumentTarget::Summary,
             expected_revision: "revision".into(),
@@ -614,6 +615,7 @@ async fn shared_generation_runs_without_a_frontend_and_retains_tag_results_acros
             "local-owner".into(),
             uuid::Uuid::new_v4().to_string(),
             SummaryJobRequest {
+                title_policy: Default::default(),
                 session_id: "note".into(),
                 target: DocumentTarget::Summary,
                 expected_revision: baseline.revision,
@@ -726,6 +728,7 @@ async fn cancellation_retains_confirmed_late_generation_as_a_private_draft_witho
             "local-owner".into(),
             uuid::Uuid::new_v4().to_string(),
             SummaryJobRequest {
+                title_policy: Default::default(),
                 session_id: "note".into(),
                 target: DocumentTarget::Summary,
                 expected_revision: baseline.revision.clone(),

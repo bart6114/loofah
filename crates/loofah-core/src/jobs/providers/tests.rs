@@ -965,6 +965,7 @@ async fn early_heading_validation_cancels_the_old_http_stream_before_explicit_fe
             JobWork {
                 principal: "device".into(),
                 request: hypr_loofah_protocol::SummaryJobRequest {
+                    title_policy: Default::default(),
                     session_id: "note".into(),
                     target: hypr_loofah_protocol::DocumentTarget::Summary,
                     expected_revision: "revision".into(),
@@ -1081,6 +1082,7 @@ async fn headless_worker_uses_canonical_source_and_http_model_and_preserves_file
                 "device".into(),
                 uuid::Uuid::new_v4().to_string(),
                 SummaryJobRequest {
+                    title_policy: Default::default(),
                     session_id: "note".into(),
                     target: DocumentTarget::Summary,
                     expected_revision: baseline.revision,
@@ -1132,6 +1134,7 @@ async fn headless_worker_uses_canonical_source_and_http_model_and_preserves_file
                     "device".into(),
                     uuid::Uuid::new_v4().to_string(),
                     SummaryJobRequest {
+                        title_policy: Default::default(),
                         session_id: "note".into(),
                         target: DocumentTarget::Summary,
                         expected_revision: result.revision,

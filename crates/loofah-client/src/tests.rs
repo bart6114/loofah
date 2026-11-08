@@ -826,6 +826,7 @@ async fn template_jobs_require_both_capabilities_before_credentials_or_mutation(
                 RemoteOperation::SubmitSummaryJob {
                     vault_id: "test".into(),
                     input: SummaryJobRequest {
+                        title_policy: Default::default(),
                         session_id: "note".into(),
                         target: DocumentTarget::TemplateOutput {
                             document_id: "output".into(),

@@ -2,6 +2,7 @@ use super::*;
 
 fn request() -> SummaryJobRequest {
     SummaryJobRequest {
+        title_policy: Default::default(),
         session_id: "session-one".into(),
         target: DocumentTarget::Summary,
         expected_revision: "reviewed-revision".into(),
