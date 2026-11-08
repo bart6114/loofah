@@ -369,7 +369,7 @@ async fn stop(child: &mut tokio::process::Child) {
             .success()
     );
 }
-fn spawn_worker(root: &Path, mode: &str) -> tokio::process::Child {
+fn spawn_worker(root: &Path, mode: &str, realtime: bool) -> tokio::process::Child {
     let log = fs::File::create(root.join(format!("device-{mode}.log"))).unwrap();
     tokio::process::Command::new(std::env::current_exe().unwrap())
         .args([
@@ -379,6 +379,7 @@ fn spawn_worker(root: &Path, mode: &str) -> tokio::process::Child {
             "--nocapture",
         ])
         .env("LOOFAH_SOAK_WORKER", mode)
+        .env("LOOFAH_SOAK_REALTIME", if realtime { "1" } else { "0" })
         .stdout(Stdio::from(log.try_clone().unwrap()))
         .stderr(Stdio::from(log))
         .kill_on_drop(true)
@@ -397,6 +398,16 @@ fn rss(pid: u32) -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "real wall-clock operator acceptance; set a new LOOFAH_SOAK_ROOT"]
 async fn capture_soak_wall_clock() {
+    run_capture_acceptance(true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "non-paced full-size publication/memory replay; never qualifies wall-clock capture"]
+async fn capture_publication_memory_replay() {
+    run_capture_acceptance(false).await;
+}
+
+async fn run_capture_acceptance(realtime: bool) {
     let root = root();
     assert!(!root.exists(), "acceptance requires new disposable storage");
     fs::create_dir_all(&root).unwrap();
@@ -405,7 +416,7 @@ async fn capture_soak_wall_clock() {
     assert!(duration >= 60);
     record(
         &root,
-        json!({"start":true,"seconds":duration,"real_time_qualification":duration>=7200,"generated_audio_not_physical_device":true,"speech_fixture_sha256":hash(SPEECH),"model":std::env::var("LOOFAH_SOAK_MODEL").ok()}),
+        json!({"start":true,"seconds":duration,"paced":realtime,"paced_prefix_seconds":if realtime {duration} else {duration.min(30)},"real_time_qualification":realtime&&duration>=7200,"full_size_memory_replay":!realtime&&duration>=7200,"generated_audio_not_physical_device":true,"speech_fixture_sha256":hash(SPEECH),"model":std::env::var("LOOFAH_SOAK_MODEL").ok()}),
     );
     let (issuer, oidc) = provider().await;
     let (origin, faults, proxy_tasks) = proxy(&root).await;
@@ -460,7 +471,7 @@ async fn capture_soak_wall_clock() {
         serde_json::to_vec(&identity).unwrap(),
     )
     .unwrap();
-    let mut producer = spawn_worker(&root, "produce");
+    let mut producer = spawn_worker(&root, "produce", realtime);
     let start = Instant::now();
     let long = if duration >= 7200 { 600 } else { duration / 5 };
     let events = [
@@ -471,17 +482,19 @@ async fn capture_soak_wall_clock() {
     let mut previous = false;
     let mut restarted = false;
     let mut next_log = 0;
-    while start.elapsed().as_secs() < duration + 5 {
+    let producer_budget = if realtime { duration + 5 } else { 1800 };
+    while start.elapsed().as_secs() < producer_budget {
         let elapsed = start.elapsed().as_secs();
-        let offline = events
-            .iter()
-            .any(|(at, length)| elapsed >= *at && elapsed < at + length);
+        let offline = realtime
+            && events
+                .iter()
+                .any(|(at, length)| elapsed >= *at && elapsed < at + length);
         faults.offline.store(offline, Ordering::SeqCst);
         if offline != previous {
             record(&root, json!({"link_offline":offline,"elapsed":elapsed}));
             previous = offline;
         }
-        if !restarted && elapsed >= duration / 2 + long {
+        if realtime && !restarted && elapsed >= duration / 2 + long {
             faults.offline.store(true, Ordering::SeqCst);
             stop(&mut server).await;
             server = self::server(&root, &origin, &issuer, &faults).await;
@@ -511,14 +524,21 @@ async fn capture_soak_wall_clock() {
             .unwrap()
             .success()
     );
-    assert!(start.elapsed() >= Duration::from_secs(duration));
+    if realtime {
+        assert!(start.elapsed() >= Duration::from_secs(duration));
+    } else {
+        stop(&mut server).await;
+        server = self::server(&root, &origin, &issuer, &faults).await;
+        faults.lose_chunk.store(true, Ordering::SeqCst);
+        restarted = true;
+    }
     assert!(restarted);
     faults.offline.store(false, Ordering::SeqCst);
     record(
         &root,
         json!({"producer_process_exited":true,"wall_elapsed_ms":start.elapsed().as_millis()}),
     );
-    let mut resume = spawn_worker(&root, "resume");
+    let mut resume = spawn_worker(&root, "resume", realtime);
     let resume_deadline = Instant::now() + Duration::from_secs(3600);
     loop {
         tokio::select! {
@@ -575,8 +595,31 @@ async fn capture_soak_wall_clock() {
         }
     }
     assert!(samples.next().is_none());
-    assert!(faults.dropped_chunks.load(Ordering::SeqCst) >= 2);
+    assert!(faults.dropped_chunks.load(Ordering::SeqCst) >= if realtime { 2 } else { 1 });
     assert_eq!(faults.dropped_publications.load(Ordering::SeqCst), 1);
+    if !realtime {
+        let status = fs::read_to_string(format!("/proc/{}/status", server.id().unwrap())).unwrap();
+        let peak: u64 = status
+            .lines()
+            .find_map(|line| line.strip_prefix("VmHWM:"))
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let limit: u64 = std::env::var("LOOFAH_SOAK_SERVER_RSS_LIMIT_KIB")
+            .map(|value| value.parse().unwrap())
+            .unwrap_or(768 * 1024);
+        record(
+            &root,
+            json!({"server_peak_rss_kib":peak,"server_rss_limit_kib":limit}),
+        );
+        assert!(
+            peak <= limit,
+            "publication/repair exceeded the server RSS budget: {peak} > {limit} KiB"
+        );
+    }
     let spool = CaptureSpool::open(root.join("device"), CaptureSpoolLimits::default())
         .await
         .unwrap();
@@ -640,7 +683,7 @@ async fn capture_soak_wall_clock() {
     drop(spool);
     record(
         &root,
-        json!({"accepted":true,"seconds":duration,"frames":publication.source.frames,"canonical_sha256":actual_hash,"lost_chunk_replies":faults.dropped_chunks.load(Ordering::SeqCst),"lost_publication_replies":faults.dropped_publications.load(Ordering::SeqCst),"http_requests":faults.requests.load(Ordering::SeqCst)}),
+        json!({"accepted":true,"seconds":duration,"paced":realtime,"real_time_qualification":realtime&&duration>=7200,"frames":publication.source.frames,"canonical_sha256":actual_hash,"lost_chunk_replies":faults.dropped_chunks.load(Ordering::SeqCst),"lost_publication_replies":faults.dropped_publications.load(Ordering::SeqCst),"http_requests":faults.requests.load(Ordering::SeqCst)}),
     );
     stop(&mut server).await;
     connection.disconnect();
@@ -658,6 +701,11 @@ async fn capture_soak_device_worker() {
     };
     let root = root();
     let duration = seconds();
+    let realtime = match std::env::var("LOOFAH_SOAK_REALTIME").as_deref() {
+        Ok("1") => true,
+        Ok("0") => false,
+        _ => panic!("producer requires explicit pacing authority from its parent harness"),
+    };
     let identity: CaptureIdentity =
         serde_json::from_slice(&fs::read(root.join("identity.json")).unwrap()).unwrap();
     let client = client(&identity.scope.server).await;
@@ -750,8 +798,10 @@ async fn capture_soak_device_worker() {
         let mut max_lateness = 0u128;
         for second in 0..duration {
             let deadline = start + Duration::from_secs(second + 1);
-            tokio::time::sleep_until(deadline).await;
-            max_lateness = max_lateness.max(deadline.elapsed().as_millis());
+            if realtime || second < 30 {
+                tokio::time::sleep_until(deadline).await;
+                max_lateness = max_lateness.max(deadline.elapsed().as_millis());
+            }
             writer
                 .append_chunk(second, 16_000, pcm(second))
                 .await
