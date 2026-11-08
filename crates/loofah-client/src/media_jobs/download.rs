@@ -56,7 +56,8 @@ impl MediaAuthority {
         let pin = self.pin_source();
         let cancel = self.cancel.child_token();
         let _cancel_on_drop = cancel.clone().drop_guard();
-        let result = tokio::spawn(async move {
+        guard.check_current()?;
+        let transfer = tokio::spawn(async move {
             let _capacity = capacity;
             let _pin = pin.clone();
             let mut writer = BufWriter::with_capacity(RECORDING_CHUNK_LIMIT, sink);
@@ -65,12 +66,8 @@ impl MediaAuthority {
                     _ = cancel.cancelled() => return Err(crate::cancelled()),
                     _ = client.stop.cancelled() => return Err(crate::cancelled()),
                     _ = lifetime.cancelled() => return Err(crate::cancelled()),
-                    result = tokio::time::timeout(Duration::from_secs(35), request.send()) => result.map_err(|_|crate::unavailable())?.map_err(|_|crate::unavailable())?,
+                    result = tokio::time::timeout(Duration::from_secs(300), request.send()) => result.map_err(|_|crate::unavailable())?.map_err(|_|crate::unavailable())?,
                 };
-                // Preserve original authority until the request has actually reached HTTP.
-                // The long body stream does not hold profile or token locks.
-                guard.check_current()?;
-                drop(guard);
                 if response.status() != reqwest::StatusCode::OK {
                     return Err(tokio::time::timeout(Duration::from_secs(35), json_body::<ApplicationError>(response, 131_072)).await
                         .unwrap_or_else(|_| Err(crate::unavailable()))
@@ -118,9 +115,20 @@ impl MediaAuthority {
             copied?;
             drained?;
             pin.check_current()?;
-            if cancel.is_cancelled() { return Err(crate::cancelled()); }
+            if cancel.is_cancelled() {
+                return Err(crate::cancelled());
+            }
             Ok((writer.into_inner(), owner))
-        }).await.map_err(|_| failure(ErrorCode::Internal, "Original media source download worker stopped"))??;
+        });
+        // The immutable bearer/request is now owned by the admitted transfer. Server
+        // source verification may be slow, so profile/login locks stop here.
+        drop(guard);
+        let result = transfer.await.map_err(|_| {
+            failure(
+                ErrorCode::Internal,
+                "Original media source download worker stopped",
+            )
+        })??;
         self.check_current().await?;
         Ok(result)
     }

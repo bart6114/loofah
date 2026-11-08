@@ -16,6 +16,20 @@ async fn setup(
     Arc<ProfileLease>,
     crate::media_jobs::MediaSubmission,
 ) {
+    setup_headers(mode, None).await
+}
+
+async fn setup_headers(
+    mode: &'static str,
+    blocked_headers: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
+) -> (
+    Fixture,
+    Arc<RemoteClient>,
+    tempfile::TempDir,
+    Arc<MediaAuthority>,
+    Arc<ProfileLease>,
+    crate::media_jobs::MediaSubmission,
+) {
     let input = declaration();
     let request = input.request_id.clone();
     let revision = uuid::Uuid::new_v4().to_string();
@@ -28,7 +42,12 @@ async fn setup(
                 let revision = response_revision.clone();
                 let request = request.clone();
                 let sha = sha.clone();
+                let blocked_headers = blocked_headers.clone();
                 async move {
+                    if let Some((entered, release)) = blocked_headers {
+                        entered.notify_one();
+                        release.notified().await;
+                    }
                     assert_eq!(id, request);
                     assert_eq!(headers["x-loofah-media-revision"], revision);
                     assert_eq!(headers["accept-encoding"], "identity");
@@ -244,4 +263,29 @@ async fn aborted_source_download_keeps_private_owner_and_capacity_until_actual_f
     })
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn source_header_verification_does_not_hold_profile_edit_locks() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let (_fixture, _client, _root, authority, profile, submission) =
+        setup_headers("valid", Some((entered.clone(), release.clone()))).await;
+    let task = tokio::spawn(async move {
+        authority
+            .download_source_with_guard(&submission, Vec::new(), ())
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(5), entered.notified())
+        .await
+        .unwrap();
+    let mut changed = profile.profile().await;
+    changed.vault_id = Some("other".into());
+    let saved = tokio::time::timeout(Duration::from_secs(1), profile.save(changed)).await;
+    release.notify_one();
+    let result = task.await.unwrap();
+    saved
+        .expect("server verification must not block profile edits")
+        .unwrap();
+    assert_eq!(result.unwrap_err().code, ErrorCode::Conflict);
 }
