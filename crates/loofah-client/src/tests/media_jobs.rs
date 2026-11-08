@@ -452,11 +452,11 @@ async fn media_json_delayed_headers_do_not_hold_profile_commit_lock() {
     let root = tempfile::tempdir().unwrap();
     let (authority, profile) =
         authority(&fixture, &client, root.path(), CancellationToken::new()).await;
+    let original = profile.profile().await;
     let task = tokio::spawn(async move { authority.list(None).await });
     tokio::time::timeout(Duration::from_secs(2), entered.notified())
         .await
         .unwrap();
-    let original = profile.profile().await;
     tokio::time::timeout(Duration::from_millis(200), profile.save(original))
         .await
         .unwrap()
@@ -501,8 +501,6 @@ async fn queued_media_dispatch_rejects_original_profile_and_login_aba_before_htt
         // The authorized profile edit is queued first, before a retained request.
         let baseline = profile.generation().await.unwrap();
         let gate = profile.guard_generation(&baseline).await.unwrap();
-        let original = profile.profile();
-        drop(original); // profile() would itself wait on this deliberately held gate.
         if change == "profile" {
             let value = baseline.profile().clone();
             let update = profile.save(value);
