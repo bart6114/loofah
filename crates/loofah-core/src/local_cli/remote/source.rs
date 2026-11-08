@@ -179,7 +179,8 @@ impl MediaDispatcher {
             .root
             .join(format!("{}.source", record.declaration.request_id));
         let pin = self.context.clone();
-        let stop = self.stop.clone();
+        let stop = self.stop.child_token();
+        let _cancel_verification_on_drop = stop.clone().drop_guard();
         tokio::task::spawn_blocking(move || {
             let owner = (pin, guard);
             if !ledger::existing_directory(&directory)?
@@ -264,7 +265,7 @@ impl MediaDispatcher {
         if self.stop.is_cancelled() {
             return Err(unavailable("Media service is stopping"));
         }
-        drop(self.authorization.authorize().await?);
+        let access = self.authorization.observe().await?;
         let record = self
             .load(request)
             .await?
@@ -272,9 +273,12 @@ impl MediaDispatcher {
         if record.revision != revision {
             return Err(conflict("Original media admission revision changed"));
         }
-        let (source, chunks) = self
-            .artifact_with_guard(&record, permit)
-            .await
+        let verified = tokio::select! {
+            _ = access.cancelled.cancelled() => return Err(error(ErrorCode::Forbidden, "Media access revoked")),
+            _ = access.interrupted.cancelled() => return Err(unavailable("Media source verification interrupted")),
+            result = self.artifact_with_guard(&record, permit) => result,
+        };
+        let (source, chunks) = verified
             .map_err(|_| unavailable("Original verified media source unavailable"))?
             .ok_or_else(|| unavailable("This media request has no retained upload"))?;
         drop(self.authorization.authorize().await?);
