@@ -137,14 +137,14 @@ impl LocalCli {
                 .await
         })
         .await
-        .map_err(|_| {
-            let mut cause = error(
-                ErrorCode::Internal,
-                "Local operation outcome could not be confirmed",
-            );
-            cause.mutation_outcome = Some(MutationOutcome::Unknown);
-            cause
-        })?
+        .unwrap_or_else(|cause| {
+            // The endpoint must retain ownership when admitted work loses its supervisor.
+            // An application-level Unknown response cannot communicate that drain failure.
+            if cause.is_panic() {
+                std::panic::resume_unwind(cause.into_panic());
+            }
+            panic!("Local operation supervisor was cancelled: {cause}");
+        })
     }
 
     async fn dispatch(

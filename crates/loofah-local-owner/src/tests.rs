@@ -661,3 +661,7 @@ fn cancelled_blob_copy_retains_original_owner_until_actual_queued_copy_finishes(
         ));
     });
 }
+
+#[cfg(feature = "core")]
+#[path = "core_tests.rs"]
+mod core_tests;
