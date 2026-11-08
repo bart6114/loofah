@@ -4,6 +4,7 @@ mod document_editor;
 mod downloads;
 mod tag_editing;
 mod transcript_overview;
+mod transcription;
 mod uploads;
 use std::{
     collections::HashMap,
@@ -108,6 +109,10 @@ impl Fixture {
     }
 
     async fn with_tls(round_trip: Option<Duration>) -> Self {
+        Self::with_extra_routes(round_trip, Router::new()).await
+    }
+
+    async fn with_extra_routes(round_trip: Option<Duration>, extra: Router<Arc<Provider>>) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let upstream = listener.local_addr().unwrap();
         let proxy = match round_trip {
@@ -206,6 +211,7 @@ impl Fixture {
                 "/api/v1/vaults/{vault}/sessions/{session}/outputs/{document}/editor",
                 get(document_editor::read).put(document_editor::save),
             )
+            .merge(extra)
             .with_state(state.clone());
         let task = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();

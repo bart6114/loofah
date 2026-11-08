@@ -28,6 +28,7 @@ mod session_cleanup;
 mod session_summaries;
 mod tag_editing;
 mod transcript_overview;
+mod transcription;
 
 pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
@@ -39,6 +40,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .merge(session_cleanup::router())
         .merge(session_summaries::router())
         .merge(transcript_overview::router())
+        .merge(transcription::router())
         .merge(tag_editing::router())
         .route("/me", get(me).post(provision))
         .route("/members", get(directory))

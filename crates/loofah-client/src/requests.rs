@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavailable};
 
 mod document_editor;
+mod transcription;
 
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -48,6 +49,30 @@ pub enum RemoteOperation {
         job_id: String,
     },
     CancelProcessingJob {
+        vault_id: String,
+        job_id: String,
+    },
+    SubmitTranscription {
+        vault_id: String,
+        input: TranscriptionJobRequest,
+    },
+    TranscriptionJobs {
+        vault_id: String,
+        input: ListTranscriptionJobsInput,
+    },
+    TranscriptionJob {
+        vault_id: String,
+        job_id: String,
+    },
+    TranscriptionJobResult {
+        vault_id: String,
+        job_id: String,
+    },
+    CancelTranscriptionJob {
+        vault_id: String,
+        job_id: String,
+    },
+    ResumeTranscriptionResult {
         vault_id: String,
         job_id: String,
     },
@@ -268,6 +293,9 @@ pub enum RemoteReply {
     ProcessingJob(ProcessingJobSnapshot),
     ProcessingJobs(ProcessingJobPage),
     ProcessingJobResult(Option<ProcessingJobResult>),
+    TranscriptionJob(TranscriptionJobSnapshot),
+    TranscriptionJobs(TranscriptionJobPage),
+    TranscriptionResult(Option<TranscriptionJobResult>),
     Me(Me),
     Vaults(Vec<VaultInfo>),
     Directory(Vec<MemberInfo>),
@@ -324,6 +352,7 @@ impl RemoteClient {
             if matches!(operation, RemoteOperation::DeleteEmptySession { .. })
                 || tag_write(&operation)
                 || document_editor::is_save(&operation)
+                || transcription::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
@@ -334,12 +363,14 @@ impl RemoteClient {
             if matches!(operation, RemoteOperation::DeleteEmptySession { .. })
                 || tag_write(&operation)
                 || document_editor::is_save(&operation)
+                || transcription::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
         }
         let required_feature = match &operation {
+            operation if transcription::is_operation(operation) => Some("batch_transcription_jobs"),
             RemoteOperation::DeleteEmptySession { .. } => Some("session_cleanup"),
             RemoteOperation::SessionSummaries { .. } => Some("session_summaries"),
             RemoteOperation::TranscriptOverview { .. } => Some("transcript_overview"),
@@ -376,6 +407,7 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                ref operation if transcription::is_operation(operation) => "batch transcription",
                 RemoteOperation::DeleteEmptySession { .. } => "conditional session cleanup",
                 RemoteOperation::SessionSummaries { .. } => "session summaries",
                 RemoteOperation::TranscriptOverview { .. } => "transcript overview",
@@ -416,6 +448,9 @@ impl RemoteClient {
                     | RemoteOperation::DeleteEmptySession { .. }
                     | RemoteOperation::SaveProcessingSettings { .. }
                     | RemoteOperation::SubmitSummaryJob { .. }
+                    | RemoteOperation::SubmitTranscription { .. }
+                    | RemoteOperation::CancelTranscriptionJob { .. }
+                    | RemoteOperation::ResumeTranscriptionResult { .. }
                     | RemoteOperation::CancelProcessingJob { .. }
                     | RemoteOperation::DeleteRecording { .. }
                     | RemoteOperation::RemoveAttachment { .. }
@@ -473,6 +508,13 @@ impl RemoteClient {
             error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             return Err(error);
         }
+        transcription::validate_operation(&operation).map_err(|mut error| {
+            error.request_id = Some(request_id.to_owned());
+            if transcription::is_write(&operation) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            error
+        })?;
         document_editor::validate_operation(&operation).map_err(|mut error| {
             error.request_id = Some(request_id.to_owned());
             if document_editor::is_save(&operation) {
@@ -610,6 +652,62 @@ impl RemoteClient {
             RemoteOperation::CancelProcessingJob { vault_id, job_id } => (
                 Method::POST,
                 vec!["vaults", vault_id, "jobs", job_id, "cancel"],
+            ),
+            RemoteOperation::SubmitTranscription { vault_id, input } => {
+                body = Some(value(input)?);
+                (
+                    Method::POST,
+                    vec!["vaults", vault_id, "transcription", "jobs"],
+                )
+            }
+            RemoteOperation::TranscriptionJobs { vault_id, input } => {
+                if let Some(limit) = input.limit {
+                    query.push(("limit", limit.to_string()));
+                }
+                if let Some(after) = &input.after {
+                    query.push(("after", after.clone()));
+                }
+                (
+                    Method::GET,
+                    vec!["vaults", vault_id, "transcription", "jobs"],
+                )
+            }
+            RemoteOperation::TranscriptionJob { vault_id, job_id } => (
+                Method::GET,
+                vec!["vaults", vault_id, "transcription", "jobs", job_id],
+            ),
+            RemoteOperation::TranscriptionJobResult { vault_id, job_id } => (
+                Method::GET,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "transcription",
+                    "jobs",
+                    job_id,
+                    "result",
+                ],
+            ),
+            RemoteOperation::CancelTranscriptionJob { vault_id, job_id } => (
+                Method::POST,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "transcription",
+                    "jobs",
+                    job_id,
+                    "cancel",
+                ],
+            ),
+            RemoteOperation::ResumeTranscriptionResult { vault_id, job_id } => (
+                Method::POST,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "transcription",
+                    "jobs",
+                    job_id,
+                    "resume",
+                ],
             ),
             RemoteOperation::AttachmentUploadStatus { upload } => {
                 validate_upload_attachment_request(&upload.input).map_err(|message| {
@@ -1075,7 +1173,10 @@ impl RemoteClient {
             result = self.access_token() => result,
         }
         .map_err(|mut error| {
-            if tag_write(&operation) || document_editor::is_save(&operation) {
+            if tag_write(&operation)
+                || document_editor::is_save(&operation)
+                || transcription::is_write(&operation)
+            {
                 error.request_id.get_or_insert_with(|| request_id.into());
                 error
                     .mutation_outcome
@@ -1215,6 +1316,14 @@ impl RemoteClient {
                         return Err(unavailable());
                     }
                     RemoteReply::ProcessingJobResult(result)
+                }
+                operation @ (RemoteOperation::SubmitTranscription { .. }
+                | RemoteOperation::TranscriptionJobs { .. }
+                | RemoteOperation::TranscriptionJob { .. }
+                | RemoteOperation::TranscriptionJobResult { .. }
+                | RemoteOperation::CancelTranscriptionJob { .. }
+                | RemoteOperation::ResumeTranscriptionResult { .. }) => {
+                    transcription::decode(response, &operation).await?
                 }
                 RemoteOperation::Provision | RemoteOperation::Me => {
                     RemoteReply::Me(json_body(response, 131_072).await?)

@@ -19,6 +19,7 @@ mod tag_editing;
 mod tasks;
 mod template_jobs;
 mod transcript_overview;
+mod transcription;
 mod waveform;
 
 use std::sync::Arc;
