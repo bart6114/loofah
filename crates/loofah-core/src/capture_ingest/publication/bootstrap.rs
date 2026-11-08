@@ -4,7 +4,7 @@ use hypr_vault_write::{
     SessionStore, StoreError,
     recording_publish::{
         RecordingPublication, RecordingPublicationDiscoveryLimits, RecordingPublicationInventory,
-        RecordingPublicationRecoveryPreparation,
+        RecordingPublicationRecovery, RecordingPublicationRecoveryPreparation,
     },
 };
 
@@ -43,8 +43,12 @@ impl crate::VaultContext {
                 })?
                 .root
                 .join("recording-publications");
+            let recovery = context
+                .store
+                .recording_publication_startup_recovery(&_pin)
+                .map_err(|cause| storage_error(cause, false))?;
             recover(
-                &context.store,
+                &recovery,
                 &context.events.vault_id(),
                 &operations,
                 &context.recording_publications,
@@ -69,7 +73,8 @@ impl crate::VaultContext {
     ) -> Result<(Arc<File>, PublicationGates), StoreError> {
         tokio::spawn(async move {
             let gates = PublicationGates::default();
-            recover(&store, &vault, &operations, &gates).await;
+            let recovery = store.recording_publication_recovery()?;
+            recover(&recovery, &vault, &operations, &gates).await;
             Ok((lease, gates))
         })
         .await
@@ -95,7 +100,7 @@ pub(super) fn retain_inventory(
 }
 
 async fn recover(
-    store: &SessionStore,
+    store: &RecordingPublicationRecovery,
     vault: &str,
     operations: &std::path::Path,
     gates: &PublicationGates,
@@ -105,7 +110,7 @@ async fn recover(
         return;
     }
     match store
-        .discover_recording_publications(
+        .discover(
             operations,
             vault,
             RecordingPublicationDiscoveryLimits::default(),
@@ -118,9 +123,7 @@ async fn recover(
             for pending in inventory.pending {
                 let request = pending.request().clone();
                 let key = operation_key(&request);
-                let preparation = store
-                    .prepare_recording_publication_recovery(operations, vault, pending)
-                    .await;
+                let preparation = store.prepare(operations, vault, pending).await;
                 match preparation {
                     Ok(RecordingPublicationRecoveryPreparation::NoLongerPending) => {
                         gates.resolve(&request.session_id, &key);
@@ -154,7 +157,7 @@ mod native_tests {
     use hypr_storage::vault::{LeaseAttempt, VaultLease};
 
     async fn fixture() -> (tempfile::TempDir, Arc<VaultContext>, std::sync::Weak<File>) {
-        let root = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let vault = root.path().join("vault");
         std::fs::create_dir(&vault).unwrap();
         let lease = match VaultLease::try_acquire_existing(&vault).unwrap() {
@@ -225,7 +228,7 @@ mod native_tests {
         std::fs::create_dir_all(&operations).unwrap();
         std::fs::write(operations.join("user-file"), b"preserve unknown state").unwrap();
         std::fs::write(
-            operations.join(format!("{}.json", "a".repeat(64))),
+            operations.join(format!("recording-publication-{}.json", "a".repeat(64))),
             b"not a receipt",
         )
         .unwrap();

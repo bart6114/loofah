@@ -24,7 +24,8 @@ mod types;
 pub use recovery::{
     PendingRecordingPublication, RecordingPublicationDiscoveryIssue,
     RecordingPublicationDiscoveryLimits, RecordingPublicationInventory, RecordingPublicationPhase,
-    RecordingPublicationRecoveryPreparation, RecordingPublicationReviewKind,
+    RecordingPublicationRecovery, RecordingPublicationRecoveryPreparation,
+    RecordingPublicationReviewKind,
 };
 
 pub use types::{RecordingExpectation, RecordingPublication, RecordingPublicationRequest};

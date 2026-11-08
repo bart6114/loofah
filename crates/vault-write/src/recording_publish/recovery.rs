@@ -91,7 +91,59 @@ pub enum RecordingPublicationRecoveryPreparation {
     RequiresReview(RecordingPublicationReviewKind),
 }
 
+pub struct RecordingPublicationRecovery(SessionStore);
+
+impl RecordingPublicationRecovery {
+    pub async fn discover(
+        &self,
+        operations: &Path,
+        vault: &str,
+        limits: RecordingPublicationDiscoveryLimits,
+    ) -> Result<RecordingPublicationInventory, StoreError> {
+        self.0
+            .discover_recording_publications(operations, vault, limits)
+            .await
+    }
+
+    pub async fn prepare(
+        &self,
+        operations: &Path,
+        vault: &str,
+        pending: PendingRecordingPublication,
+    ) -> Result<RecordingPublicationRecoveryPreparation, StoreError> {
+        self.0
+            .prepare_recording_publication_recovery(operations, vault, pending)
+            .await
+    }
+}
+
 impl SessionStore {
+    pub fn recording_publication_recovery(
+        &self,
+    ) -> Result<RecordingPublicationRecovery, StoreError> {
+        self.ensure_ready()?;
+        Ok(RecordingPublicationRecovery(self.clone()))
+    }
+
+    /// Only recovery of existing publication intents may run before the managed store is ready.
+    pub fn recording_publication_startup_recovery(
+        &self,
+        owner: &Arc<std::fs::File>,
+    ) -> Result<RecordingPublicationRecovery, StoreError> {
+        if !self
+            .vault_lease
+            .get()
+            .is_some_and(|original| Arc::ptr_eq(original, owner))
+        {
+            return Err(StoreError::Conflict(
+                "Recording recovery requires the original vault owner".into(),
+            ));
+        }
+        let mut recovery = self.clone();
+        recovery.startup_pending = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        Ok(RecordingPublicationRecovery(recovery))
+    }
+
     /// The scan is complete or fails closed; limits never produce a partial-success inventory.
     /// Only publication receipts in this trusted, dedicated operations directory are inspected.
     /// Core must coordinate admission/read gates after this snapshot is released. Neither an

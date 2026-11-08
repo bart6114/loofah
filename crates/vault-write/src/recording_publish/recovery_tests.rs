@@ -1,5 +1,82 @@
 use super::*;
 
+#[tokio::test]
+async fn startup_recovery_finishes_only_admitted_intents_without_opening_the_managed_store() {
+    use hypr_storage::vault::{LeaseAttempt, VaultLease};
+    for boundary in [1, 4] {
+        let f = Fixture::new().await;
+        let lease = match VaultLease::try_acquire_existing(f.store.vault_base()).unwrap() {
+            LeaseAttempt::Acquired(lease) => lease,
+            _ => panic!("unexpected owner"),
+        };
+        f.store.pin_vault_lease(&lease).unwrap();
+        interrupted(&f, boundary).await;
+        f.store.set_startup_pending(true);
+        assert!(f.store.recording_publication_recovery().is_err());
+        assert!(f.store.ensure_ready().is_err());
+        let recovery = f
+            .store
+            .recording_publication_startup_recovery(&lease.pin())
+            .unwrap();
+        let mut inventory = recovery
+            .discover(&f.operations, "vault", Default::default())
+            .await
+            .unwrap();
+        assert!(inventory.issues.is_empty());
+        assert_eq!(inventory.pending.len(), 1);
+        let plan = match recovery
+            .prepare(&f.operations, "vault", inventory.pending.remove(0))
+            .await
+            .unwrap()
+        {
+            RecordingPublicationRecoveryPreparation::Prepared(plan) => plan,
+            _ => panic!("missing admitted intent"),
+        };
+        assert_eq!(
+            (*plan).recheck().await.unwrap().commit().await.unwrap(),
+            f.request.published()
+        );
+        assert_eq!(
+            std::fs::read(f.directory.join("audio.wav")).unwrap(),
+            f.bytes
+        );
+        assert_eq!(
+            std::fs::read(f.directory.join("notes.md")).unwrap(),
+            b"User note"
+        );
+        assert!(f.store.ensure_ready().is_err());
+        drop(recovery);
+        assert!(f.store.ensure_ready().is_err());
+    }
+}
+
+#[tokio::test]
+async fn startup_recovery_rejects_unpinned_and_different_owner_descriptors() {
+    use hypr_storage::vault::{LeaseAttempt, VaultLease};
+    let f = Fixture::new().await;
+    let lease = match VaultLease::try_acquire_existing(f.store.vault_base()).unwrap() {
+        LeaseAttempt::Acquired(lease) => lease,
+        _ => panic!("unexpected owner"),
+    };
+    assert!(
+        f.store
+            .recording_publication_startup_recovery(&lease.pin())
+            .is_err()
+    );
+    f.store.pin_vault_lease(&lease).unwrap();
+    let other = Arc::new(std::fs::File::open(f.directory.join("notes.md")).unwrap());
+    assert!(
+        f.store
+            .recording_publication_startup_recovery(&other)
+            .is_err()
+    );
+    assert!(
+        f.store
+            .recording_publication_startup_recovery(&lease.pin())
+            .is_ok()
+    );
+}
+
 async fn interrupted(f: &Fixture, boundary: u8) {
     assert!(
         f.prepare()
