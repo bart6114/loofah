@@ -1000,3 +1000,29 @@ requires an explicit absolute `LOOFAH_QA_DOWNLOADS_ROOT` to keep future GUI expo
 in the task artifact tree; ordinary application bundles keep their Downloads
 behavior. No new OS access grant was accepted. The final production build still
 requires regression.
+## Stopped-service Local adoption qualification (2026-11-09)
+
+`loofah-server adopt-vault` now copies a stopped Local vault into an explicitly
+provisioned fresh catalog target inside a new, absent complete storage root. It
+preserves catalog/member/role bytes, other vaults and runtime receipts, source
+canonical/unknown/dot files and supported modes. Original roots are retained;
+service/source/target ownership follows the actual blocking copy even after the
+caller is abandoned. Exact fresh initialization directories/idle locks are the
+only allowed target state; settings, Trash, work/receipt files and unknown empty
+runtime directories refuse adoption. The README documents online provisioning,
+stop/backup/copy/config switch and reversible rollback without a merge or sync.
+
+Linux ARM64 qualification reused the existing CPU feature graph, source volume,
+models/runtime mounts and caches, with no inference or new image. On source
+`56225fae7b`, all **13 maintenance library cases** passed, including real Service
+provision/init/shutdown/adopt/reopen with original member access. All **5 actual
+maintenance CLI integration cases** passed, including adoption without auth or
+cache configuration and refusal to replace an existing output. Strict server
+all-target `cargo clippy --no-deps -- -D warnings` passed; the graph includes the
+separate mechanical capture-soak lint correction `3c10d434d`.
+
+The first and final logs are `vault-adoption-linux-first.log` and
+`vault-adoption-linux-final.log` under the workstation cache `logs/` directory.
+This is controlled Linux operator qualification, not a Native feature-activation
+or Windows qualification claim. No user vault, deployed service or Local
+activation flag changed.
