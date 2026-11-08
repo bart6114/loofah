@@ -786,3 +786,50 @@ async fn cancellation_retains_confirmed_late_generation_as_a_private_draft_witho
     assert!(model.drained.load(Ordering::SeqCst));
     runtime.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn preview_retains_only_filtered_partial_body_after_provider_failure_and_drain() {
+    let model = Model::new(vec![vec![
+        text("<thi"),
+        text("nking>PRIVATE-REASONING-CANARY</thinking># Public heading\n"),
+        text("Decision.\n<loofah-"),
+        text("tags>{\"tags\":[{\"name\":\"PRIVATE-TAG-CANARY\",\"confidence\":1}]}</loofah-tags>"),
+        Err(ProcessingJobFailure::ProviderFailed),
+    ]]);
+    let (preview, _) = GenerationPreview::channel();
+    let error = SummaryGenerator::new(source(false), model.clone())
+        .generate_observed(work(), CancellationToken::new(), Some(preview.clone()))
+        .await
+        .unwrap_err();
+    assert_eq!(error, ProcessingJobFailure::ProviderFailed);
+    assert_eq!(model.drained.load(Ordering::SeqCst), 5);
+    assert_eq!(model.requests.lock().unwrap().len(), 1);
+    let partial = preview.current().unwrap();
+    assert_eq!(partial.markdown, "# Public heading\nDecision.\n");
+    assert!(!partial.markdown.contains("CANARY"));
+    assert!(!partial.markdown.contains("loofah-tags"));
+}
+
+#[tokio::test]
+async fn preview_retry_resets_attempt_without_adding_model_requests() {
+    let model = Model::new(vec![
+        vec![text("Invalid original content"), finished()],
+        vec![text("# New attempt\nResult"), finished()],
+    ]);
+    let (preview, _) = GenerationPreview::channel();
+    preview.reset();
+    let before = preview.current().unwrap().cursor;
+    let result = SummaryGenerator::new(source(false), model.clone())
+        .generate_observed(work(), CancellationToken::new(), Some(preview.clone()))
+        .await
+        .unwrap();
+    assert_eq!(model.requests.lock().unwrap().len(), 2);
+    assert_eq!(model.drained.load(Ordering::SeqCst), 4);
+    let after = preview.current().unwrap();
+    assert_eq!(after.markdown, result.markdown);
+    assert_ne!(
+        after.cursor.split_once(':').unwrap().0,
+        before.split_once(':').unwrap().0
+    );
+    assert!(!after.markdown.contains("Invalid original"));
+}

@@ -32,7 +32,9 @@ mod capture_live;
 pub use capture_live::*;
 mod capture_processing;
 pub use capture_processing::*;
+mod job_preview;
 mod jobs;
+pub use job_preview::*;
 pub use jobs::*;
 mod provider_credentials;
 pub use provider_credentials::*;
@@ -478,6 +480,9 @@ pub enum Change {
     ProcessingSettingsChanged,
     ResyncRequired,
     JobChanged {
+        job_id: String,
+    },
+    JobPreviewChanged {
         job_id: String,
     },
     #[serde(other)]

@@ -14,6 +14,7 @@ struct State {
     capacity: usize,
     replay: VecDeque<Envelope>,
     sender: broadcast::Sender<Envelope>,
+    previews: broadcast::Sender<Envelope>,
 }
 
 #[derive(Clone)]
@@ -39,11 +40,28 @@ impl EventHub {
             capacity,
             replay: VecDeque::new(),
             sender: broadcast::channel(capacity).0,
+            previews: broadcast::channel(64).0,
         })))
     }
 
     pub fn vault_id(&self) -> String {
         self.0.lock().unwrap().vault_id.clone()
+    }
+
+    pub fn publish_preview_for(&self, audience: &str, job_id: String) {
+        let state = self.0.lock().unwrap();
+        let event = state.event(Change::JobPreviewChanged { job_id });
+        let _ = state.previews.send(Envelope {
+            event,
+            audience: Some(audience.into()),
+        });
+    }
+
+    pub fn subscribe_previews_for(&self, audience: &str) -> PreviewSubscription {
+        PreviewSubscription {
+            receiver: self.0.lock().unwrap().previews.subscribe(),
+            audience: audience.into(),
+        }
     }
 
     pub fn publish(&self, change: Change) -> ChangeEvent {
@@ -204,6 +222,27 @@ impl Subscription {
     }
 }
 
+pub struct PreviewSubscription {
+    receiver: broadcast::Receiver<Envelope>,
+    audience: String,
+}
+impl PreviewSubscription {
+    pub async fn recv(&mut self) -> Option<ChangeEvent> {
+        loop {
+            match self.receiver.recv().await {
+                Ok(envelope) if envelope.audience.as_deref() == Some(&self.audience) => {
+                    return Some(envelope.event);
+                }
+                Ok(_) => {}
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    self.receiver = self.receiver.resubscribe()
+                }
+                Err(broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,6 +359,31 @@ mod tests {
                 entity: IndexEntity::Artifacts,
                 ids: vec!["first".into(), "second".into()],
                 artifacts: None
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn private_preview_bursts_never_evict_or_advance_normal_event_cursors() {
+        let hub = EventHub::new("vault".into(), 2);
+        let first = hub.publish(Change::SearchReady);
+        for _ in 0..10_000 {
+            hub.publish_preview_for("owner", "job".into());
+        }
+        let second = hub.publish(Change::ProcessingSettingsChanged);
+        assert_eq!(second.cursor.rsplit_once(':').unwrap().1, "2");
+        let mut normal = hub.subscribe_for("owner", Some(&first.cursor));
+        assert_eq!(
+            normal.recv().await.unwrap().change,
+            Change::ProcessingSettingsChanged
+        );
+        let mut private = hub.subscribe_previews_for("owner");
+        hub.publish_preview_for("other", "foreign-job".into());
+        hub.publish_preview_for("owner", "own-job".into());
+        assert_eq!(
+            private.recv().await.unwrap().change,
+            Change::JobPreviewChanged {
+                job_id: "own-job".into()
             }
         );
     }

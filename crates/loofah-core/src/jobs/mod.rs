@@ -27,6 +27,8 @@ pub mod generation;
 pub(crate) mod lifecycle;
 mod operational;
 mod prepared;
+mod preview;
+pub use preview::GenerationPreview;
 pub mod providers;
 mod result;
 pub mod source;

@@ -1,7 +1,7 @@
 use hypr_loofah_protocol::ProcessingJobFailure;
 use tokio_util::sync::CancellationToken;
 
-use super::{GeneratedDocument, JobFuture, JobWork};
+use super::{GeneratedDocument, GenerationPreview, JobFuture, JobWork};
 
 pub struct PreparedGeneration {
     pub document: GeneratedDocument,
@@ -25,6 +25,27 @@ pub trait JobGenerator: Send + Sync + 'static {
         work: JobWork,
         cancel: CancellationToken,
     ) -> JobFuture<'_, Result<GeneratedDocument, ProcessingJobFailure>>;
+
+    fn generate_with_preview(
+        &self,
+        work: JobWork,
+        cancel: CancellationToken,
+        _preview: GenerationPreview,
+        include_title: bool,
+    ) -> JobFuture<'_, Result<PreparedGeneration, ProcessingJobFailure>> {
+        Box::pin(async move {
+            if include_title {
+                self.generate_prepared(work, cancel).await
+            } else {
+                self.generate(work, cancel)
+                    .await
+                    .map(|document| PreparedGeneration {
+                        document,
+                        title: None,
+                    })
+            }
+        })
+    }
 
     fn generate_prepared(
         &self,

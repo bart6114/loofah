@@ -6,7 +6,7 @@ use super::*;
 use crate::VaultContext;
 
 impl State {
-    fn owned(&self, namespace: &str, id: &str) -> Result<&Record, ApplicationError> {
+    pub(super) fn owned(&self, namespace: &str, id: &str) -> Result<&Record, ApplicationError> {
         self.ids
             .get(id)
             .and_then(|key| self.records.get(key))
@@ -306,6 +306,17 @@ impl VaultContext {
         self.readable_jobs()
             .await?
             .cancel_owned(namespace, id)
+            .await
+    }
+
+    pub async fn processing_job_preview(
+        &self,
+        namespace: String,
+        id: String,
+    ) -> Result<hypr_loofah_protocol::ProcessingJobPreview, ApplicationError> {
+        self.readable_jobs()
+            .await?
+            .owned_preview(namespace, id)
             .await
     }
 

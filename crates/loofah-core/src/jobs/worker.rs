@@ -212,28 +212,21 @@ async fn execute(
         .progress(id.into(), ProcessingPhase::Generating)
         .await?;
     let cancel = CancellationToken::new();
-    let mut generation: JobFuture<'_, Result<PreparedGeneration, ProcessingJobFailure>> =
-        if work.request.title_policy == TitlePolicy::GenerateIfEmpty {
-            generator.generate_prepared(work.clone(), cancel.clone())
-        } else {
-            let work = work.clone();
-            let cancel = cancel.clone();
-            Box::pin(async move {
-                generator
-                    .generate(work, cancel)
-                    .await
-                    .map(|document| PreparedGeneration {
-                        document,
-                        title: None,
-                    })
-            })
-        };
+    let (preview, mut preview_changes) = GenerationPreview::channel();
+    let mut preview_cursor = None;
+    let mut generation = generator.generate_with_preview(
+        work.clone(),
+        cancel.clone(),
+        preview.clone(),
+        work.request.title_policy == TitlePolicy::GenerateIfEmpty,
+    );
     let mut changes = journal.0.events.subscribe(None);
     let mut checks = tokio::time::interval(std::time::Duration::from_secs(1));
     checks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let outcome = loop {
         tokio::select! {
             output = &mut generation => break Ok(output),
+            _ = preview_changes.changed() => { flush_preview(journal, id, &preview, &mut preview_cursor).await; },
             _ = stop.cancelled() => break Err(JobCompletion::Interrupted),
             _ = checks.tick() => {},
             _ = changes.recv() => {},
@@ -244,6 +237,7 @@ async fn execute(
             Err(failure) => {
                 cancel.cancel();
                 let _ = generation.await;
+                flush_preview(journal, id, &preview, &mut preview_cursor).await;
                 return Err(failure);
             }
         }
@@ -261,9 +255,11 @@ async fn execute(
             {
                 journal.retain_result(id.into(), prepared.document).await?;
             }
+            flush_preview(journal, id, &preview, &mut preview_cursor).await;
             return Ok(completion);
         }
     };
+    flush_preview(journal, id, &preview, &mut preview_cursor).await;
     let PreparedGeneration {
         document: output,
         title,
@@ -404,3 +400,25 @@ async fn cancelled(journal: &JobJournal, id: &str) -> Result<bool, ApplicationEr
 
 #[cfg(test)]
 mod tests;
+
+async fn flush_preview(
+    journal: &JobJournal,
+    id: &str,
+    preview: &GenerationPreview,
+    cursor: &mut Option<String>,
+) {
+    let Some(snapshot) = preview.current() else {
+        return;
+    };
+    if cursor.as_deref() == Some(&snapshot.cursor) {
+        return;
+    }
+    *cursor = Some(snapshot.cursor.clone());
+    if journal
+        .checkpoint_preview(id.into(), snapshot)
+        .await
+        .is_err()
+    {
+        tracing::warn!("Processing preview checkpoint unavailable");
+    }
+}

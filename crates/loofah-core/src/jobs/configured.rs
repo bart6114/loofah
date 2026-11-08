@@ -116,10 +116,20 @@ impl JobGenerator for ConfiguredSummaryGenerator {
         cancel: CancellationToken,
     ) -> JobFuture<'_, Result<GeneratedDocument, ProcessingJobFailure>> {
         Box::pin(async move {
-            self.generate_owned(work, cancel, false)
+            self.generate_owned(work, cancel, false, None)
                 .await
                 .map(|prepared| prepared.document)
         })
+    }
+
+    fn generate_with_preview(
+        &self,
+        work: JobWork,
+        cancel: CancellationToken,
+        preview: super::GenerationPreview,
+        include_title: bool,
+    ) -> JobFuture<'_, Result<PreparedGeneration, ProcessingJobFailure>> {
+        self.generate_owned(work, cancel, include_title, Some(preview))
     }
 
     fn generate_prepared(
@@ -127,7 +137,7 @@ impl JobGenerator for ConfiguredSummaryGenerator {
         work: JobWork,
         cancel: CancellationToken,
     ) -> JobFuture<'_, Result<PreparedGeneration, ProcessingJobFailure>> {
-        self.generate_owned(work, cancel, true)
+        self.generate_owned(work, cancel, true, None)
     }
 }
 
@@ -137,6 +147,7 @@ impl ConfiguredSummaryGenerator {
         work: JobWork,
         cancel: CancellationToken,
         prepared: bool,
+        preview: Option<super::GenerationPreview>,
     ) -> JobFuture<'static, Result<PreparedGeneration, ProcessingJobFailure>> {
         let (context, identity, models, admission) = (
             self.context.clone(),
@@ -173,7 +184,7 @@ impl ConfiguredSummaryGenerator {
                 if let Some(snapshot) = &snapshot {
                     source = source.with_system_snapshot(snapshot.clone());
                 }
-                let document = SummaryGenerator::new(Arc::new(source),resolved.model.clone()).generate(work,stopping).await?;
+                let document = SummaryGenerator::new(Arc::new(source),resolved.model.clone()).generate_observed(work,stopping,preview).await?;
                 let title = snapshot.map(|snapshot| {
                     Box::new(ConfiguredTitleRunner {
                         generator: TitleGenerator::new(resolved.model, snapshot.language, temperature),

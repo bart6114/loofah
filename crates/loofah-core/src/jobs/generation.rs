@@ -6,7 +6,9 @@ use hypr_template_app::{EnhanceSystem, EnhanceUser, Template};
 use hypr_vault_write::ScoredTagSuggestion;
 use tokio_util::sync::CancellationToken;
 
-use super::{GeneratedDocument, JobFuture, JobGenerator, JobWork};
+use super::{
+    GeneratedDocument, GenerationPreview, JobFuture, JobGenerator, JobWork, PreparedGeneration,
+};
 
 const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const FOOTER_START: &str = "<loofah-tags";
@@ -167,6 +169,32 @@ impl JobGenerator for SummaryGenerator {
         work: JobWork,
         cancel: CancellationToken,
     ) -> JobFuture<'_, Result<GeneratedDocument, ProcessingJobFailure>> {
+        self.generate_observed(work, cancel, None)
+    }
+    fn generate_with_preview(
+        &self,
+        work: JobWork,
+        cancel: CancellationToken,
+        preview: GenerationPreview,
+        _include_title: bool,
+    ) -> JobFuture<'_, Result<PreparedGeneration, ProcessingJobFailure>> {
+        Box::pin(async move {
+            self.generate_observed(work, cancel, Some(preview))
+                .await
+                .map(|document| PreparedGeneration {
+                    document,
+                    title: None,
+                })
+        })
+    }
+}
+impl SummaryGenerator {
+    pub(super) fn generate_observed(
+        &self,
+        work: JobWork,
+        cancel: CancellationToken,
+        preview: Option<GenerationPreview>,
+    ) -> JobFuture<'_, Result<GeneratedDocument, ProcessingJobFailure>> {
         Box::pin(async move {
             if cancel.is_cancelled() {
                 return Err(ProcessingJobFailure::Interrupted);
@@ -175,6 +203,9 @@ impl JobGenerator for SummaryGenerator {
             prepared.validate()?;
             let mut feedback = None;
             for attempt in 0..2 {
+                if let Some(preview) = &preview {
+                    preview.reset();
+                }
                 if cancel.is_cancelled() {
                     return Err(ProcessingJobFailure::Interrupted);
                 }
@@ -240,6 +271,9 @@ impl JobGenerator for SummaryGenerator {
                                 attempt_cancel.cancel();
                                 continue;
                             }
+                            if let Some(preview) = &preview {
+                                preview.update(&output.body, false);
+                            }
                             if !validated && !cancel.is_cancelled() {
                                 let units = output.body.trim().encode_utf16().count();
                                 if units >= 10 {
@@ -259,6 +293,9 @@ impl JobGenerator for SummaryGenerator {
                             }
                         }
                     }
+                }
+                if let Some(preview) = &preview {
+                    preview.update(&output.body, true);
                 }
                 if cancel.is_cancelled() && (retry || failure.is_some() || !output.finished) {
                     return Err(ProcessingJobFailure::Interrupted);

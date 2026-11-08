@@ -38,6 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<ProcessingSettingsSaveOutcome>()
         .register::<SummaryJobRequest>()
         .register::<ProcessingJobSnapshot>()
+        .register::<ProcessingJobPreview>()
         .register::<ListProcessingJobsInput>()
         .register::<ProcessingJobPage>()
         .register::<ProcessingJobResult>()
