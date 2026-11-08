@@ -34,5 +34,10 @@ CMD ["--config", "/etc/loofah/server.json"]
 FROM runtime-base AS ci-runtime
 COPY loofah-server /usr/local/bin/loofah-server
 
+# Qualification adds the exact selected test executable to the same runtime;
+# neither its native libraries nor its executable come from a builder mount.
+FROM ci-runtime AS ci-tests
+COPY server-tests /opt/loofah-tests/server-tests
+
 FROM runtime-base AS runtime
 COPY --from=builder /build/target/release/loofah-server /usr/local/bin/loofah-server

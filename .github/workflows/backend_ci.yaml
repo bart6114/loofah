@@ -34,7 +34,7 @@ jobs:
 
   linux-cpu-stt:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "2"
       RUST_TEST_THREADS: "1"
@@ -59,6 +59,13 @@ jobs:
         with:
           path: ${{ runner.temp }}/loofah-cpu-stt/ggml-base-q8_0.bin
           key: whisper-base-q8_0-c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/loofah-cpu-stt/onnx
+          key: onnx-cpu-${{ hashFiles('crates/transcribe-onnx/src/models.rs') }}
+      - run: |
+          python3 .github/scripts/test_backend_cpu_artifact.py
+          python3 .github/scripts/test_backend_onnx_models.py
       - run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/loofah-cpu-stt"
@@ -72,6 +79,10 @@ jobs:
             c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9 \
             "$stt_model_path" | tee "$RUNNER_TEMP/loofah-cpu-stt/model.sha256" | sha256sum --check --strict
           printf 'LOOFAH_WHISPER_MODEL=%s\n' "$stt_model_path" >> "$GITHUB_ENV"
+          python3 .github/scripts/backend_onnx_models.py \
+            --root "$RUNNER_TEMP/loofah-cpu-stt/onnx" \
+            --proof "$RUNNER_TEMP/loofah-cpu-stt/onnx-models.json"
+          printf 'LOOFAH_ONNX_MODELS=%s\n' "$RUNNER_TEMP/loofah-cpu-stt/onnx" >> "$GITHUB_ENV"
       - run: |
           set -euo pipefail
           cargo tree --locked -p transcribe-whisper-local -p loofah-server --features loofah-server/cpu-transcription --edges normal --prefix none > "$RUNNER_TEMP/loofah-cpu-stt/dependencies.txt"
@@ -111,16 +122,20 @@ jobs:
             --messages "$RUNNER_TEMP/loofah-cpu-stt/server-build.jsonl" \
             --output "$RUNNER_TEMP/loofah-cpu-stt/server-test-proof.json" \
             --case "$CPU_SERVICE_CASE" --model "$LOOFAH_WHISPER_MODEL" \
+            --onnx-models "$LOOFAH_ONNX_MODELS" \
             --github-output "$GITHUB_OUTPUT"
       - env:
           CPU_TEST_BINARY: ${{ steps.cpu_artifact.outputs.test_binary }}
         run: |
           set -euo pipefail
           "$CPU_TEST_BINARY" transcription_cpu::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-adapter.log"
+          "$CPU_TEST_BINARY" transcription_onnx::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-onnx-adapter.log"
           "$CPU_TEST_BINARY" tests::transcription_host:: --skip "$CPU_SERVICE_CASE" --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-activation.log"
           "$CPU_TEST_BINARY" config::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-config.log"
           sha256sum "$CPU_TEST_BINARY" > "$RUNNER_TEMP/loofah-cpu-stt/server-tests.sha256"
-      - run: |
+      - env:
+          CPU_TEST_BINARY: ${{ steps.cpu_artifact.outputs.test_binary }}
+        run: |
           set -euo pipefail
           cargo build --locked --release -p loofah-server --features cpu-transcription 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-release.log"
           readelf --dynamic target/release/loofah-server > "$RUNNER_TEMP/loofah-cpu-stt/server-needed.txt"
@@ -128,24 +143,39 @@ jobs:
           sha256sum target/release/loofah-server > "$RUNNER_TEMP/loofah-cpu-stt/server-release.sha256"
           mkdir -p "$RUNNER_TEMP/loofah-cpu-stt/image"
           cp target/release/loofah-server "$RUNNER_TEMP/loofah-cpu-stt/image/loofah-server"
-          DOCKER_BUILDKIT=1 docker build --platform linux/amd64 --target ci-runtime --file apps/server/Dockerfile.cpu --tag loofah-server:cpu-ci "$RUNNER_TEMP/loofah-cpu-stt/image"
+          cp "$CPU_TEST_BINARY" "$RUNNER_TEMP/loofah-cpu-stt/image/server-tests"
+          DOCKER_BUILDKIT=1 docker build --platform linux/amd64 --target ci-tests --file apps/server/Dockerfile.cpu --tag loofah-server:cpu-ci "$RUNNER_TEMP/loofah-cpu-stt/image"
           docker run --rm --platform linux/amd64 loofah-server:cpu-ci --version
           docker run --rm --platform linux/amd64 --entrypoint ldd loofah-server:cpu-ci /usr/local/bin/loofah-server | tee "$RUNNER_TEMP/loofah-cpu-stt/server-runtime-ldd.txt"
           if grep -F 'not found' "$RUNNER_TEMP/loofah-cpu-stt/server-runtime-ldd.txt"; then exit 1; fi
+          docker run --rm --platform linux/amd64 --entrypoint ldd loofah-server:cpu-ci /opt/loofah-tests/server-tests | tee "$RUNNER_TEMP/loofah-cpu-stt/server-tests-runtime-ldd.txt"
+          if grep -E 'not found|libonnxruntime' "$RUNNER_TEMP/loofah-cpu-stt/server-tests-runtime-ldd.txt" "$RUNNER_TEMP/loofah-cpu-stt/server-runtime-ldd.txt"; then exit 1; fi
+          docker run --rm --platform linux/amd64 --entrypoint sha256sum loofah-server:cpu-ci /opt/loofah-tests/server-tests > "$RUNNER_TEMP/loofah-cpu-stt/server-tests-runtime.sha256"
+          test "$(awk '{print $1}' "$RUNNER_TEMP/loofah-cpu-stt/server-tests.sha256")" = "$(awk '{print $1}' "$RUNNER_TEMP/loofah-cpu-stt/server-tests-runtime.sha256")"
           docker run --rm --platform linux/amd64 --entrypoint sha256sum loofah-server:cpu-ci /usr/local/bin/loofah-server > "$RUNNER_TEMP/loofah-cpu-stt/server-runtime.sha256"
           test "$(awk '{print $1}' "$RUNNER_TEMP/loofah-cpu-stt/server-release.sha256")" = "$(awk '{print $1}' "$RUNNER_TEMP/loofah-cpu-stt/server-runtime.sha256")"
       - env:
           CPU_TEST_BINARY: ${{ steps.cpu_artifact.outputs.test_binary }}
         run: |
           set -euo pipefail
-          docker run --rm --platform linux/amd64 --network none --read-only \
-            --tmpfs /tmp:rw,noexec,nosuid,size=512m \
-            --mount "type=bind,source=$PWD,target=$PWD,readonly" \
-            --mount "type=bind,source=$LOOFAH_WHISPER_MODEL,target=/models/ggml-base-q8_0.bin,readonly" \
-            --env LOOFAH_WHISPER_MODEL=/models/ggml-base-q8_0.bin --env TMPDIR=/tmp \
-            --entrypoint "$CPU_TEST_BINARY" loofah-server:cpu-ci \
-            "$CPU_SERVICE_CASE" --exact --ignored --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-runtime-cpu.log"
-          grep -F '1 passed; 0 failed; 0 ignored' "$RUNNER_TEMP/loofah-cpu-stt/server-runtime-cpu.log"
+          for runtime_case in \
+            "$CPU_SERVICE_CASE" \
+            tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication \
+            transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join; do
+            case_log="$RUNNER_TEMP/loofah-cpu-stt/runtime-${runtime_case//:/_}.log"
+            docker run --rm --platform linux/amd64 --network none --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,size=3g \
+              --mount "type=bind,source=$PWD/crates/data,target=$PWD/crates/data,readonly" \
+              --mount "type=bind,source=$LOOFAH_WHISPER_MODEL,target=/models/ggml-base-q8_0.bin,readonly" \
+              --mount "type=bind,source=$LOOFAH_ONNX_MODELS,target=/models/onnx,readonly" \
+              --env LOOFAH_WHISPER_MODEL=/models/ggml-base-q8_0.bin --env TMPDIR=/tmp \
+              --env LOOFAH_ONNX_MODELS=/models/onnx --env LD_LIBRARY_PATH=/nonexistent \
+              --env ORT_DYLIB_PATH=/nonexistent/onnxruntime.so \
+              --entrypoint /opt/loofah-tests/server-tests loofah-server:cpu-ci \
+              "$runtime_case" --exact --ignored --nocapture 2>&1 | tee "$case_log"
+            grep -F '1 passed; 0 failed; 0 ignored' "$case_log"
+          done
+          python3 .github/scripts/backend_onnx_models.py --root "$LOOFAH_ONNX_MODELS" --check
           sha256sum --check --strict "$RUNNER_TEMP/loofah-cpu-stt/server-tests.sha256"
           sha256sum --check --strict "$RUNNER_TEMP/loofah-cpu-stt/model.sha256"
       - if: always()

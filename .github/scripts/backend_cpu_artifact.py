@@ -4,6 +4,13 @@ import json
 from pathlib import Path
 import subprocess
 
+from backend_onnx_models import pinned_manifest, provision
+
+ONNX_CASES = (
+    "tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication",
+    "transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join",
+)
+
 
 def select_artifact(messages, repository):
     artifacts = [
@@ -25,14 +32,15 @@ def select_artifact(messages, repository):
     return artifact
 
 
-def validate_inventory(listing, case):
+def validate_inventory(listing, case, onnx_cases=()):
     tests = [
         line.removesuffix(": test")
         for line in listing.splitlines()
         if line.endswith(": test")
     ]
-    if tests.count(case) != 1:
-        raise ValueError("Configured service CPU case is absent or ambiguous")
+    for required in (case, *onnx_cases):
+        if tests.count(required) != 1:
+            raise ValueError("Configured service CPU case is absent or ambiguous")
     for prefix in (
         "transcription_cpu::tests::",
         "tests::transcription_host::",
@@ -41,6 +49,46 @@ def validate_inventory(listing, case):
         if not any(test.startswith(prefix) for test in tests):
             raise ValueError(f"Required CPU test group is empty: {prefix}")
     return tests
+
+
+def validate_native_features(messages):
+    required = {
+        "whisper_local",
+        "whisper_rs",
+        "whisper_rs_sys",
+        "ort",
+        "ort_sys",
+        "parakeet_rs",
+        "transcribe_onnx",
+    }
+    native = {
+        item["target"]["name"]: item["features"]
+        for item in messages
+        if item.get("reason") == "compiler-artifact"
+        and item["target"]["name"] in required
+    }
+    forbidden = {
+        "coreml",
+        "metal",
+        "cuda",
+        "hipblas",
+        "vulkan",
+        "directml",
+        "migraphx",
+        "tensorrt",
+        "openvino",
+        "webgpu",
+        "nnapi",
+        "load-dynamic",
+        "preload-dylibs",
+    }
+    if set(native) != required or any(
+        set(features) & forbidden for features in native.values()
+    ):
+        raise ValueError(
+            "Missing CPU native graph or unexpected GPU/dynamic-runtime features"
+        )
+    return native
 
 
 def file_sha256(path):
@@ -54,6 +102,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--case", required=True)
     parser.add_argument("--model", type=Path, required=True)
+    parser.add_argument("--onnx-models", type=Path, required=True)
     parser.add_argument("--github-output", type=Path, required=True)
     args = parser.parse_args()
     repository = Path.cwd().resolve()
@@ -72,17 +121,9 @@ def main():
         or int.from_bytes(header[18:20], "little") != 62
     ):
         raise ValueError("Expected a Linux x64 ELF test executable")
-    native = {
-        item["target"]["name"]: item["features"]
-        for item in messages
-        if item.get("reason") == "compiler-artifact"
-        and item["target"]["name"] in ("whisper_local", "whisper_rs", "whisper_rs_sys")
-    }
-    if len(native) != 3 or any(
-        set(features) & {"coreml", "metal", "cuda", "hipblas", "vulkan", "directml"}
-        for features in native.values()
-    ):
-        raise ValueError("Missing CPU native graph or unexpected GPU features")
+    native = validate_native_features(messages)
+    onnx = pinned_manifest(repository)
+    provision(args.onnx_models, onnx, check_only=True)
     model_sha = file_sha256(args.model)
     if model_sha != "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9":
         raise ValueError("The cached model does not match the existing pinned fixture")
@@ -92,7 +133,7 @@ def main():
         capture_output=True,
         check=True,
     ).stdout
-    tests = validate_inventory(listing, args.case)
+    tests = validate_inventory(listing, args.case, ONNX_CASES)
     args.output.with_suffix(".inventory.txt").write_text(listing)
     proof = {
         "artifact": artifact,
@@ -100,10 +141,16 @@ def main():
         "model_sha256": model_sha,
         "native_features": native,
         "required_case": args.case,
+        "required_onnx_cases": ONNX_CASES,
+        "onnx_models": onnx,
         "inventory": tests,
         "source_sha256": {
             str(path.relative_to(repository)): file_sha256(path)
-            for path in sorted((repository / "apps/server/src").rglob("*.rs"))
+            for root in (
+                repository / "apps/server/src",
+                repository / "crates/transcribe-onnx/src",
+            )
+            for path in sorted(root.rglob("*.rs"))
         },
         "cargo_lock_sha256": file_sha256(repository / "Cargo.lock"),
     }

@@ -2,7 +2,12 @@ import copy
 from pathlib import Path
 import unittest
 
-from backend_cpu_artifact import select_artifact, validate_inventory
+from backend_cpu_artifact import (
+    ONNX_CASES,
+    select_artifact,
+    validate_inventory,
+    validate_native_features,
+)
 
 
 class BackendCpuArtifactTests(unittest.TestCase):
@@ -53,6 +58,43 @@ class BackendCpuArtifactTests(unittest.TestCase):
                 validate_inventory(changed, case)
         with self.assertRaises(ValueError):
             validate_inventory(f"{case}: test", case)
+
+    def test_requires_both_real_onnx_cases_and_cpu_only_static_native_graph(self):
+        case = "tests::transcription_host::whisper"
+        listing = "\n".join(
+            f"{name}: test"
+            for name in (
+                case,
+                *ONNX_CASES,
+                "transcription_cpu::tests::owner",
+                "config::tests::bounds",
+            )
+        )
+        validate_inventory(listing, case, ONNX_CASES)
+        with self.assertRaises(ValueError):
+            validate_inventory(
+                listing.replace(ONNX_CASES[0], "renamed"), case, ONNX_CASES
+            )
+        messages = [
+            {"reason": "compiler-artifact", "target": {"name": name}, "features": []}
+            for name in (
+                "whisper_local",
+                "whisper_rs",
+                "whisper_rs_sys",
+                "ort",
+                "ort_sys",
+                "parakeet_rs",
+                "transcribe_onnx",
+            )
+        ]
+        self.assertEqual(len(validate_native_features(messages)), 7)
+        with self.assertRaises(ValueError):
+            validate_native_features(messages[:-1])
+        for feature in ("cuda", "load-dynamic", "preload-dylibs", "directml"):
+            changed = copy.deepcopy(messages)
+            changed[3]["features"] = [feature]
+            with self.assertRaises(ValueError):
+                validate_native_features(changed)
 
 
 if __name__ == "__main__":
