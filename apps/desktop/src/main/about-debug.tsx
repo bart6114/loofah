@@ -10,6 +10,7 @@ import { formatDebugInformation } from "./debug-information";
 
 import { useStoredSettingValuesQuery } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
+import { getBatchProvider } from "~/stt/batch-provider";
 import {
   getLiveTranscriptionConfig,
   getTranscriptionLanguages,
@@ -18,7 +19,6 @@ import {
 } from "~/stt/capabilities";
 import { useListener } from "~/stt/contexts";
 import { localSttQueries } from "~/stt/useLocalSttModel";
-import { getBatchProvider } from "~/stt/useRunBatch";
 
 export function DebugSection({
   device,

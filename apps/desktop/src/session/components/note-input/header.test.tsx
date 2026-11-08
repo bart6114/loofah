@@ -187,6 +187,7 @@ vi.mock("~/session/components/note-input/enhanced-actions", () => ({
   }),
 }));
 vi.mock("~/shared/application/use-vault-read-scope", () => ({
+  mediaControlsAvailable: () => true,
   useVaultReadScope: () => ({
     scope: hoisted.summaryScope,
     current: () => true,

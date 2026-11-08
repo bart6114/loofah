@@ -23,6 +23,7 @@ import { useTranscriptScreen } from "./state";
 
 import {
   legacyTranscriptControlsAvailable,
+  mediaControlsAvailable,
   useVaultReadScope,
 } from "~/shared/application/use-vault-read-scope";
 import { VaultRecordingProcessing } from "~/shared/application/vault-recording-processing";
@@ -85,9 +86,9 @@ type TranscriptContentProps = {
   scrollRef: RefObject<HTMLDivElement | null>;
 };
 type TranscriptActions = {
-  uploadAudio: () => void;
-  uploadTranscript: () => void;
-  regenerate: () => void;
+  uploadAudio?: () => void;
+  uploadTranscript?: () => void;
+  regenerate?: () => void;
   stop: () => void;
 };
 export function TranscriptContent(props: TranscriptContentProps) {
@@ -95,8 +96,10 @@ export function TranscriptContent(props: TranscriptContentProps) {
   const shared = owner.current() && !!owner.scope.client.transcriptionJobs;
   return (
     <>
-      {owner.current() && legacyTranscriptControlsAvailable(owner.scope) ? (
-        <LegacyTranscriptContent {...props} />
+      {owner.current() &&
+      (legacyTranscriptControlsAvailable(owner.scope) ||
+        mediaControlsAvailable(owner.scope)) ? (
+        <ScopedTranscriptControls {...props} />
       ) : (
         <TranscriptPresentation {...props} sharedTranscription={shared} />
       )}
@@ -118,7 +121,7 @@ export function TranscriptContent(props: TranscriptContentProps) {
     </>
   );
 }
-function LegacyTranscriptContent(props: TranscriptContentProps) {
+function ScopedTranscriptControls(props: TranscriptContentProps) {
   const { scope, current } = useVaultReadScope();
   const { sessionId } = props;
   const session = useRef(sessionId);
@@ -136,7 +139,7 @@ function LegacyTranscriptContent(props: TranscriptContentProps) {
       active.current &&
       current() &&
       session.current === sessionId &&
-      legacyTranscriptControlsAvailable(scope),
+      mediaControlsAvailable(scope),
     [scope, current, sessionId],
   );
   const assertReplacement = useCallback(() => {
@@ -147,14 +150,15 @@ function LegacyTranscriptContent(props: TranscriptContentProps) {
     const state = capture.getState();
     const mode = state.getSessionMode(sessionId);
     if (
-      (state.live.sessionId === sessionId && state.live.loading) ||
-      mode === "active" ||
-      mode === "finalizing"
+      legacyTranscriptControlsAvailable(scope) &&
+      ((state.live.sessionId === sessionId && state.live.loading) ||
+        mode === "active" ||
+        mode === "finalizing")
     )
       throw new Error(
         "Wait for this recording to finish before replacing its transcript or audio",
       );
-  }, [available, capture, sessionId]);
+  }, [available, capture, sessionId, scope]);
   const { uploadAudio, uploadTranscript } = useUploadFile(
     sessionId,
     assertReplacement,
@@ -189,10 +193,19 @@ function LegacyTranscriptContent(props: TranscriptContentProps) {
       <TranscriptPresentation
         {...props}
         actions={{
-          uploadAudio: () => run(uploadAudio),
-          uploadTranscript: () => run(uploadTranscript),
-          regenerate: () => run(regenerate),
-          stop: () => run(() => stop(sessionId)),
+          uploadAudio: mediaControlsAvailable(scope)
+            ? () => run(uploadAudio)
+            : undefined,
+          uploadTranscript: mediaControlsAvailable(scope)
+            ? () => run(uploadTranscript)
+            : undefined,
+          regenerate: mediaControlsAvailable(scope)
+            ? () => run(regenerate)
+            : undefined,
+          stop: () => {
+            if (current() && legacyTranscriptControlsAvailable(scope))
+              stop(sessionId);
+          },
         }}
       />
       {action.error && <p role="alert">{action.error.message}</p>}

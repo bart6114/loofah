@@ -45,3 +45,11 @@ export function legacyTranscriptControlsAvailable(scope: VaultScope) {
     scope.client.features.includes("legacy_desktop_transcript_controls")
   );
 }
+
+export function mediaControlsAvailable(scope: VaultScope) {
+  return (
+    scope.getSnapshot().state === "connected" &&
+    scope.client.canEdit &&
+    !!scope.client.media
+  );
+}

@@ -27,7 +27,10 @@ import {
   useEnhancedNoteTitle,
   useSession,
 } from "~/session/queries";
-import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
+import {
+  mediaControlsAvailable,
+  useVaultReadScope,
+} from "~/shared/application/use-vault-read-scope";
 import { VaultProcessingSettings } from "~/shared/application/vault-processing-settings";
 import {
   type MenuItemDef,
@@ -657,26 +660,25 @@ function HeaderViewTranscriptActive(props: {
   sessionId: string;
   live?: { amplitude: number; degraded: boolean };
 }) {
-  const legacy = useLegacySessionActivity(props.sessionId);
-  const { isAvailable } = legacy;
-  return isAvailable() ? (
-    <LegacyHeaderViewTranscriptActive {...props} />
+  const owner = useVaultReadScope();
+  return owner.current() && mediaControlsAvailable(owner.scope) ? (
+    <MediaHeaderViewTranscriptActive {...props} />
   ) : (
     <ScopedHeaderViewTranscriptActive {...props} />
   );
 }
-function LegacyHeaderViewTranscriptActive(props: {
+function MediaHeaderViewTranscriptActive(props: {
   isActive: boolean;
   isTranscribing: boolean;
   onClick?: () => void;
   sessionId: string;
   live?: { amplitude: number; degraded: boolean };
 }) {
-  const legacy = useLegacySessionActivity(props.sessionId);
-  const { isAvailable } = legacy;
+  const owner = useVaultReadScope();
   const assertCurrent = useCallback(() => {
-    if (!isAvailable()) throw new Error("Transcript controls are unavailable.");
-  }, [isAvailable]);
+    if (!owner.current() || !mediaControlsAvailable(owner.scope))
+      throw new Error("Transcript controls are unavailable.");
+  }, [owner.current, owner.scope]);
   const regenerate = useRegenerateTranscript(props.sessionId, assertCurrent);
   return (
     <ScopedHeaderViewTranscriptActive {...props} regenerate={regenerate} />

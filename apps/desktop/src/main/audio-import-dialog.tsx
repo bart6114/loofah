@@ -19,6 +19,7 @@ import { Progress } from "@hypr/ui/components/ui/progress";
 import { Spinner } from "@hypr/ui/components/ui/spinner";
 import { cn } from "@hypr/utils";
 
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 import { useNativeFileDrop } from "~/shared/hooks/useNativeFileDrop";
 import {
   type AudioImportItem,
@@ -37,6 +38,8 @@ type Candidate = {
 
 export function AudioImportDialog() {
   const { t } = useLingui();
+  const owner = useVaultReadScope();
+  const available = owner.current() && !!owner.scope.client.media;
   const dialogOpen = useAudioImport((state) => state.dialogOpen);
   const setDialogOpen = useAudioImport((state) => state.setDialogOpen);
   const items = useAudioImport((state) => state.items);
@@ -62,6 +65,7 @@ export function AudioImportDialog() {
   }, []);
 
   const handleChooseFiles = useCallback(async () => {
+    if (!available || !owner.current()) return;
     try {
       const selection = await selectFile({
         title: t`Import audio files`,
@@ -71,6 +75,7 @@ export function AudioImportDialog() {
         filters: [{ name: "Audio", extensions: AUDIO_EXTENSIONS }],
       });
 
+      if (!owner.current()) return;
       const paths = Array.isArray(selection)
         ? selection
         : selection
@@ -87,13 +92,15 @@ export function AudioImportDialog() {
     } catch (error) {
       console.error("[audio-import] file dialog failed:", error);
     }
-  }, [addCandidates, t]);
+  }, [addCandidates, t, available, owner.current]);
 
   const { isHovering: isDragActive } = useNativeFileDrop(dropTargetRef, {
     onDrop: (paths) => {
+      if (!available || !owner.current()) return;
       void fsSyncCommands
         .audioCollectImportSources(paths)
         .then((result) => {
+          if (!owner.current()) return;
           if (result.status === "error") throw new Error(result.error);
           addCandidates(
             result.data.map((source) => ({
@@ -132,15 +139,26 @@ export function AudioImportDialog() {
   ).length;
 
   const handleImport = useCallback(() => {
+    if (!available || !owner.current()) return;
     const selected = candidates.filter((candidate) => candidate.selected);
     if (selected.length) {
-      enqueue(selected.map((candidate) => candidate.source));
+      enqueue(
+        selected.map((candidate) => candidate.source),
+        owner.scope,
+      );
     }
     setCandidates([]);
     // The sidebar toast takes over as the progress surface; reopen via its
     // "View" action to see per-file status or retry failures.
     setDialogOpen(false);
-  }, [candidates, enqueue, setDialogOpen]);
+  }, [
+    candidates,
+    enqueue,
+    setDialogOpen,
+    available,
+    owner.current,
+    owner.scope,
+  ]);
 
   const finishedCount = items.filter((item) =>
     isFinishedAudioImportStatus(item.status),

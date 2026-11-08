@@ -63,6 +63,7 @@ const snapshot = { state: "connected", error: null };
 const scope = {
   client: {
     canEdit: true,
+    media: {} as object | undefined,
     scope: "local",
     features: ["attachment_upload", "legacy_desktop_transcript_controls"],
   },
@@ -83,6 +84,7 @@ vi.mock("~/stt/contexts", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  scope.client.media = {};
   scope.client.features = [
     "attachment_upload",
     "legacy_desktop_transcript_controls",
@@ -234,8 +236,9 @@ describe("useNoteFileHandlerConfig", () => {
   });
 });
 
-it("keeps audio as a generic attachment when legacy transcription controls are unsupported", () => {
+it("keeps audio as a generic attachment when media controls are unsupported", () => {
   scope.client.features = ["attachment_upload"];
+  scope.client.media = undefined;
   render(<Harness view={createEditorView(7)} />);
   const file = new File(["audio"], "recording.wav", { type: "audio/wav" });
   const result = mocks.config?.onPaste?.([file]);

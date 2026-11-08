@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { id } from "~/shared/utils";
+import type { VaultScope } from "~/shared/application/vault-scope";
 
 export type AudioImportSource =
   | { kind: "path"; path: string; name: string }
@@ -16,6 +16,7 @@ export type AudioImportStatus =
 
 export type AudioImportItem = {
   id: string;
+  owner: VaultScope;
   source: AudioImportSource;
   sessionId: string | null;
   status: AudioImportStatus;
@@ -40,7 +41,7 @@ interface AudioImportState {
   dialogOpen: boolean;
   completionAnnounced: boolean;
   setDialogOpen: (open: boolean) => void;
-  enqueue: (sources: AudioImportSource[]) => void;
+  enqueue: (sources: AudioImportSource[], owner: VaultScope) => void;
   claimNext: () => void;
   setItemSession: (itemId: string, sessionId: string) => void;
   setItemStatus: (itemId: string, status: "importing" | "transcribing") => void;
@@ -69,13 +70,14 @@ export const useAudioImport = create<AudioImportState>((set, get) => ({
 
   setDialogOpen: (dialogOpen) => set({ dialogOpen }),
 
-  enqueue: (sources) =>
+  enqueue: (sources, owner) =>
     set((state) => ({
       completionAnnounced: false,
       items: [
         ...state.items,
         ...sources.map((source) => ({
-          id: id(),
+          id: crypto.randomUUID(),
+          owner,
           source,
           sessionId: null,
           status: "pending" as const,

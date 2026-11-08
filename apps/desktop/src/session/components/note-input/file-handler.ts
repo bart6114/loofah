@@ -25,6 +25,7 @@ import { deviceFileName } from "~/shared/application/device-attachment-source";
 import {
   useVaultReadScope,
   legacyTranscriptControlsAvailable,
+  mediaControlsAvailable,
 } from "~/shared/application/use-vault-read-scope";
 import {
   useFileUpload,
@@ -78,7 +79,7 @@ export function useNoteFileHandlerConfig(
     scope.client.canEdit &&
     scope.client.features.includes("attachment_upload");
   const audioAvailable = useCallback(
-    () => available() && legacyTranscriptControlsAvailable(scope),
+    () => available() && mediaControlsAvailable(scope),
     [available, scope],
   );
   const assertAudio = useCallback(() => {
@@ -86,12 +87,13 @@ export function useNoteFileHandlerConfig(
     const mode = state.getSessionMode(sessionId);
     if (
       !audioAvailable() ||
-      (state.live.sessionId === sessionId && state.live.loading) ||
-      mode === "active" ||
-      mode === "finalizing"
+      (legacyTranscriptControlsAvailable(scope) &&
+        ((state.live.sessionId === sessionId && state.live.loading) ||
+          mode === "active" ||
+          mode === "finalizing"))
     )
       throw new Error("Audio import is unavailable for this session");
-  }, [audioAvailable, capture, sessionId]);
+  }, [audioAvailable, capture, sessionId, scope]);
   const onFileUpload = useFileUpload(sessionId);
   const uploadStates = useFileUploadStates(sessionId);
   const { processAudioFile, processAudioPath } = useUploadFile(

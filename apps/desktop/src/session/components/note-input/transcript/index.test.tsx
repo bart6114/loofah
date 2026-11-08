@@ -128,6 +128,7 @@ describe("Transcript", () => {
     cacheHosts = [];
     defaultHost = createRenderCacheHost("local:transcript-controls", "always", {
       features: ["legacy_desktop_transcript_controls"],
+      media: {} as never,
     });
     cacheHosts.push(defaultHost);
     regenerateTranscriptMock.mockClear();
@@ -181,9 +182,11 @@ describe("Transcript", () => {
     (location) => {
       const host = createRenderCacheHost("same-scope", "always", {
         features: ["legacy_desktop_transcript_controls"],
+        media: {} as never,
       });
       const other = createRenderCacheHost("same-scope", "always", {
         features: ["legacy_desktop_transcript_controls"],
+        media: {} as never,
       });
       cacheHosts.push(host, other);
       const row = makeTranscript([
