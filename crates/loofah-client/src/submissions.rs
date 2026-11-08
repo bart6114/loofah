@@ -268,7 +268,7 @@ fn validate_uuid(id: &str) -> Result<()> {
         .ok_or_else(|| failure(ErrorCode::Validation, "Invalid job recovery identifier"))
 }
 
-fn scope_key(scope: &str) -> String {
+pub(super) fn scope_key(scope: &str) -> String {
     Sha256::digest(scope.as_bytes())
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -403,7 +403,7 @@ fn read(path: &Path, scope: &str) -> Result<Stored> {
     Ok(stored)
 }
 
-fn prepare_directory(path: &Path) -> Result<()> {
+pub(super) fn prepare_directory(path: &Path) -> Result<()> {
     check_directory(path)?;
     let parent = path.parent().ok_or_else(damaged)?;
     if matches!(std::fs::symlink_metadata(parent), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
@@ -442,7 +442,7 @@ fn check_directory(path: &Path) -> Result<()> {
     }
 }
 
-fn check_file(path: &Path) -> Result<()> {
+pub(super) fn check_file(path: &Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => Err(damaged()),
         Ok(_) => Ok(()),
@@ -451,7 +451,7 @@ fn check_file(path: &Path) -> Result<()> {
     }
 }
 
-fn lock(path: &Path) -> Result<File> {
+pub(super) fn lock(path: &Path) -> Result<File> {
     check_file(path)?;
     let mut options = File::options();
     options.read(true).write(true).create(true).truncate(false);

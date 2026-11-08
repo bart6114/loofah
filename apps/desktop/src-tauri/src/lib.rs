@@ -27,6 +27,7 @@ mod session_store;
 mod startup;
 mod store;
 mod supervisor;
+mod transcription_submissions;
 mod vault_watch;
 
 use ext::*;
@@ -230,6 +231,7 @@ pub async fn main() {
         .manage(local_transcription::LocalTranscriptionState::default())
         .manage(local_owner::LocalOwnerState::default())
         .manage(job_submissions::JobSubmissionState::default())
+        .manage(transcription_submissions::TranscriptionSubmissionState::default())
         .manage(device_vault_state::DeviceVaultState::default())
         .manage(remote::RemoteState::default())
         .manage(device_recordings::DeviceRecordingState::default())
@@ -690,6 +692,11 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_processing_job_result::<tauri::Wry>,
             application::application_cancel_processing_job::<tauri::Wry>,
             job_submissions::device_job_submission_prepare::<tauri::Wry>,
+            transcription_submissions::device_transcription_submission_prepare::<tauri::Wry>,
+            transcription_submissions::device_transcription_submission_get::<tauri::Wry>,
+            transcription_submissions::device_transcription_submissions::<tauri::Wry>,
+            transcription_submissions::device_transcription_submission_observe::<tauri::Wry>,
+            transcription_submissions::device_transcription_submission_forget::<tauri::Wry>,
             job_submissions::device_job_submission_get::<tauri::Wry>,
             job_submissions::device_job_submissions::<tauri::Wry>,
             job_submissions::device_job_submission_observe::<tauri::Wry>,

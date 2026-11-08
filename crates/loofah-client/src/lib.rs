@@ -4,8 +4,8 @@ mod auth;
 mod capture;
 mod capture_append;
 mod capture_append_authority;
-pub use capture_append_authority::{CaptureAppendAuthority, CaptureAppendDispatchGuard};
 pub use capture_append::CaptureAppendPreparation;
+pub use capture_append_authority::{CaptureAppendAuthority, CaptureAppendDispatchGuard};
 mod capture_retirement;
 pub use capture_retirement::VerifiedCaptureRetirement;
 pub mod capture_upload;
@@ -19,6 +19,7 @@ mod profiles;
 mod requests;
 mod sse;
 mod submissions;
+mod transcription_submissions;
 mod uploads;
 
 pub use auth::LoginAttempt;
@@ -38,6 +39,7 @@ pub use profiles::{
 };
 pub use requests::{RemoteOperation, RemoteReply};
 pub use submissions::{JobSubmissionReceipt, JobSubmissions};
+pub use transcription_submissions::{TranscriptionSubmissionReceipt, TranscriptionSubmissions};
 pub use uploads::AttachmentUpload;
 
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
