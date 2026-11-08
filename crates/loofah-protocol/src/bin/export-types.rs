@@ -14,6 +14,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<CaptureSeal>()
         .register::<CapturePrefixReceipt>()
         .register::<CapturePublication>()
+        .register::<CaptureIngestRequest>()
+        .register::<CaptureIngestStatus>()
         .register::<ProcessingPolicy>()
         .register::<ProcessingSettingsSnapshot>()
         .register::<SaveProcessingSettingsRequest>()

@@ -2,6 +2,7 @@ mod attachment_remove;
 mod attachment_upload;
 mod attachments;
 mod audio_metadata;
+mod capture;
 mod metadata;
 mod note_editor;
 mod processing;
@@ -340,6 +341,13 @@ impl Fixture {
     }
 
     async fn with_processing(processing: Option<crate::processing::ProcessingConfig>) -> Self {
+        Self::with_options(processing, None).await
+    }
+
+    async fn with_options(
+        processing: Option<crate::processing::ProcessingConfig>,
+        public_url: Option<url::Url>,
+    ) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let issuer = format!("http://{}", listener.local_addr().unwrap());
         let metadata = json!({"issuer":issuer,"jwks_uri":format!("{issuer}/keys"),"authorization_endpoint":format!("{issuer}/authorize"),"token_endpoint":format!("{issuer}/token"),"code_challenge_methods_supported":["S256"]});
@@ -369,7 +377,8 @@ impl Fixture {
             processing,
             storage_root: root.path().join("storage"),
             cache_root: root.path().join("cache"),
-            public_url: "https://loofah.company.example".parse().unwrap(),
+            public_url: public_url
+                .unwrap_or_else(|| "https://loofah.company.example".parse().unwrap()),
             listen: "127.0.0.1:0".parse().unwrap(),
             oidc: OidcConfig {
                 issuer: issuer.clone(),

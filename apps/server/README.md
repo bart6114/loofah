@@ -4,7 +4,20 @@ The server is experimental. It currently exposes authenticated vault, note, exis
 
 The existing Whisper implementation now exposes a cancellable Rust batch kernel without Tauri or device capture. JSON, SSE and internal callers share model/audio ownership and cancellation handling. This is an extraction boundary for server transcription; the server does not yet advertise a transcription endpoint or accept recordings for processing. The dedicated Linux CPU CI job passed the kernel and existing HTTP/live inference tests with a checksum-pinned model and verified generic CPU compilation. Server transcription wiring and complete platform acceptance remain open.
 
-Capture identity, format, chunk, seal and receipt types now live in the shared protocol with the version-1 fingerprint and checksum-chain functions. The device spool reexports its existing Rust names and retains its existing serialized files. This prepares shared ingestion contracts; no capture upload endpoint is advertised yet.
+Capture identity, format, chunk, seal and receipt types live in the shared protocol with the unchanged version-1 fingerprint and checksum-chain functions. The neutral `capture-store` crate stores durable staging on the device and service. A first-audio producer observation upgrades a capture manifest to schema 2 without changing its audio hashes; older readers refuse that manifest. Existing untimed schema-1 captures remain readable without an invented timestamp.
+
+The experimental `capture_ingestion` capability exposes authenticated staging APIs below. These endpoints retain private upload chunks; they do not publish a recording into a session, run transcription, expose remote recording controls, or authorize deletion of device audio. Local desktop capture remains login-free.
+
+| Method | Path below `/api/v1/vaults/{vault}`     | Result                                                                                                        |
+| ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| POST   | `/captures`                             | Admit an immutable identity, PCM format and first-audio observation; replay the same declaration safely.      |
+| PUT    | `/captures/{capture}/chunks/{sequence}` | Admit an octet-stream PCM chunk with its JSON `X-Capture-Chunk` descriptor; return the exact accepted prefix. |
+| GET    | `/captures/{capture}`                   | Recover the durable prefix and seal after reconnect or an unknown reply.                                      |
+| POST   | `/captures/{capture}/seal`              | Finalize only if the full declared seal matches the admitted audio.                                           |
+
+The service derives the server, member and vault scope from its configuration and current authorization. Staging is private to its contributing member, including in shared vaults. Editors and owners can upload; a demoted reader can inspect their own staged capture while they retain vault membership. Each operation checks access again after startup before admitting a read or mutation. Status polling supplies reconnect recovery; canonical change streams keep their existing event types.
+
+Chunks must declare 16 kHz PCM f32 little-endian with explicit channel ownership, be at most 1 MiB, and extend the accepted prefix or exactly replay an earlier chunk. A wrong descriptor or seal fails before admitting the mutation. The initial per-vault staging limits are 2 GiB, 64 captures and 32,768 chunks; capacity errors preserve existing bytes. Files live under persistent `runtime/{vault}/creates/captures`, outside canonical sessions, and belong in service backups. Automatic staging cleanup, canonical publication and durable client upload orchestration remain required before enabling remote recording. These endpoints are not a remote-vault editing queue.
 
 The shared Rust core contains a durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator configuration wires allowed providers, host environment credentials and current catalog membership into authenticated document-body job APIs. The opt-in notes workspace has summary controls, existing template-output regeneration and durable device submission recovery. Shared processing settings/model selection are available in the opt-in workspace. Owner-managed vault keys, generated titles, streaming previews and server transcription remain unfinished. The existing local AI flow remains active.
 
@@ -252,6 +265,14 @@ name/MIME validity, ordering and advancing cursors. The shared desktop panel ope
 native resources only when a row's actions are expanded; pagination performs no
 media transfers. Attachment notifications and reconnects refresh all loaded
 pages. The panel also mounts the shared upload and checked-removal controls described above.
+
+## Tag editing
+
+The `tag_editing` capability supplies the same checked tag operations over IPC and HTTPS. Readers can query registered and in-use suggestions with `POST /vaults/{vault}/tags/suggestions/query`. Editors and owners can register a tag with `POST /vaults/{vault}/tags/ensure`, or accept/dismiss a suggestion with `POST /vaults/{vault}/sessions/{session}/tag-suggestions/{accept|dismiss}`. Requests use typed shared contracts; no client filesystem paths are accepted.
+
+Suggestion queries accept up to 4,096 query bytes, 256 exact exclusions and a result limit of 1–200. Results are bounded to 64 KiB. Tag normalization, query matching and ordering retain the current desktop behavior. Accept/dismiss requires the displayed metadata revision; a stale request returns HTTP 409 with current metadata. Manual add/remove uses the same checked metadata patch contract. These operations preserve unrelated top-level and nested metadata fields and refuse ambiguous duplicate JSON keys or corrupt registries. Full prospective file size is checked before a write.
+
+Tag registration is append-only. If registration succeeds and a later metadata write fails, the registered tag may remain; the client must reload before explicitly deciding what to do next. An uncertain response never triggers an automatic metadata retry. The native client checks the capability before loading credentials, and default local use still requires no login.
 
 ## Empty-session cleanup
 

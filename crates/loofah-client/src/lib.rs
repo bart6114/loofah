@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod auth;
+mod capture;
 pub use hypr_capture_store::capture_spool;
 mod drafts;
 mod events;

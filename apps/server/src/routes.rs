@@ -20,6 +20,7 @@ use crate::{
     service::Service,
 };
 
+mod capture;
 mod jobs;
 mod processing_settings;
 mod session_cleanup;
@@ -29,6 +30,7 @@ mod tag_editing;
 pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
         .merge(crate::media::router())
+        .merge(capture::router())
         .merge(jobs::router())
         .merge(processing_settings::router())
         .merge(session_cleanup::router())
@@ -168,6 +170,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
         api_major: API_MAJOR,
         application_version: env!("LOOFAH_VERSION").into(),
         features: vec![
+            "capture_ingestion".into(),
             "notes".into(),
             "session_summaries".into(),
             "tag_editing".into(),

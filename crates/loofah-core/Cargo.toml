@@ -9,6 +9,7 @@ base64 = { workspace = true }
 chrono = { workspace = true }
 futures-util = { workspace = true }
 hypr-agent-access = { workspace = true }
+hypr-capture-store = { workspace = true }
 hypr-fs-sync-core = { workspace = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }

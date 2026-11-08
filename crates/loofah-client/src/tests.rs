@@ -1,4 +1,5 @@
 mod attachments;
+mod capture;
 mod downloads;
 mod tag_editing;
 mod uploads;

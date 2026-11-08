@@ -147,6 +147,7 @@ impl Service {
         let cache = self.config.cache_root.clone();
         let catalog = self.catalog.clone();
         let processing = self.processing.clone();
+        let capture_origin = format!("{}/", self.config.public_url.origin().ascii_serialization());
         #[cfg(test)]
         let pause = self.startup_pause.lock().unwrap().take();
         #[cfg(test)]
@@ -187,6 +188,9 @@ impl Service {
                         tracing::error!(%cause, "vault startup failed");
                         ApiError::new(ErrorCode::Unavailable, "Vault could not be opened")
                     })?;
+                    opened
+                        .context
+                        .enable_capture_ingestion(capture_origin, Default::default())?;
                     if let Some(processing) = processing {
                         processing.attach(&mut opened, catalog.clone()).await?;
                     }

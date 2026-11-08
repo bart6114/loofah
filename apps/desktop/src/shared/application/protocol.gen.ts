@@ -34,6 +34,10 @@ export type CaptureFormat = { encoding: CaptureEncoding; sample_rate: number; ch
 
 export type CaptureIdentity = { scope: CaptureScope; capture_id: string; request_id: string; target: CaptureTarget }
 
+export type CaptureIngestRequest = { identity: CaptureIdentity; format: CaptureFormat; first_admitted_audio_observed_at_ms: number }
+
+export type CaptureIngestStatus = { identity: CaptureIdentity; format: CaptureFormat; prefix: CapturePrefixReceipt; seal: CaptureSeal | null; first_admitted_audio_observed_at_ms: number; session_id: string | null; publication: CapturePublication | null }
+
 export type CapturePrefixReceipt = { capture_fingerprint: string; chunk_count: number; frames: number; pcm_bytes: number; chain_digest: string }
 
 /**
@@ -86,6 +90,8 @@ kind: string; title: string; template_id: string; sort_order: number;
  * Body only -- never includes the frontmatter block.
  */
 markdown: string }
+
+export type EnsureTagRequest = { name: string }
 
 export type ErrorCode = "validation" | "not_found" | "unauthenticated" | "forbidden" | "conflict" | "unavailable" | "incompatible_version" | "resource_limit" | "cancelled" | "internal"
 
@@ -258,7 +264,11 @@ export type SummaryModelSelection = { provider_id: string; model_id: string; bas
 
 export type TagItem = { id: string; name?: string }
 
+export type TagSuggestionActionRequest = { name: string; expected_revision: string }
+
 export type TagSuggestionState = { items: string[]; dismissed: string[] }
+
+export type TagSuggestionsRequest = { query: string; excluded: string[]; limit: number }
 
 /**
  * What the frontend sends on a write: source coordinates come from the command arguments,

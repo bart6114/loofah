@@ -7695,6 +7695,7 @@ dependencies = [
  "async-stream",
  "axum",
  "base64 0.22.1",
+ "capture-store",
  "chrono",
  "fs-sync-core",
  "futures-util",

@@ -1,3 +1,7 @@
+#[path = "capture_ingestion.rs"]
+mod ingestion;
+pub use ingestion::{CaptureIngestRequest, CaptureIngestStatus};
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 

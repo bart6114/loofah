@@ -812,6 +812,66 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationTagSuggestions(
+    input: TagSuggestionsRequest,
+  ): Promise<Result<string[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_tag_suggestions", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationEnsureTag(
+    input: EnsureTagRequest,
+  ): Promise<Result<TagItem, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_ensure_tag", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAcceptTagSuggestion(
+    sessionId: string,
+    input: TagSuggestionActionRequest,
+  ): Promise<Result<MetadataSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_accept_tag_suggestion", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDismissTagSuggestion(
+    sessionId: string,
+    input: TagSuggestionActionRequest,
+  ): Promise<Result<MetadataSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_dismiss_tag_suggestion", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSession(
     sessionId: string,
   ): Promise<Result<SessionDocument, ApplicationError>> {
@@ -2274,6 +2334,7 @@ export type EnhancedDocPatch = {
   expected_title?: string | null;
   expected_markdown?: string | null;
 };
+export type EnsureTagRequest = { name: string };
 export type ErrorCode =
   | "validation"
   | "not_found"
@@ -2647,6 +2708,20 @@ export type RemoteOperation =
   | { kind: "tasks"; vault_id: string; session_id: string }
   | { kind: "people"; vault_id: string }
   | { kind: "tags"; vault_id: string }
+  | { kind: "tag_suggestions"; vault_id: string; input: TagSuggestionsRequest }
+  | { kind: "ensure_tag"; vault_id: string; input: EnsureTagRequest }
+  | {
+      kind: "accept_tag_suggestion";
+      vault_id: string;
+      session_id: string;
+      input: TagSuggestionActionRequest;
+    }
+  | {
+      kind: "dismiss_tag_suggestion";
+      vault_id: string;
+      session_id: string;
+      input: TagSuggestionActionRequest;
+    }
   | { kind: "create_session"; vault_id: string; input: CreateSessionRequest }
   | { kind: "note"; vault_id: string; session_id: string }
   | { kind: "note_editor"; vault_id: string; session_id: string }
@@ -2716,6 +2791,8 @@ export type RemoteReply =
   | { kind: "tasks_save"; value: TasksSaveOutcome }
   | { kind: "people"; value: PersonItem[] }
   | { kind: "tags"; value: TagItem[] }
+  | { kind: "tag_suggestions"; value: string[] }
+  | { kind: "tag"; value: TagItem }
   | { kind: "note"; value: NoteSnapshot }
   | { kind: "note_editor"; value: NoteEditorSnapshot }
   | { kind: "note_editor_save"; value: NoteEditorSaveOutcome }
@@ -2959,7 +3036,16 @@ export type TagContext = {
   dismissed: string[];
 };
 export type TagItem = { id: string; name?: string };
+export type TagSuggestionActionRequest = {
+  name: string;
+  expected_revision: string;
+};
 export type TagSuggestionState = { items: string[]; dismissed: string[] };
+export type TagSuggestionsRequest = {
+  query: string;
+  excluded: string[];
+  limit: number;
+};
 /**
  * What the frontend sends on a write: source coordinates come from the command arguments,
  * timestamps and `assignee` are managed store-side (preserved from the existing entry when

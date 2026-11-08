@@ -9,12 +9,16 @@ use crate::{
     events::EventHub, search::SearchService, settings::ConfigState, startup::StartupState,
 };
 
+#[path = "capture_ingest.rs"]
+mod capture_ingest;
+
 pub struct VaultContext {
     pub store: Arc<SessionStore>,
     pub startup: StartupState,
     pub settings: Arc<ConfigState>,
     pub search: Arc<SearchService>,
     pub events: EventHub,
+    capture_ingestion: std::sync::OnceLock<capture_ingest::CaptureIngestion>,
     pub(crate) lease: Option<std::fs::File>,
     pub(crate) operations: Option<crate::operations::SessionOperations>,
     pub(crate) media_readers: Arc<tokio::sync::Semaphore>,
@@ -38,6 +42,7 @@ impl VaultContext {
             search,
             events: EventHub::new(id, 256),
             lease: None,
+            capture_ingestion: std::sync::OnceLock::new(),
             operations: None,
             media_readers: Arc::new(tokio::sync::Semaphore::new(4)),
             upload_writers: Arc::new(tokio::sync::Semaphore::new(2)),
