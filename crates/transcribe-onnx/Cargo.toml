@@ -16,7 +16,5 @@ rustfft = "6.4"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-tokio = { workspace = true, features = ["rt", "time", "net"] }
-
-[dev-dependencies]
 tempfile = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time", "net"] }

@@ -25,6 +25,15 @@ pub struct Diarizer {
     segmentation: Session,
     embedding: Session,
     features: Features,
+    _model: Option<Arc<super::models::VerifiedModel>>,
+}
+
+fn cpu_model(path: impl AsRef<std::path::Path>) -> Result<Session> {
+    Ok(Session::builder()?
+        .with_intra_threads(1)?
+        .with_inter_threads(1)?
+        .with_execution_providers([ort::ep::CPU::default().build().error_on_failure()])?
+        .commit_from_file(path)?)
 }
 
 impl Diarizer {
@@ -34,6 +43,17 @@ impl Diarizer {
             segmentation: hypr_onnx::load_model_from_path(path.join("model.onnx"))?,
             embedding: hypr_onnx::load_model_from_path(path.join("nemo_en_titanet_small.onnx"))?,
             features: Features::new(),
+            _model: None,
+        })
+    }
+
+    pub fn load_verified(model: Arc<super::models::VerifiedModel>) -> Result<Self> {
+        let path = model.path_for(super::models::Model::Diarizer)?;
+        Ok(Self {
+            segmentation: cpu_model(path.join("model.onnx"))?,
+            embedding: cpu_model(path.join("nemo_en_titanet_small.onnx"))?,
+            features: Features::new(),
+            _model: Some(model),
         })
     }
 
@@ -59,20 +79,36 @@ impl Diarizer {
             samples.iter().all(|s| s.is_finite()),
             "Invalid audio samples"
         );
-        self.process_audio(samples.len(), |range| Ok(samples[range].to_vec()))
+        self.process_audio(samples.len(), |range| Ok(samples[range].to_vec()), &|| {
+            false
+        })
     }
 
     pub fn process_file(&mut self, path: &std::path::Path, channel: usize) -> Result<Vec<Segment>> {
+        self.process_file_cancellable(path, channel, &|| false)
+    }
+
+    pub fn process_file_cancellable(
+        &mut self,
+        path: &std::path::Path,
+        channel: usize,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Vec<Segment>> {
         let pcm = hypr_audio_utils::PcmDescriptor::open(path)?;
         ensure!(channel < pcm.channels, "Invalid speaker detection channel");
         let mut reader = pcm.reader()?;
-        self.process_audio(pcm.frames, |range| Ok(reader.channel(channel, range)?))
+        self.process_audio(
+            pcm.frames,
+            |range| Ok(reader.channel(channel, range)?),
+            cancelled,
+        )
     }
 
     fn process_audio(
         &mut self,
         frame_count: usize,
         mut read: impl FnMut(std::ops::Range<usize>) -> Result<Vec<f32>>,
+        cancelled: &dyn Fn() -> bool,
     ) -> Result<Vec<Segment>> {
         if frame_count == 0 {
             return Ok(Vec::new());
@@ -80,6 +116,7 @@ impl Diarizer {
         let mut embeddings = Vec::new();
         let mut windows = Vec::new();
         for offset in (0..frame_count).step_by(HOP) {
+            ensure!(!cancelled(), "Speaker detection cancelled");
             let samples = read(offset..(offset + WINDOW + CENTER + FRAME).min(frame_count))?;
             ensure!(
                 samples.iter().all(|sample| sample.is_finite()),
@@ -112,6 +149,7 @@ impl Diarizer {
             };
             let mut identities = [None; 3];
             for speaker in 0..3 {
+                ensure!(!cancelled(), "Speaker detection cancelled");
                 let collect = |exclude_overlap: bool| {
                     let mut selected = Vec::new();
                     for (frame, &mask) in labels.iter().enumerate() {

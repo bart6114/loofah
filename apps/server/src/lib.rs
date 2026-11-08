@@ -16,6 +16,8 @@ mod transcription_authorization;
 
 #[cfg(feature = "cpu-transcription")]
 mod transcription_cpu;
+#[cfg(feature = "cpu-transcription")]
+mod transcription_onnx;
 
 #[cfg(feature = "cpu-transcription")]
 mod transcription_host;

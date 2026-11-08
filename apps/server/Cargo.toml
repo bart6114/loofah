@@ -6,6 +6,11 @@ edition = "2024"
 [features]
 cpu-transcription = [
   "dep:hypr-transcribe-core",
+  "dep:hypr-transcribe-onnx",
+  "dep:hypr-audio-utils",
+  "dep:hound",
+  "dep:anyhow",
+  "dep:tempfile",
   "dep:hypr-transcribe-whisper-local",
   "dep:hypr-whisper",
   "dep:owhisper-interface",
@@ -15,15 +20,19 @@ cpu-transcription = [
 serde_json = { workspace = true }
 
 [dependencies]
+anyhow = { workspace = true, optional = true }
 async-stream = { workspace = true }
 axum = { workspace = true, features = ["json", "ws"] }
 clap = { workspace = true, features = ["derive"] }
 futures-util = { workspace = true }
+hound = { workspace = true, optional = true }
+hypr-audio-utils = { workspace = true, optional = true }
 hypr-loofah-core = { workspace = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-transcribe-core = { workspace = true, optional = true }
+hypr-transcribe-onnx = { workspace = true, optional = true }
 hypr-transcribe-whisper-local = { workspace = true, optional = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true }
@@ -34,6 +43,7 @@ reqwest = { workspace = true, features = ["json", "stream"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+tempfile = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }

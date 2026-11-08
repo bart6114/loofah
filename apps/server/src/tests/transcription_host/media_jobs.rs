@@ -24,6 +24,14 @@ async fn real_configured_media_replacement_uses_shared_cpu_and_original_member_s
     })
     .await
     .unwrap();
+    assert_real_media(fixture).await;
+    assert!(matches!(
+        resources.snapshot().phase,
+        hypr_transcribe_whisper_local::resources::ResourcePhase::Stopped
+    ));
+}
+
+async fn assert_real_media(fixture: Fixture) {
     let me = fixture.login("alice").await;
     let vault = &me.personal_vault_id;
     let context = fixture.service.vault(vault).await.unwrap();
@@ -159,8 +167,33 @@ async fn real_configured_media_replacement_uses_shared_cpu_and_original_member_s
             .is_file()
     );
     fixture.service.shutdown().await.unwrap();
-    assert!(matches!(
-        resources.snapshot().phase,
-        hypr_transcribe_whisper_local::resources::ResourcePhase::Stopped
-    ));
+}
+
+#[tokio::test]
+#[ignore = "requires explicit LOOFAH_ONNX_MODELS directory; real portable CPU batch and diarization"]
+async fn real_configured_onnx_media_preserves_shared_checked_publication() {
+    let root = std::path::PathBuf::from(std::env::var("LOOFAH_ONNX_MODELS").unwrap());
+    let scratch = tempfile::tempdir().unwrap();
+    let config = serde_json::from_value(json!({
+        "model":"operator-base", "model_path":root.join("batch"),
+        "onnx":{"streaming_model_path":root.join("streaming"), "diarizer_model_path":root.join("diarizer"), "snapshot_root":scratch.path()}
+    })).unwrap();
+    let fixture = Fixture::with_transcription(None, None, Some(config)).await;
+    tokio::time::timeout(Duration::from_secs(180), async {
+        loop {
+            let state = fixture.service.transcription_policy().availability;
+            if state == hypr_loofah_protocol::TranscriptionAvailability::Ready {
+                break;
+            }
+            assert_eq!(
+                state,
+                hypr_loofah_protocol::TranscriptionAvailability::Loading
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_real_media(fixture).await;
+    assert_eq!(std::fs::read_dir(scratch.path()).unwrap().count(), 0);
 }

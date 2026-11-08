@@ -11,8 +11,13 @@ use crate::{
 };
 
 pub(crate) struct TranscriptionHost {
-    engine: Arc<CpuTranscriptionHost>,
+    engine: Engine,
     limits: TranscriptionLimits,
+}
+
+enum Engine {
+    Whisper(Arc<CpuTranscriptionHost>),
+    Onnx(Arc<crate::transcription_onnx::OnnxHost>),
 }
 
 impl TranscriptionHost {
@@ -20,6 +25,12 @@ impl TranscriptionHost {
         config
             .validate()
             .map_err(|message| ApiError::new(ErrorCode::Validation, &message))?;
+        if config.onnx.is_some() {
+            return Ok(Arc::new(Self {
+                engine: Engine::Onnx(crate::transcription_onnx::OnnxHost::start(config)),
+                limits: config.limits(),
+            }));
+        }
         let engine = CpuTranscriptionHost::start(
             config.model.clone(),
             ModelSpec {
@@ -61,38 +72,56 @@ impl TranscriptionHost {
             }
         });
         Ok(Arc::new(Self {
-            engine,
+            engine: Engine::Whisper(engine),
             limits: config.limits(),
         }))
     }
 
     pub(crate) fn engine(&self) -> (Arc<dyn TranscriptionEngine>, TranscriptionLimits) {
-        (self.engine.clone(), self.limits)
+        let engine: Arc<dyn TranscriptionEngine> = match &self.engine {
+            Engine::Whisper(engine) => engine.clone(),
+            Engine::Onnx(engine) => engine.clone(),
+        };
+        (engine, self.limits)
     }
 
     pub(crate) fn live_engine(&self) -> Arc<dyn hypr_loofah_core::capture_live::CaptureLiveEngine> {
-        self.engine.clone()
+        match &self.engine {
+            Engine::Whisper(engine) => engine.clone(),
+            Engine::Onnx(engine) => engine.clone(),
+        }
     }
 
     pub(crate) fn policy(&self, model: &str) -> hypr_loofah_protocol::TranscriptionPolicy {
-        model_policy(
-            model,
-            self.engine.observer().snapshot(),
-            self.engine.accepting(),
-        )
+        match &self.engine {
+            Engine::Whisper(engine) => {
+                model_policy(model, engine.observer().snapshot(), engine.accepting())
+            }
+            Engine::Onnx(engine) => engine.policy(),
+        }
     }
 
     pub(crate) fn stop_admission(&self) {
-        self.engine.stop_admission();
+        match &self.engine {
+            Engine::Whisper(engine) => engine.stop_admission(),
+            Engine::Onnx(engine) => engine.stop_admission(),
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn observer(&self) -> hypr_transcribe_whisper_local::resources::ResourceObserver {
-        self.engine.observer()
+        match &self.engine {
+            Engine::Whisper(engine) => engine.observer(),
+            Engine::Onnx(_) => panic!("Whisper-only fixture observer"),
+        }
     }
 
     pub(crate) async fn shutdown(&self) {
-        let mut observer = self.engine.shutdown();
+        let engine = match &self.engine {
+            Engine::Whisper(engine) => engine,
+            Engine::Onnx(engine) => return engine.shutdown().await,
+        };
+        let mut observer = engine.shutdown();
         loop {
             if observer.snapshot().phase == ResourcePhase::Stopped {
                 return;

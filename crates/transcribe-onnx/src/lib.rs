@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, path::Path};
+use std::{collections::VecDeque, path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 use parakeet_rs::{
@@ -21,7 +21,18 @@ fn execution_config() -> ModelConfig {
         .with_inter_threads(1)
 }
 
-pub struct BatchSession(ParakeetTDT);
+fn cpu_config() -> ModelConfig {
+    execution_config().with_custom_configure(|builder| {
+        builder.with_execution_providers([hypr_onnx::ort::ep::CPU::default()
+            .build()
+            .error_on_failure()])
+    })
+}
+
+pub struct BatchSession {
+    engine: ParakeetTDT,
+    _model: Option<Arc<models::VerifiedModel>>,
+}
 
 pub struct Segment {
     pub text: String,
@@ -32,10 +43,21 @@ pub struct Segment {
 impl BatchSession {
     pub fn load() -> Result<Self> {
         let path = models::Model::Batch.verify()?;
-        Ok(Self(ParakeetTDT::from_pretrained(
-            path,
-            Some(execution_config()),
-        )?))
+        Ok(Self {
+            engine: ParakeetTDT::from_pretrained(path, Some(execution_config()))?,
+            _model: None,
+        })
+    }
+
+    pub fn load_verified(model: Arc<models::VerifiedModel>) -> Result<Self> {
+        let engine = ParakeetTDT::from_pretrained(
+            model.path_for(models::Model::Batch)?,
+            Some(cpu_config()),
+        )?;
+        Ok(Self {
+            engine,
+            _model: Some(model),
+        })
     }
 
     pub fn transcribe_file(&mut self, path: &Path) -> Result<(f64, Vec<Segment>)> {
@@ -47,7 +69,9 @@ impl BatchSession {
             "Speech input must be 16 kHz mono WAV"
         );
         drop(reader);
-        let result = self.0.transcribe_file(path, Some(TimestampMode::Words))?;
+        let result = self
+            .engine
+            .transcribe_file(path, Some(TimestampMode::Words))?;
         let segments = result
             .tokens
             .into_iter()
@@ -102,6 +126,7 @@ pub struct LiveSession {
     pending: VecDeque<f32>,
     utterance: Utterance,
     finished: bool,
+    _model: Option<Arc<models::VerifiedModel>>,
 }
 
 impl LiveSession {
@@ -116,6 +141,21 @@ impl LiveSession {
             Self::from_engine(ParakeetEOU::from_shared(&handle))?,
             Self::from_engine(ParakeetEOU::from_shared(&handle))?,
         ])
+    }
+
+    pub fn load_verified_pair(model: Arc<models::VerifiedModel>) -> Result<[Self; 2]> {
+        let handle = ParakeetEOUHandle::from_pretrained(
+            model.path_for(models::Model::Streaming)?,
+            Some(cpu_config()),
+        )?;
+        let mut pair = [
+            Self::from_engine(ParakeetEOU::from_shared(&handle))?,
+            Self::from_engine(ParakeetEOU::from_shared(&handle))?,
+        ];
+        for session in &mut pair {
+            session._model = Some(model.clone());
+        }
+        Ok(pair)
     }
 
     fn from_verified_path(path: &Path) -> Result<Self> {
@@ -134,6 +174,7 @@ impl LiveSession {
             pending: VecDeque::new(),
             utterance: Utterance::default(),
             finished: false,
+            _model: None,
         })
     }
 

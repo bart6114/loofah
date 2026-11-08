@@ -7806,7 +7806,9 @@ dependencies = [
 name = "loofah-server"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-stream",
+ "audio-utils",
  "axum",
  "base64 0.22.1",
  "clap",
@@ -7832,6 +7834,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "transcribe-core",
+ "transcribe-onnx",
  "transcribe-whisper-local",
  "url",
  "uuid",

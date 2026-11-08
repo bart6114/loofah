@@ -364,7 +364,27 @@ Authenticated batch APIs are below `/api/v1/vaults/{vault}`:
 | POST   | `/transcription/jobs/{job}/cancel` | Request cancellation; actual source/native work still drains.                                                                                                           |
 | POST   | `/transcription/jobs/{job}/resume` | Recheck and apply an existing retained result without rerunning inference.                                                                                              |
 
-Editors/owners submit and resume; reads remain private to the submitting member while they retain vault access. Accepted work survives the original login token's expiry/logout. Membership changes are checked during work and again before publication; membership loss cancels, and service stop interrupts. Publication requires the original recording and an absent canonical transcript. A pending capture must first bind and publish its recording through the capture publication operation above. Existing transcripts, append/replacement, diarization configuration and authenticated live captions require later explicit operations. Recording files, note content, metadata and attachments are preserved. Confirmed results can be retained without publication; output discarded by native cancellation is not guaranteed recoverable.
+Editors/owners submit and resume; reads remain private to the submitting member while they retain vault access. Accepted work survives the original login token's expiry/logout. Membership changes are checked during work and again before publication; membership loss cancels, and service stop interrupts. Publication requires the original recording and an absent canonical transcript. A pending capture must first bind and publish its recording through the capture publication operation above. Existing transcript replacement uses the checked media operations; append and live captions have their own capture contracts. Recording files, note content, metadata and attachments are preserved. Confirmed results can be retained without publication; output discarded by native cancellation is not guaranteed recoverable.
+
+An optional ONNX configuration selects the pinned Parakeet batch, Parakeet English streaming, and Reverb/TitaNet diarization graphs instead of Whisper. It uses the same Core jobs, source ownership, canonical mapper and checked publication. Provision the exact assets from `crates/transcribe-onnx/src/models.rs` in three explicit directories; the server never downloads them or reads a desktop model cache. `model_path` is the batch directory in this mode; omit the Whisper-only size and digest fields:
+
+```json
+{
+  "transcription": {
+    "model": "team-speech",
+    "model_path": "/srv/loofah-models/batch",
+    "onnx": {
+      "streaming_model_path": "/srv/loofah-models/streaming",
+      "diarizer_model_path": "/srv/loofah-models/diarizer",
+      "snapshot_root": "/var/cache/loofah/model-snapshots"
+    }
+  }
+}
+```
+
+Create the snapshot directory with service-only access before startup. Each asset is copied into a private temporary directory and checked against its committed size and SHA-256 before loading. Sessions retain those snapshots through actual native completion; replacing the operator files cannot change admitted work. ONNX currently permits one combined live/batch workload. Batch recognizes the pinned model's 25 European languages; live accepts English or automatic English only. Keyword hints and multiple language hints are rejected before admission. Batch diarization labels mixed audio or the system channel and preserves the microphone's self-channel identity. Live uses the model's end-of-utterance text and interpolated word timing; diarization is a batch stage. Cancellation interrupts between bounded inference chunks/windows and waits for any current native call to return. Model errors expose unavailable status without server paths or native error details.
+
+The configured ONNX tests require an explicit `LOOFAH_ONNX_MODELS` root with `batch`, `streaming` and `diarizer` subdirectories; they do not download assets. Linux real-model qualification is tracked separately from Whisper and native desktop checks.
 
 Shutdown stops admission and requests cancellation early, retains vault/source ownership until actual Core/native/mapping work drains, then destroys the model. A response deadline reports pending work; it does not authorize process exit or resource reuse.
 

@@ -24,8 +24,12 @@ pub struct Config {
 pub struct TranscriptionConfig {
     pub model: String,
     pub model_path: PathBuf,
+    #[serde(default)]
     pub model_size_bytes: u64,
+    #[serde(default)]
     pub model_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub onnx: Option<OnnxConfig>,
     #[serde(default = "one_workload")]
     pub workload_groups: usize,
     #[serde(default = "default_transcription_jobs")]
@@ -34,6 +38,14 @@ pub struct TranscriptionConfig {
     pub max_queued: usize,
     #[serde(default = "default_transcription_audio")]
     pub private_audio_bytes: u64,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OnnxConfig {
+    pub streaming_model_path: PathBuf,
+    pub diarizer_model_path: PathBuf,
+    pub snapshot_root: PathBuf,
 }
 
 fn one_workload() -> usize {
@@ -57,9 +69,25 @@ impl TranscriptionConfig {
             || self.model.chars().any(char::is_control)
             || !self.model_path.is_absolute()
             || self.model_path.to_str().is_none()
-            || self.model_size_bytes == 0
-            || self.model_size_bytes > 16 * 1024 * 1024 * 1024
-            || !hypr_loofah_protocol::is_transcription_sha256(&self.model_sha256)
+            || match &self.onnx {
+                None => {
+                    self.model_size_bytes == 0
+                        || self.model_size_bytes > 16 * 1024 * 1024 * 1024
+                        || !hypr_loofah_protocol::is_transcription_sha256(&self.model_sha256)
+                }
+                Some(onnx) => {
+                    self.model_size_bytes != 0
+                        || !self.model_sha256.is_empty()
+                        || [
+                            &onnx.streaming_model_path,
+                            &onnx.diarizer_model_path,
+                            &onnx.snapshot_root,
+                        ]
+                        .iter()
+                        .any(|path| !path.is_absolute() || path.to_str().is_none())
+                        || self.workload_groups != 1
+                }
+            }
             || !(1..=8).contains(&self.workload_groups)
             || !(1..=256).contains(&self.max_jobs)
             || !(1..=16).contains(&self.max_queued)
