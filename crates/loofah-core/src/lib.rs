@@ -23,4 +23,5 @@ mod note_editor;
 mod operations;
 mod session_cleanup;
 mod session_summaries;
+mod tag_editing;
 mod tasks;

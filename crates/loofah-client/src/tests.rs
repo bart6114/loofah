@@ -1,5 +1,6 @@
 mod attachments;
 mod downloads;
+mod tag_editing;
 mod uploads;
 use std::{
     collections::HashMap,

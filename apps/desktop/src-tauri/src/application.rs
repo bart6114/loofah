@@ -271,6 +271,48 @@ pub async fn application_tags<R: tauri::Runtime>(
     context(&app)?.tags().await
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn application_tag_suggestions<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::TagSuggestionsRequest,
+) -> Result<Vec<String>, ApplicationError> {
+    context(&app)?.tag_suggestions(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_ensure_tag<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::EnsureTagRequest,
+) -> Result<hypr_loofah_protocol::TagItem, ApplicationError> {
+    context(&app)?.ensure_tag(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_accept_tag_suggestion<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    input: hypr_loofah_protocol::TagSuggestionActionRequest,
+) -> Result<hypr_loofah_protocol::MetadataSaveOutcome, ApplicationError> {
+    context(&app)?
+        .accept_tag_suggestion(&session_id, input)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_dismiss_tag_suggestion<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    input: hypr_loofah_protocol::TagSuggestionActionRequest,
+) -> Result<hypr_loofah_protocol::MetadataSaveOutcome, ApplicationError> {
+    context(&app)?
+        .dismiss_tag_suggestion(&session_id, input)
+        .await
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
 pub struct ApplicationChanged {
     pub event: hypr_loofah_protocol::ChangeEvent,
@@ -637,6 +679,89 @@ mod tests {
                 .unwrap_err()
                 .code,
             ErrorCode::Unavailable
+        );
+    }
+
+    #[tokio::test]
+    async fn local_tag_editing_uses_shared_checked_operations_without_login() {
+        use hypr_loofah_protocol::{
+            EnsureTagRequest, MetadataSaveOutcome, TagSuggestionActionRequest,
+            TagSuggestionsRequest,
+        };
+        let vault = tempfile::tempdir().unwrap();
+        let store = Arc::new(hypr_vault_write::SessionStore::new(vault.path().into()));
+        let meta=serde_json::from_value(serde_json::json!({"id":"note","title":"Keep title","created_at":"2026-11-08T00:00:00Z","tags":["in-use"],"tag_suggestions":{"items":["import/audio","other"],"dismissed":[]}})).unwrap();
+        store.create_note_session(&meta, "Keep note").await.unwrap();
+        let context = Arc::new(VaultContext::new(
+            "local:test".into(),
+            store,
+            hypr_loofah_core::startup::StartupState::new(Some(vault.path())),
+            Arc::new(hypr_loofah_core::settings::ConfigState::load_or_default(
+                vault.path(),
+            )),
+            Arc::new(hypr_loofah_core::search::SearchService::default()),
+        ));
+        let before = context.read_metadata("note").await.unwrap();
+        let app = tauri::test::mock_builder()
+            .manage(context)
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        assert_eq!(
+            application_ensure_tag(
+                app.handle().clone(),
+                EnsureTagRequest {
+                    name: " #IMPORT/manual ".into()
+                }
+            )
+            .await
+            .unwrap()
+            .id,
+            "import/manual"
+        );
+        assert_eq!(
+            application_tag_suggestions(
+                app.handle().clone(),
+                TagSuggestionsRequest {
+                    query: "".into(),
+                    excluded: vec!["in-use".into()],
+                    limit: 8
+                }
+            )
+            .await
+            .unwrap(),
+            ["import/manual"]
+        );
+        let input = TagSuggestionActionRequest {
+            name: "import/audio".into(),
+            expected_revision: before.revision,
+        };
+        let MetadataSaveOutcome::Saved(saved) =
+            application_accept_tag_suggestion(app.handle().clone(), "note".into(), input.clone())
+                .await
+                .unwrap()
+        else {
+            panic!("saved")
+        };
+        assert_eq!(saved.meta.tags, ["import/audio", "in-use"]);
+        assert!(
+            matches!(application_dismiss_tag_suggestion(app.handle().clone(),"note".into(),input).await.unwrap(),MetadataSaveOutcome::Conflict(current) if current==saved)
+        );
+        let MetadataSaveOutcome::Saved(dismissed) = application_dismiss_tag_suggestion(
+            app.handle().clone(),
+            "note".into(),
+            TagSuggestionActionRequest {
+                name: "other".into(),
+                expected_revision: saved.revision,
+            },
+        )
+        .await
+        .unwrap() else {
+            panic!("dismissed")
+        };
+        assert_eq!(dismissed.meta.tag_suggestions.unwrap().dismissed, ["other"]);
+        assert_eq!(
+            std::fs::read_to_string(vault.path().join("sessions/note/notes.md")).unwrap(),
+            "Keep note"
         );
     }
 }

@@ -7,6 +7,27 @@ use super::{TagItem, normalize_tag_name};
 use crate::{SessionStore, StoreError, metadata_revision::validate_metadata_size, paths};
 
 impl SessionStore {
+    pub async fn ensure_tag_checked(&self, name: &str) -> Result<TagItem, StoreError> {
+        let name = normalize_tag_name(name)
+            .ok_or_else(|| StoreError::Io("tag name cannot be empty".into()))?;
+        let store = self.clone();
+        tokio::spawn(async move {
+            let snapshot = store.lock_snapshot().await;
+            store.ensure_ready()?;
+            let (bytes, tag) = store.checked_tag_registration(&name).await?;
+            if let Some(bytes) = bytes {
+                store
+                    .write_file_locked(&snapshot._guard, paths::tags_path(), bytes)
+                    .await?;
+                store.index_upsert_tag(&tag);
+                store.notify_index_changed(crate::IndexEntity::Tags, vec![tag.id.clone()]);
+            }
+            Ok(tag)
+        })
+        .await
+        .map_err(|error| StoreError::Io(format!("tag registration worker failed: {error}")))?
+    }
+
     pub async fn accept_tag_suggestion_with_recovery(
         &self,
         operation_root: Option<&Path>,
@@ -75,7 +96,8 @@ impl SessionStore {
             validate_metadata_size(&meta, store.content_limits.metadata_bytes)?;
             let metadata = store.checked_tag_metadata(&meta, accept).await?;
             let registration = if accept {
-                store.checked_tag_registration(&name).await?
+                let (bytes, tag) = store.checked_tag_registration(&name).await?;
+                bytes.map(|bytes| (bytes, tag))
             } else {
                 None
             };
@@ -179,7 +201,7 @@ impl SessionStore {
     async fn checked_tag_registration(
         &self,
         name: &str,
-    ) -> Result<Option<(Vec<u8>, TagItem)>, StoreError> {
+    ) -> Result<(Option<Vec<u8>>, TagItem), StoreError> {
         let path = self.vault_base.join(paths::tags_path());
         let name = name.to_owned();
         let limit = self.content_limits.metadata_bytes;
@@ -197,6 +219,7 @@ impl SessionStore {
                     StoreError::Serialize("Tag registry entries must be an array".into())
                 })?;
             let mut ids = std::collections::HashSet::new();
+            let mut existing = None;
             for raw in tags.iter() {
                 let tag: TagItem = serde_json::from_value(raw.clone())
                     .map_err(|error| StoreError::Serialize(error.to_string()))?;
@@ -205,9 +228,12 @@ impl SessionStore {
                         "Duplicate tag registry identifier".into(),
                     ));
                 }
+                if tag.id == name {
+                    existing = Some(tag);
+                }
             }
-            if ids.contains(&name) {
-                return Ok(None);
+            if let Some(tag) = existing {
+                return Ok((None, tag));
             }
             let tag = TagItem {
                 id: name.clone(),
@@ -222,7 +248,7 @@ impl SessionStore {
             if bytes.len() > limit {
                 return Err(registry_limit());
             }
-            Ok(Some((bytes, tag)))
+            Ok((Some(bytes), tag))
         })
         .await
         .map_err(|error| StoreError::Io(format!("tag registration worker failed: {error}")))?

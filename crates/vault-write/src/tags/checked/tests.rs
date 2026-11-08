@@ -30,6 +30,65 @@ async fn baseline(store: &SessionStore) -> hypr_loofah_protocol::MetadataSnapsho
 }
 
 #[tokio::test]
+async fn checked_ensure_is_lossless_idempotent_and_serializes_concurrent_registration() {
+    let (root, store) = fixture().await;
+    let metadata = std::fs::read(root.path().join("sessions/note/_meta.json")).unwrap();
+    let (first, second) = tokio::join!(
+        store.ensure_tag_checked(" #IMPORT/audio "),
+        store.ensure_tag_checked("import/audio")
+    );
+    assert_eq!(first.unwrap(), second.unwrap());
+    let path = root.path().join("tags.json");
+    let bytes = std::fs::read(&path).unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(value["tags"].as_array().unwrap().len(), 2);
+    assert_eq!(value["future"], json!({"keep":[true,2]}));
+    assert_eq!(value["tags"][0]["future"], json!({"keep":3}));
+    assert_eq!(
+        store.ensure_tag_checked("IMPORT/audio").await.unwrap().id,
+        "import/audio"
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    assert_eq!(
+        std::fs::read(root.path().join("sessions/note/_meta.json")).unwrap(),
+        metadata
+    );
+}
+
+#[tokio::test]
+async fn checked_ensure_reuses_original_entry_and_refuses_corrupt_oversize_or_unready_sources() {
+    let (root, store) = fixture().await;
+    let path = root.path().join("tags.json");
+    let original =
+        br#"{"future":true,"tags":[{"id":"existing","name":"Original display","future":123}]}"#;
+    std::fs::write(&path, original).unwrap();
+    assert_eq!(
+        store.ensure_tag_checked("EXISTING").await.unwrap().name,
+        "Original display"
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    for bytes in [
+        b"not json".as_slice(),
+        br#"{"tags":[],"future":{"x":1,"x":2}}"#,
+    ] {
+        std::fs::write(&path, bytes).unwrap();
+        assert!(store.ensure_tag_checked("new").await.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+    std::fs::write(&path, original).unwrap();
+    let mut bounded = store.clone();
+    bounded.content_limits.metadata_bytes = original.len();
+    assert!(matches!(
+        bounded.ensure_tag_checked("new").await,
+        Err(StoreError::ResourceLimit(_))
+    ));
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    store.set_startup_pending(true);
+    assert!(store.ensure_tag_checked("new").await.is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+}
+
+#[tokio::test]
 async fn checked_accept_preserves_unknown_registry_and_metadata_fields_tasks_and_attachments() {
     let (root, store) = fixture().await;
     let before = baseline(&store).await;

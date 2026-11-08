@@ -152,6 +152,24 @@ pub enum RemoteOperation {
     Tags {
         vault_id: String,
     },
+    TagSuggestions {
+        vault_id: String,
+        input: TagSuggestionsRequest,
+    },
+    EnsureTag {
+        vault_id: String,
+        input: EnsureTagRequest,
+    },
+    AcceptTagSuggestion {
+        vault_id: String,
+        session_id: String,
+        input: TagSuggestionActionRequest,
+    },
+    DismissTagSuggestion {
+        vault_id: String,
+        session_id: String,
+        input: TagSuggestionActionRequest,
+    },
     CreateSession {
         vault_id: String,
         input: CreateSessionRequest,
@@ -257,6 +275,8 @@ pub enum RemoteReply {
     TasksSave(TasksSaveOutcome),
     People(Vec<PersonItem>),
     Tags(Vec<TagItem>),
+    TagSuggestions(Vec<String>),
+    Tag(TagItem),
     Note(NoteSnapshot),
     NoteEditor(NoteEditorSnapshot),
     NoteEditorSave(NoteEditorSaveOutcome),
@@ -281,14 +301,18 @@ impl RemoteClient {
     ) -> Result<RemoteReply> {
         if uuid::Uuid::parse_str(request_id).is_err() {
             let mut error = invalid("A UUID request ID is required");
-            if matches!(operation, RemoteOperation::DeleteEmptySession { .. }) {
+            if matches!(operation, RemoteOperation::DeleteEmptySession { .. })
+                || tag_write(&operation)
+            {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
         }
         if self.stop.is_cancelled() || cancel.is_cancelled() {
             let mut error = cancelled();
-            if matches!(operation, RemoteOperation::DeleteEmptySession { .. }) {
+            if matches!(operation, RemoteOperation::DeleteEmptySession { .. })
+                || tag_write(&operation)
+            {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
@@ -296,6 +320,10 @@ impl RemoteClient {
         let required_feature = match &operation {
             RemoteOperation::DeleteEmptySession { .. } => Some("session_cleanup"),
             RemoteOperation::SessionSummaries { .. } => Some("session_summaries"),
+            RemoteOperation::TagSuggestions { .. }
+            | RemoteOperation::EnsureTag { .. }
+            | RemoteOperation::AcceptTagSuggestion { .. }
+            | RemoteOperation::DismissTagSuggestion { .. } => Some("tag_editing"),
             RemoteOperation::ProcessingPolicy { .. }
             | RemoteOperation::ProcessingSettings { .. }
             | RemoteOperation::SaveProcessingSettings { .. } => Some("processing_settings"),
@@ -325,6 +353,10 @@ impl RemoteClient {
             let description = match operation {
                 RemoteOperation::DeleteEmptySession { .. } => "conditional session cleanup",
                 RemoteOperation::SessionSummaries { .. } => "session summaries",
+                RemoteOperation::TagSuggestions { .. }
+                | RemoteOperation::EnsureTag { .. }
+                | RemoteOperation::AcceptTagSuggestion { .. }
+                | RemoteOperation::DismissTagSuggestion { .. } => "tag editing",
                 RemoteOperation::ProcessingPolicy { .. }
                 | RemoteOperation::ProcessingSettings { .. }
                 | RemoteOperation::SaveProcessingSettings { .. } => "processing settings",
@@ -358,6 +390,9 @@ impl RemoteClient {
                     | RemoteOperation::CancelProcessingJob { .. }
                     | RemoteOperation::DeleteRecording { .. }
                     | RemoteOperation::RemoveAttachment { .. }
+                    | RemoteOperation::EnsureTag { .. }
+                    | RemoteOperation::AcceptTagSuggestion { .. }
+                    | RemoteOperation::DismissTagSuggestion { .. }
             ) {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
@@ -417,6 +452,29 @@ impl RemoteClient {
             return Err(error);
         }
         let mut query: Vec<(&str, String)> = Vec::new();
+        let tag_validation = match &operation {
+            RemoteOperation::TagSuggestions { input, .. } => {
+                validate_tag_suggestions_request(input)
+            }
+            RemoteOperation::EnsureTag { input, .. } => validate_tag_name(&input.name),
+            RemoteOperation::AcceptTagSuggestion {
+                session_id, input, ..
+            }
+            | RemoteOperation::DismissTagSuggestion {
+                session_id, input, ..
+            } => validate_session_id(session_id)
+                .map_err(|_| "Invalid session identifier")
+                .and_then(|_| validate_tag_suggestion_action(input)),
+            _ => Ok(()),
+        };
+        if let Err(message) = tag_validation {
+            let mut error = invalid(message);
+            error.request_id = Some(request_id.to_owned());
+            if !matches!(operation, RemoteOperation::TagSuggestions { .. }) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            return Err(error);
+        }
         if let RemoteOperation::DeleteEmptySession { input, .. } = &operation {
             validate_delete_empty_session_request(input).map_err(|message| {
                 let mut error = invalid(message);
@@ -718,6 +776,45 @@ impl RemoteClient {
                 (Method::GET, vec!["vaults", vault_id, "people"])
             }
             RemoteOperation::Tags { vault_id } => (Method::GET, vec!["vaults", vault_id, "tags"]),
+            RemoteOperation::TagSuggestions { vault_id, input } => {
+                body = Some(value(input)?);
+                (
+                    Method::POST,
+                    vec!["vaults", vault_id, "tags", "suggestions", "query"],
+                )
+            }
+            RemoteOperation::EnsureTag { vault_id, input } => {
+                body = Some(value(input)?);
+                (Method::POST, vec!["vaults", vault_id, "tags", "ensure"])
+            }
+            RemoteOperation::AcceptTagSuggestion {
+                vault_id,
+                session_id,
+                input,
+            }
+            | RemoteOperation::DismissTagSuggestion {
+                vault_id,
+                session_id,
+                input,
+            } => {
+                body = Some(value(input)?);
+                let action = if matches!(operation, RemoteOperation::AcceptTagSuggestion { .. }) {
+                    "accept"
+                } else {
+                    "dismiss"
+                };
+                (
+                    Method::POST,
+                    vec![
+                        "vaults",
+                        vault_id,
+                        "sessions",
+                        session_id,
+                        "tag-suggestions",
+                        action,
+                    ],
+                )
+            }
             RemoteOperation::Note {
                 vault_id,
                 session_id,
@@ -854,16 +951,26 @@ impl RemoteClient {
             operation,
             RemoteOperation::Search { .. }
                 | RemoteOperation::SessionSummaries { .. }
+                | RemoteOperation::TagSuggestions { .. }
                 | RemoteOperation::AgentList { .. }
                 | RemoteOperation::AgentSearch { .. }
         ) && method != Method::GET;
         let mut url = self.endpoint(&segments)?;
         url.query_pairs_mut().extend_pairs(query);
         let access = tokio::select! {
-            _ = cancel.cancelled() => return Err(cancelled()),
-            _ = self.stop.cancelled() => return Err(cancelled()),
-            result = self.access_token() => result?,
-        };
+            _ = cancel.cancelled() => Err(cancelled()),
+            _ = self.stop.cancelled() => Err(cancelled()),
+            result = self.access_token() => result,
+        }
+        .map_err(|mut error| {
+            if tag_write(&operation) {
+                error.request_id.get_or_insert_with(|| request_id.into());
+                error
+                    .mutation_outcome
+                    .get_or_insert(MutationOutcome::NotCommitted);
+            }
+            error
+        })?;
         let mut request = self
             .http
             .request(method, url)
@@ -902,11 +1009,24 @@ impl RemoteClient {
                 ));
             }
             if status == reqwest::StatusCode::CONFLICT
-                && matches!(operation, RemoteOperation::SaveMetadata { .. })
+                && matches!(
+                    operation,
+                    RemoteOperation::SaveMetadata { .. }
+                        | RemoteOperation::AcceptTagSuggestion { .. }
+                        | RemoteOperation::DismissTagSuggestion { .. }
+                )
             {
-                return Ok(RemoteReply::MetadataSave(
-                    json_body(response, 16 * 1024 * 1024).await?,
-                ));
+                let outcome: MetadataSaveOutcome = json_body(response, 16 * 1024 * 1024).await?;
+                if let RemoteOperation::AcceptTagSuggestion { session_id, .. }
+                | RemoteOperation::DismissTagSuggestion { session_id, .. } = &operation
+                {
+                    let (MetadataSaveOutcome::Saved(snapshot)
+                    | MetadataSaveOutcome::Conflict(snapshot)) = &outcome;
+                    if snapshot.meta.id != *session_id {
+                        return Err(unavailable());
+                    }
+                }
+                return Ok(RemoteReply::MetadataSave(outcome));
             }
             if status == reqwest::StatusCode::CONFLICT
                 && matches!(operation, RemoteOperation::ReplaceTasks { .. })
@@ -1090,6 +1210,37 @@ impl RemoteClient {
                 RemoteOperation::Tags { .. } => {
                     RemoteReply::Tags(json_body(response, 1024 * 1024).await?)
                 }
+                RemoteOperation::TagSuggestions { input, .. } => {
+                    let names: Vec<String> =
+                        json_body(response, TAG_SUGGESTIONS_RESPONSE_LIMIT).await?;
+                    if names.len() > input.limit as usize
+                        || names.iter().map(String::len).sum::<usize>() > TAG_SUGGESTIONS_TEXT_LIMIT
+                        || names
+                            .windows(2)
+                            .any(|pair| pair[0].encode_utf16().cmp(pair[1].encode_utf16()).is_ge())
+                        || names.iter().any(|name| input.excluded.contains(name))
+                    {
+                        return Err(unavailable());
+                    }
+                    RemoteReply::TagSuggestions(names)
+                }
+                RemoteOperation::EnsureTag { input, .. } => {
+                    let tag: TagItem = json_body(response, 16 * 1024 * 1024).await?;
+                    if Some(tag.id.clone()) != normalize_tag_name(&input.name) {
+                        return Err(unavailable());
+                    }
+                    RemoteReply::Tag(tag)
+                }
+                RemoteOperation::AcceptTagSuggestion { session_id, .. }
+                | RemoteOperation::DismissTagSuggestion { session_id, .. } => {
+                    let result: MetadataSaveOutcome = json_body(response, 16 * 1024 * 1024).await?;
+                    let (MetadataSaveOutcome::Saved(snapshot)
+                    | MetadataSaveOutcome::Conflict(snapshot)) = &result;
+                    if snapshot.meta.id != session_id {
+                        return Err(unavailable());
+                    }
+                    RemoteReply::MetadataSave(result)
+                }
                 RemoteOperation::SaveNote { .. } => {
                     RemoteReply::NoteSave(json_body(response, 8 * 1024 * 1024).await?)
                 }
@@ -1147,6 +1298,15 @@ impl RemoteClient {
 
 fn value(input: &impl Serialize) -> Result<Value> {
     serde_json::to_value(input).map_err(|_| invalid("Cannot encode request"))
+}
+
+fn tag_write(operation: &RemoteOperation) -> bool {
+    matches!(
+        operation,
+        RemoteOperation::EnsureTag { .. }
+            | RemoteOperation::AcceptTagSuggestion { .. }
+            | RemoteOperation::DismissTagSuggestion { .. }
+    )
 }
 
 fn validate_summary_reply(rows: &[SessionSummary], input: &SessionSummaryQuery) -> Result<()> {
