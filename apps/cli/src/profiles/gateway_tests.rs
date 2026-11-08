@@ -51,7 +51,7 @@ impl Fixture {
         let mut profile = lease.profile().await;
         profile.member_id = Some("alice".into());
         profile.vault_id = Some("private".into());
-        profile.credential_accounts = vec!["fixture".into()];
+        profile.credential_accounts = vec!["a".repeat(64)];
         lease.save(profile).await.unwrap();
         let state = Arc::new(Mutex::new(State {
             member: "alice".into(),
