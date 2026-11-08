@@ -22,7 +22,10 @@ pub use drafts::{
 pub use events::{ConnectionState, RemoteEvent, Subscription};
 #[cfg(feature = "os-credentials")]
 pub use os_credentials::OsCredentials;
-pub use profiles::{ConnectionProfile, ConnectionProfiles, ProfileLease};
+pub use profiles::{
+    ConnectionProfile, ConnectionProfiles, DesktopStartupSaveOutcome, DesktopStartupSelection,
+    DesktopStartupSnapshot, ProfileLease, SaveDesktopStartupRequest,
+};
 pub use requests::{RemoteOperation, RemoteReply};
 pub use submissions::{JobSubmissionReceipt, JobSubmissions};
 pub use uploads::AttachmentUpload;

@@ -13,6 +13,12 @@ use tokio::sync::Mutex;
 
 use crate::{CredentialFuture, CredentialStore, Result, failure};
 
+mod desktop;
+pub use desktop::{
+    DesktopStartupSaveOutcome, DesktopStartupSelection, DesktopStartupSnapshot,
+    SaveDesktopStartupRequest,
+};
+
 const RECORD_LIMIT: usize = 32 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -333,23 +339,9 @@ impl CredentialStore for LeasedCredentials {
 }
 
 fn read_file(path: &Path) -> Result<Option<LoadedProfile>> {
-    check_file(path)?;
-    use std::io::Read;
-    let file = match File::open(path) {
-        Ok(file) => file,
-        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(cause) => return Err(io_error(cause)),
+    let Some(raw) = read_record(path, RECORD_LIMIT)? else {
+        return Ok(None);
     };
-    if file.metadata().map_err(io_error)?.len() > RECORD_LIMIT as u64 {
-        return Err(damaged());
-    }
-    let mut raw = Vec::new();
-    file.take(RECORD_LIMIT as u64 + 1)
-        .read_to_end(&mut raw)
-        .map_err(io_error)?;
-    if raw.len() > RECORD_LIMIT {
-        return Err(damaged());
-    }
     let value: serde_json::Value = serde_json::from_slice(&raw).map_err(|_| damaged())?;
     if value
         .get("schema_version")
@@ -361,9 +353,30 @@ fn read_file(path: &Path) -> Result<Option<LoadedProfile>> {
             "This saved connection profile requires a different Loofah version. Its file was kept.",
         ));
     }
-    let stored: StoredProfile = serde_json::from_value(value).map_err(|_| damaged())?;
+    let stored: StoredProfile = serde_json::from_slice(&raw).map_err(|_| damaged())?;
     validate_profile(&stored.profile).map_err(|_| damaged())?;
     Ok(Some(LoadedProfile { stored, raw }))
+}
+
+fn read_record(path: &Path, limit: usize) -> Result<Option<Vec<u8>>> {
+    check_file(path)?;
+    use std::io::Read;
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(cause) => return Err(io_error(cause)),
+    };
+    if file.metadata().map_err(io_error)?.len() > limit as u64 {
+        return Err(damaged());
+    }
+    let mut raw = Vec::new();
+    file.take(limit as u64 + 1)
+        .read_to_end(&mut raw)
+        .map_err(io_error)?;
+    if raw.len() > limit {
+        return Err(damaged());
+    }
+    Ok(Some(raw))
 }
 fn validate_name(name: &str) -> Result<()> {
     if name.is_empty()
