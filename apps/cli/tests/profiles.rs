@@ -14,6 +14,7 @@ fn run(root: &std::path::Path, args: &[&str]) -> Output {
     }
     command
         .env("LOOFAH_CLI_PROFILE_DIR", root.join("profiles"))
+        .env("LOOFAH_GLOBAL_BASE", root.join("local-global"))
         .stdin(Stdio::null())
         .args(args)
         .output()
@@ -41,11 +42,8 @@ fn profile_management_and_remote_failures_never_initialize_a_local_vault() {
     assert_eq!(json["error"]["code"], "not_found");
     assert!(!root.path().join("profiles").exists());
 
-    for command in ["doctor", "init", "import", "transcribe"] {
-        let mut args = vec!["--json", "--profile", "missing", command];
-        if command == "import" || command == "transcribe" {
-            args.push("missing");
-        }
+    for command in ["doctor", "init"] {
+        let args = vec!["--json", "--profile", "missing", command];
         let output = run(root.path(), &args);
         assert_eq!(output.status.code(), Some(1), "{output:?}");
         let json: Value = serde_json::from_slice(&output.stderr).unwrap();
@@ -57,6 +55,19 @@ fn profile_management_and_remote_failures_never_initialize_a_local_vault() {
         );
         assert!(!root.path().join("profiles").exists());
     }
+    for command in ["import", "transcribe"] {
+        let output = run(
+            root.path(),
+            &["--json", "--profile", "missing", command, "missing"],
+        );
+        assert_eq!(output.status.code(), Some(2), "{output:?}");
+        let json: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(json["error"]["code"], "not_found");
+        assert_eq!(json["error"]["message"], "Saved server profile not found");
+        assert!(!root.path().join("profiles").exists());
+    }
+    assert!(!root.path().join("local-global").exists());
+    assert!(!root.path().join("local-vault").exists());
 }
 
 #[test]
