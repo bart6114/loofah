@@ -127,19 +127,26 @@ impl TitleGenerator {
                 if !finished {
                     return Err(ProcessingJobFailure::ProviderFailed);
                 }
-                let candidate = trim_candidate(&output);
-                if candidate.is_empty() || candidate == "<EMPTY>" {
-                    return Ok(None);
-                }
-                if candidate.chars().any(char::is_control) {
-                    return Err(ProcessingJobFailure::InvalidOutput);
-                }
-                Ok(Some(candidate.to_owned()))
+                normalize_candidate(&output)
             })
             .await
             .map_err(|_| ProcessingJobFailure::Interrupted)?
         })
     }
+}
+
+pub(super) fn normalize_candidate(output: &str) -> Result<Option<String>, ProcessingJobFailure> {
+    if output.len() > MAX_OUTPUT_BYTES {
+        return Err(ProcessingJobFailure::InvalidOutput);
+    }
+    let candidate = trim_candidate(output);
+    if candidate.is_empty() || candidate == "<EMPTY>" {
+        return Ok(None);
+    }
+    if candidate.len() > MAX_TITLE_BYTES || candidate.chars().any(char::is_control) {
+        return Err(ProcessingJobFailure::InvalidOutput);
+    }
+    Ok(Some(candidate.to_owned()))
 }
 
 fn trim_candidate(value: &str) -> &str {

@@ -6,6 +6,8 @@ use hypr_loofah_protocol::{DocumentSaveOutcome, SaveDocumentRequest};
 use hypr_vault_write::SessionStore;
 use tokio::sync::{RwLock, Semaphore};
 
+mod title;
+
 struct InterruptedOnce(AtomicBool);
 impl JobAuthorizer for InterruptedOnce {
     fn authorize<'a>(

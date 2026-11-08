@@ -183,7 +183,22 @@ async fn execute(
         .progress(id.into(), ProcessingPhase::Generating)
         .await?;
     let cancel = CancellationToken::new();
-    let mut generation = generator.generate(work.clone(), cancel.clone());
+    let mut generation: JobFuture<'_, Result<PreparedGeneration, ProcessingJobFailure>> =
+        if work.request.title_policy == TitlePolicy::GenerateIfEmpty {
+            generator.generate_prepared(work.clone(), cancel.clone())
+        } else {
+            let work = work.clone();
+            let cancel = cancel.clone();
+            Box::pin(async move {
+                generator
+                    .generate(work, cancel)
+                    .await
+                    .map(|document| PreparedGeneration {
+                        document,
+                        title: None,
+                    })
+            })
+        };
     let mut changes = journal.0.events.subscribe(None);
     let mut checks = tokio::time::interval(std::time::Duration::from_secs(1));
     checks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -212,15 +227,18 @@ async fn execute(
         Err(completion) => {
             cancel.cancel();
             // Keep the worker permit and owned I/O alive until the generator has actually stopped.
-            if let Ok(output) = generation.await
-                && result::validate_output(&output).is_ok()
+            if let Ok(prepared) = generation.await
+                && result::validate_output(&prepared.document).is_ok()
             {
-                journal.retain_result(id.into(), output).await?;
+                journal.retain_result(id.into(), prepared.document).await?;
             }
             return Ok(completion);
         }
     };
-    let output = match output {
+    let PreparedGeneration {
+        document: output,
+        title,
+    } = match output {
         Ok(output) => output,
         Err(failure) => {
             return Ok(if cancelled(journal, id).await? {
@@ -249,7 +267,7 @@ async fn execute(
     }
     let input = hypr_loofah_protocol::SaveDocumentRequest {
         markdown: output.markdown,
-        expected_revision: work.request.expected_revision,
+        expected_revision: work.request.expected_revision.clone(),
     };
     let applied = match &work.request.target {
         DocumentTarget::Summary => {
@@ -268,6 +286,28 @@ async fn execute(
                 .await
         }
     };
+    if work.request.title_policy == TitlePolicy::GenerateIfEmpty
+        && let Ok(hypr_loofah_protocol::DocumentSaveOutcome::Saved(snapshot)) = &applied
+    {
+        title_stage::checkpoint("body_saved");
+        let revision = snapshot.revision.clone();
+        journal
+            .mark_body_applied(id.into(), revision.clone())
+            .await?;
+        drop(applied);
+        drop(grant);
+        title_stage::checkpoint("body_confirmed");
+        title_worker::TitleExecution {
+            context,
+            journal,
+            authorizer,
+            stop,
+            id,
+        }
+        .run(&work, &revision, title)
+        .await;
+        return Ok(JobCompletion::Succeeded);
+    }
     drop(grant);
     Ok(completion_from_apply(applied))
 }

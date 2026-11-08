@@ -8,7 +8,7 @@ use std::{
 
 use hypr_loofah_protocol::{
     ApplicationError, Change, DocumentTarget, ErrorCode, MutationOutcome, ProcessingJobFailure,
-    ProcessingJobSnapshot, ProcessingJobState, ProcessingPhase, SummaryJobRequest,
+    ProcessingJobSnapshot, ProcessingJobState, ProcessingPhase, SummaryJobRequest, TitlePolicy,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -27,6 +27,8 @@ pub mod providers;
 mod result;
 pub mod source;
 pub mod title_generation;
+mod title_stage;
+mod title_worker;
 mod worker;
 pub use prepared::{JobGenerator, PreparedGeneration, TitleRunner};
 pub use result::GeneratedDocument;
@@ -66,6 +68,8 @@ struct Record {
     request_id: String,
     request: SummaryJobRequest,
     snapshot: ProcessingJobSnapshot,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    body_applied: Option<title_stage::BodyApplied>,
 }
 
 #[derive(Clone, Copy)]
@@ -181,7 +185,11 @@ impl JobJournal {
             }
             let timestamp = now();
             let record = Record {
-                schema_version: 1,
+                schema_version: if request.title_policy == TitlePolicy::Preserve {
+                    1
+                } else {
+                    2
+                },
                 vault_id: state.vault_id.clone(),
                 namespace,
                 request_id,
@@ -196,6 +204,7 @@ impl JobJournal {
                     updated_at: timestamp,
                 },
                 request,
+                body_applied: None,
             };
             state.persist(&record)?;
             state.ids.insert(record.snapshot.id.clone(), key.clone());
@@ -283,7 +292,8 @@ impl JobJournal {
             if !matches!(
                 record.snapshot.state,
                 ProcessingJobState::Running | ProcessingJobState::Cancelling
-            ) {
+            ) || (record.body_applied.is_some() && phase != ProcessingPhase::Applying)
+            {
                 return Err(transition());
             }
             if record.snapshot.phase == Some(phase) {
@@ -312,6 +322,11 @@ impl JobJournal {
         let id = parse_uuid(&id)?;
         self.run(move |state, events| {
             let mut record = state.record(&id)?.clone();
+            let result = if record.body_applied.is_some() {
+                JobCompletion::Succeeded
+            } else {
+                result
+            };
             let (next, failure) = match result {
                 JobCompletion::Succeeded => (ProcessingJobState::Succeeded, None),
                 JobCompletion::Conflict => (ProcessingJobState::Conflict, None),
@@ -395,9 +410,17 @@ impl State {
             .cloned()
             .collect();
         for mut record in active {
-            record.snapshot.state = ProcessingJobState::Interrupted;
+            let confirmed = record.body_applied.is_some();
+            if confirmed {
+                title_stage::interrupt(self, &record);
+            }
+            record.snapshot.state = if confirmed {
+                ProcessingJobState::Succeeded
+            } else {
+                ProcessingJobState::Interrupted
+            };
             record.snapshot.phase = None;
-            record.snapshot.failure = Some(ProcessingJobFailure::Interrupted);
+            record.snapshot.failure = (!confirmed).then_some(ProcessingJobFailure::Interrupted);
             self.update(record, events)?;
         }
         Ok(())
@@ -482,7 +505,10 @@ fn validate_record(
     filename_key: &str,
     record: &Record,
 ) -> Result<(), ApplicationError> {
-    if record.schema_version != 1 {
+    if !matches!(
+        (record.schema_version, record.request.title_policy),
+        (1, TitlePolicy::Preserve) | (2, TitlePolicy::GenerateIfEmpty)
+    ) {
         return Err(rejected(
             ErrorCode::IncompatibleVersion,
             "Unsupported processing job storage version",
@@ -507,6 +533,20 @@ fn validate_record(
         return Err(storage());
     }
     let snapshot = &record.snapshot;
+    if let Some(body) = &record.body_applied
+        && (record.schema_version != 2
+            || !title_stage::valid_revision(&body.revision)
+            || !matches!(
+                snapshot.state,
+                ProcessingJobState::Running
+                    | ProcessingJobState::Cancelling
+                    | ProcessingJobState::Succeeded
+            )
+            || (snapshot.state != ProcessingJobState::Succeeded
+                && snapshot.phase != Some(ProcessingPhase::Applying)))
+    {
+        return Err(storage());
+    }
     let active = matches!(
         snapshot.state,
         ProcessingJobState::Running | ProcessingJobState::Cancelling
