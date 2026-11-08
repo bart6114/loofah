@@ -19,7 +19,8 @@ use tokio::sync::{Semaphore, watch};
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    DeviceCaptureObserver, PreparedDeviceCapture, SpoolRecordingSink, sink::SinkCompletion,
+    DeviceCaptureObserver, PreparedDeviceCapture, SpoolRecordingSink,
+    sink::{SinkCompletion, observation_ms},
 };
 
 const MAX_RETAINED: usize = 8;
@@ -50,6 +51,21 @@ impl DeviceHostPhase {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DeviceObservationDurability {
+    NotObserved,
+    Pending {
+        observed_at_ms: u64,
+    },
+    Durable {
+        observed_at_ms: u64,
+    },
+    Failed {
+        observed_at_ms: Option<u64>,
+        reason: String,
+    },
+}
+
 #[derive(Clone, Debug)]
 pub struct DeviceHostSnapshot {
     pub key: DeviceCaptureKey,
@@ -57,6 +73,7 @@ pub struct DeviceHostSnapshot {
     pub identity: CaptureIdentity,
     pub phase: DeviceHostPhase,
     pub completion: DeviceCaptureCompletionSnapshot,
+    pub first_audio_observation: DeviceObservationDurability,
     pub durable_prefix: Option<DeviceFinishReceipt>,
     pub end: Option<DeviceRecordingEnd>,
     pub error: Option<String>,
@@ -114,6 +131,7 @@ struct Entry {
     dispatched: AtomicBool,
     stop_worker: AtomicBool,
     observing: AtomicBool,
+    observation_worker: AtomicBool,
     settled: CancellationToken,
     prepared: Mutex<Option<PreparedState>>,
 }
@@ -210,6 +228,7 @@ impl DeviceCaptureHost {
             identity: intent.identity.clone(),
             phase: DeviceHostPhase::Preparing,
             completion: Default::default(),
+            first_audio_observation: DeviceObservationDurability::NotObserved,
             durable_prefix: None,
             end: None,
             error: None,
@@ -221,6 +240,7 @@ impl DeviceCaptureHost {
             dispatched: AtomicBool::new(false),
             stop_worker: AtomicBool::new(false),
             observing: AtomicBool::new(false),
+            observation_worker: AtomicBool::new(false),
             settled: CancellationToken::new(),
             prepared: Mutex::new(None),
         });
@@ -238,6 +258,16 @@ impl DeviceCaptureHost {
                         DeviceHostPhase::Pending | DeviceHostPhase::Failed
                     )
                 })
+                || state
+                    .entries
+                    .values()
+                    .filter(|entry| {
+                        let state = entry.status.borrow();
+                        state.completion.resources_released_observed_at.is_some()
+                            && !state.phase.is_terminal()
+                    })
+                    .count()
+                    >= 2
             {
                 return Err(DeviceSinkError(
                     "Device recording admission is unavailable".into(),
@@ -477,6 +507,7 @@ impl DeviceCaptureHost {
             sink: prepared.sink.clone(),
             completion: prepared.completion.clone(),
         });
+        prepared.sink.require_observation();
         if entry.stop.is_cancelled() {
             prepared
                 .sink
@@ -530,7 +561,9 @@ impl DeviceCaptureHost {
             }
             Ok(()) => {
                 self.update(entry, |state| {
-                    state.phase = if entry.stop.is_cancelled() {
+                    state.phase = if entry.stop.is_cancelled()
+                        || state.completion.resources_released_observed_at.is_some()
+                    {
                         DeviceHostPhase::Stopping
                     } else {
                         DeviceHostPhase::Capturing
@@ -554,6 +587,30 @@ impl DeviceCaptureHost {
         });
     }
 
+    fn ensure_observation_worker(
+        &self,
+        entry: &Entry,
+        sink: &Arc<SpoolRecordingSink>,
+        at: std::time::SystemTime,
+    ) {
+        if entry.observation_worker.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let sink = sink.clone();
+        self.executor.spawn(async move {
+            if std::panic::AssertUnwindSafe(sink.record_observation(at))
+                .catch_unwind()
+                .await
+                .is_err()
+            {
+                sink.observation_failed(
+                    observation_ms(at).ok(),
+                    "Capture timing task failed before confirming durability".into(),
+                );
+            }
+        });
+    }
+
     async fn observe(self: &Arc<Self>, entry: Arc<Entry>) {
         let prepared = entry
             .prepared
@@ -566,6 +623,7 @@ impl DeviceCaptureHost {
             return;
         };
         let mut finish = sink.completion();
+        let mut observation = sink.observation();
         let mut completion_open = true;
         loop {
             if entry.settled.is_cancelled() {
@@ -573,10 +631,44 @@ impl DeviceCaptureHost {
             }
             let resources = completion.current();
             let finalizer = finish.borrow_and_update().clone();
+            if let Some(at) = resources.first_admitted_audio_observed_at {
+                self.ensure_observation_worker(&entry, &sink, at);
+            }
+            let timing = observation.borrow_and_update().clone();
+            let mut timing_error = match &timing {
+                DeviceObservationDurability::Failed { reason, .. } => Some(reason.clone()),
+                DeviceObservationDurability::Durable { observed_at_ms }
+                    if resources
+                        .first_admitted_audio_observed_at
+                        .and_then(|at| observation_ms(at).ok())
+                        != Some(*observed_at_ms) =>
+                {
+                    Some(
+                        "Durable capture timing does not match the original producer observation"
+                            .into(),
+                    )
+                }
+                _ => None,
+            };
+            let timing_ready = match (resources.first_admitted_audio_observed_at, &timing) {
+                (None, DeviceObservationDurability::NotObserved) => true,
+                (Some(at), DeviceObservationDurability::Durable { observed_at_ms }) => {
+                    observation_ms(at).ok() == Some(*observed_at_ms)
+                }
+                _ => false,
+            };
             self.update(&entry, |state| {
                 state.completion = resources.clone();
                 state.durable_prefix = sink.durable_prefix();
+                state.first_audio_observation = timing;
+                if let Some(error) = &timing_error {
+                    state.error = Some(error.clone());
+                }
             });
+            if timing_error.is_some() {
+                entry.stop.cancel();
+                self.ensure_stop_worker(&entry);
+            }
             if resources.supervisor_ended && resources.resources_released_observed_at.is_some() {
                 match finalizer {
                     SinkCompletion::Finished { end, receipt } => {
@@ -584,8 +676,20 @@ impl DeviceCaptureHost {
                             state.end = Some(end);
                             state.durable_prefix = Some(receipt);
                         });
-                        self.retire(&entry, DeviceHostPhase::Finished, resources.failure);
-                        return;
+                        if receipt.frames != 0
+                            && resources.first_admitted_audio_observed_at.is_none()
+                        {
+                            timing_error = Some("Recorded audio has no first-admitted producer observation; no timestamp was guessed".into());
+                        }
+                        if let Some(error) = timing_error {
+                            self.retire(&entry, DeviceHostPhase::Failed, Some(error));
+                            return;
+                        }
+                        if timing_ready {
+                            self.retire(&entry, DeviceHostPhase::Finished, resources.failure);
+                            return;
+                        }
+                        self.update(&entry, |state| state.phase = DeviceHostPhase::Stopping);
                     }
                     SinkCompletion::Failed {
                         reason,
@@ -606,10 +710,13 @@ impl DeviceCaptureHost {
                 changed = completion.changed(), if completion_open => {
                     if changed.is_err() {
                         completion_open = false;
-                        self.update(&entry, |state| { if !entry.settled.is_cancelled() { state.phase = DeviceHostPhase::Pending; state.error = Some("Capture completion channel closed without resource/finalizer proof".into()); } });
+                        if !resources.supervisor_ended || resources.resources_released_observed_at.is_none() {
+                            self.update(&entry, |state| { if !entry.settled.is_cancelled() { state.phase = DeviceHostPhase::Pending; state.error = Some("Capture completion channel closed without resource/finalizer proof".into()); } });
+                        }
                     }
                 }
                 changed = finish.changed() => { if changed.is_err() { std::future::pending::<()>().await; } }
+                changed = observation.changed() => { if changed.is_err() { std::future::pending::<()>().await; } }
             }
         }
     }

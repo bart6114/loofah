@@ -23,10 +23,12 @@ use tokio::sync::{Semaphore, watch};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Default)]
-struct Observer(Mutex<Vec<ScopedDeviceCaptureEvent>>);
+struct Observer(Mutex<Vec<ScopedDeviceCaptureEvent>>, AtomicBool);
 impl DeviceCaptureObserver for Observer {
     fn emit(&self, event: ScopedDeviceCaptureEvent) {
-        self.0.lock().unwrap().push(event);
+        if !self.1.load(Ordering::Acquire) {
+            self.0.lock().unwrap().push(event);
+        }
     }
 }
 fn intent() -> CaptureStartIntent {
@@ -922,6 +924,568 @@ async fn late_start_results_cannot_resurrect_a_retired_capture_ticket() {
     );
     assert_eq!(ticket.current().phase, DeviceHostPhase::Finished);
     assert_eq!(host.state.lock().unwrap().history.len(), history_len);
+    root.stop(None);
+    handle.await.unwrap();
+}
+
+async fn managed_sink(
+    host: &Arc<DeviceCaptureHost>,
+    ticket: &mut DeviceCaptureTicket,
+) -> Arc<SpoolRecordingSink> {
+    until(ticket, |state| state.phase == DeviceHostPhase::Capturing).await;
+    let entry = host
+        .state
+        .lock()
+        .unwrap()
+        .entries
+        .get(&ticket.key)
+        .unwrap()
+        .clone();
+    let sink = entry
+        .prepared
+        .lock()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .sink
+        .clone();
+    sink
+}
+fn digest(bytes: impl AsRef<[u8]>) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes.as_ref())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+fn fixture_pcm() -> Vec<u8> {
+    (0..1_920)
+        .flat_map(|_| [0.125_f32.to_le_bytes(), (-0.25_f32).to_le_bytes()].concat())
+        .collect()
+}
+fn capture_directory(root: &std::path::Path, identity: &CaptureIdentity) -> PathBuf {
+    root.join(digest(serde_json::to_vec(&identity.scope).unwrap()))
+        .join(&identity.capture_id)
+}
+fn timing_fault(
+    code: hypr_loofah_protocol::ErrorCode,
+    outcome: hypr_loofah_protocol::MutationOutcome,
+    retryable: bool,
+) -> hypr_loofah_protocol::ApplicationError {
+    hypr_loofah_protocol::ApplicationError {
+        code,
+        mutation_outcome: Some(outcome),
+        retryable,
+        ..hypr_loofah_client::failure(code, "fixture timing storage failure")
+    }
+}
+
+#[tokio::test]
+async fn actual_root_frame_persists_the_original_observation_as_v2_and_reopens_exact_audio_hashes()
+{
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    let (temp, spool) = spool().await;
+    let path = temp.path().canonicalize().unwrap().join("device");
+    let (host, input, _gate, root, handle) = root_host(
+        spool.clone(),
+        Arc::new(Observer::default()),
+        Config::default(),
+    )
+    .await;
+    let intent = intent();
+    let identity = intent.identity.clone();
+    let mut ticket = host.start(intent).unwrap();
+    let sink = managed_sink(&host, &mut ticket).await;
+    input.send(frame()).await.unwrap();
+    let state = until(&mut ticket, |state| {
+        matches!(
+            &state.first_audio_observation,
+            DeviceObservationDurability::Durable { .. }
+        )
+    })
+    .await;
+    let expected = super::super::sink::observation_ms(
+        state.completion.first_admitted_audio_observed_at.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        state.first_audio_observation,
+        DeviceObservationDurability::Durable {
+            observed_at_ms: expected
+        }
+    );
+    assert!(
+        host.wait_shutdown(Duration::from_secs(5))
+            .await
+            .unwrap()
+            .safe_to_exit
+    );
+    let writer = spool.resume(identity.clone()).await.unwrap();
+    let snapshot = writer.snapshot().await.unwrap();
+    assert_eq!(snapshot.first_admitted_audio_observed_at_ms, Some(expected));
+    assert_eq!(
+        snapshot.seal.as_ref().unwrap().source_sha256,
+        digest(fixture_pcm())
+    );
+    let original_chunk = writer.read_chunk(0).await.unwrap();
+    assert_eq!(original_chunk.bytes, fixture_pcm());
+    root.stop(None);
+    handle.await.unwrap();
+    drop((writer, sink, ticket, host, spool));
+    let reopened = CaptureSpool::open(path.clone(), CaptureSpoolLimits::default())
+        .await
+        .unwrap();
+    let writer = reopened.resume(identity.clone()).await.unwrap();
+    assert_eq!(writer.snapshot().await.unwrap(), snapshot);
+    assert_eq!(
+        writer.read_chunk(0).await.unwrap().descriptor,
+        original_chunk.descriptor
+    );
+    let value: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(capture_directory(&path, &identity).join("manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(value["schema_version"], 2);
+}
+
+#[tokio::test]
+async fn pending_observation_outlives_deadline_detached_observer_and_dropped_callers_without_blocking_audio_drain()
+ {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    let (temp, spool) = spool().await;
+    let path = temp.path().canonicalize().unwrap().join("device");
+    let observer = Arc::new(Observer::default());
+    let (host, input, _gate, root, handle) =
+        root_host(spool.clone(), observer.clone(), Config::default()).await;
+    let intent = intent();
+    let identity = intent.identity.clone();
+    let mut ticket = host.start(intent).unwrap();
+    let sink = managed_sink(&host, &mut ticket).await;
+    let gate = Arc::new(Semaphore::new(0));
+    sink.observation_test.lock().unwrap().gate = Some(gate.clone());
+    input.send(frame()).await.unwrap();
+    until(&mut ticket, |state| {
+        matches!(
+            &state.first_audio_observation,
+            DeviceObservationDurability::Pending { .. }
+        )
+    })
+    .await;
+    host.request_shutdown();
+    let state = until(&mut ticket, |state| {
+        state.completion.supervisor_ended
+            && state.completion.resources_released_observed_at.is_some()
+    })
+    .await;
+    let expected = super::super::sink::observation_ms(
+        state.completion.first_admitted_audio_observed_at.unwrap(),
+    )
+    .unwrap();
+    assert!(
+        !host
+            .wait_shutdown(Duration::from_millis(10))
+            .await
+            .unwrap()
+            .safe_to_exit
+    );
+    assert!(
+        !observer
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| matches!(event.event, DeviceCaptureEvent::Sealed(_)))
+    );
+    let snapshot = spool
+        .resume(identity.clone())
+        .await
+        .unwrap()
+        .snapshot()
+        .await
+        .unwrap();
+    assert!(snapshot.seal.is_some());
+    assert_eq!(snapshot.frames, 1_920);
+    assert_eq!(snapshot.first_admitted_audio_observed_at_ms, None);
+    observer.1.store(true, Ordering::Release);
+    root.stop(None);
+    handle.await.unwrap();
+    drop((input, sink, ticket, host, spool));
+    assert_eq!(
+        CaptureSpool::open(path.clone(), CaptureSpoolLimits::default())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        hypr_loofah_protocol::ErrorCode::Unavailable
+    );
+    gate.add_permits(1);
+    let reopened = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match CaptureSpool::open(path.clone(), CaptureSpoolLimits::default()).await {
+                Ok(spool) => break spool,
+                Err(error) if error.code == hypr_loofah_protocol::ErrorCode::Unavailable => {
+                    tokio::time::sleep(Duration::from_millis(10)).await
+                }
+                Err(error) => panic!("{error}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let restored = reopened
+        .resume(identity)
+        .await
+        .unwrap()
+        .snapshot()
+        .await
+        .unwrap();
+    assert_eq!(restored.first_admitted_audio_observed_at_ms, Some(expected));
+    assert_eq!(restored.seal, snapshot.seal);
+}
+
+#[tokio::test]
+async fn observation_busy_partial_write_and_lost_ack_reconfirm_the_same_value_before_durable_success()
+ {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    use hypr_loofah_protocol::{ErrorCode, MutationOutcome};
+    for scenario in ["busy", "partial", "lost-ack"] {
+        let (temp, spool) = spool().await;
+        let path = temp.path().canonicalize().unwrap().join("device");
+        let (host, input, _gate, root, handle) = root_host(
+            spool.clone(),
+            Arc::new(Observer::default()),
+            Config::default(),
+        )
+        .await;
+        let intent = intent();
+        let identity = intent.identity.clone();
+        let mut ticket = host.start(intent).unwrap();
+        let sink = managed_sink(&host, &mut ticket).await;
+        let partial = capture_directory(&path, &identity).join(".fixture-partial-observation.tmp");
+        if scenario == "partial" {
+            std::fs::write(&partial, b"{\"schema_version\":2,").unwrap();
+        }
+        {
+            let mut faults = sink.observation_test.lock().unwrap();
+            if scenario == "lost-ack" {
+                faults.after = Some(timing_fault(
+                    ErrorCode::Unavailable,
+                    MutationOutcome::Unknown,
+                    false,
+                ));
+            } else {
+                faults.before = Some(timing_fault(
+                    ErrorCode::Unavailable,
+                    if scenario == "busy" {
+                        MutationOutcome::NotCommitted
+                    } else {
+                        MutationOutcome::Unknown
+                    },
+                    scenario == "busy",
+                ));
+            }
+        }
+        input.send(frame()).await.unwrap();
+        let state = until(&mut ticket, |state| {
+            matches!(
+                &state.first_audio_observation,
+                DeviceObservationDurability::Durable { .. }
+            )
+        })
+        .await;
+        let expected = super::super::sink::observation_ms(
+            state.completion.first_admitted_audio_observed_at.unwrap(),
+        )
+        .unwrap();
+        assert!(
+            sink.observation_attempts.load(Ordering::Acquire) >= 2,
+            "{scenario}"
+        );
+        assert!(
+            host.wait_shutdown(Duration::from_secs(5))
+                .await
+                .unwrap()
+                .safe_to_exit
+        );
+        let snapshot = spool
+            .resume(identity)
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap();
+        assert_eq!(snapshot.first_admitted_audio_observed_at_ms, Some(expected));
+        assert_eq!(snapshot.seal.unwrap().source_sha256, digest(fixture_pcm()));
+        if scenario == "partial" {
+            assert_eq!(std::fs::read(partial).unwrap(), b"{\"schema_version\":2,");
+        }
+        root.stop(None);
+        handle.await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn terminal_observation_failure_stops_and_drains_audio_but_never_reports_durable_capture_success()
+ {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    let (_temp, spool) = spool().await;
+    let observer = Arc::new(Observer::default());
+    let (host, input, _gate, root, handle) =
+        root_host(spool.clone(), observer.clone(), Config::default()).await;
+    let intent = intent();
+    let identity = intent.identity.clone();
+    let mut ticket = host.start(intent).unwrap();
+    let sink = managed_sink(&host, &mut ticket).await;
+    sink.observation_test.lock().unwrap().before = Some(timing_fault(
+        hypr_loofah_protocol::ErrorCode::ResourceLimit,
+        hypr_loofah_protocol::MutationOutcome::NotCommitted,
+        false,
+    ));
+    input.send(frame()).await.unwrap();
+    let state = until(&mut ticket, |state| state.phase == DeviceHostPhase::Failed).await;
+    assert!(state.completion.resources_released_observed_at.is_some());
+    assert!(state.completion.supervisor_ended);
+    assert!(matches!(
+        &state.first_audio_observation,
+        DeviceObservationDurability::Failed { .. }
+    ));
+    assert_eq!(state.durable_prefix.unwrap().frames, 1_920);
+    let report = host.wait_shutdown(Duration::from_secs(1)).await.unwrap();
+    assert!(!report.safe_to_exit);
+    assert_eq!(report.failures.len(), 1);
+    let snapshot = spool
+        .resume(identity)
+        .await
+        .unwrap()
+        .snapshot()
+        .await
+        .unwrap();
+    assert_eq!(snapshot.frames, 1_920);
+    assert!(snapshot.seal.is_some());
+    assert_eq!(snapshot.first_admitted_audio_observed_at_ms, None);
+    assert!(
+        !observer
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| matches!(event.event, DeviceCaptureEvent::Sealed(_)))
+    );
+    root.stop(None);
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn interrupted_nonzero_capture_waits_for_the_same_durable_observation_without_sealing_audio()
+{
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    let (_temp, spool) = spool().await;
+    let (host, input, _gate, root, handle) = root_host(
+        spool.clone(),
+        Arc::new(Observer::default()),
+        Config::default(),
+    )
+    .await;
+    let intent = intent();
+    let identity = intent.identity.clone();
+    let mut ticket = host.start(intent).unwrap();
+    let sink = managed_sink(&host, &mut ticket).await;
+    let gate = Arc::new(Semaphore::new(0));
+    sink.observation_test.lock().unwrap().gate = Some(gate.clone());
+    input.send(frame()).await.unwrap();
+    until(&mut ticket, |state| {
+        matches!(
+            &state.first_audio_observation,
+            DeviceObservationDurability::Pending { .. }
+        )
+    })
+    .await;
+    drop(input);
+    until(&mut ticket, |state| {
+        state.completion.supervisor_ended
+            && state.completion.resources_released_observed_at.is_some()
+    })
+    .await;
+    assert!(
+        !host
+            .wait_shutdown(Duration::from_millis(10))
+            .await
+            .unwrap()
+            .safe_to_exit
+    );
+    gate.add_permits(1);
+    let state = until(&mut ticket, |state| {
+        state.phase == DeviceHostPhase::Finished
+    })
+    .await;
+    assert_eq!(state.end, Some(DeviceRecordingEnd::Interrupted));
+    assert!(matches!(
+        &state.first_audio_observation,
+        DeviceObservationDurability::Durable { .. }
+    ));
+    assert!(
+        host.wait_shutdown(Duration::from_secs(1))
+            .await
+            .unwrap()
+            .safe_to_exit
+    );
+    let snapshot = spool
+        .resume(identity)
+        .await
+        .unwrap()
+        .snapshot()
+        .await
+        .unwrap();
+    assert!(snapshot.first_admitted_audio_observed_at_ms.is_some());
+    assert!(snapshot.seal.is_none());
+    root.stop(None);
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn zero_audio_capture_never_invents_or_persists_an_observation() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    let (_temp, spool) = spool().await;
+    let (host, _input, _gate, root, handle) = root_host(
+        spool.clone(),
+        Arc::new(Observer::default()),
+        Config::default(),
+    )
+    .await;
+    let intent = intent();
+    let identity = intent.identity.clone();
+    let mut ticket = host.start(intent).unwrap();
+    let sink = managed_sink(&host, &mut ticket).await;
+    assert!(
+        host.wait_shutdown(Duration::from_secs(5))
+            .await
+            .unwrap()
+            .safe_to_exit
+    );
+    let state = ticket.current();
+    assert_eq!(state.phase, DeviceHostPhase::Finished);
+    assert_eq!(
+        state.first_audio_observation,
+        DeviceObservationDurability::NotObserved
+    );
+    assert_eq!(state.completion.first_admitted_audio_observed_at, None);
+    assert_eq!(sink.observation_attempts.load(Ordering::Acquire), 0);
+    let snapshot = spool
+        .resume(identity)
+        .await
+        .unwrap()
+        .snapshot()
+        .await
+        .unwrap();
+    assert_eq!(snapshot.frames, 0);
+    assert_eq!(snapshot.first_admitted_audio_observed_at_ms, None);
+    root.stop(None);
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn observation_conversion_rejects_pre_epoch_and_unrepresentable_values_without_guessing_now()
+{
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    use std::time::SystemTime;
+    assert_eq!(
+        super::super::sink::observation_ms(SystemTime::UNIX_EPOCH).unwrap(),
+        0
+    );
+    assert!(
+        super::super::sink::observation_ms(SystemTime::UNIX_EPOCH - Duration::from_millis(1))
+            .is_err()
+    );
+    if let Some(at) = SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(u64::MAX / 1_000 + 1))
+    {
+        assert!(super::super::sink::observation_ms(at).is_err());
+    }
+    let (_temp, spool) = spool().await;
+    let identity = intent().identity;
+    let prepared = PreparedDeviceCapture::prepare(
+        spool.clone(),
+        identity.clone(),
+        CaptureFormat::stereo(),
+        Arc::new(Observer::default()),
+    )
+    .await
+    .unwrap();
+    prepared
+        .sink
+        .record_observation(SystemTime::UNIX_EPOCH - Duration::from_millis(1))
+        .await;
+    assert!(matches!(
+        &*prepared.sink.observation().borrow(),
+        DeviceObservationDurability::Failed {
+            observed_at_ms: None,
+            ..
+        }
+    ));
+    assert_eq!(
+        spool.inventory(identity.scope).await.unwrap()[0].first_admitted_audio_observed_at_ms,
+        None
+    );
+}
+
+#[tokio::test]
+async fn repeated_ambiguous_observation_acknowledgments_never_promote_visible_metadata_to_durable_success()
+ {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    use hypr_loofah_protocol::{ErrorCode, MutationOutcome};
+    let (_temp, spool) = spool().await;
+    let observer = Arc::new(Observer::default());
+    let (host, input, _gate, root, handle) =
+        root_host(spool.clone(), observer.clone(), Config::default()).await;
+    let intent = intent();
+    let identity = intent.identity.clone();
+    let mut ticket = host.start(intent).unwrap();
+    let sink = managed_sink(&host, &mut ticket).await;
+    {
+        let mut faults = sink.observation_test.lock().unwrap();
+        faults.before = Some(timing_fault(
+            ErrorCode::Unavailable,
+            MutationOutcome::Unknown,
+            false,
+        ));
+        faults.after = Some(timing_fault(
+            ErrorCode::Unavailable,
+            MutationOutcome::Unknown,
+            false,
+        ));
+    }
+    input.send(frame()).await.unwrap();
+    let state = until(&mut ticket, |state| state.phase == DeviceHostPhase::Failed).await;
+    assert!(matches!(
+        &state.first_audio_observation,
+        DeviceObservationDurability::Failed { .. }
+    ));
+    assert_eq!(sink.observation_attempts.load(Ordering::Acquire), 2);
+    assert!(state.completion.resources_released_observed_at.is_some());
+    assert!(state.completion.supervisor_ended);
+    assert!(
+        !host
+            .wait_shutdown(Duration::from_secs(1))
+            .await
+            .unwrap()
+            .safe_to_exit
+    );
+    let snapshot = spool
+        .resume(identity)
+        .await
+        .unwrap()
+        .snapshot()
+        .await
+        .unwrap();
+    assert!(snapshot.first_admitted_audio_observed_at_ms.is_some());
+    assert_eq!(snapshot.seal.unwrap().source_sha256, digest(fixture_pcm()));
+    assert!(
+        !observer
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| matches!(event.event, DeviceCaptureEvent::Sealed(_)))
+    );
     root.stop(None);
     handle.await.unwrap();
 }
