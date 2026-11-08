@@ -429,7 +429,11 @@ async fn cancelled_waiter_does_not_release_the_receipt_write_lock_or_io_capacity
     caller.abort();
     let _ = caller.await;
     assert_eq!(store.io.available_permits(), 1);
-    let lock_file = File::open(root.join(scope_key("scope")).join(".lock")).unwrap();
+    let lock_file = File::options()
+        .read(true)
+        .write(true)
+        .open(root.join(scope_key("scope")).join(".lock"))
+        .unwrap();
     assert!(matches!(
         lock_file.try_lock(),
         Err(std::fs::TryLockError::WouldBlock)

@@ -230,7 +230,7 @@ impl TranscriptionSubmissions {
                 if changed {
                     let bytes = serde_json::to_string(&stored).map_err(|_| damaged())?;
                     if bytes.len() as u64 > MAX_BYTES {
-                        return Err(damaged());
+                        return Err(failure(ErrorCode::ResourceLimit, "Device transcription request storage exceeds its byte limit. Saved requests were retained."));
                     }
                     check_file(&path)?;
                     hypr_storage::fs::atomic_write(&path, &bytes).map_err(io_error)?;
