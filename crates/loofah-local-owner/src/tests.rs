@@ -655,11 +655,89 @@ fn cancelled_blob_copy_retains_original_owner_until_actual_queued_copy_finishes(
         dropped_receive
             .recv_timeout(Duration::from_secs(5))
             .unwrap();
-        assert!(matches!(
-            VaultLease::try_acquire_existing(&fixture.vault).unwrap(),
-            LeaseAttempt::Acquired(_)
-        ));
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            match VaultLease::try_acquire_existing(&fixture.vault).unwrap() {
+                LeaseAttempt::Acquired(_) => break,
+                LeaseAttempt::Busy => {
+                    // A concurrent fork can retain a CLOEXEC descriptor until exec completes.
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "owner outlived actual copy"
+                    );
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            }
+        }
     });
+}
+
+#[cfg(unix)]
+#[test]
+fn concurrent_pre_exec_can_retain_a_dropped_owners_cloexec_lease() {
+    use std::{
+        io::{Read, Write},
+        os::{
+            fd::AsRawFd,
+            unix::{net::UnixStream, process::CommandExt},
+        },
+        process::Command,
+    };
+
+    let fixture = Fixture::new();
+    let lease = fixture.lease();
+    let (mut parent, child) = UnixStream::pair().unwrap();
+    parent
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let spawned = std::thread::spawn(move || {
+        let mut command = Command::new("/usr/bin/true");
+        // Only async-signal-safe syscalls run between fork and exec.
+        unsafe {
+            command.pre_exec(move || {
+                let fd = child.as_raw_fd();
+                let byte = [1u8];
+                if libc::write(fd, byte.as_ptr().cast(), 1) != 1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                let mut poll = libc::pollfd {
+                    fd,
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                if libc::poll(&mut poll, 1, 10_000) != 1 {
+                    return Err(std::io::Error::from_raw_os_error(libc::ETIMEDOUT));
+                }
+                let mut release = [0u8];
+                if libc::read(fd, release.as_mut_ptr().cast(), 1) != 1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        command.status()
+    });
+    let mut entered = [0u8];
+    parent.read_exact(&mut entered).unwrap();
+    drop(lease);
+    let inherited = VaultLease::try_acquire_existing(&fixture.vault).unwrap();
+    parent.write_all(&[1]).unwrap();
+    assert!(spawned.join().unwrap().unwrap().success());
+    assert!(matches!(inherited, LeaseAttempt::Busy));
+    drop(inherited);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        match VaultLease::try_acquire_existing(&fixture.vault).unwrap() {
+            LeaseAttempt::Acquired(_) => break,
+            LeaseAttempt::Busy => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "inherited owner was not released"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
 }
 
 #[cfg(feature = "core")]
