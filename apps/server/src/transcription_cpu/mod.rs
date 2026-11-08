@@ -69,6 +69,10 @@ impl CpuTranscriptionHost {
         !self.failed.load(Ordering::Acquire) && !self.admission.is_stopped()
     }
 
+    pub(crate) fn capacity_exhausted(&self) -> bool {
+        self.admission.is_busy()
+    }
+
     pub(crate) fn observer(&self) -> ResourceObserver {
         self.resources.observer()
     }

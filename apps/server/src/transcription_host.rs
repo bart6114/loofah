@@ -100,9 +100,12 @@ impl TranscriptionHost {
 
     pub(crate) fn policy(&self, model: &str) -> hypr_loofah_protocol::TranscriptionPolicy {
         match &self.engine {
-            Engine::Whisper(engine) => {
-                model_policy(model, engine.observer().snapshot(), engine.accepting())
-            }
+            Engine::Whisper(engine) => model_policy(
+                model,
+                engine.observer().snapshot(),
+                engine.accepting(),
+                engine.capacity_exhausted(),
+            ),
             Engine::Onnx(engine) => engine.policy(),
         }
     }
@@ -152,15 +155,14 @@ fn model_policy(
     model: &str,
     snapshot: hypr_transcribe_whisper_local::resources::ResourceSnapshot,
     accepting: bool,
+    capacity_exhausted: bool,
 ) -> hypr_loofah_protocol::TranscriptionPolicy {
     use hypr_loofah_protocol::TranscriptionAvailability as State;
     let availability = match snapshot.phase {
         ResourcePhase::Stopping | ResourcePhase::Stopped => State::Stopping,
         _ if !accepting => State::Unavailable,
         ResourcePhase::Loading => State::Loading,
-        ResourcePhase::Ready if snapshot.batch_groups > 0 || snapshot.live_groups > 0 => {
-            State::InUse
-        }
+        ResourcePhase::Ready if capacity_exhausted => State::InUse,
         ResourcePhase::Ready => State::Ready,
         ResourcePhase::Failed(_) => State::Unavailable,
     };
@@ -176,6 +178,23 @@ mod policy_tests {
     use super::*;
     use hypr_loofah_protocol::TranscriptionAvailability as State;
     use hypr_transcribe_whisper_local::resources::{ResourceError, ResourceSnapshot};
+    #[test]
+    fn model_policy_keeps_reserved_capacity_visible_during_batch_work() {
+        let policy = model_policy(
+            "alias",
+            ResourceSnapshot {
+                phase: ResourcePhase::Ready,
+                batch_groups: 1,
+                live_groups: 0,
+                live_channels: 0,
+            },
+            true,
+            false,
+        );
+        assert_eq!(policy.availability, State::Ready);
+        assert!(policy.live_enabled && policy.batch_enabled);
+    }
+
     #[test]
     fn model_policy_is_advisory_sanitized_and_respects_closed_admission() {
         for (phase, batch, live, accepting, state) in [
@@ -205,6 +224,7 @@ mod policy_tests {
                     live_channels: live * 2,
                 },
                 accepting,
+                batch + live > 0,
             );
             assert_eq!(policy.availability, state);
             assert!(policy.batch_enabled && policy.live_enabled);

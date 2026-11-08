@@ -58,7 +58,7 @@ impl SpeechAdmission {
         self.stopped.is_cancelled()
     }
     pub(crate) fn is_busy(&self) -> bool {
-        self.slots.available_permits() < self.total as usize
+        self.slots.available_permits() == 0
     }
     pub(crate) fn stop(&self) {
         self.stopped.cancel();

@@ -9,19 +9,23 @@ async fn queued<F: Future>(future: &mut Pin<Box<F>>) {
 async fn reserved_live_capacity_is_explicit_and_never_expands_the_total() {
     let legacy = SpeechAdmission::new(1, 0, 2).unwrap();
     let batch = legacy.batch(&CancellationToken::new()).await.unwrap();
+    assert!(legacy.is_busy());
     assert!(matches!(legacy.try_live(), Err(AdmissionError::Busy)));
     drop(batch);
     drop(legacy.try_live().unwrap());
 
     let partitioned = SpeechAdmission::new(2, 1, 2).unwrap();
     let batch = partitioned.batch(&CancellationToken::new()).await.unwrap();
+    assert!(!partitioned.is_busy());
     let live = partitioned.try_live().unwrap();
+    assert!(partitioned.is_busy());
     assert_eq!(partitioned.slots.available_permits(), 0);
     assert!(matches!(partitioned.try_live(), Err(AdmissionError::Busy)));
     let cancel = CancellationToken::new();
     let mut waiting = Box::pin(partitioned.batch(&cancel));
     queued(&mut waiting).await;
     drop(live);
+    assert!(!partitioned.is_busy());
     queued(&mut waiting).await;
     assert_eq!(partitioned.slots.available_permits(), 1);
     drop(batch);

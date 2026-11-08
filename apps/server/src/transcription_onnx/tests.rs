@@ -246,6 +246,7 @@ async fn reserved_onnx_live_and_batch_remain_independent_until_both_actually_dra
         }),
     });
     let batch = host.admit_batch(&CancellationToken::new()).await.unwrap();
+    assert_eq!(host.policy().availability, TranscriptionAvailability::Ready);
     let live = host.admit_live().unwrap();
     assert_eq!(host.policy().availability, TranscriptionAvailability::InUse);
     assert!(matches!(
