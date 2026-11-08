@@ -504,3 +504,7 @@ mod tests {
         assert_eq!(error.code(), "not_found");
     }
 }
+
+#[cfg(test)]
+#[path = "profiles/gateway_tests.rs"]
+mod gateway_tests;

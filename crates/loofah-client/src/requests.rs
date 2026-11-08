@@ -1546,14 +1546,7 @@ impl RemoteClient {
             result = self.access_token() => result,
         }
         .map_err(|mut error| {
-            if tag_write(&operation)
-                || document_editor::is_save(&operation)
-                || transcription::is_write(&operation)
-                || capture_live::is_write(&operation)
-                || capture_processing::is_write(&operation)
-                || session_lifecycle::is_write(&operation)
-                || provider_credentials::is_write(&operation)
-            {
+            if mutation {
                 error.request_id.get_or_insert_with(|| request_id.into());
                 error
                     .mutation_outcome
