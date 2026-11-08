@@ -13,6 +13,7 @@ mod provider_credentials;
 mod session_lifecycle;
 mod tag_editing;
 mod timeline;
+mod transcript_editor;
 mod transcript_overview;
 mod transcription;
 mod uploads;
@@ -212,6 +213,18 @@ impl Fixture {
             .route(
                 "/api/v1/vaults/test/sessions/note/transcript-overview",
                 get(transcript_overview::overview),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/transcript/editor",
+                get(transcript_editor::read),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/transcript/speakers",
+                post(transcript_editor::assign),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/people/ensure",
+                post(transcript_editor::ensure),
             )
             .route(
                 "/api/v1/vaults/{vault}/sessions/{session}/summary/editor",

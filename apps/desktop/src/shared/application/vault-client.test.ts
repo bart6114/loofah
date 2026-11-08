@@ -1958,3 +1958,64 @@ it("Remote clients never expose or probe Local recording parents even if a serve
     native.commands.applicationRecoverRecordingProcessing,
   ).not.toHaveBeenCalled();
 });
+
+it("exposes checked speaker editing only with its capability and pins every operation to the original vault", async () => {
+  const request = vi.fn().mockResolvedValue(null);
+  const connection = {
+    info: {
+      server: "https://company.example/",
+      capabilities: { features: [] as string[] },
+    },
+    request,
+  } as unknown as NativeRemoteConnection;
+  expect(
+    connectRemoteVault(connection, "member", { id: "vault", role: "editor" })
+      .transcriptEditor,
+  ).toBeUndefined();
+  connection.info.capabilities.features.push("transcript_editor");
+  const api = connectRemoteVault(connection, "member", {
+    id: "vault",
+    role: "editor",
+  }).transcriptEditor!;
+  const options = {
+    requestId: crypto.randomUUID(),
+    signal: new AbortController().signal,
+  };
+  const input = {
+    expected_revision: "a".repeat(64),
+    assignments: [
+      {
+        transcript_id: "t",
+        channel: 1,
+        speaker_index: 2,
+        speaker_label: "alice",
+        anchor_word_id: "w",
+      },
+    ],
+  };
+  await api.read("note", options);
+  await api.assign("note", input, options);
+  await api.ensurePerson({ name: "Alice" }, options);
+  expect(request.mock.calls).toEqual([
+    [
+      { kind: "transcript_editor", vault_id: "vault", session_id: "note" },
+      "transcript_editor",
+      options,
+    ],
+    [
+      {
+        kind: "assign_transcript_speakers",
+        vault_id: "vault",
+        session_id: "note",
+        input,
+      },
+      "transcript_editor_save",
+      options,
+    ],
+    [
+      { kind: "ensure_person", vault_id: "vault", input: { name: "Alice" } },
+      "person",
+      options,
+    ],
+  ]);
+});

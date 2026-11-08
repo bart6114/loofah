@@ -31,6 +31,7 @@ mod operation_io;
 mod ownership;
 pub mod paths;
 pub mod people;
+mod people_checked;
 pub mod processing_source;
 pub mod rebuild;
 pub mod recording_append;

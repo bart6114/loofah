@@ -82,6 +82,10 @@ import type {
   ReplaceTasksRequest,
   TranscriptWithData,
   TranscriptOverview,
+  TranscriptEditorSnapshot,
+  TranscriptEditorSaveOutcome,
+  AssignTranscriptSpeakersRequest,
+  EnsurePersonRequest,
   VaultInfo,
   SummaryJobRequest,
   ListProcessingJobsInput,
@@ -407,6 +411,21 @@ export type VaultClient = {
     input: SaveDocumentRequest,
     options?: RequestOptions,
   ) => Promise<DocumentSaveOutcome>;
+  transcriptEditor?: {
+    read: (
+      sessionId: string,
+      options?: RequestOptions,
+    ) => Promise<TranscriptEditorSnapshot>;
+    assign: (
+      sessionId: string,
+      input: AssignTranscriptSpeakersRequest,
+      options?: RequestOptions,
+    ) => Promise<TranscriptEditorSaveOutcome>;
+    ensurePerson: (
+      input: EnsurePersonRequest,
+      options?: RequestOptions,
+    ) => Promise<PersonItem>;
+  };
   transcriptOverview: (
     sessionId: string,
     options?: RequestOptions,
@@ -1393,6 +1412,39 @@ export function connectRemoteVault(
         "documents",
         options,
       ),
+    transcriptEditor: connection.info.capabilities.features.includes(
+      "transcript_editor",
+    )
+      ? {
+          read: (sessionId, options) =>
+            connection.request(
+              {
+                kind: "transcript_editor",
+                vault_id: vaultId,
+                session_id: sessionId,
+              },
+              "transcript_editor",
+              options,
+            ),
+          assign: (sessionId, input, options) =>
+            connection.request(
+              {
+                kind: "assign_transcript_speakers",
+                vault_id: vaultId,
+                session_id: sessionId,
+                input,
+              },
+              "transcript_editor_save",
+              options,
+            ),
+          ensurePerson: (input, options) =>
+            connection.request(
+              { kind: "ensure_person", vault_id: vaultId, input },
+              "person",
+              options,
+            ),
+        }
+      : undefined,
     transcriptOverview: (sessionId, options) =>
       connection.request(
         {

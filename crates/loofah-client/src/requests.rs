@@ -14,11 +14,25 @@ mod document_editor;
 mod provider_credentials;
 mod session_lifecycle;
 mod timeline;
+mod transcript_editor;
 mod transcription;
 
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
+    TranscriptEditor {
+        vault_id: String,
+        session_id: String,
+    },
+    AssignTranscriptSpeakers {
+        vault_id: String,
+        session_id: String,
+        input: AssignTranscriptSpeakersRequest,
+    },
+    EnsurePerson {
+        vault_id: String,
+        input: EnsurePersonRequest,
+    },
     SessionLifecycle {
         vault_id: String,
         session_id: String,
@@ -361,6 +375,9 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    TranscriptEditor(TranscriptEditorSnapshot),
+    TranscriptEditorSave(TranscriptEditorSaveOutcome),
+    Person(PersonItem),
     SessionCreated(hypr_vault_read::SessionMeta),
     SessionLifecycle(SessionLifecycleSnapshot),
     SessionDelete(DeleteSessionOutcome),
@@ -444,6 +461,7 @@ impl RemoteClient {
                     | RemoteOperation::CreateSessionWithMetadata { .. }
             ) || tag_write(&operation)
                 || document_editor::is_save(&operation)
+                || transcript_editor::is_write(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
                 || capture_processing::is_write(&operation)
@@ -462,6 +480,7 @@ impl RemoteClient {
                     | RemoteOperation::CreateSessionWithMetadata { .. }
             ) || tag_write(&operation)
                 || document_editor::is_save(&operation)
+                || transcript_editor::is_write(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
                 || capture_processing::is_write(&operation)
@@ -473,6 +492,7 @@ impl RemoteClient {
             return Err(error);
         }
         let required_feature = match &operation {
+            operation if transcript_editor::is_operation(operation) => Some("transcript_editor"),
             RemoteOperation::CreateSessionWithMetadata { .. } => Some("session_initial_metadata"),
             operation if provider_credentials::is_operation(operation) => {
                 Some("provider_credentials")
@@ -523,6 +543,9 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                ref operation if transcript_editor::is_operation(operation) => {
+                    "checked transcript speaker editing"
+                }
                 RemoteOperation::CreateSessionWithMetadata { .. } => "initial session metadata",
                 ref operation if provider_credentials::is_operation(operation) => {
                     "provider credential management"
@@ -573,7 +596,8 @@ impl RemoteClient {
                 ),
             );
             error.request_id = Some(request_id.to_owned());
-            if provider_credentials::is_write(&operation)
+            if transcript_editor::is_write(&operation)
+                || provider_credentials::is_write(&operation)
                 || session_lifecycle::is_write(&operation)
                 || capture_live::is_write(&operation)
                 || capture_processing::is_write(&operation)
@@ -669,6 +693,13 @@ impl RemoteClient {
             error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             return Err(error);
         }
+        transcript_editor::validate_operation(&operation).map_err(|mut cause| {
+            cause.request_id = Some(request_id.into());
+            if transcript_editor::is_write(&operation) {
+                cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            cause
+        })?;
         transcription::validate_operation(&operation).map_err(|mut error| {
             error.request_id = Some(request_id.to_owned());
             if transcription::is_write(&operation) {
@@ -847,6 +878,42 @@ impl RemoteClient {
                     "cancel",
                 ],
             ),
+            RemoteOperation::TranscriptEditor {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "sessions",
+                    session_id,
+                    "transcript",
+                    "editor",
+                ],
+            ),
+            RemoteOperation::AssignTranscriptSpeakers {
+                vault_id,
+                session_id,
+                input,
+            } => {
+                body = Some(value(input)?);
+                (
+                    Method::POST,
+                    vec![
+                        "vaults",
+                        vault_id,
+                        "sessions",
+                        session_id,
+                        "transcript",
+                        "speakers",
+                    ],
+                )
+            }
+            RemoteOperation::EnsurePerson { vault_id, input } => {
+                body = Some(value(input)?);
+                (Method::POST, vec!["vaults", vault_id, "people", "ensure"])
+            }
             RemoteOperation::TranscriptionPolicy { vault_id } => (
                 Method::GET,
                 vec!["vaults", vault_id, "transcription", "policy"],
@@ -1570,6 +1637,11 @@ impl RemoteClient {
             if status == reqwest::StatusCode::UNAUTHORIZED {
                 self.expire_access(&access).await;
             }
+            if status == reqwest::StatusCode::CONFLICT
+                && matches!(operation, RemoteOperation::AssignTranscriptSpeakers { .. })
+            {
+                return transcript_editor::decode(response, &operation, true).await;
+            }
             if status == reqwest::StatusCode::CONFLICT && session_lifecycle::is_write(&operation) {
                 return session_lifecycle::decode(response, &operation, true).await;
             }
@@ -1846,6 +1918,11 @@ impl RemoteClient {
                 }
                 RemoteOperation::Documents { .. } => {
                     RemoteReply::Documents(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::TranscriptEditor { .. }
+                | RemoteOperation::AssignTranscriptSpeakers { .. }
+                | RemoteOperation::EnsurePerson { .. } => {
+                    return transcript_editor::decode(response, &operation, false).await;
                 }
                 RemoteOperation::DocumentEditor {
                     session_id, target, ..

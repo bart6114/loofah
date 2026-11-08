@@ -33,6 +33,7 @@ mod session_lifecycle;
 mod session_summaries;
 mod tag_editing;
 mod timeline;
+mod transcript_editor;
 mod transcript_overview;
 mod transcription;
 
@@ -52,6 +53,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .merge(session_summaries::router())
         .merge(timeline::router())
         .merge(transcript_overview::router())
+        .merge(transcript_editor::router())
         .merge(transcription::router())
         .merge(tag_editing::router())
         .route("/me", get(me).post(provision))
@@ -206,6 +208,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "timeline_read".into(),
             "transcription_policy".into(),
             "transcript_overview".into(),
+            "transcript_editor".into(),
             "tag_editing".into(),
             "session_cleanup".into(),
             "session_lifecycle".into(),

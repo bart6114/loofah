@@ -35,7 +35,7 @@ fn person_id_slug(name: &str) -> String {
     }
 }
 
-fn unique_person_id(existing: &[PersonItem], name: &str) -> String {
+pub(super) fn unique_person_id(existing: &[PersonItem], name: &str) -> String {
     let base = person_id_slug(name);
     if !existing.iter().any(|p| p.id == base) {
         return base;

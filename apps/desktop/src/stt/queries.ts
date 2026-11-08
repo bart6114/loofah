@@ -46,6 +46,7 @@ type TranscriptInsert = {
 };
 
 export type TranscriptRecord = {
+  editorRevision?: string;
   id: string;
   ownerUserId: string;
   sessionId: string;
@@ -72,14 +73,28 @@ export function useSessionTranscriptsQuery(sessionId: string) {
   const session = useRef(sessionId);
   session.current = sessionId;
   const supported = scope.client.features.includes("content_read");
-  const query = useQuery(
+  const checked = !!scope.client.transcriptEditor;
+  const legacyQuery = useQuery(
     {
       ...scope.transcriptsOptions(sessionId),
-      enabled: !!sessionId && supported && readable,
+      enabled: !!sessionId && supported && readable && !checked,
       select: transcriptRecords,
     },
     scope.queryClient,
   );
+  const checkedQuery = useQuery(
+    {
+      ...scope.transcriptEditorOptions(sessionId),
+      enabled: !!sessionId && supported && readable && checked,
+      select: (snapshot) =>
+        snapshot.transcripts.map((row) => ({
+          ...mapTranscript(row),
+          editorRevision: snapshot.revision,
+        })),
+    },
+    scope.queryClient,
+  );
+  const query = checked ? checkedQuery : legacyQuery;
   const { refetch: read } = query;
   const refetch = useCallback(() => {
     if (

@@ -321,7 +321,7 @@ fn apply(
         .insert("speaker_hints".into(), hints.into());
     Ok(())
 }
-fn encode(value: &Value, budget: usize) -> Result<Vec<u8>, StoreError> {
+pub(crate) fn encode(value: &Value, budget: usize) -> Result<Vec<u8>, StoreError> {
     struct Output {
         bytes: Vec<u8>,
         budget: usize,

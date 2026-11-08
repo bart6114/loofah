@@ -492,6 +492,17 @@ export class VaultScope {
         this.run(() => this.client.transcriptOverview(sessionId, { signal })),
     });
   }
+  transcriptEditorOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "transcript_editor", sessionId],
+      queryFn: ({ signal }) =>
+        this.run(() => {
+          if (!this.client.transcriptEditor)
+            throw new Error("Checked transcript editing is unavailable");
+          return this.client.transcriptEditor.read(sessionId, { signal });
+        }),
+    });
+  }
   transcriptsOptions(sessionId: string) {
     return queryOptions({
       queryKey: ["vault", this.client.scope, "transcripts", sessionId],
@@ -873,7 +884,7 @@ export class VaultScope {
               ) &&
               (all || ids.has(String(id)))
             );
-          if (kind === "transcript_overview")
+          if (kind === "transcript_overview" || kind === "transcript_editor")
             return (
               ["transcripts", "sessions", "session_headers"].includes(
                 change.entity,

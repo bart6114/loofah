@@ -1,4 +1,5 @@
 import { Plural } from "@lingui/react/macro";
+import { useMutation } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
@@ -27,6 +28,7 @@ import { assignTranscriptSpeaker, type TranscriptRecord } from "~/stt/queries";
 export type ChannelAssignmentState = {
   anchorWordIdBySpeakerIndex: Map<number, string>;
   channelHasAssignment: boolean;
+  editorRevision?: string;
 };
 
 export const EMPTY_CHANNEL_ASSIGNMENT_STATE: ChannelAssignmentState = {
@@ -58,6 +60,18 @@ export function SpeakerRenameControl({
   channelAssignmentState?: ChannelAssignmentState;
 }) {
   const { scope, current } = useVaultReadScope();
+  const editor = scope.client.transcriptEditor;
+  const checkedAvailable =
+    !!editor &&
+    !!channelAssignmentState.editorRevision &&
+    scope.client.canEdit &&
+    scope.getSnapshot().state === "connected";
+  const revision = useRef<string | undefined>(undefined);
+  const mutation = useMutation(
+    { mutationFn: (run: () => Promise<{ id: string; name: string }>) => run() },
+    scope.queryClient,
+  );
+
   const target = useRef({ sessionId, transcriptId });
   target.current = { sessionId, transcriptId };
   const locked = useRef(disabled);
@@ -77,8 +91,8 @@ export function SpeakerRenameControl({
       target.current.sessionId === sessionId &&
       target.current.transcriptId === transcriptId &&
       !locked.current &&
-      legacyTranscriptControlsAvailable(scope),
-    [scope, current, sessionId, transcriptId],
+      (checkedAvailable || legacyTranscriptControlsAvailable(scope)),
+    [scope, current, sessionId, transcriptId, checkedAvailable],
   );
   const check = useCallback(() => {
     if (!available())
@@ -163,16 +177,76 @@ export function SpeakerRenameControl({
 
   const startEditing = useCallback(() => {
     if (!available()) return;
+    revision.current = channelAssignmentState.editorRevision;
+    mutation.reset();
     committedRef.current = false;
     setDraft(label);
     setTouched(false);
     setHighlightIndex(-1);
     setApplyToChannel(false);
     setEditing(true);
-  }, [label, available]);
+  }, [label, available, channelAssignmentState.editorRevision, mutation]);
 
   const runAssignments = useCallback(
     async (speakerLabel: string) => {
+      if (editor) {
+        check();
+        const expectedRevision = revision.current;
+        if (!expectedRevision)
+          throw new Error("Reload the transcript before assigning a speaker");
+        const channel =
+          segment.key.channel === "DirectMic"
+            ? 0
+            : segment.key.channel === "RemoteParty"
+              ? 1
+              : 2;
+        const assignments: {
+          transcript_id: string;
+          channel: number;
+          speaker_index: number | null;
+          speaker_label: string;
+          anchor_word_id: string;
+        }[] = [];
+        const add = (index: number | null, anchor: string | undefined) => {
+          if (anchor)
+            assignments.push({
+              transcript_id: transcriptId,
+              channel,
+              speaker_index: index,
+              speaker_label: speakerLabel,
+              anchor_word_id: anchor,
+            });
+        };
+        if (offerChannelWideAssign && applyToChannel) {
+          if (segment.key.speaker_index == null)
+            add(null, getAssignmentAnchorWordId(segment));
+          for (const [index, anchor] of anchorWordIdBySpeakerIndex)
+            add(index, anchor);
+        } else
+          add(
+            segment.key.speaker_index ?? null,
+            getAssignmentAnchorWordId(segment),
+          );
+        if (!assignments.length) return;
+        const result = await editor.assign(sessionId, {
+          expected_revision: expectedRevision,
+          assignments,
+        });
+        check();
+        await scope.queryClient.invalidateQueries({
+          queryKey: [
+            "vault",
+            scope.client.scope,
+            "transcript_editor",
+            sessionId,
+          ],
+        });
+        if (result.kind === "conflict")
+          throw new Error(
+            "The transcript changed. Review the reloaded transcript before assigning the speaker again.",
+          );
+        return;
+      }
       if (offerChannelWideAssign && applyToChannel) {
         // Channel-scope fallback first (only needed when the clicked segment
         // itself has no index): later per-index writes keep it on a diarized
@@ -217,6 +291,10 @@ export function SpeakerRenameControl({
     },
     [
       assign,
+      editor,
+      check,
+      scope,
+      sessionId,
       anchorWordIdBySpeakerIndex,
       applyToChannel,
       offerChannelWideAssign,
@@ -239,7 +317,8 @@ export function SpeakerRenameControl({
       commitSettledRef.current = false;
       setPendingLabel(optimisticName);
       setEditing(false);
-      run()
+      mutation
+        .mutateAsync(run)
         .then((person) => {
           check();
           onAssigned?.(person.id);
@@ -267,7 +346,7 @@ export function SpeakerRenameControl({
           setPendingLabel(null);
         });
     },
-    [label, onAssigned, available, check],
+    [label, onAssigned, available, check, mutation],
   );
 
   const canAssign =
@@ -288,12 +367,14 @@ export function SpeakerRenameControl({
 
     commit(name, async () => {
       check();
-      const person = await ensurePerson(name);
+      const person = editor
+        ? await editor.ensurePerson({ name })
+        : await ensurePerson(name);
       check();
       await runAssignments(person.id);
-      return { id: person.id, name: person.name };
+      return { id: person.id, name: person.name ?? name };
     });
-  }, [canAssign, commit, draft, label, runAssignments, check]);
+  }, [canAssign, commit, draft, label, runAssignments, check, editor]);
 
   const selectPerson = useCallback(
     (person: Person) => {
@@ -416,23 +497,33 @@ export function SpeakerRenameControl({
   }
 
   return (
-    <button
-      type="button"
-      disabled={
-        disabled || !current() || !legacyTranscriptControlsAvailable(scope)
-      }
-      onClick={startEditing}
-      className={cn([
-        "-my-0.5 rounded-full py-0.5 pr-2",
-        disabled
-          ? "cursor-default"
-          : "cursor-pointer underline-offset-2 hover:underline focus-visible:underline",
-        className,
-      ])}
-      style={{ color }}
-    >
-      {available() ? (pendingLabel ?? label) : label}
-    </button>
+    <>
+      <button
+        type="button"
+        disabled={
+          disabled ||
+          mutation.isPending ||
+          !current() ||
+          !(checkedAvailable || legacyTranscriptControlsAvailable(scope))
+        }
+        onClick={startEditing}
+        className={cn([
+          "-my-0.5 rounded-full py-0.5 pr-2",
+          disabled
+            ? "cursor-default"
+            : "cursor-pointer underline-offset-2 hover:underline focus-visible:underline",
+          className,
+        ])}
+        style={{ color }}
+      >
+        {available() ? (pendingLabel ?? label) : label}
+      </button>
+      {mutation.error && (
+        <span role="alert" className="text-xs text-red-600">
+          {mutation.error.message}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -504,6 +595,8 @@ export function buildChannelAssignmentStates(
     }
   }
 
+  for (const state of states.values())
+    state.editorRevision = transcript?.editorRevision;
   return states;
 }
 

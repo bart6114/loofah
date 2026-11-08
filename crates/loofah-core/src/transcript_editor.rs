@@ -150,3 +150,17 @@ mod tests {
         runtime.shutdown().await.unwrap();
     }
 }
+
+impl VaultContext {
+    pub async fn ensure_person_checked(
+        self: &Arc<Self>,
+        input: hypr_loofah_protocol::EnsurePersonRequest,
+    ) -> Result<hypr_loofah_protocol::PersonItem, ApplicationError> {
+        hypr_loofah_protocol::validate_person_name(&input.name)
+            .map_err(|cause| error(ErrorCode::Validation, cause))?;
+        self.store
+            .ensure_person_checked(input.name)
+            .await
+            .map_err(|cause| storage_error(cause, true))
+    }
+}

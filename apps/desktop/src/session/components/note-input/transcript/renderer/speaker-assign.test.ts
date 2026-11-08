@@ -1,3 +1,4 @@
+import { QueryClient } from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -35,6 +36,8 @@ const source = vi.hoisted(() => {
   const snapshot = { state: "connected", error: null };
   return {
     scope: {
+      queryClient:
+        undefined as unknown as import("@tanstack/react-query").QueryClient,
       client: {
         canEdit: true,
         features: ["legacy_desktop_transcript_controls"],
@@ -53,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   const snapshot = { state: "connected", error: null };
   source.scope = {
+    queryClient: new QueryClient(),
     client: { canEdit: true, features: ["legacy_desktop_transcript_controls"] },
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
@@ -926,4 +930,92 @@ describe("captured speaker mutation permission", () => {
       ).toBeDefined();
     },
   );
+});
+
+describe("checked speaker assignments", () => {
+  it("freezes the displayed revision and submits a channel batch once, then requires review on conflict", async () => {
+    const assign = vi.fn().mockResolvedValue({
+      kind: "conflict",
+      snapshot: { revision: "b".repeat(64) },
+    });
+    const ensure = vi.fn().mockResolvedValue({ id: "alice", name: "Alice" });
+    Object.assign(source.scope.client, {
+      features: ["transcript_editor"],
+      transcriptEditor: { assign, ensurePerson: ensure },
+    });
+    const state = {
+      editorRevision: "a".repeat(64),
+      channelHasAssignment: false,
+      anchorWordIdBySpeakerIndex: new Map([
+        [2, "word-1"],
+        [0, "word-9"],
+      ]),
+    };
+    const props = {
+      sessionId: "session-1",
+      transcriptId: "transcript-1",
+      segment: remoteSegment(),
+      color: "red",
+      label: "Speaker 2",
+      channelAssignmentState: state,
+    };
+    const view = render(createElement(SpeakerRenameControl, props));
+    fireEvent.click(screen.getByRole("button", { name: "Speaker 2" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    view.rerender(
+      createElement(SpeakerRenameControl, {
+        ...props,
+        channelAssignmentState: { ...state, editorRevision: "b".repeat(64) },
+      }),
+    );
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Alice" },
+    });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await screen.findByRole("alert");
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Review the reloaded transcript",
+    );
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledWith("session-1", {
+      expected_revision: "a".repeat(64),
+      assignments: [
+        {
+          transcript_id: "transcript-1",
+          channel: 1,
+          speaker_index: 2,
+          speaker_label: "alice",
+          anchor_word_id: "word-1",
+        },
+        {
+          transcript_id: "transcript-1",
+          channel: 1,
+          speaker_index: 0,
+          speaker_label: "alice",
+          anchor_word_id: "word-9",
+        },
+      ],
+    });
+    expect(ensurePersonMock).not.toHaveBeenCalled();
+    expect(assignTranscriptSpeakerMock).not.toHaveBeenCalled();
+  });
+  it("never enables checked edits without the displayed transcript revision", () => {
+    Object.assign(source.scope.client, {
+      features: ["transcript_editor"],
+      transcriptEditor: { assign: vi.fn(), ensurePerson: vi.fn() },
+    });
+    render(
+      createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
+        transcriptId: "transcript-1",
+        segment: remoteSegment(),
+        color: "red",
+        label: "Speaker 2",
+      }),
+    );
+    expect(
+      (screen.getByRole("button", { name: "Speaker 2" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
 });

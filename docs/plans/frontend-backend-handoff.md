@@ -642,3 +642,14 @@ is gone. No production unlock was added. Eleven full Linux capture-store runs
 passed 52 tests each, including 704 immediate reopen iterations. Fresh hosted
 checks are still required for these corrections; ongoing Windows runs have not
 been cancelled.
+Checked transcript speaker editing now has an explicit `transcript_editor` Remote
+capability, SDK operations and Native application commands. The renderer reads a
+canonical transcript snapshot and freezes its revision when rename begins;
+channel-wide assignments are one atomic checked batch. A stale revision reloads
+for review and never automatically resubmits. New speaker names use a checked
+people-registry writer that preserves unknown fields and refuses corrupt or
+ambiguous registries. Canonical transcript reads do not wait for inference's
+publication lock; mutations retain the original lifecycle/physical-work admission
+through actual Store work. The Local renderer retains its existing qualification
+flag and does not enable this new path yet. Focused frontend verification passed 136 tests including the snapshot-binding regression. Rust/Native/platform qualification for
+this source checkpoint remains on the sole integration build path.

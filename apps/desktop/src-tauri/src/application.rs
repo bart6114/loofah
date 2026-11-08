@@ -963,3 +963,31 @@ mod tests {
         );
     }
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_transcript_editor<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<hypr_loofah_protocol::TranscriptEditorSnapshot, ApplicationError> {
+    context(&app)?.read_transcript_editor(&session_id).await
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn application_assign_transcript_speakers<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    input: hypr_loofah_protocol::AssignTranscriptSpeakersRequest,
+) -> Result<hypr_loofah_protocol::TranscriptEditorSaveOutcome, ApplicationError> {
+    context(&app)?
+        .assign_transcript_speakers(&session_id, input)
+        .await
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn application_ensure_person<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::EnsurePersonRequest,
+) -> Result<hypr_loofah_protocol::PersonItem, ApplicationError> {
+    context(&app)?.ensure_person_checked(input).await
+}

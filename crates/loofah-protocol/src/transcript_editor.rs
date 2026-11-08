@@ -68,3 +68,18 @@ pub fn validate_transcript_speakers(
     }
     Ok(())
 }
+
+pub const TRANSCRIPT_EDITOR_RESPONSE_LIMIT: usize = 72 * 1024 * 1024;
+
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct EnsurePersonRequest {
+    pub name: String,
+}
+pub fn validate_person_name(name: &str) -> Result<(), &'static str> {
+    if name.trim().is_empty() || name.len() > 1024 || name.chars().any(char::is_control) {
+        Err("Person name must contain one to 1024 bytes without control characters")
+    } else {
+        Ok(())
+    }
+}

@@ -94,7 +94,7 @@ const scopes: VaultScope[] = [];
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.dispose();
 });
-function createWrapper() {
+function createWrapper(editor?: VaultClient["transcriptEditor"]) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -103,6 +103,7 @@ function createWrapper() {
     networkMode: "always",
     canEdit: true,
     features: ["content_read"],
+    transcriptEditor: editor,
     transcripts: async (id: string) => {
       const result = await mocks.sessionTranscripts(id);
       if (result.status === "error") throw new Error(result.error);
@@ -598,4 +599,28 @@ it("checks speaker ownership at queue execution, not only enqueue", async () => 
   await block;
   await rejected;
   expect(mocks.sessionAssignTranscriptSpeaker).not.toHaveBeenCalled();
+});
+
+it("binds the displayed transcript to the checked canonical snapshot revision without a legacy read", async () => {
+  const read = vi
+    .fn()
+    .mockResolvedValue({
+      session_id: "session-1",
+      session_created_at: "2026-11-08T10:00:00Z",
+      revision: "a".repeat(64),
+      transcripts: [
+        { id: "t", session_id: "session-1", words: [], speaker_hints: [] },
+      ],
+    });
+  const wrapper = createWrapper({
+    read,
+    assign: vi.fn(),
+    ensurePerson: vi.fn(),
+  });
+  const { result } = renderHook(() => useSessionTranscripts("session-1"), {
+    wrapper,
+  });
+  await waitFor(() => expect(result.current).toHaveLength(1));
+  expect(result.current[0].editorRevision).toBe("a".repeat(64));
+  expect(mocks.sessionTranscripts).not.toHaveBeenCalled();
 });
