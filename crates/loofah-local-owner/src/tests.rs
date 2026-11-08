@@ -665,3 +665,37 @@ fn cancelled_blob_copy_retains_original_owner_until_actual_queued_copy_finishes(
 #[cfg(feature = "core")]
 #[path = "core_tests.rs"]
 mod core_tests;
+
+#[tokio::test]
+async fn owner_resolution_retries_a_lost_handshake_until_the_original_lease_is_released() {
+    let fixture = Fixture::new();
+    let lease = fixture.lease();
+    let endpoint = fixture.endpoints.endpoint(lease.canonical_vault()).unwrap();
+    let mut listener = endpoint.bind(&lease).await.unwrap();
+    let vault = fixture.vault.clone();
+    let endpoints = fixture.endpoints.clone();
+    let temporary = fixture.temporary.clone();
+    let resolving =
+        tokio::spawn(async move { OwnerClient::resolve(&vault, &endpoints, &temporary).await });
+    let mut io = listener.accept().await.unwrap();
+    assert!(matches!(
+        wire::read_control(&mut io).await.unwrap(),
+        wire::Control::Hello { .. }
+    ));
+    drop(io);
+    drop(listener);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        !resolving.is_finished(),
+        "A transient handshake loss cannot decide that the original owner has released storage"
+    );
+    drop(lease);
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), resolving)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap(),
+        OwnerResolution::Acquired(_)
+    ));
+}

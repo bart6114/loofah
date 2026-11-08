@@ -455,3 +455,13 @@ pointer-equal original vault Context; querying them never opens a vault, starts 
 worker or dispatches inference. Remote clients do not expose or probe this API.
 Recovery uses the original request UUID and Core's retained-result policy; it does
 not create a new request or retry automatically after an uncertain outcome.
+
+Windows validation exposed a temporary-owner delivery race between concurrent
+first CLI searches: the command that started the owner can finish while another
+reader is receiving its result. Owner resolution now retries transient handshake
+loss while rechecking the original OS vault lease. CLI reads make at most three
+attempts after a disconnected transport, resolving ownership afresh each time.
+The request identity is retained; application/protocol errors and every uncertain
+mutation remain non-replayed. Deterministic shutdown tests cover the read fallback,
+unknown-write preservation and the handshake/lease-release boundary; both Windows
+architectures still require their native CI rerun.

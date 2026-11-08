@@ -36,51 +36,62 @@ impl OwnerClient {
             LeaseAttempt::Busy => {
                 let endpoint = endpoints.endpoint(&vault)?;
                 let result = tokio::time::timeout(Duration::from_secs(2), async {
-                    let mut io = loop {
-                        match endpoint.connect().await {
-                            Ok(io) => break io,
+                    loop {
+                        // A previous owner can stop between connect, Welcome and
+                        // command dispatch. Only the original OS lease determines
+                        // whether a new owner may be started.
+                        if let LeaseAttempt::Acquired(lease) =
+                            VaultLease::try_acquire_existing(&vault)?
+                        {
+                            return Ok(OwnerResolution::Acquired(lease));
+                        }
+                        let handshake = async {
+                            let mut io = endpoint.connect().await?;
+                            wire::send_control(
+                                &mut io,
+                                &Control::Hello {
+                                    major: wire::MAJOR,
+                                    vault_key: endpoint.key.clone(),
+                                },
+                            )
+                            .await?;
+                            match wire::read_control(&mut io).await? {
+                                Control::Welcome {
+                                    major,
+                                    vault_key,
+                                    epoch,
+                                    operations,
+                                } if major == wire::MAJOR
+                                    && vault_key == endpoint.key
+                                    && wire::uuid(&epoch) =>
+                                {
+                                    Ok(Self {
+                                        io,
+                                        epoch,
+                                        operations,
+                                        temporary_root: temporary_root.to_owned(),
+                                    })
+                                }
+                                _ => Err(Error::protocol(
+                                    "Local owner protocol or vault identity does not match",
+                                )),
+                            }
+                        }
+                        .await;
+                        match handshake {
+                            Ok(client) => return Ok(OwnerResolution::Connected(client)),
+                            Err(Error::Protocol(message)) => return Err(Error::Protocol(message)),
                             Err(_) => tokio::time::sleep(Duration::from_millis(25)).await,
                         }
-                    };
-                    wire::send_control(
-                        &mut io,
-                        &Control::Hello {
-                            major: wire::MAJOR,
-                            vault_key: endpoint.key.clone(),
-                        },
-                    )
-                    .await?;
-                    match wire::read_control(&mut io).await? {
-                        Control::Welcome {
-                            major,
-                            vault_key,
-                            epoch,
-                            operations,
-                        } if major == wire::MAJOR
-                            && vault_key == endpoint.key
-                            && wire::uuid(&epoch) =>
-                        {
-                            Ok(Self {
-                                io,
-                                epoch,
-                                operations,
-                                temporary_root: temporary_root.to_owned(),
-                            })
-                        }
-                        _ => Err(Error::protocol(
-                            "Local owner protocol or vault identity does not match",
-                        )),
                     }
                 })
                 .await;
                 match result {
-                    Ok(Ok(client))=>Ok(OwnerResolution::Connected(client)),
-                    _ => match VaultLease::try_acquire_existing(&vault)? {
-                        LeaseAttempt::Acquired(lease) => Ok(OwnerResolution::Acquired(lease)),
-                        LeaseAttempt::Busy => Err(Error::Unavailable(
-                            "The vault has an owner, but its local endpoint is unavailable or incompatible. Wait for startup or close the owning process; no independent vault was opened.".into(),
-                        )),
-                    },
+                    Ok(Ok(resolution))=>Ok(resolution),
+                    _=>match VaultLease::try_acquire_existing(&vault)? {
+                        LeaseAttempt::Acquired(lease)=>Ok(OwnerResolution::Acquired(lease)),
+                        LeaseAttempt::Busy=>Err(Error::Unavailable("The vault has an owner, but its local endpoint is unavailable or incompatible. Wait for startup or close the owning process; no independent vault was opened.".into())),
+                    }
                 }
             }
         }

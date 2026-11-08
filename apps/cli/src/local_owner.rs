@@ -42,6 +42,37 @@ impl LocalGateway {
         upload: Option<std::fs::File>,
         progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
     ) -> Result<OwnerResponse> {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let mut upload = upload;
+        for attempt in 0..3 {
+            let mut transport_lost = false;
+            let response = self
+                .execute_once(
+                    operation.clone(),
+                    upload.take(),
+                    progress.clone(),
+                    request_id.clone(),
+                    &mut transport_lost,
+                )
+                .await;
+            if !transport_lost || operation.is_mutation() || attempt == 2 {
+                return response;
+            }
+            // A short-lived CLI owner may finish while another reader is awaiting
+            // delivery. Re-resolve ownership; an unknown write is never repeated.
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        unreachable!("bounded Local owner read attempts")
+    }
+
+    async fn execute_once(
+        &self,
+        operation: LocalCliOperation,
+        upload: Option<std::fs::File>,
+        progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
+        request_id: String,
+        transport_lost: &mut bool,
+    ) -> Result<OwnerResponse> {
         let endpoints = self.endpoints()?;
         let temporary = endpoints.path().to_owned();
         let resolution = OwnerClient::resolve(&self.vault, &endpoints, &temporary)
@@ -201,7 +232,6 @@ impl LocalGateway {
             ),
             None => None,
         };
-        let request_id = uuid::Uuid::new_v4().to_string();
         let mutation = operation.is_mutation();
         let media_recovery = match &operation {
             LocalCliOperation::RecoverMedia { request_id } => Some(request_id.clone()),
@@ -216,6 +246,7 @@ impl LocalGateway {
             })
             .await
             .map_err(|cause| {
+                *transport_lost=matches!(&cause,hypr_loofah_local_owner::Error::Io(cause) if matches!(cause.kind(), std::io::ErrorKind::UnexpectedEof|std::io::ErrorKind::BrokenPipe|std::io::ErrorKind::ConnectionReset|std::io::ErrorKind::ConnectionAborted|std::io::ErrorKind::NotConnected));
                 let mut cause = application_owner_error(cause);
                 if cause.mutation_outcome == Some(MutationOutcome::Unknown)
                     && let Some(original) = media_recovery
@@ -587,6 +618,124 @@ mod tests {
             LeaseAttempt::Acquired(_)
         ));
         assert!(!gateway.cache.path().exists());
+    }
+
+    struct ClosingOwner {
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+    impl OwnerHandler for ClosingOwner {
+        fn operations(&self) -> Vec<LocalCliOperationKind> {
+            vec![LocalCliOperationKind::Note, LocalCliOperationKind::SaveNote]
+        }
+        fn execute(&self, request: OwnerRequest) -> OwnerFuture {
+            let entered = self.entered.clone();
+            let release = self.release.clone();
+            let calls = self.calls.clone();
+            Box::pin(async move {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                entered.notify_one();
+                release.notified().await;
+                let snapshot = hypr_loofah_protocol::NoteSnapshot {
+                    markdown: Some("Old owner reply".into()),
+                    title: "Owner".into(),
+                    revision: "r".into(),
+                };
+                let reply = if request.operation.is_mutation() {
+                    hypr_loofah_protocol::LocalCliReply::NoteSaved {
+                        outcome: hypr_loofah_protocol::NoteSaveOutcome::Saved(snapshot),
+                    }
+                } else {
+                    hypr_loofah_protocol::LocalCliReply::Note { snapshot }
+                };
+                OwnerResponse {
+                    response: LocalCliResponse { result: Ok(reply) },
+                    blob: None,
+                }
+            })
+        }
+    }
+    #[tokio::test]
+    async fn temporary_owner_delivery_loss_reresolves_reads_but_never_replays_unknown_writes() {
+        for mutation in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let gateway = gateway(&root);
+            let session = gateway.vault().join("sessions/session");
+            std::fs::create_dir_all(&session).unwrap();
+            std::fs::write(session.join("_meta.json"),r#"{"id":"session","title":"Original","created_at":"2026-11-08T00:00:00Z","tags":[]}"#).unwrap();
+            std::fs::write(session.join("notes.md"), "Canonical note").unwrap();
+            let LeaseAttempt::Acquired(lease) =
+                VaultLease::try_acquire_existing(gateway.vault()).unwrap()
+            else {
+                panic!("owner");
+            };
+            let entered = Arc::new(tokio::sync::Notify::new());
+            let release = Arc::new(tokio::sync::Notify::new());
+            let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let endpoints = gateway.endpoints().unwrap();
+            let server = OwnerServer::bind(
+                lease,
+                &endpoints,
+                endpoints.path(),
+                Arc::new(ClosingOwner {
+                    entered: entered.clone(),
+                    release: release.clone(),
+                    calls: calls.clone(),
+                }),
+            )
+            .await
+            .unwrap();
+            let caller = gateway.clone();
+            let request = tokio::spawn(async move {
+                caller
+                    .execute(if mutation {
+                        LocalCliOperation::SaveNote {
+                            session_id: "session".into(),
+                            input: hypr_loofah_protocol::SaveNoteRequest {
+                                markdown: "Should not replay".into(),
+                                title: None,
+                                expected_revision: "r".into(),
+                            },
+                        }
+                    } else {
+                        LocalCliOperation::Note {
+                            session_id: "session".into(),
+                        }
+                    })
+                    .await
+            });
+            tokio::time::timeout(std::time::Duration::from_secs(10), entered.notified())
+                .await
+                .unwrap();
+            server.request_shutdown();
+            release.notify_one();
+            server.wait_for_shutdown().await.unwrap();
+            let result = tokio::time::timeout(std::time::Duration::from_secs(10), request)
+                .await
+                .unwrap()
+                .unwrap();
+            if mutation {
+                let Error::Local(error) = result.err().expect("unknown write") else {
+                    panic!("typed owner error");
+                };
+                assert_eq!(error.mutation_outcome, Some(MutationOutcome::Unknown));
+                assert!(error.request_id.is_some());
+            } else {
+                let hypr_loofah_protocol::LocalCliReply::Note { snapshot } =
+                    result.unwrap().response.result.unwrap()
+                else {
+                    panic!("note");
+                };
+                assert_eq!(snapshot.markdown.as_deref(), Some("Canonical note"));
+            }
+            assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+            assert_eq!(
+                std::fs::read_to_string(session.join("notes.md")).unwrap(),
+                "Canonical note"
+            );
+            assert!(!gateway.cache.path().exists());
+        }
     }
 
     struct NoteOwner;
