@@ -131,6 +131,47 @@ fn cpu_kernel_preserves_channels_timestamps_progress_and_rejects_failed_emitters
     assert_eq!(error.to_string(), "batch transcription cancelled");
 }
 
+#[test]
+#[ignore = "requires LOOFAH_WHISPER_MODEL and retained generated speech WAV; real CPU gap regression"]
+fn cpu_kernel_recognizes_discontinuous_retained_speech() {
+    let model_path = std::env::var("LOOFAH_WHISPER_MODEL").unwrap();
+    let source = std::env::var("LOOFAH_WHISPER_RETAINED_AUDIO").unwrap();
+    let output = std::env::var("LOOFAH_WHISPER_REPAIR_OUTPUT").unwrap();
+    let response = transcribe_batch_file(
+        loaded(),
+        Path::new(&model_path),
+        Path::new(&source),
+        &ListenParams {
+            languages: vec!["en".parse().unwrap()],
+            ..Default::default()
+        },
+        Arc::new(AtomicBool::new(false)),
+        |_| Ok(()),
+    )
+    .unwrap();
+    std::fs::write(&output, serde_json::to_vec(&response).unwrap()).unwrap();
+    assert_eq!(response.results.channels.len(), 2);
+    let duration = response.metadata["duration"].as_f64().unwrap();
+    assert!(duration >= 330.0);
+    let words = &response.results.channels[0].alternatives[0].words;
+    for window in (0..duration as u64).step_by(300) {
+        if window + 30 > duration as u64 {
+            break;
+        }
+        let text = words
+            .iter()
+            .filter(|word| word.start >= window as f64 && word.start < (window + 45) as f64)
+            .map(|word| word.word.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase();
+        assert!(
+            text.contains("hello") && text.contains("jersey"),
+            "Retained English2 speech missing at window {window}: {text}"
+        );
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires LOOFAH_WHISPER_MODEL and LOOFAH_WHISPER_CPU=1; real JSON/SSE parity"]
 async fn cpu_http_json_and_sse_keep_existing_wire_shapes_and_terminal_order() {
