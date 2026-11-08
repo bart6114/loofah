@@ -558,7 +558,7 @@ async fn original_source_export_is_verified_private_and_never_dispatches() {
         .open_source(&request, &admission.revision)
         .await
         .unwrap();
-    assert_eq!(reader.sha256, ledger::hash(SUBTITLE));
+    assert_eq!(reader.sha256(), ledger::hash(SUBTITLE));
     assert_eq!(
         reader
             .read_chunk_with_guard(0, 64 * 1024, ())

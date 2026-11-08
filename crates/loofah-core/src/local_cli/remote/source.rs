@@ -245,8 +245,8 @@ pub struct MediaSourceReader {
     source: Arc<std::sync::Mutex<LocalCliArtifact>>,
     chunks: Arc<Vec<[u8; 32]>>,
     owner: Arc<MediaDispatcher>,
-    pub size_bytes: u64,
-    pub sha256: String,
+    size_bytes: u64,
+    sha256: String,
     #[cfg(test)]
     pub(super) read_pause: Arc<std::sync::Mutex<Option<ReadPause>>>,
 }
@@ -290,6 +290,12 @@ impl MediaDispatcher {
     }
 }
 impl MediaSourceReader {
+    pub fn size_bytes(&self) -> u64 {
+        self.size_bytes
+    }
+    pub fn sha256(&self) -> &str {
+        &self.sha256
+    }
     pub async fn read_chunk_with_guard<G: Send + 'static>(
         &self,
         offset: u64,

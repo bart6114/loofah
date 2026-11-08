@@ -289,8 +289,8 @@ async fn download_source(
         .try_acquire_owned()
         .map_err(|_| ApiError::busy("Media stream capacity reached; retry shortly"))?;
     let reader = dispatcher.open_source(&request, &revision).await?;
-    let size = reader.size_bytes;
-    let sha256 = reader.sha256.clone();
+    let size = reader.size_bytes();
+    let sha256 = reader.sha256().to_owned();
     let body = crate::media::original_source_body(service, identity, vault, reader, permit);
     Ok(Response::builder()
         .header(axum::http::header::CONTENT_TYPE, "application/octet-stream")

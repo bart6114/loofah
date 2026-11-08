@@ -473,7 +473,7 @@ pub(crate) fn original_source_body(
     reader: hypr_loofah_core::local_cli::MediaSourceReader,
     permit: tokio::sync::OwnedSemaphorePermit,
 ) -> Body {
-    let length = reader.size_bytes;
+    let length = reader.size_bytes();
     media_body(
         service,
         identity,
