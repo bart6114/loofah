@@ -269,14 +269,27 @@ async fn stop(host: &WhisperResources) {
 }
 
 async fn collect(live: &mut OwnedLive) -> (Vec<LiveCaption>, Arc<LiveDrainReceipt>) {
+    collect_with_deadline(live, Duration::from_secs(10)).await
+}
+
+async fn collect_with_deadline(
+    live: &mut OwnedLive,
+    deadline: Duration,
+) -> (Vec<LiveCaption>, Arc<LiveDrainReceipt>) {
     let mut captions = Vec::new();
-    tokio::time::timeout(Duration::from_secs(10), async {
+    let drained = tokio::time::timeout(deadline, async {
         while let Some(caption) = live.results.recv().await {
             captions.push(caption);
         }
     })
-    .await
-    .unwrap();
+    .await;
+    assert!(
+        drained.is_ok(),
+        "live drain exceeded {deadline:?}; received={} snapshot={:?} completion={:?}",
+        captions.len(),
+        live.observer().snapshot(),
+        live.completion().snapshot(),
+    );
     let receipt = receipt(&mut live.completion()).await;
     (captions, receipt)
 }
@@ -1226,7 +1239,11 @@ async fn real_cpu_two_typed_sessions_emit_before_finish_and_drain_independently(
     assert_eq!(b.observer().snapshot().status, LiveStatus::Open);
     a.finish(320000).unwrap();
     b.finish(320000).unwrap();
-    let ((_, a_done), (_, b_done)) = tokio::join!(collect(&mut a), collect(&mut b));
+    // CPU tail inference and native joins are real work, unlike the gated fake fixtures.
+    let ((_, a_done), (_, b_done)) = tokio::join!(
+        collect_with_deadline(&mut a, Duration::from_secs(180)),
+        collect_with_deadline(&mut b, Duration::from_secs(180)),
+    );
     assert_eq!(a_done.failure, None);
     assert_eq!(b_done.failure, None);
     assert_eq!(a_done.native, NativeDisposition::Joined);
