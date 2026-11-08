@@ -1032,9 +1032,25 @@ async fn actual_root_frame_persists_the_original_observation_as_v2_and_reopens_e
     root.stop(None);
     handle.await.unwrap();
     drop((writer, sink, ticket, host, spool));
-    let reopened = CaptureSpool::open(path.clone(), CaptureSpoolLimits::default())
-        .await
-        .unwrap();
+    // Shutdown safety can precede the final observer/stop task dropping its spool lease.
+    let reopened = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut retry = tokio::time::interval(Duration::from_millis(10));
+        retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            retry.tick().await;
+            match CaptureSpool::open(path.clone(), CaptureSpoolLimits::default()).await {
+                Ok(spool) => break spool,
+                Err(error)
+                    if error.code == hypr_loofah_protocol::ErrorCode::Unavailable
+                        && error.retryable
+                        && error.mutation_outcome
+                            == Some(hypr_loofah_protocol::MutationOutcome::NotCommitted) => {}
+                Err(error) => panic!("Capture spool reopen failed: {error}"),
+            }
+        }
+    })
+    .await
+    .expect("Capture spool lease was not released after recorder shutdown");
     let writer = reopened.resume(identity.clone()).await.unwrap();
     assert_eq!(writer.snapshot().await.unwrap(), snapshot);
     assert_eq!(
