@@ -190,8 +190,12 @@ impl VaultContext {
         let journal =
             ledger::Journal::open(root, self.events.clone(), limits, Some(self.clone())).await?;
         let worker = TranscriptionWorker::start(
-            self.clone(), journal.clone(), engine.clone(), authorizer.clone(),
-        ).await?;
+            self.clone(),
+            journal.clone(),
+            engine.clone(),
+            authorizer.clone(),
+        )
+        .await?;
         let service = TranscriptionService {
             engine,
             authorizer,

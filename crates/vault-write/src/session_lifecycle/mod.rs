@@ -667,8 +667,16 @@ async fn sync_parents(
 ) -> Result<(), StoreError> {
     store
         .spawn_blocking(move || {
-            operation_io::sync_parent(&source)?;
-            operation_io::sync_parent(&trash)
+            #[cfg(unix)]
+            for path in [&source, &trash] {
+                hypr_storage::fs::sync_directory_with_anchor(
+                    path.parent()
+                        .ok_or_else(|| StoreError::Io("Missing lifecycle parent".into()))?,
+                    &trash,
+                )
+                .map_err(io_error)?;
+            }
+            Ok(())
         })
         .await
         .map_err(|_| StoreError::Io("Lifecycle directory sync stopped".into()))?

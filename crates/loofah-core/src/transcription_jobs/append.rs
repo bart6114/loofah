@@ -114,7 +114,27 @@ impl VaultContext {
         });
         let result = async {
             let session = self.admit_session_work(session_id).await?;
-            let memo = self.read_note(session_id).await?.markdown;
+            let note = self
+                .read_note(session_id)
+                .await?
+                .markdown
+                .unwrap_or_default();
+            let memo = tokio::task::spawn_blocking(move || {
+                if note.len() > 8 * 1024 * 1024 {
+                    return Err(storage("Append note source exceeds the input budget"));
+                }
+                if note.is_empty() {
+                    return Ok(String::new());
+                }
+                let value = hypr_tiptap::md_to_tiptap_json(&note).map_err(storage)?;
+                let value = serde_json::to_string(&value).map_err(storage)?;
+                if value.len() > 16 * 1024 * 1024 {
+                    return Err(storage("Append note source exceeds the input budget"));
+                }
+                Ok(value)
+            })
+            .await
+            .map_err(storage)??;
             let metadata = TranscriptionMetadata {
                 session_id: session_id.clone(),
                 user_id: work.principal.clone(),
