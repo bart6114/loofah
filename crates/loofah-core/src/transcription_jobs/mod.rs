@@ -501,3 +501,11 @@ fn uuid(value: &str) -> Result<String, ApplicationError> {
     }
     Ok(parsed.to_string())
 }
+
+impl TranscriptionService {
+    pub(crate) fn operational_sample(
+        &self,
+    ) -> crate::operational::Sample<crate::operational::JobCounts> {
+        self.journal.operational_sample()
+    }
+}

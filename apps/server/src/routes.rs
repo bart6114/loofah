@@ -157,9 +157,14 @@ pub fn router(service: Arc<Service>) -> Router {
         )
         .route("/vaults/{vault}/search", axum::routing::post(search))
         .route("/vaults/{vault}/events", get(events))
+        .route(
+            "/vaults/{vault}/operations",
+            get(crate::operational::status),
+        )
         .route_layer(middleware::from_fn_with_state(service.clone(), authorize));
     Router::new()
         .route("/health", get(health))
+        .route("/ready", get(crate::operational::ready))
         .route("/api/v1/capabilities", get(capabilities))
         .route("/api/v1/auth/config", get(auth_config))
         .nest(
@@ -345,10 +350,18 @@ async fn authorize_with(
     match result {
         Ok(identity) => {
             request.extensions_mut().insert(identity);
+            let observation = service.observability.request_scope(
+                request.uri().path(),
+                !matches!(
+                    *request.method(),
+                    axum::http::Method::GET | axum::http::Method::HEAD
+                ),
+            );
+            let operation = crate::operational::REQUEST.scope(observation, next.run(request));
             if streaming {
-                return next.run(request).await;
+                return operation.await;
             }
-            match tokio::time::timeout(Duration::from_secs(30), next.run(request)).await {
+            match tokio::time::timeout(Duration::from_secs(30), operation).await {
                 Ok(response) => response,
                 Err(_) => {
                     let mut error = ApiError::new(
@@ -1214,6 +1227,10 @@ async fn events(
         .clone()
         .try_acquire_owned()
         .map_err(|_| ApiError::busy("Subscription capacity reached"))?;
+    let metrics = service.observability.entry(&id);
+    if let Some(metrics) = &metrics {
+        metrics.subscription(cursor.is_some());
+    }
     let stream = async_stream::stream! {
         let _permit = permit;
         let expiry = tokio::time::sleep(Duration::from_secs(identity.expires_at.saturating_sub(now())));
@@ -1227,6 +1244,7 @@ async fn events(
                 },
                 event = subscription.recv() => {
                     let Some(event) = event else { break; };
+                    if matches!(event.change, hypr_loofah_protocol::Change::ResyncRequired) { if let Some(metrics) = &metrics { metrics.resync(); } }
                     let Ok(access) = service.catalog.access(&identity, &id, false).await else { break; };
                     let Ok(json) = serde_json::to_string(&event) else { break; };
                     drop(access);
@@ -1284,9 +1302,14 @@ pub(crate) async fn admitted_write<T: Send + 'static>(
             "Server is shutting down",
         ));
     }
+    let metrics = crate::operational::admitted_write();
     tokio::spawn(async move {
         let _permit = permit;
-        operation.await
+        let outcome = operation.await;
+        if let Some(metrics) = metrics {
+            metrics.complete(&outcome);
+        }
+        outcome
     })
     .await
     .map_err(ApiError::internal)?

@@ -12,6 +12,7 @@ mod summary;
 #[cfg(test)]
 mod tests;
 use journal::Admission;
+pub(crate) use journal::sample_media_uploads;
 
 #[derive(Clone, Copy)]
 pub struct MediaLimits {

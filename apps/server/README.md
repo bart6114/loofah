@@ -339,9 +339,39 @@ pre-upgrade snapshot with its unpublished capture intact.
 This qualifies those exact controlled artifacts and synthetic records, not a
 released-version compatibility matrix, Linux x64, production SSO/TLS, production
 upgrade downtime, interrupted large restore copying, live-client reconnect or
-uninterrupted device recording. `/health` currently checks catalog availability;
-operators must verify authenticated reads for every required vault because a
-future runtime format can fail one vault while the catalog remains available.
+uninterrupted device recording. That artifact predates the readiness probe below.
+
+## Operational probes
+
+`GET /health` remains a catalog liveness probe. `GET /ready` returns an empty 204
+only after all active catalog vaults have finished startup; opening, failed,
+stopping, stale or over-capacity observations return 503. Readiness opens required
+vaults in a background worker, including their recovery gates. A future runtime
+format therefore fails readiness even when catalog liveness remains healthy.
+Catalog changes immediately invalidate the previous readiness generation. Samples
+refresh every 30 seconds and expire after 90 seconds; more than 4,096 active vaults
+fails closed. No authenticated data or filesystem paths appear in either probe.
+
+Owners can read `GET /api/v1/vaults/{vault}/operations` with the normal bearer token
+and API-major header. Readers and editors cannot access this endpoint. It returns
+cached readiness, storage pressure, admitted/completed/failed write counters,
+unknown write outcomes, event subscriptions/reconnects/resyncs, durable capture
+and media upload backlog, and summary/transcription job counts with fixed
+cumulative latency buckets. It does not expose IDs, paths, names, content, error
+messages, provider keys or unbounded labels. Responses use `Cache-Control: no-store`.
+
+Counters reset on process restart. Write failures count internal/unavailable
+outcomes from owned admitted operations, including operations that finish after
+a caller disconnects; they are not a count of every rejected request. Job latency
+is creation-to-terminal time for retained durable jobs, including queue time;
+invalid timestamps have a separate count. Capture retained bytes reflect the
+spool quota index; media declared bytes are reservations, not a claim about bytes
+received. Media sampling reads only bounded private admission records (4,096
+entries and 16 MiB per vault), never audio payloads or unknown vault attachments.
+Unavailable or incomplete samples explicitly report that state rather than zero.
+A busy spool mutex yields unavailable without delaying capture. Storage pressure
+is low below 1 GiB or 10%, critical below 64 MiB or 1%; unsupported mounts report
+unavailable. This is advisory sampling, not a new storage quota policy.
 
 ## Optional CPU transcription
 
@@ -492,7 +522,7 @@ the vault's custom template code; the check uses the exact snapshot rendered.
 
 ## API boundary
 
-`GET /health`, `GET /api/v1/capabilities` and `GET /api/v1/auth/config` are public. Protected requests require `Authorization: Bearer …` and `X-Loofah-Api-Major: 1`. Creates also require a client-generated UUID in `X-Request-Id` so a lost response can be retried safely.
+`GET /health`, `GET /ready`, `GET /api/v1/capabilities` and `GET /api/v1/auth/config` are public. Protected requests require `Authorization: Bearer …` and `X-Loofah-Api-Major: 1`. Creates also require a client-generated UUID in `X-Request-Id` so a lost response can be retried safely.
 
 | Operation                              | Endpoint                                                                                                                                  |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |

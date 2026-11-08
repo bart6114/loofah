@@ -7826,6 +7826,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "storage",
+ "sysinfo",
  "tempfile",
  "tokio",
  "tokio-rustls 0.26.4",

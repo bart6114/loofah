@@ -156,6 +156,23 @@ impl Catalog {
         self.state.lock().await.healthy
     }
 
+    pub(crate) fn generation(&self) -> u64 {
+        *self.changes.borrow()
+    }
+
+    pub(crate) async fn active_vault_ids(&self, limit: usize) -> Vec<String> {
+        self.state
+            .lock()
+            .await
+            .stored
+            .vaults
+            .values()
+            .filter(|vault| !vault.deleted)
+            .take(limit)
+            .map(|vault| vault.id.clone())
+            .collect()
+    }
+
     pub fn subscribe(&self) -> watch::Receiver<u64> {
         self.changes.subscribe()
     }

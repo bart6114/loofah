@@ -672,3 +672,31 @@ async fn cancelled_original_source_reader_keeps_actual_io_and_shutdown_pinned() 
     drop(shutdown);
     fixture.runtime.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn operational_media_counts_recover_durable_receiving_without_reading_source() {
+    use crate::operational::Sample;
+    let fixture = Fixture::new().await;
+    let declaration = fixture.declaration(b"PRIVATE-SOURCE-CANARY").await;
+    fixture.media.declare(declaration.clone()).await.unwrap();
+    let Sample::Available(counts) = fixture.runtime.context.sample_operational_media().await else {
+        panic!("sample unavailable");
+    };
+    assert_eq!(counts.receiving, 1);
+    assert_eq!(counts.declared_bytes, 21);
+    assert!(!serde_json::to_string(&counts).unwrap().contains("CANARY"));
+    fixture.media.shutdown().await;
+    let path = fixture
+        .media
+        .root
+        .join(format!("{}.admission.json", declaration.request_id));
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    value["version"] = 999.into();
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(matches!(
+        fixture.runtime.context.sample_operational_media().await,
+        Sample::Unavailable
+    ));
+    fixture.runtime.shutdown().await.unwrap();
+}

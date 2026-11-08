@@ -11,6 +11,8 @@ use crate::{
 
 #[path = "capture_ingest.rs"]
 mod capture_ingest;
+#[path = "operational.rs"]
+pub mod operational;
 
 pub struct VaultContext {
     pub store: Arc<SessionStore>,

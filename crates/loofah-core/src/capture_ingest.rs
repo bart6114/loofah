@@ -462,3 +462,15 @@ mod tests;
 
 #[path = "capture_ingest/wav.rs"]
 mod wav;
+
+impl CaptureIngestion {
+    pub(crate) fn operational_sample(
+        &self,
+    ) -> crate::operational::Sample<hypr_capture_store::capture_spool::OperationalCounts> {
+        use crate::operational::Sample;
+        self.spool
+            .get()
+            .and_then(|spool| spool.operational_counts())
+            .map_or(Sample::Unavailable, Sample::Available)
+    }
+}

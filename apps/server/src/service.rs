@@ -29,6 +29,8 @@ pub struct Service {
     #[cfg(test)]
     pub(crate) startup_pause:
         std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>,
+    pub(crate) observability: Arc<crate::operational::Observability>,
+    operational_worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
     pub auth: Authenticator,
     pub catalog: Catalog,
     pub config: Config,
@@ -87,6 +89,8 @@ impl Service {
             injected_changes: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
             startup_pause: Default::default(),
+            observability: Arc::new(Default::default()),
+            operational_worker: Mutex::new(None),
             auth,
             catalog,
             config,
@@ -148,6 +152,9 @@ impl Service {
             }
         });
         *service.catalog_worker.lock().await = Some(worker);
+        *service.operational_worker.lock().await = Some(tokio::spawn(crate::operational::run(
+            Arc::downgrade(&service),
+        )));
         Ok(service)
     }
 
@@ -421,6 +428,11 @@ impl Service {
 
     async fn shutdown_owned(self: Arc<Self>) -> Result<()> {
         let mut failure = None;
+        if let Some(worker) = self.operational_worker.lock().await.take() {
+            if let Err(cause) = worker.await {
+                failure = Some(ApiError::internal(cause));
+            }
+        }
         let catalog_worker = self.catalog_worker.lock().await.take();
         if let Some(worker) = catalog_worker
             && let Err(cause) = worker.await

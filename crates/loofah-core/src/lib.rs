@@ -17,7 +17,7 @@ pub mod startup;
 pub mod transcription_jobs;
 mod vault;
 pub mod vault_watch;
-pub use vault::VaultContext;
+pub use vault::{VaultContext, operational};
 mod runtime;
 pub use runtime::VaultRuntime;
 mod agent;

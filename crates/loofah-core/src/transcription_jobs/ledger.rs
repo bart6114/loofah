@@ -11,6 +11,9 @@ use std::{
 };
 use tokio::sync::{Notify, watch};
 
+#[path = "operational.rs"]
+mod operational;
+
 const RECORD_LIMIT: u64 = 64 * 1024;
 const ENTRY_LIMIT: usize = 4096;
 #[cfg(test)]

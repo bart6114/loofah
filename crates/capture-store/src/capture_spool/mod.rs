@@ -14,7 +14,9 @@ use sha2::{Digest, Sha256};
 
 use crate::{Result, failure};
 
+mod operational;
 mod store;
+pub use operational::OperationalCounts;
 mod types;
 pub use types::*;
 

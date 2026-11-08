@@ -25,6 +25,7 @@ mod capture_origin_tests;
 pub mod configured;
 pub mod generation;
 pub(crate) mod lifecycle;
+mod operational;
 mod prepared;
 pub mod providers;
 mod result;

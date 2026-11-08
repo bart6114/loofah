@@ -344,16 +344,16 @@ async fn document_edits_share_canonical_guards_and_never_grant_readers_write_acc
     fixture.service.shutdown().await.unwrap();
 }
 
-struct Fixture {
+pub(crate) struct Fixture {
     _root: tempfile::TempDir,
     issuer: String,
     issuer_task: tokio::task::JoinHandle<()>,
-    service: Arc<Service>,
-    app: Router,
+    pub(crate) service: Arc<Service>,
+    pub(crate) app: Router,
 }
 
 impl Fixture {
-    async fn new() -> Self {
+    pub(crate) async fn new() -> Self {
         Self::with_processing(None).await
     }
 
@@ -435,11 +435,11 @@ impl Fixture {
         json!({"iss":self.issuer,"sub":subject,"aud":"loofah-api","exp":now()+3600,"iat":now(),"scope":"openid profile loofah:access","name":subject})
     }
 
-    fn token(&self, subject: &str) -> String {
+    pub(crate) fn token(&self, subject: &str) -> String {
         sign(self.claims(subject), "at+jwt", "test-1")
     }
 
-    async fn call(
+    pub(crate) async fn call(
         &self,
         subject: &str,
         method: &str,
@@ -497,7 +497,7 @@ impl Fixture {
         (status, body)
     }
 
-    async fn login(&self, subject: &str) -> Me {
+    pub(crate) async fn login(&self, subject: &str) -> Me {
         let (status, body) = self.call(subject, "POST", "/api/v1/me", None).await;
         assert_eq!(status, StatusCode::OK);
         serde_json::from_value(body).unwrap()

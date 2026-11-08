@@ -12,6 +12,7 @@ pub use media::{LocalMediaFuture, LocalMediaHost, LocalMediaTranscription};
 mod mutations;
 mod normalization;
 mod remote;
+pub(crate) use remote::sample_media_uploads;
 mod scope;
 pub use normalization::normalize_media_artifact;
 pub use remote::{MediaDispatcher, MediaLimits, MediaSourceReader};

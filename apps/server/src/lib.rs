@@ -6,6 +6,7 @@ pub mod config;
 pub mod error;
 pub mod maintenance;
 mod media;
+mod operational;
 pub mod processing;
 pub mod routes;
 pub mod service;

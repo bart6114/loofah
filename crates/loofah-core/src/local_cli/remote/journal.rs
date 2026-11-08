@@ -171,3 +171,97 @@ pub(super) fn validate_request(request: &str) -> Result<(), ApplicationError> {
     }
     Ok(())
 }
+
+pub(crate) fn sample_media_uploads(
+    context: &VaultContext,
+) -> crate::operational::Sample<crate::operational::MediaUploadCounts> {
+    use crate::operational::{MediaUploadCounts, Sample};
+    use sha2::{Digest, Sha256};
+    let Some(operations) = &context.operations else {
+        return Sample::Disabled;
+    };
+    let root = operations.root.join("member-media");
+    let sample = || -> Result<Sample<MediaUploadCounts>, ApplicationError> {
+        let mut counts = MediaUploadCounts::default();
+        if !ledger::existing_directory(&root)? {
+            return Ok(Sample::Available(counts));
+        }
+        let mut entries = 0_usize;
+        let mut bytes = 0_usize;
+        for member in std::fs::read_dir(&root)
+            .map_err(|_| unavailable("Operational inventory unavailable"))?
+        {
+            entries += 1;
+            if entries > 4096 {
+                return Ok(Sample::Incomplete);
+            }
+            let member = member.map_err(|_| unavailable("Operational inventory unavailable"))?;
+            let namespace = member.file_name();
+            let namespace = namespace
+                .to_str()
+                .ok_or_else(|| unavailable("Operational inventory invalid"))?;
+            if !is_transcription_sha256(namespace) || !ledger::existing_directory(&member.path())? {
+                return Ok(Sample::Unavailable);
+            }
+            let directory = member.path().join("local-media");
+            if !ledger::existing_directory(&directory)? {
+                continue;
+            }
+            for entry in std::fs::read_dir(&directory)
+                .map_err(|_| unavailable("Operational inventory unavailable"))?
+            {
+                entries += 1;
+                if entries > 4096 {
+                    return Ok(Sample::Incomplete);
+                }
+                let entry = entry.map_err(|_| unavailable("Operational inventory unavailable"))?;
+                let name = entry.file_name();
+                let Some(request) = name
+                    .to_str()
+                    .and_then(|name| name.strip_suffix(".admission.json"))
+                else {
+                    continue;
+                };
+                validate_request(request)?;
+                let body = ledger::read(&entry.path(), 1024 * 1024)?;
+                bytes = bytes.saturating_add(body.len());
+                if bytes > 16 * 1024 * 1024 {
+                    return Ok(Sample::Incomplete);
+                }
+                let record: Admission = serde_json::from_slice(&body)
+                    .map_err(|_| unavailable("Operational inventory invalid"))?;
+                validate_media_declaration(&record.declaration)
+                    .map_err(|_| unavailable("Operational inventory invalid"))?;
+                let expected_namespace = Sha256::digest(
+                    serde_json::to_vec(&(&record.vault_id, &record.principal)).unwrap(),
+                )
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+                if !matches!(record.version, 1 | 2)
+                    || record.vault_id != context.events.vault_id()
+                    || record.declaration.request_id != request
+                    || namespace != expected_namespace
+                {
+                    return Ok(Sample::Unavailable);
+                }
+                match record.phase {
+                    MediaPhase::Receiving => counts.receiving += 1,
+                    MediaPhase::Ready => counts.ready += 1,
+                    MediaPhase::Running => counts.dispatched += 1,
+                    MediaPhase::Review => counts.review += 1,
+                    _ => counts.terminal += 1,
+                }
+                counts.declared_bytes = counts.declared_bytes.saturating_add(
+                    record
+                        .declaration
+                        .operation
+                        .upload()
+                        .map_or(0, |(_, source)| source.size_bytes),
+                );
+            }
+        }
+        Ok(Sample::Available(counts))
+    };
+    sample().unwrap_or(Sample::Unavailable)
+}

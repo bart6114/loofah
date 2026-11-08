@@ -1284,3 +1284,29 @@ fn accept_loaded(entry: &mut Entry, sequence: u64, chunk: CaptureChunk) -> Resul
     entry.chunks.push(chunk.descriptor);
     Ok(())
 }
+
+pub(super) fn operational_counts(state: &State, quota_bytes: u64) -> Option<OperationalCounts> {
+    if state.dirty || state.entries.len() > 4096 {
+        return None;
+    }
+    let mut counts = OperationalCounts {
+        retained_bytes: state.bytes,
+        quota_bytes,
+        ..Default::default()
+    };
+    for entry in state.entries.values() {
+        let snapshot = &entry.manifest.snapshot;
+        if snapshot.retirement.as_ref().is_some_and(|retired| {
+            retired.state == hypr_loofah_protocol::CaptureRetirementState::Retired
+        }) {
+            counts.retired += 1;
+        } else if snapshot.publication.is_some() {
+            counts.published_retained += 1;
+        } else if snapshot.seal.is_some() {
+            counts.sealed_unpublished += 1;
+        } else {
+            counts.receiving += 1;
+        }
+    }
+    Some(counts)
+}
