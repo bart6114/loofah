@@ -109,7 +109,20 @@ pub async fn application_save_desktop_startup<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     input: SaveDesktopStartupRequest,
 ) -> Result<DesktopStartupSaveOutcome, ApplicationError> {
-    profiles(&app)?.save_desktop_startup(input).await
+    let profiles = profiles(&app)?;
+    let active = app
+        .try_state::<crate::remote::RemoteState>()
+        .and_then(|state| state.leased_active_profile());
+    if let Some(profile) = active
+        && let hypr_loofah_client::DesktopStartupSelection::Remote { profile_id, .. } =
+            &input.selection
+        && profile.profile().await.id == *profile_id
+    {
+        return profiles
+            .save_desktop_startup_with_profile(input, profile)
+            .await;
+    }
+    profiles.save_desktop_startup(input).await
 }
 
 #[tauri::command]

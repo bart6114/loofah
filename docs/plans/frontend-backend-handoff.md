@@ -67,11 +67,12 @@ Checks under `/Volumes/T7/loofah-backend-build/logs/desktop-bootstrap-*`:
   existing preparation script fixed that. Successful second build took 1m21s;
   all-target check took 2m26s. Do not repeat a full native build for small UI edits.
 
-Known startup follow-up before production: saving back to the active remote
-profile after selecting Local for the next launch needs a borrowed-profile-lease
-save path. Identical selection saves and choosing Local already work. The current
-exclusive SDK profile lock can otherwise refuse that reverse selection until
-restart. Keep the active profile immutable; do not solve this by retargeting it.
+Startup follow-up: the native command now reuses the immutable active profile
+lease when changing the next-start selection back from Local to that profile.
+The same shared SDK CAS/atomic-write operation is used; foreign-store/profile
+leases are rejected. All 20 SDK profile tests and the actual native command
+round trip pass; desktop/CLI all-target checks pass and actual binding export has
+no contract drift. See `logs/desktop-startup-leased-save-*` for proof.
 Title-only draft previews are memory-backed, not crash/restart durable.
 
 ## Active agents and next dependencies

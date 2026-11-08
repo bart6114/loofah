@@ -99,6 +99,32 @@ impl ConnectionProfiles {
         self: &Arc<Self>,
         input: SaveDesktopStartupRequest,
     ) -> Result<DesktopStartupSaveOutcome> {
+        self.save_desktop_startup_owned(input, None).await
+    }
+
+    pub async fn save_desktop_startup_with_profile(
+        self: &Arc<Self>,
+        input: SaveDesktopStartupRequest,
+        profile: Arc<ProfileLease>,
+    ) -> Result<DesktopStartupSaveOutcome> {
+        let current = profile.profile().await;
+        if !Arc::ptr_eq(self, &profile.store)
+            || !matches!(&input.selection, DesktopStartupSelection::Remote { profile_name, profile_id }
+                if profile_name == &current.name && profile_id == &current.id)
+        {
+            return Err(not_committed(failure(
+                ErrorCode::Validation,
+                "The leased profile does not match the requested startup selection",
+            )));
+        }
+        self.save_desktop_startup_owned(input, Some(profile)).await
+    }
+
+    async fn save_desktop_startup_owned(
+        self: &Arc<Self>,
+        input: SaveDesktopStartupRequest,
+        profile: Option<Arc<ProfileLease>>,
+    ) -> Result<DesktopStartupSaveOutcome> {
         validate_selection(&input.selection).map_err(not_committed)?;
         if input.expected_revision != ABSENT && !is_hash(&input.expected_revision) {
             return Err(not_committed(failure(
@@ -108,6 +134,7 @@ impl ConnectionProfiles {
         }
         let store = self.clone();
         tokio::task::spawn_blocking(move || {
+            let held_profile = profile;
             let _startup_lock = store.lock("desktop-startup").map_err(not_committed)?;
             let current = store.desktop_startup().map_err(not_committed)?;
             if current.revision != input.expected_revision {
@@ -126,9 +153,10 @@ impl ConnectionProfiles {
             }
             let _profile_lock = match &input.selection {
                 DesktopStartupSelection::Local {} => None,
-                DesktopStartupSelection::Remote { profile_id, .. } => {
+                DesktopStartupSelection::Remote { profile_id, .. } if held_profile.is_none() => {
                     Some(store.lock(profile_id).map_err(not_committed)?)
                 }
+                DesktopStartupSelection::Remote { .. } => None,
             };
             store
                 .desktop_startup_profile(&selected)

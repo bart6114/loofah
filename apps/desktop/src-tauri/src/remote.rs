@@ -233,6 +233,9 @@ impl RemoteState {
         };
         Ok((client, cancel, pending))
     }
+    pub(crate) fn leased_active_profile(&self) -> Option<Arc<hypr_loofah_client::ProfileLease>> {
+        self.active_profile.get().cloned()
+    }
     pub(crate) async fn active_profile<R: tauri::Runtime>(
         &self,
         app: &tauri::AppHandle<R>,
@@ -978,16 +981,24 @@ mod tests {
             .unwrap();
         state.release_window("first");
         assert!(client.is_closed());
-        assert!(matches!(
-            profiles
-                .save_desktop_startup(SaveDesktopStartupRequest {
+        let DesktopStartupSaveOutcome::Saved(local) =
+            crate::desktop_profiles::application_save_desktop_startup(
+                app.handle().clone(),
+                SaveDesktopStartupRequest {
                     selection: DesktopStartupSelection::Local {},
                     expected_revision: snapshot.revision,
-                })
-                .await
-                .unwrap(),
-            DesktopStartupSaveOutcome::Saved(_)
-        ));
+                },
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("unexpected standalone selection conflict");
+        };
+        assert!(
+            matches!(crate::desktop_profiles::application_save_desktop_startup(app.handle().clone(), SaveDesktopStartupRequest {
+            selection: snapshot.selection.clone(), expected_revision: local.revision,
+        }).await.unwrap(), DesktopStartupSaveOutcome::Saved(restored) if restored.selection == snapshot.selection)
+        );
         let resumed = state.active_profile(app.handle()).await.unwrap();
         assert!(Arc::ptr_eq(&lease, &resumed));
         assert_eq!(resumed.profile().await.id, profile.id);

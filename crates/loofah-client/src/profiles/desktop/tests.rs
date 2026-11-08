@@ -262,6 +262,107 @@ async fn unchanged_startup_can_be_saved_while_its_profile_is_leased_by_a_live_co
 }
 
 #[tokio::test]
+async fn borrowed_profile_can_be_selected_after_local_without_retargeting_the_live_owner() {
+    let (_root, store) = fixture();
+    let lease = store
+        .create("company", "https://company.example")
+        .await
+        .unwrap();
+    let profile = lease.profile().await;
+    let remote = DesktopStartupSelection::Remote {
+        profile_name: profile.name,
+        profile_id: profile.id.clone(),
+    };
+    let DesktopStartupSaveOutcome::Saved(saved) = store
+        .save_desktop_startup_with_profile(
+            SaveDesktopStartupRequest {
+                selection: remote.clone(),
+                expected_revision: ABSENT.into(),
+            },
+            lease.clone(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("unexpected remote conflict");
+    };
+    let DesktopStartupSaveOutcome::Saved(local) = store
+        .save_desktop_startup(SaveDesktopStartupRequest {
+            selection: DesktopStartupSelection::Local {},
+            expected_revision: saved.revision.clone(),
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("unexpected local conflict");
+    };
+    assert_eq!(
+        store
+            .save_desktop_startup_with_profile(
+                SaveDesktopStartupRequest {
+                    selection: remote.clone(),
+                    expected_revision: saved.revision,
+                },
+                lease.clone()
+            )
+            .await
+            .unwrap(),
+        DesktopStartupSaveOutcome::Conflict(local.clone())
+    );
+    let outcome = store
+        .save_desktop_startup_with_profile(
+            SaveDesktopStartupRequest {
+                selection: remote.clone(),
+                expected_revision: local.revision,
+            },
+            lease.clone(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(outcome, DesktopStartupSaveOutcome::Saved(snapshot) if snapshot.selection == remote)
+    );
+    assert_eq!(lease.profile().await.id, profile.id);
+}
+
+#[tokio::test]
+async fn borrowed_selection_rejects_another_store_or_profile_before_mutation() {
+    let (_root, store) = fixture();
+    let (_other_root, other) = fixture();
+    let first = store
+        .create("first", "https://company.example")
+        .await
+        .unwrap();
+    let profile = first.profile().await;
+    let second = store
+        .create("second", "https://company.example")
+        .await
+        .unwrap();
+    let request = SaveDesktopStartupRequest {
+        selection: DesktopStartupSelection::Remote {
+            profile_name: profile.name,
+            profile_id: profile.id,
+        },
+        expected_revision: ABSENT.into(),
+    };
+    for error in [
+        other
+            .save_desktop_startup_with_profile(request.clone(), first)
+            .await
+            .unwrap_err(),
+        store
+            .save_desktop_startup_with_profile(request, second)
+            .await
+            .unwrap_err(),
+    ] {
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    }
+    assert_eq!(store.desktop_startup().unwrap().revision, ABSENT);
+    assert_eq!(other.desktop_startup().unwrap().revision, ABSENT);
+}
+
+#[tokio::test]
 async fn caller_cancellation_does_not_release_an_admitted_selection_write() {
     let (_root, store) = fixture();
     let lease = store
