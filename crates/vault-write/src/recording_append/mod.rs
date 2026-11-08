@@ -142,6 +142,23 @@ impl SessionStore {
         {
             return Err(io::invalid("Append transcript exceeds its byte budget"));
         }
+        if merged.as_deref() != source.raw_transcript()
+            && let Some(bytes) = merged.as_deref()
+        {
+            // Invalid retained originals may be preserved byte-for-byte, never manufactured.
+            let value = serde_json::from_slice::<crate::metadata_revision::UniqueValue>(bytes)
+                .map_err(io::error)?
+                .0;
+            let parsed: hypr_fs_format::TranscriptJson =
+                serde_json::from_value(value).map_err(io::error)?;
+            if parsed
+                .transcripts
+                .iter()
+                .any(|transcript| transcript.session_id != source.0.receipt.session_id)
+            {
+                return Err(io::invalid("Append transcript belongs to another session"));
+            }
+        }
         let result = ResultReceipt {
             schema_version: 1,
             source: source.0.receipt.clone(),

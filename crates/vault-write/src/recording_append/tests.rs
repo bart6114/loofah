@@ -564,3 +564,36 @@ async fn startup_append_recovery_requires_original_lease_and_fences_before_readi
     reopened.set_startup_pending(false);
     assert!(reopened.open_recording("note").await.is_ok());
 }
+
+#[tokio::test]
+async fn invalid_merged_transcript_is_rejected_before_any_canonical_intent() {
+    let fixture = Fixture::new("audio.mp3", None).await;
+    let source = fixture.source().await;
+    let (bytes, artifact) = wave(&[0.5]);
+    let path = fixture.root.path().join("output.wav");
+    std::fs::write(&path, bytes).unwrap();
+    assert!(
+        fixture
+            .store
+            .prepare_recording_append(
+                &fixture.operations,
+                fixture.identity.clone(),
+                source,
+                File::open(path).unwrap(),
+                artifact,
+                Some(vec![0xff])
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        std::fs::read(fixture.directory.join("audio.mp3")).unwrap(),
+        b"original encoded recording"
+    );
+    assert!(
+        !io::root(&fixture.operations, &fixture.identity)
+            .unwrap()
+            .join("intent.json")
+            .exists()
+    );
+}
