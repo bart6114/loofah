@@ -343,7 +343,9 @@ uninterrupted device recording. That artifact predates the readiness probe below
 
 ## Operational probes
 
-`GET /health` remains a catalog liveness probe. `GET /ready` returns an empty 204
+`GET /health` remains a catalog liveness probe. The container images use `/ready`
+for their health check; use `/health` separately when configuring liveness restarts.
+`GET /ready` returns an empty 204
 only after all active catalog vaults have finished startup; opening, failed,
 stopping, stale or over-capacity observations return 503. Readiness opens required
 vaults in a background worker, including their recovery gates. A future runtime
