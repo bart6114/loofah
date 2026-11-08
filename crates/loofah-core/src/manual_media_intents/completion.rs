@@ -131,9 +131,7 @@ impl VaultContext {
                     )
                 } else {
                     (
-                        operations
-                            .root
-                            .join(cli.media_directory("transcript-publications")),
+                        operations.root.join("transcript-publications"),
                         cli.media_namespace("local-cli-transcribe"),
                     )
                 };
