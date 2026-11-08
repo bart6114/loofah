@@ -31,6 +31,7 @@ import {
   useSessionMetadata,
 } from "~/session/queries";
 import { useVaultHost } from "~/shared/application/vault-provider";
+import { DeviceRecordButton } from "~/shared/application/device-recording-host";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 import { consumePendingUpload } from "~/stt/pending-upload";
 import { useStartListening } from "~/stt/useStartListening";
@@ -261,6 +262,7 @@ function TabContentNoteInner({
         }
       >
         <AudioPlayer.Status />
+        {!isAvailable() && <DeviceRecordButton sessionId={sessionId} />}
         {session && rawMd !== null ? (
           <NoteInput
             ref={noteInputRef}

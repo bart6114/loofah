@@ -15,6 +15,8 @@ import {
 import { DesktopStartupPreferences } from "./desktop-startup-preferences";
 import { ApplicationRequestError } from "./errors";
 import { VaultNotesWorkspace } from "./notes-workspace";
+
+import { MainWorkspace } from "~/main/captured-workspace";
 import type { Me, VaultInfo } from "./protocol.gen";
 import { NativeRemoteConnection } from "./remote";
 import { connectRemoteVault } from "./vault-client";
@@ -55,9 +57,11 @@ export function ServerConnection({
   preferredVaultId,
   onDestination,
   connectToServer,
+  mainWorkspace = false,
 }: {
   initialServer?: string;
   autoConnect?: boolean;
+  mainWorkspace?: boolean;
   preferredMemberId?: string | null;
   preferredVaultId?: string | null;
   onDestination?: (
@@ -226,6 +230,7 @@ export function ServerConnection({
           preferredMemberId={preferredMemberId}
           preferredVaultId={preferredVaultId}
           onDestination={onDestination}
+          mainWorkspace={mainWorkspace}
         />
       ) : (
         <div className="flex flex-col gap-3">
@@ -260,7 +265,9 @@ function ConnectedVaults({
   preferredMemberId,
   preferredVaultId,
   onDestination,
+  mainWorkspace,
 }: {
+  mainWorkspace: boolean;
   connection: NativeRemoteConnection;
   me: Me;
   preferredMemberId?: string | null;
@@ -402,9 +409,12 @@ function ConnectedVaults({
           {catalog.error.message}
         </p>
       )}
-      {client && (
-        <VaultNotesWorkspace client={client} onCatalogChanged={changed} />
-      )}
+      {client &&
+        (mainWorkspace ? (
+          <MainWorkspace client={client} onCatalogChanged={changed} />
+        ) : (
+          <VaultNotesWorkspace client={client} onCatalogChanged={changed} />
+        ))}
     </div>
   );
 }

@@ -138,7 +138,7 @@ function RemoteDesktop({
             Loofah · {connection.name}
           </span>
           <span className="text-muted-foreground text-xs">
-            <Trans>Experimental server workspace</Trans>
+            <Trans>Server workspace</Trans>
           </span>
         </div>
         <DesktopStartupPreferences />
@@ -152,6 +152,7 @@ function RemoteDesktop({
         <ServerConnection
           initialServer={connection.server}
           autoConnect
+          mainWorkspace
           connectToServer={openConnection}
           preferredMemberId={connection.member_id}
           preferredVaultId={connection.vault_id}

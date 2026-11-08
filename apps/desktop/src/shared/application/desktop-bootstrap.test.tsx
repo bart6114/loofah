@@ -100,6 +100,7 @@ it("opens only the saved remote workspace and pins its destination", async () =>
   expect(mocks.remote.mock.lastCall?.[0]).toMatchObject({
     initialServer: "https://company.example/",
     autoConnect: true,
+    mainWorkspace: true,
     preferredMemberId: "alice",
     preferredVaultId: "private",
     connectToServer: expect.any(Function),

@@ -68,11 +68,13 @@ member and vault are restored only when they still match the authenticated
 account and available catalog; otherwise choose a vault explicitly. A removed,
 replaced or unsupported profile fails visibly rather than opening local data.
 
-The main desktop shell, complete recording/processing controls and remaining
-feature parity are still being migrated. This startup option is an experimental
-notes workspace, not completion of the full remote desktop release. Device draft
-recovery remains available when a startup profile cannot be opened. Startup
-preferences use revision checks and apply only at the next process start.
+Saved Remote startup profiles open the shared main desktop shell, including
+scoped timeline/search, editor, summary jobs and capability-selected controls.
+The optional server-notes dialog retains its smaller preview workspace. Device
+recording and recovery remain bound to the selected original destination; a
+failed startup never opens Local data. Full recording append, retention and
+platform acceptance remain release gates. Startup preferences use revision
+checks and apply only at the next process start.
 
 Capture identity, format, chunk, seal and receipt types live in the shared protocol with the unchanged version-1 fingerprint and checksum-chain functions. The neutral `capture-store` crate stores durable staging on the device and service. A first-audio producer observation upgrades a capture manifest to schema 2 without changing its audio hashes; older readers refuse that manifest. Existing untimed schema-1 captures remain readable without an invented timestamp.
 

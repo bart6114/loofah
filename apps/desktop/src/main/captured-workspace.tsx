@@ -13,6 +13,7 @@ import {
   useVaultHost,
 } from "~/shared/application/vault-provider";
 import type { VaultScope } from "~/shared/application/vault-scope";
+import { UndoDeleteToast } from "~/sidebar/toast/undo-delete-toast";
 import { createAITaskStore } from "~/store/zustand/ai-task";
 import { createListenerStore } from "~/store/zustand/listener";
 import type { TabsDeviceState } from "~/store/zustand/tabs/device-state";
@@ -22,14 +23,21 @@ export function MainWorkspace({
   deviceState,
   managePins = true,
   auxiliary,
+  onCatalogChanged,
 }: {
   client: VaultClient;
+  onCatalogChanged?: () => void;
   deviceState?: TabsDeviceState;
   managePins?: boolean;
   auxiliary?: ReactNode;
 }) {
   return (
-    <VaultClientProvider client={client}>
+    <VaultClientProvider
+      client={client}
+      onChange={(change) => {
+        if (change.kind === "catalog_changed") onCatalogChanged?.();
+      }}
+    >
       <ConnectedWorkspace
         deviceState={deviceState}
         managePins={managePins}
@@ -124,5 +132,10 @@ function WorkspaceContent({ auxiliary }: { auxiliary?: ReactNode }) {
 
 function WorkspaceShell({ auxiliary }: { auxiliary?: ReactNode }) {
   useCapturedMainLifecycle();
-  return <CapturedMainShellFrame auxiliary={auxiliary} />;
+  return (
+    <>
+      <CapturedMainShellFrame auxiliary={auxiliary} />
+      <UndoDeleteToast />
+    </>
+  );
 }
