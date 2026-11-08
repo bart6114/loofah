@@ -232,21 +232,21 @@ impl SessionStore {
             .as_deref()
             .filter(|title| *title != current.title)
         {
-            let mut meta = self
-                .metadata_snapshot_locked(guard, id)
-                .await?
-                .ok_or_else(|| {
-                    StoreError::Conflict("session was deleted while preparing its title".into())
-                })?
-                .meta;
+            let (metadata, raw) =
+                self.metadata_with_raw_locked(guard, id)
+                    .await?
+                    .ok_or_else(|| {
+                        StoreError::Conflict("session was deleted while preparing its title".into())
+                    })?;
+            let meta = metadata.meta;
             if meta.title != current.title {
                 return Err(StoreError::Conflict(
                     "session title changed while preparing the save".into(),
                 ));
             }
-            meta.title = title.into();
-            crate::metadata_revision::validate_metadata_size(
-                &meta,
+            crate::metadata_revision::serialize_title_patch(
+                raw,
+                title,
                 self.content_limits.metadata_bytes,
             )?;
         }
@@ -343,6 +343,222 @@ mod tests {
             panic!("expected saved editor snapshot")
         };
         snapshot
+    }
+
+    fn raw_title_metadata(store: &SessionStore, legacy: bool) -> serde_json::Value {
+        let path = store.vault_base().join("sessions/note/_meta.json");
+        let mut raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        raw["tag_suggestions"] = json!({"items": ["current"], "dismissed": ["dismissed"], "future": {"nested": [null, true, 5]}});
+        raw["calendar_event"] = json!({"legacy": {"tracking_id": "keep"}});
+        raw.as_object_mut().unwrap().remove("ended_at");
+        if legacy {
+            raw["tag_suggestions"]["status"] = json!("legacy-ready");
+            raw["tag_suggestions"]["source_hash"] = json!("legacy-hash");
+            raw["tag_suggestions"]["items"] = json!([{"tag": "legacy", "confidence": 0.9}]);
+        }
+        std::fs::write(path, serde_json::to_vec(&raw).unwrap()).unwrap();
+        raw
+    }
+
+    #[tokio::test]
+    async fn note_title_saves_merge_only_title_and_preserve_nested_unknown_and_legacy_fields() {
+        for legacy in [false, true] {
+            for checked in [false, true] {
+                let (_root, store, operations) = fixture("Original note").await;
+                let mut expected = raw_title_metadata(&store, legacy);
+                let before = snapshot(&store, &operations).await;
+                if checked {
+                    saved(
+                        store
+                            .save_note_with_recovery(
+                                &operations,
+                                "note",
+                                "Changed note",
+                                Some("Renamed"),
+                                &before.revision,
+                            )
+                            .await
+                            .unwrap(),
+                    );
+                } else {
+                    store
+                        .save_note("note", "Changed note", Some("Renamed"))
+                        .await
+                        .unwrap();
+                }
+                expected["title"] = json!("Renamed");
+                let actual: serde_json::Value = serde_json::from_slice(
+                    &std::fs::read(store.vault_base().join("sessions/note/_meta.json")).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(actual, expected);
+                assert_eq!(store.session_get("note").unwrap().meta.title, "Renamed");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn title_only_writer_keeps_deleted_session_guard_even_if_a_path_is_recreated() {
+        let (_root, store, _) = fixture("Original note").await;
+        let mut meta = store.read_meta("note").await.unwrap().unwrap();
+        let trash = store.delete_session("note").await.unwrap().unwrap();
+        let directory = store.vault_base().join("sessions/note");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::copy(trash.join("_meta.json"), directory.join("_meta.json")).unwrap();
+        std::fs::write(directory.join("notes.md"), "Replacement body").unwrap();
+        let before = std::fs::read(directory.join("_meta.json")).unwrap();
+        meta.title = "Stale title".into();
+        let guard = store.lock_writes().await;
+        assert!(
+            store
+                .write_session_title_file_locked(&guard, &meta)
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read(directory.join("_meta.json")).unwrap(), before);
+        assert_eq!(
+            std::fs::read(directory.join("notes.md")).unwrap(),
+            b"Replacement body"
+        );
+    }
+
+    #[tokio::test]
+    async fn note_title_actual_raw_growth_is_rejected_before_body_tasks_or_intent_writes() {
+        for checked in [false, true] {
+            let (_root, mut store, operations) = fixture("- [ ] Original task").await;
+            store
+                .reconcile_note_tasks(&operations, "note")
+                .await
+                .unwrap();
+            let mut raw = raw_title_metadata(&store, true);
+            raw["tag_suggestions"]["future"]["padding"] = json!("x".repeat(4096));
+            let bytes = serde_json::to_vec_pretty(&raw).unwrap();
+            let directory = store.vault_base().join("sessions/note");
+            std::fs::write(directory.join("_meta.json"), &bytes).unwrap();
+            store.content_limits.metadata_bytes = bytes.len();
+            let before = snapshot(&store, &operations).await;
+            let note = std::fs::read(directory.join("notes.md")).unwrap();
+            let tasks = std::fs::read(directory.join("tasks.json")).unwrap();
+            let result = if checked {
+                store
+                    .save_note_with_recovery(
+                        &operations,
+                        "note",
+                        "Changed body",
+                        Some("Much longer title"),
+                        &before.revision,
+                    )
+                    .await
+                    .map(|_| ())
+            } else {
+                store
+                    .save_note("note", "Changed body", Some("Much longer title"))
+                    .await
+            };
+            assert!(matches!(result, Err(StoreError::ResourceLimit(_))));
+            assert_eq!(std::fs::read(directory.join("_meta.json")).unwrap(), bytes);
+            assert_eq!(std::fs::read(directory.join("notes.md")).unwrap(), note);
+            assert_eq!(std::fs::read(directory.join("tasks.json")).unwrap(), tasks);
+            assert!(
+                !operations
+                    .join(format!("{}.json", crate::sha256(b"note")))
+                    .exists()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn body_only_and_unchanged_title_saves_leave_compact_metadata_byte_identical_at_its_limit()
+     {
+        for title in [None, Some("Title")] {
+            let (_root, mut store, operations) = fixture("Original note").await;
+            let raw = raw_title_metadata(&store, true);
+            let bytes = serde_json::to_vec(&raw).unwrap();
+            assert!(serde_json::to_vec_pretty(&raw).unwrap().len() > bytes.len());
+            store.content_limits.metadata_bytes = bytes.len();
+            let before = snapshot(&store, &operations).await;
+            saved(
+                store
+                    .save_note_with_recovery(
+                        &operations,
+                        "note",
+                        "Changed body",
+                        title,
+                        &before.revision,
+                    )
+                    .await
+                    .unwrap(),
+            );
+            assert_eq!(
+                std::fs::read(store.vault_base().join("sessions/note/_meta.json")).unwrap(),
+                bytes
+            );
+            assert_eq!(
+                store.read_note("note").await.unwrap().as_deref(),
+                Some("Changed body")
+            );
+        }
+    }
+
+    async fn pending_title_note(store: &SessionStore, operations: &Path) {
+        let before = snapshot(store, operations).await;
+        let guard = store.lock_writes().await;
+        store
+            .begin_note_write_locked(
+                &guard,
+                operations,
+                "note",
+                &before,
+                ("Changed body", "Recovered title"),
+                &[],
+            )
+            .await
+            .unwrap();
+        store
+            .write_note_file_locked(&guard, "note", "Changed body")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn interrupted_note_title_recovery_merges_fresh_raw_fields_and_preflights_before_tasks() {
+        let (_root, store, operations) = fixture("- [ ] Original task").await;
+        store
+            .reconcile_note_tasks(&operations, "note")
+            .await
+            .unwrap();
+        pending_title_note(&store, &operations).await;
+        let mut expected = raw_title_metadata(&store, true);
+        expected["tag_suggestions"]["future"]["padding"] = json!("x".repeat(4096));
+        let bytes = serde_json::to_vec_pretty(&expected).unwrap();
+        let directory = store.vault_base().join("sessions/note");
+        std::fs::write(directory.join("_meta.json"), &bytes).unwrap();
+        let before_tasks = std::fs::read(directory.join("tasks.json")).unwrap();
+        let vault = store.vault_base().to_owned();
+        drop(store);
+        let mut store = SessionStore::new(vault);
+        store.content_limits.metadata_bytes = bytes.len();
+        assert!(store.recover_document_writes(&operations).await.is_err());
+        assert_eq!(std::fs::read(directory.join("_meta.json")).unwrap(), bytes);
+        assert_eq!(
+            std::fs::read(directory.join("tasks.json")).unwrap(),
+            before_tasks
+        );
+        assert_eq!(
+            std::fs::read(directory.join("notes.md")).unwrap(),
+            b"Changed body"
+        );
+        let intent = operations.join(format!("{}.json", crate::sha256(b"note")));
+        assert!(intent.exists());
+        store.content_limits.metadata_bytes += 4096;
+        store.recover_document_writes(&operations).await.unwrap();
+        expected["title"] = json!("Recovered title");
+        let actual: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(directory.join("_meta.json")).unwrap()).unwrap();
+        assert_eq!(actual, expected);
+        assert!(store.session_tasks("note").await.unwrap().is_empty());
+        assert!(!intent.exists());
     }
 
     #[tokio::test]

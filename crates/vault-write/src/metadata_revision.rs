@@ -130,7 +130,7 @@ impl SessionStore {
             .map(|value| value.map(|(snapshot, _)| snapshot))
     }
 
-    async fn metadata_with_raw_locked(
+    pub(super) async fn metadata_with_raw_locked(
         &self,
         _guard: &WriteGuard<'_>,
         id: &str,
@@ -206,6 +206,24 @@ impl SessionStore {
         .await
         .map_err(|cause| StoreError::Io(cause.to_string()))?
     }
+}
+
+pub(super) fn serialize_title_patch(
+    mut raw: serde_json::Value,
+    title: &str,
+    limit: usize,
+) -> Result<Vec<u8>, StoreError> {
+    raw.as_object_mut()
+        .ok_or_else(|| StoreError::Serialize("Session metadata must be an object".into()))?
+        .insert("title".into(), title.into());
+    let bytes = serde_json::to_vec_pretty(&raw)
+        .map_err(|cause| StoreError::Serialize(cause.to_string()))?;
+    if bytes.len() > limit {
+        return Err(StoreError::ResourceLimit(
+            "Session metadata exceeds its size limit".into(),
+        ));
+    }
+    Ok(bytes)
 }
 
 pub(super) fn validate_metadata_size(

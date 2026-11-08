@@ -130,6 +130,114 @@ async fn failed(store: &SessionStore, root: &Path, stage: Stage) {
     );
 }
 
+fn metadata_with_nested_fields(vault: &Path, legacy: bool) -> Value {
+    let path = vault.join("sessions/note/_meta.json");
+    let mut raw: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    raw["tag_suggestions"]["future"] = json!({"nested": [true, null, {"keep": "yes"}]});
+    raw["future"] = json!({"newer": [1, 2, 3]});
+    raw["calendar_event"] = json!({"legacy": {"tracking_id": "meeting-id"}});
+    raw.as_object_mut().unwrap().remove("started_at");
+    if legacy {
+        raw["tag_suggestions"]["status"] = json!("ready");
+        raw["tag_suggestions"]["source_hash"] = json!("legacy-source");
+        raw["tag_suggestions"]["items"] = json!([{"tag": "legacy", "confidence": 0.95}]);
+    }
+    std::fs::write(&path, serde_json::to_vec(&raw).unwrap()).unwrap();
+    raw
+}
+
+#[tokio::test]
+async fn title_only_merge_preserves_fresh_nested_unknown_and_legacy_metadata_fields() {
+    for legacy in [false, true] {
+        let (vault, root, store) = fixture().await;
+        let prepared = baseline(&store, root.path()).await;
+        let mut expected = metadata_with_nested_fields(vault.path(), legacy);
+        expected["title"] = json!("Generated title");
+        let tasks = std::fs::read(vault.path().join("sessions/note/tasks.json")).unwrap();
+        store
+            .apply_generated_title(root.path(), prepared, "Generated title".into())
+            .await
+            .unwrap();
+        let actual: Value = serde_json::from_slice(
+            &std::fs::read(vault.path().join("sessions/note/_meta.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(
+            store.session_get("note").unwrap().meta.title,
+            "Generated title"
+        );
+        assert_eq!(
+            std::fs::read(vault.path().join("sessions/note/tasks.json")).unwrap(),
+            tasks
+        );
+    }
+}
+
+#[tokio::test]
+async fn title_actual_raw_metadata_growth_is_rejected_before_intent_or_document_writes() {
+    let (vault, root, mut store) = fixture().await;
+    let mut raw = metadata_with_nested_fields(vault.path(), true);
+    raw["tag_suggestions"]["future"]["padding"] = json!("x".repeat(4096));
+    let bytes = serde_json::to_vec_pretty(&raw).unwrap();
+    std::fs::write(vault.path().join("sessions/note/_meta.json"), &bytes).unwrap();
+    store.content_limits.metadata_bytes = bytes.len();
+    let prepared = baseline(&store, root.path()).await;
+    let before = files(vault.path());
+    assert!(matches!(
+        store
+            .apply_generated_title(root.path(), prepared, "New title".into())
+            .await,
+        Err(StoreError::ResourceLimit(_))
+    ));
+    assert_eq!(files(vault.path()), before);
+    assert!(!intent(root.path()).exists());
+}
+
+#[tokio::test]
+async fn title_recovery_preflights_fresh_complete_metadata_before_remaining_writes() {
+    let (vault, root, store) = fixture().await;
+    failed(&store, root.path(), Stage::Document(0)).await;
+    let mut raw = metadata_with_nested_fields(vault.path(), true);
+    raw["tag_suggestions"]["future"]["padding"] = json!("x".repeat(4096));
+    let bytes = serde_json::to_vec_pretty(&raw).unwrap();
+    std::fs::write(vault.path().join("sessions/note/_meta.json"), &bytes).unwrap();
+    drop(store);
+    let mut store = SessionStore::new(vault.path().into());
+    store.content_limits.metadata_bytes = bytes.len();
+    let before = files(vault.path());
+    assert!(store.recover_document_writes(root.path()).await.is_err());
+    assert_eq!(files(vault.path()), before);
+    assert!(intent(root.path()).exists());
+    store.content_limits.metadata_bytes += 4096;
+    store.recover_document_writes(root.path()).await.unwrap();
+    raw["title"] = json!("Meeting title");
+    let actual: Value = serde_json::from_slice(
+        &std::fs::read(vault.path().join("sessions/note/_meta.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(actual, raw);
+    assert!(!intent(root.path()).exists());
+}
+
+#[tokio::test]
+async fn recovered_title_already_in_metadata_does_not_reformat_or_reject_unmodified_raw_fields() {
+    let (vault, root, store) = fixture().await;
+    failed(&store, root.path(), Stage::Metadata).await;
+    let raw = metadata_with_nested_fields(vault.path(), true);
+    let bytes = serde_json::to_vec(&raw).unwrap();
+    assert!(serde_json::to_vec_pretty(&raw).unwrap().len() > bytes.len());
+    drop(store);
+    let mut store = SessionStore::new(vault.path().into());
+    store.content_limits.metadata_bytes = bytes.len();
+    store.recover_document_writes(root.path()).await.unwrap();
+    assert_eq!(
+        std::fs::read(vault.path().join("sessions/note/_meta.json")).unwrap(),
+        bytes
+    );
+    assert!(!intent(root.path()).exists());
+}
+
 #[tokio::test]
 async fn title_stamps_preserve_frontmatter_metadata_and_exact_task_files_and_rich_task_identity() {
     let (vault, root, store) = fixture().await;
@@ -435,6 +543,11 @@ async fn title_recovery_finishes_each_boundary_and_preserves_newer_unrelated_met
         let mut meta: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         meta["future"] = json!({"newer":true});
         meta["tags"] = json!(["newer-tag"]);
+        meta["tag_suggestions"]["future"] = json!({"nested": [true, null]});
+        meta["tag_suggestions"]["status"] = json!("legacy-ready");
+        meta["tag_suggestions"]["items"] = json!([{"legacy": "suggestion"}]);
+        let mut expected = meta.clone();
+        expected["title"] = json!("Meeting title");
         std::fs::write(&path, meta.to_string()).unwrap();
         drop(store);
         let store = SessionStore::new(vault.path().into());
@@ -443,6 +556,10 @@ async fn title_recovery_finishes_each_boundary_and_preserves_newer_unrelated_met
         assert_eq!(meta.title, "Meeting title");
         assert_eq!(meta.tags, ["newer-tag"]);
         assert_eq!(meta.extra["future"], json!({"newer":true}));
+        assert_eq!(
+            serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap(),
+            expected
+        );
         assert_eq!(
             std::fs::read(vault.path().join("sessions/note/tasks.json")).unwrap(),
             tasks

@@ -566,19 +566,30 @@ impl SessionStore {
         let before_tasks =
             self.document_tasks_hash(&intent.session_id).await? == intent.before_tasks_hash;
         if current.revision == intent.after_revision || current.revision == body_revision {
-            self.finish_intent_tasks_locked(guard, intent, before_tasks)
-                .await?;
-            let mut meta = self.read_meta(&intent.session_id).await?.ok_or_else(|| {
-                StoreError::Conflict("session was deleted during note recovery".into())
-            })?;
+            let (metadata, raw) = self
+                .metadata_with_raw_locked(guard, &intent.session_id)
+                .await?
+                .ok_or_else(|| {
+                    StoreError::Conflict("session was deleted during note recovery".into())
+                })?;
+            let mut meta = metadata.meta;
             if meta.title != current.title {
                 return Err(StoreError::Conflict(
                     "title changed during note recovery; review its saved copies".into(),
                 ));
             }
             if meta.title != title {
+                crate::metadata_revision::serialize_title_patch(
+                    raw,
+                    title,
+                    self.content_limits.metadata_bytes,
+                )?;
+            }
+            self.finish_intent_tasks_locked(guard, intent, before_tasks)
+                .await?;
+            if meta.title != title {
                 meta.title = title.to_owned();
-                self.write_session_title_file_locked(guard, &meta).await?;
+                meta = self.write_session_title_file_locked(guard, &meta).await?;
             }
             let actual = self
                 .read_note_snapshot_locked(guard, &intent.session_id)

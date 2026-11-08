@@ -72,7 +72,8 @@ impl SessionStore {
         // Metadata makes the session discoverable only after its note has landed.
         self.write_note_file_locked(&guard, &meta.id, markdown)
             .await?;
-        self.write_session_title_file_locked(&guard, meta).await?;
+        self.write_session_metadata_file_locked(&guard, meta)
+            .await?;
         self.index_set_note_and_meta(meta, super::strip_leading_frontmatter(markdown.to_owned()));
         Ok(())
     }
@@ -396,15 +397,29 @@ impl SessionStore {
         if let Some(title) = title {
             meta.title = title.to_owned();
         }
+        if changed_title {
+            let (_, raw) = self
+                .metadata_with_raw_locked(guard, id)
+                .await?
+                .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+            crate::metadata_revision::serialize_title_patch(
+                raw,
+                &meta.title,
+                self.content_limits.metadata_bytes,
+            )?;
+        }
         self.write_note_file_locked(guard, id, markdown).await?;
         if changed_title {
-            if let Err(error) = self.write_session_title_file_locked(guard, &meta).await {
-                if let (Ok(Some(actual_meta)), Ok(Some(actual_note))) =
-                    (self.read_meta(id).await, self.read_note(id).await)
-                {
-                    self.index_set_note_and_meta(&actual_meta, actual_note);
+            match self.write_session_title_file_locked(guard, &meta).await {
+                Ok(fresh) => meta = fresh,
+                Err(error) => {
+                    if let (Ok(Some(actual_meta)), Ok(Some(actual_note))) =
+                        (self.read_meta(id).await, self.read_note(id).await)
+                    {
+                        self.index_set_note_and_meta(&actual_meta, actual_note);
+                    }
+                    return Err(error);
                 }
-                return Err(error);
             }
         }
         self.index_set_note_and_meta(&meta, super::strip_leading_frontmatter(markdown.to_owned()));
@@ -412,6 +427,31 @@ impl SessionStore {
     }
 
     pub(crate) async fn write_session_title_file_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        meta: &SessionMeta,
+    ) -> Result<SessionMeta, StoreError> {
+        let dir = self.session_dir_locked(guard, &meta.id).await?;
+        let (current, raw) = self
+            .metadata_with_raw_locked(guard, &meta.id)
+            .await?
+            .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+        if current.meta.title == meta.title {
+            return Ok(current.meta);
+        }
+        let bytes = crate::metadata_revision::serialize_title_patch(
+            raw,
+            &meta.title,
+            self.content_limits.metadata_bytes,
+        )?;
+        let mut fresh = current.meta;
+        fresh.title = meta.title.clone();
+        self.write_file_locked(guard, paths::meta_path_in(&dir), bytes)
+            .await?;
+        Ok(fresh)
+    }
+
+    pub(crate) async fn write_session_metadata_file_locked(
         &self,
         guard: &WriteGuard<'_>,
         meta: &SessionMeta,

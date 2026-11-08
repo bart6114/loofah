@@ -215,20 +215,20 @@ impl SessionStore {
                 let mut bounded = store.clone();
                 bounded.content_limits.metadata_bytes =
                     bounded.content_limits.metadata_bytes.min(8 * 1024 * 1024);
-                let mut meta = bounded
-                    .metadata_snapshot_locked(guard, &id)
+                let (metadata, raw) = bounded
+                    .metadata_with_raw_locked(guard, &id)
                     .await?
-                    .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?
-                    .meta;
+                    .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+                let meta = metadata.meta;
                 if !meta.title.trim().is_empty() {
                     return Ok(GeneratedTitleOutcome::AlreadyNamed);
                 }
                 if meta.title != baseline.title {
                     return Ok(GeneratedTitleOutcome::Conflict);
                 }
-                meta.title = title.clone();
-                crate::metadata_revision::validate_metadata_size(
-                    &meta,
+                crate::metadata_revision::serialize_title_patch(
+                    raw,
+                    &title,
                     bounded.content_limits.metadata_bytes,
                 )?;
                 let directory = store.vault_base.join(paths::validated_session_dir(&id)?);
@@ -342,23 +342,30 @@ impl SessionStore {
         let mut bounded = self.clone();
         bounded.content_limits.metadata_bytes =
             bounded.content_limits.metadata_bytes.min(8 * 1024 * 1024);
-        let mut meta = bounded
-            .metadata_snapshot_locked(guard, &intent.session_id)
+        let (metadata, raw) = bounded
+            .metadata_with_raw_locked(guard, &intent.session_id)
             .await?
-            .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?
-            .meta;
+            .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+        let mut meta = metadata.meta;
         if meta.title != intent.before_title && meta.title != intent.title {
             return Err(StoreError::Conflict(
                 "session title changed; recovery requires review".into(),
             ));
         }
         if meta.title != intent.title {
-            meta.title = intent.title.clone();
-            crate::metadata_revision::validate_metadata_size(
-                &meta,
+            let bytes = crate::metadata_revision::serialize_title_patch(
+                raw,
+                &intent.title,
                 bounded.content_limits.metadata_bytes,
             )?;
-            self.write_meta_locked(guard, &meta).await?;
+            self.write_file_locked(guard, paths::meta_path_in(&directory), bytes)
+                .await?;
+            meta.title = intent.title.clone();
+            self.index_upsert_meta(&meta);
+            self.notify_index_changed(
+                crate::IndexEntity::Sessions,
+                vec![intent.session_id.clone()],
+            );
         } else {
             self.index_upsert_meta(&meta);
         }
@@ -405,15 +412,22 @@ impl SessionStore {
         let mut bounded = self.clone();
         bounded.content_limits.metadata_bytes =
             bounded.content_limits.metadata_bytes.min(8 * 1024 * 1024);
-        let meta = bounded
-            .metadata_snapshot_locked(guard, &intent.session_id)
+        let (metadata, raw) = bounded
+            .metadata_with_raw_locked(guard, &intent.session_id)
             .await?
-            .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?
-            .meta;
+            .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+        let meta = metadata.meta;
         if meta.title != intent.before_title && meta.title != intent.title {
             return Err(StoreError::Conflict(
                 "session title changed; recovery requires review".into(),
             ));
+        }
+        if meta.title != intent.title {
+            crate::metadata_revision::serialize_title_patch(
+                raw,
+                &intent.title,
+                bounded.content_limits.metadata_bytes,
+            )?;
         }
         let directory = self
             .vault_base

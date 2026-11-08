@@ -494,7 +494,7 @@ impl SessionStore {
             Ok(())
         };
         if changed_meta {
-            if let Err(error) = self.write_session_title_file_locked(guard, meta).await {
+            if let Err(error) = self.write_session_metadata_file_locked(guard, meta).await {
                 if let (Ok(Some(actual_meta)), Ok(Some(actual_doc))) = (
                     self.read_meta(&doc.session_id).await,
                     self.read_enhanced_doc(&doc.session_id, &doc.id).await,
