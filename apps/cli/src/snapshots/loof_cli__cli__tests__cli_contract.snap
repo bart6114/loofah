@@ -531,7 +531,7 @@ expression: canonicalize_json(contract)
           "synopsis": "loof sessions delete [-h] <id>"
         },
         {
-          "about": "Inspect or finish retained local media publication without repeating transcription",
+          "about": "Inspect or finish the original retained media publication without repeating transcription",
           "arguments": [
             {
               "name": "REQUEST_ID",
@@ -541,13 +541,39 @@ expression: canonicalize_json(contract)
           "name": "loof sessions recover",
           "options": [
             {
+              "flags": "--source",
+              "help": "Explicitly upload the original matching source to a server request still awaiting bytes",
+              "is_flag": false,
+              "required": false,
+              "value_name": "SOURCE"
+            },
+            {
               "flags": "-h, --help",
               "help": "Print help",
               "is_flag": false,
               "required": false
             }
           ],
-          "synopsis": "loof sessions recover [-h] <request_id>"
+          "synopsis": "loof sessions recover [--source] [-h] <request_id>"
+        },
+        {
+          "about": "Inspect original media requests and device receipts for the selected server profile",
+          "arguments": [
+            {
+              "name": "REQUEST_ID",
+              "required": false
+            }
+          ],
+          "name": "loof sessions media",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sessions media [-h] [request_id]"
         },
         {
           "about": "Store a file as a note attachment of a meeting and print its attachment id",
@@ -667,7 +693,7 @@ expression: canonicalize_json(contract)
         },
         {
           "flags": "--transcribe",
-          "help": "Transcribe the audio with the configured on-device model after importing",
+          "help": "Transcribe after importing with the configured Local model or selected server model",
           "is_flag": true,
           "required": false
         },
@@ -716,7 +742,7 @@ expression: canonicalize_json(contract)
       "synopsis": "loof import [--title] [--into] [--transcribe] [--created-at] [--started-at] [--ended-at] [--author] [--skill] [-h] <file>"
     },
     {
-      "about": "Transcribe a meeting's audio with the configured on-device model",
+      "about": "Transcribe a meeting's audio with its configured Local or server model",
       "arguments": [
         {
           "help": "Meeting id whose audio should be transcribed",
