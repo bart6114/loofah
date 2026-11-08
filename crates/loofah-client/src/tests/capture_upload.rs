@@ -20,6 +20,7 @@ struct Server {
     begins: AtomicUsize,
     publishes: AtomicUsize,
     reads: AtomicUsize,
+    closes: AtomicUsize,
     publication: Mutex<Option<CapturePublication>>,
     canonical: Mutex<Vec<u8>>,
 }
@@ -40,6 +41,7 @@ impl Server {
             begins: AtomicUsize::new(0),
             publishes: AtomicUsize::new(0),
             reads: AtomicUsize::new(0),
+            closes: AtomicUsize::new(0),
             publication: Mutex::new(None),
             canonical: Mutex::new(Vec::new()),
         })
@@ -53,6 +55,10 @@ impl Server {
             )
             .route("/api/v1/vaults/queued/captures/{capture}/seal", post(seal))
             .route(
+                "/api/v1/vaults/queued/captures/{capture}/retirement",
+                post(retire),
+            )
+            .route(
                 "/api/v1/vaults/queued/captures/{capture}/publish",
                 post(publish),
             )
@@ -62,7 +68,7 @@ impl Server {
             )
             .route(
                 "/api/v1/vaults/queued/audio/leases/{lease}",
-                get(read).delete(close),
+                get(read).head(head).delete(close),
             )
             .layer(Extension(self.clone()))
     }
@@ -331,7 +337,8 @@ async fn read(
         .body(axum::body::Body::from(bytes[start..=end].to_vec()))
         .unwrap()
 }
-async fn close(headers: HeaderMap) -> Json<bool> {
+async fn close(Extension(state): Extension<Arc<Server>>, headers: HeaderMap) -> Json<bool> {
+    state.closes.fetch_add(1, Ordering::SeqCst);
     authenticated(&headers);
     Json(true)
 }
@@ -371,6 +378,7 @@ async fn fixture(state: &Arc<Server>, rtt: Option<Duration>) -> (Fixture, Arc<Re
         "capture_publication".into(),
         "capture_pending_publication".into(),
         "recording_leases".into(),
+        "capture_retirement".into(),
     ];
     fixture.login(&client).await;
     (fixture, client)
@@ -642,6 +650,7 @@ async fn lost_ack_and_offline_capture_reopen_resume_exact_identity_and_hash_inde
         "capture_publication".into(),
         "capture_pending_publication".into(),
         "recording_leases".into(),
+        "capture_retirement".into(),
     ];
     _fixture.login(&client).await;
     state.offline.store(false, Ordering::SeqCst);
@@ -925,6 +934,7 @@ async fn unsupported_uploads_do_not_read_credentials_and_closed_clients_leave_au
         "capture_ingestion".into(),
         "capture_publication".into(),
         "recording_leases".into(),
+        "capture_retirement".into(),
     ];
     client.disconnect();
     let ticket = uploader
@@ -943,4 +953,204 @@ async fn unsupported_uploads_do_not_read_credentials_and_closed_clients_leave_au
     assert_eq!(writer.read_chunk(0).await.unwrap().bytes.len(), 128);
     assert!(writer.snapshot().await.unwrap().publication.is_none());
     uploader.wait_shutdown().await;
+}
+
+async fn retire(
+    Extension(state): Extension<Arc<Server>>,
+    headers: HeaderMap,
+    Json(request): Json<CaptureRetirementRequest>,
+) -> Json<CaptureIngestStatus> {
+    authenticated(&headers);
+    assert_eq!(headers["x-request-id"], request.cleanup_request_id);
+    let mut status = state.status().await;
+    assert_eq!(status.identity, request.identity);
+    assert_eq!(status.seal, Some(request.source.clone()));
+    assert_eq!(status.publication, Some(request.publication.clone()));
+    status.retirement = Some(CaptureRetirementSnapshot {
+        request,
+        state: CaptureRetirementState::Retired,
+        remaining_chunks: 0,
+    });
+    Json(status)
+}
+async fn head(
+    Extension(state): Extension<Arc<Server>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    authenticated(&headers);
+    let publication = state.publication.lock().await.clone().unwrap();
+    axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "audio/wav")
+        .header(
+            "content-length",
+            publication.canonical_audio_bytes.to_string(),
+        )
+        .header(
+            "etag",
+            format!("\"sha256:{}\"", publication.canonical_audio_sha256),
+        )
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+struct RetirementHost;
+impl hypr_capture_store::CaptureRetirementAuthority for RetirementHost {
+    fn check_current(&self) -> Result<()> {
+        Ok(())
+    }
+}
+async fn retirement_source(
+    root: &std::path::Path,
+    client: &Arc<RemoteClient>,
+) -> (
+    Arc<CaptureSpool>,
+    Arc<ProfileLease>,
+    CaptureRetirementRequest,
+) {
+    let (spool, writer) = source(root, client).await;
+    append_source(&writer, 0).await;
+    writer.seal().await.unwrap();
+    let uploader = CaptureUploader::new(1).unwrap();
+    let ticket = uploader
+        .start(
+            client.clone(),
+            writer.clone(),
+            binding(client, &writer),
+            Box::new(()),
+        )
+        .unwrap();
+    ticket.source_finished();
+    assert_eq!(done(&ticket).await.phase, CaptureUploadPhase::Verified);
+    let snapshot = writer.snapshot().await.unwrap();
+    drop(writer);
+    let profiles = ConnectionProfiles::new(root.join("profiles")).unwrap();
+    let profile = profiles
+        .create("retirement", client.address())
+        .await
+        .unwrap();
+    let mut selected = profile.profile().await;
+    selected.member_id = Some("member".into());
+    selected.vault_id = Some("queued".into());
+    profile.save(selected).await.unwrap();
+    let request = CaptureRetirementRequest {
+        cleanup_request_id: uuid::Uuid::new_v4().to_string(),
+        identity: snapshot.identity,
+        format: snapshot.format,
+        source: snapshot.seal.unwrap(),
+        publication: snapshot.publication.unwrap(),
+        processing: None,
+    };
+    (spool, profile, request)
+}
+#[tokio::test]
+async fn cleanup_proof_independently_reads_fresh_bytes_and_retains_lease_until_device_commit() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let server = Server::new(&root).await;
+    let (_fixture, client) = fixture(&server, None).await;
+    let (spool, profile, request) = retirement_source(&root, &client).await;
+    let reads = server.reads.load(Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let closed = server.closes.load(Ordering::SeqCst);
+    let proof = client
+        .verify_capture_retirement(
+            profile.clone(),
+            profile.generation().await.unwrap(),
+            request.clone(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert!(server.reads.load(Ordering::SeqCst) > reads);
+    assert_eq!(server.closes.load(Ordering::SeqCst), closed);
+    let snapshot = proof
+        .retire_device(
+            spool
+                .admit_retirement(request.identity.clone())
+                .await
+                .unwrap(),
+            RetirementHost,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        snapshot.retirement.unwrap().state,
+        CaptureRetirementState::Retired
+    );
+    assert!(spool.resume(request.identity).await.is_err());
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while server.closes.load(Ordering::SeqCst) == closed {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}
+#[tokio::test]
+async fn cleanup_server_receipt_cannot_substitute_for_current_canonical_body_verification() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let server = Server::new(&root).await;
+    let (_fixture, client) = fixture(&server, None).await;
+    let (spool, profile, request) = retirement_source(&root, &client).await;
+    server.corrupt.store(true, Ordering::SeqCst);
+    assert!(
+        client
+            .verify_capture_retirement(
+                profile.clone(),
+                profile.generation().await.unwrap(),
+                request.clone(),
+                CancellationToken::new()
+            )
+            .await
+            .is_err()
+    );
+    let writer = spool.resume(request.identity).await.unwrap();
+    assert!(writer.snapshot().await.unwrap().retirement.is_none());
+    assert!(!writer.read_chunk(0).await.unwrap().bytes.is_empty());
+}
+#[tokio::test]
+async fn cleanup_proof_rejects_profile_aba_interactive_login_and_closed_original_client() {
+    for mutation in ["profile", "login", "disconnect"] {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let server = Server::new(&root).await;
+        let (fixture, client) = fixture(&server, None).await;
+        let (spool, profile, request) = retirement_source(&root, &client).await;
+        let proof = client
+            .verify_capture_retirement(
+                profile.clone(),
+                profile.generation().await.unwrap(),
+                request.clone(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        match mutation {
+            "profile" => {
+                let original = profile.profile().await;
+                let mut changed = original.clone();
+                changed.member_id = Some("other".into());
+                profile.save(changed).await.unwrap();
+                profile.save(original).await.unwrap();
+            }
+            "login" => fixture.login(&client).await,
+            _ => client.disconnect(),
+        }
+        assert!(
+            proof
+                .retire_device(
+                    spool
+                        .admit_retirement(request.identity.clone())
+                        .await
+                        .unwrap(),
+                    RetirementHost
+                )
+                .await
+                .is_err()
+        );
+        let writer = spool.resume(request.identity).await.unwrap();
+        assert!(writer.snapshot().await.unwrap().retirement.is_none());
+        assert!(!writer.read_chunk(0).await.unwrap().bytes.is_empty());
+    }
 }

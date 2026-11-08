@@ -236,7 +236,7 @@ impl RemoteClient {
         Ok(status)
     }
 
-    fn capture_capability(&self, cancel: &CancellationToken) -> Result<()> {
+    pub(crate) fn capture_capability(&self, cancel: &CancellationToken) -> Result<()> {
         if cancel.is_cancelled() || self.stop.is_cancelled() {
             return Err(not_committed(cancelled()));
         }
@@ -254,7 +254,7 @@ impl RemoteClient {
         Ok(())
     }
 
-    async fn capture_request<T: DeserializeOwned>(
+    pub(crate) async fn capture_request<T: DeserializeOwned>(
         self: &Arc<Self>,
         request: reqwest::RequestBuilder,
         request_id: &str,
@@ -299,7 +299,7 @@ impl RemoteClient {
         })
     }
 
-    fn capture_status_checked(
+    pub(crate) fn capture_status_checked(
         &self,
         status: CaptureIngestStatus,
         vault_id: &str,
@@ -339,6 +339,17 @@ impl RemoteClient {
                     || status.session_id.as_deref() != Some(&publication.session_id)
                     || !valid_hash(&publication.canonical_audio_sha256)
                     || publication.canonical_audio_bytes == 0
+            })
+            || status.retirement.as_ref().is_some_and(|retirement| {
+                hypr_loofah_protocol::validate_capture_retirement_request(&retirement.request)
+                    .is_err()
+                    || retirement.request.identity != status.identity
+                    || retirement.request.format != status.format
+                    || status.seal.as_ref() != Some(&retirement.request.source)
+                    || status.publication.as_ref() != Some(&retirement.request.publication)
+                    || retirement.remaining_chunks > prefix.chunk_count
+                    || (retirement.state == hypr_loofah_protocol::CaptureRetirementState::Retired
+                        && retirement.remaining_chunks != 0)
             })
         {
             return Err(invalid_response());

@@ -15,7 +15,7 @@ use super::*;
 
 #[path = "retirement.rs"]
 mod retirement;
-pub(super) use retirement::retire;
+pub(super) use retirement::{VerifiedSource, retire, verify_source};
 
 const MANIFEST_LIMIT: usize = 16 * 1024;
 const HEADER_LIMIT: usize = 2048;

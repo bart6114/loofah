@@ -35,6 +35,7 @@ pub struct DeviceRecordingInfo {
     pub pcm_bytes: u64,
     pub sealed: bool,
     pub publication: Option<CapturePublication>,
+    pub retirement: Option<hypr_loofah_protocol::CaptureRetirementSnapshot>,
     pub upload: Option<CaptureUploadProgress>,
     pub processing: Option<crate::device_capture::DeviceProcessingProgress>,
     pub failure: Option<String>,
@@ -259,6 +260,7 @@ impl DeviceRecordingState {
                         .as_ref()
                         .and_then(|progress| progress.publication.clone()),
                     upload,
+                    retirement: None,
                     failure: state.error.or(state.completion.failure),
                 }
             })
@@ -291,6 +293,7 @@ fn saved(profile_id: &str, snapshot: CaptureSnapshot) -> DeviceRecordingInfo {
         pcm_bytes: snapshot.pcm_bytes,
         sealed: snapshot.seal.is_some(),
         publication: snapshot.publication,
+        retirement: snapshot.retirement,
         upload: None,
         processing: snapshot.processing.map(|declaration| {
             crate::device_capture::DeviceProcessingProgress {
@@ -321,6 +324,7 @@ fn overlay_live(saved: &DeviceRecordingInfo, mut live: DeviceRecordingInfo) -> D
         live.publication = live.publication.or_else(|| saved.publication.clone());
     }
     if live.identity == saved.identity {
+        live.retirement = saved.retirement.clone();
         if let (Some(stored), Some(current)) = (&saved.processing, &mut live.processing) {
             if stored.declaration.request == current.declaration.request {
                 current.declaration.cancel_requested |= stored.declaration.cancel_requested;
@@ -610,6 +614,34 @@ pub async fn device_recording_cancel_processing<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn device_recording_retire<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::Window<R>,
+    connection_id: String,
+    identity: CaptureIdentity,
+    cleanup_request_id: String,
+) -> Result<DeviceRecordingInfo, ApplicationError> {
+    let profile = profile(&app).await?;
+    let profile_id = profile.profile().await.id;
+    let state = app.state::<DeviceRecordingState>();
+    state.bind_profile(&profile_id)?;
+    let (client, _) = app.state::<crate::remote::RemoteState>().profile(
+        &connection_id,
+        window.label(),
+        &profile_id,
+    )?;
+    let result = state
+        .host(&app)
+        .await?
+        .retire_capture(profile, client, identity, cleanup_request_id)
+        .await;
+    *state.inventory.lock().unwrap() = None;
+    *state.recovery.lock().unwrap() = None;
+    result.map(|snapshot| saved(&profile_id, snapshot))
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn device_recording_resume_upload<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::Window<R>,
@@ -826,6 +858,7 @@ mod tests {
             pcm_bytes: 8,
             sealed: true,
             publication: None,
+            retirement: None,
             upload: None,
             processing: None,
             failure: None,

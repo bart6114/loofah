@@ -27,6 +27,17 @@ use crate::{
 pub(crate) struct TokenState {
     pub loaded: bool,
     pub token: Option<Token>,
+    pub generation: u64,
+}
+
+impl TokenState {
+    pub(crate) fn current_for_commit(&self) -> bool {
+        self.loaded
+            && self
+                .token
+                .as_ref()
+                .is_some_and(|token| token.expires > Instant::now())
+    }
 }
 
 pub(crate) struct Token {
@@ -191,6 +202,8 @@ impl RemoteClient {
                 }
                 Err(error) => {
                     if error.code == ErrorCode::Unauthenticated {
+                        state.generation =
+                            state.generation.checked_add(1).ok_or_else(login_required)?;
                         state.token = None;
                         client.credentials.save(&client.account, None).await?;
                     }
@@ -319,6 +332,7 @@ impl LoginAttempt {
         if self.cancel.is_cancelled() {
             return Err(cancelled());
         }
+        state.generation = state.generation.checked_add(1).ok_or_else(login_required)?;
         let reply = self
             .client
             .token_request(&[

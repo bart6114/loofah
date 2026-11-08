@@ -2868,15 +2868,7 @@ async fn retirement_rejects_unknown_files_and_all_raw_users_before_writing_inten
     ] {
         let path = capture.join(name);
         std::fs::write(&path, b"do not remove").unwrap();
-        assert!(
-            spool
-                .admit_retirement(request.identity.clone())
-                .await
-                .unwrap()
-                .retire_verified(request.clone(), VerifiedRetirement)
-                .await
-                .is_err()
-        );
+        assert!(try_retirement(&spool, request.clone()).await.is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"do not remove");
         assert!(!capture.join("retirement.json").exists());
         assert!(capture.join("chunks/00000000000000000000.chunk").exists());
@@ -2895,15 +2887,7 @@ async fn retirement_refuses_hardlinked_private_source_and_manifest() {
         let before = std::fs::read(capture.join(filename)).unwrap();
         let external = temp.path().join("outside");
         std::fs::hard_link(capture.join(filename), &external).unwrap();
-        assert!(
-            spool
-                .admit_retirement(request.identity.clone())
-                .await
-                .unwrap()
-                .retire_verified(request, VerifiedRetirement)
-                .await
-                .is_err()
-        );
+        assert!(try_retirement(&spool, request).await.is_err());
         assert_eq!(std::fs::read(external).unwrap(), before);
         assert!(!capture.join("retirement.json").exists());
     }
@@ -2919,15 +2903,7 @@ async fn retirement_refuses_unknown_symlink_without_touching_target() {
     let external = temp.path().join("outside");
     std::fs::write(&external, b"outside").unwrap();
     std::os::unix::fs::symlink(&external, dir(&root, &request.identity).join(".unknown")).unwrap();
-    assert!(
-        spool
-            .admit_retirement(request.identity.clone())
-            .await
-            .unwrap()
-            .retire_verified(request, VerifiedRetirement)
-            .await
-            .is_err()
-    );
+    assert!(try_retirement(&spool, request).await.is_err());
     assert_eq!(std::fs::read(external).unwrap(), b"outside");
 }
 
@@ -2992,4 +2968,39 @@ async fn retirement_owns_source_and_scope_guards_through_cancelled_waiter() {
             .state,
         hypr_loofah_protocol::CaptureRetirementState::Retired
     );
+}
+
+async fn try_retirement(
+    spool: &Arc<CaptureSpool>,
+    request: hypr_loofah_protocol::CaptureRetirementRequest,
+) -> Result<CaptureSnapshot> {
+    spool
+        .admit_retirement(request.identity.clone())
+        .await?
+        .retire_verified(request, VerifiedRetirement)
+        .await
+}
+
+#[tokio::test]
+async fn retirement_rejects_changed_source_generation_after_long_independent_verification() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let admission = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap();
+    let path = dir(&root, &request.identity).join("chunks/00000000000000000000.chunk");
+    let original = std::fs::read(&path).unwrap();
+    let mut changed = original.clone();
+    *changed.last_mut().unwrap() ^= 1;
+    std::fs::write(&path, &changed).unwrap();
+    assert!(
+        admission
+            .retire_verified(request, VerifiedRetirement)
+            .await
+            .is_err()
+    );
+    assert_eq!(std::fs::read(path).unwrap(), changed);
 }

@@ -20,6 +20,108 @@ pub(super) struct Journal {
     serialized: Vec<u8>,
 }
 
+#[derive(PartialEq, Eq)]
+struct FileStamp {
+    volume: u64,
+    index: u64,
+    bytes: u64,
+    modified: SystemTime,
+    #[cfg(unix)]
+    changed: (i64, i64),
+}
+fn stamp(file: &File) -> Result<FileStamp> {
+    let metadata = file.metadata().map_err(io_error)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.nlink() != 1 {
+            return Err(damaged());
+        }
+        Ok(FileStamp {
+            volume: metadata.dev(),
+            index: metadata.ino(),
+            bytes: metadata.len(),
+            modified: metadata.modified().map_err(io_error)?,
+            changed: (metadata.ctime(), metadata.ctime_nsec()),
+        })
+    }
+    #[cfg(windows)]
+    {
+        let info = winapi_util::file::information(file).map_err(io_error)?;
+        if info.number_of_links() != 1 {
+            return Err(damaged());
+        }
+        Ok(FileStamp {
+            volume: info.volume_serial_number(),
+            index: info.file_index(),
+            bytes: metadata.len(),
+            modified: metadata.modified().map_err(io_error)?,
+        })
+    }
+    #[cfg(not(any(unix, windows)))]
+    Err(conflict(
+        "Source retirement is unsupported on this platform",
+    ))
+}
+
+pub(in crate::capture_spool) struct VerifiedSource {
+    manifest: Vec<u8>,
+    journal: Option<Vec<u8>>,
+    files: BTreeMap<u64, FileStamp>,
+}
+
+pub(in crate::capture_spool) fn verify_source(
+    spool: &CaptureSpool,
+    state: &State,
+    identity: &CaptureIdentity,
+) -> Result<VerifiedSource> {
+    let entry = state
+        .entries
+        .get(&key(identity))
+        .ok_or_else(|| failure(ErrorCode::NotFound, "Capture not found"))?;
+    guard(&spool.root, entry)?;
+    let dir = directory(&spool.root, identity);
+    let expected = entry
+        .retirement
+        .as_ref()
+        .map_or(&entry.chunks, |journal| &journal.chunks);
+    let files = exact_files(&dir, expected, entry.retirement.is_some())?;
+    if entry.retirement.is_none() && files.len() != expected.len() {
+        return Err(damaged());
+    }
+    let mut source = Sha256::new();
+    let mut verified = BTreeMap::new();
+    for (sequence, path) in files {
+        let before = stamp(&private_file(&path)?)?;
+        let chunk = read_file(&path, &spool.limits)?;
+        if chunk.descriptor != expected[sequence as usize]
+            || stamp(&private_file(&path)?)? != before
+        {
+            return Err(damaged());
+        }
+        source.update(&chunk.bytes);
+        verified.insert(sequence, before);
+    }
+    if entry.retirement.is_none()
+        && entry
+            .manifest
+            .snapshot
+            .seal
+            .as_ref()
+            .is_none_or(|seal| seal.source_sha256 != source_digest(&source))
+    {
+        return Err(damaged());
+    }
+    Ok(VerifiedSource {
+        manifest: entry.serialized.clone(),
+        journal: entry
+            .retirement
+            .as_ref()
+            .map(|journal| journal.serialized.clone()),
+        files: verified,
+    })
+}
+
 pub(super) fn completed(entry: &Entry) -> bool {
     entry
         .retirement
@@ -290,6 +392,7 @@ pub(in crate::capture_spool) fn retire(
     spool: &CaptureSpool,
     state: &mut State,
     request: CaptureRetirementRequest,
+    verified: &VerifiedSource,
     authority: impl CaptureRetirementAuthority,
 ) -> Result<CaptureSnapshot> {
     if state.entries.values().any(|entry| {
@@ -308,10 +411,11 @@ pub(in crate::capture_spool) fn retire(
         .entries
         .remove(&coordinate)
         .ok_or_else(|| failure(ErrorCode::NotFound, "Capture not found in this scope"))?;
-    let mut result = retire_entry(spool, state, &mut entry, request, &authority);
+    let mut result = retire_entry(spool, state, &mut entry, request, verified, &authority);
     if let Err(error) = &mut result {
         if entry.retirement.is_some() {
             error.mutation_outcome = Some(MutationOutcome::Unknown);
+            error.message = "Capture retirement stopped; verify and retry its original cleanup request to confirm the remaining raw source".into();
         }
     }
     // Even a rejected check after a successful unlink requires a fresh reload;
@@ -328,6 +432,7 @@ fn retire_entry(
     state: &mut State,
     entry: &mut Entry,
     request: CaptureRetirementRequest,
+    verified: &VerifiedSource,
     authority: &impl CaptureRetirementAuthority,
 ) -> Result<CaptureSnapshot> {
     authority.check_current()?;
@@ -342,6 +447,11 @@ fn retire_entry(
         ));
     }
 
+    if entry.serialized != verified.manifest
+        || entry.retirement.as_ref().map(|journal| &journal.serialized) != verified.journal.as_ref()
+    {
+        return Err(damaged());
+    }
     let dir = directory(&spool.root, &request.identity);
     if let Some(journal) = &entry.retirement {
         if journal.request != request {
@@ -364,17 +474,10 @@ fn retire_entry(
         if files.len() != entry.chunks.len() {
             return Err(damaged());
         }
-        let mut source = Sha256::new();
         for (sequence, path) in files {
-            authority.check_current()?;
-            let chunk = read_file(&path, &spool.limits)?;
-            if chunk.descriptor != entry.chunks[sequence as usize] {
+            if verified.files.get(&sequence) != Some(&stamp(&private_file(&path)?)?) {
                 return Err(damaged());
             }
-            source.update(&chunk.bytes);
-        }
-        if source_digest(&source) != request.source.source_sha256 {
-            return Err(damaged());
         }
         entry.retirement = Some(Journal {
             schema_version: 1,
@@ -388,21 +491,27 @@ fn retire_entry(
     }
     let journal = entry.retirement.as_ref().ok_or_else(damaged)?;
     let files = exact_files(&dir, &journal.chunks, true)?;
-    // Verify the entire remaining set before deleting any file on an explicit retry.
+    // Full hashes were verified under exclusive source admission before slow
+    // remote verification. The short scope commit rechecks every original file
+    // identity and byte-generation stamp before deleting any remaining source.
     for (sequence, path) in &files {
         authority.check_current()?;
-        if read_file(path, &spool.limits)?.descriptor != journal.chunks[*sequence as usize] {
+        if verified.files.get(sequence) != Some(&stamp(&private_file(path)?)?) {
             return Err(damaged());
         }
     }
+    let journal_stamp = stamp(&private_file(&dir.join(JOURNAL))?)?;
+    let manifest_stamp = stamp(&private_file(&dir.join("manifest.json"))?)?;
     for (sequence, path) in files {
         authority.check_current()?;
-        guard(&spool.root, entry)?;
-        journal_guard(&dir, entry.retirement.as_ref().ok_or_else(damaged)?)?;
-        let file = private_file(&path)?;
-        if read_file(&path, &spool.limits)?.descriptor
-            != entry.retirement.as_ref().ok_or_else(damaged)?.chunks[sequence as usize]
+        check_ancestors(&dir.join("chunks"))?;
+        if stamp(&private_file(&dir.join(JOURNAL))?)? != journal_stamp
+            || stamp(&private_file(&dir.join("manifest.json"))?)? != manifest_stamp
         {
+            return Err(damaged());
+        }
+        let file = private_file(&path)?;
+        if verified.files.get(&sequence) != Some(&stamp(&file)?) {
             return Err(damaged());
         }
         let size = file.metadata().map_err(io_error)?.len();

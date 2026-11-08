@@ -57,6 +57,7 @@ struct Inner {
     uploads: Arc<CaptureUploader>,
     processing: Arc<super::processing::ProcessingSupervisor>,
     finished: CancellationToken,
+    retirement_stop: CancellationToken,
     draining: std::sync::atomic::AtomicBool,
     executor: tokio::runtime::Handle,
     #[cfg(test)]
@@ -162,6 +163,7 @@ impl RemoteCaptureCoordinator {
                 processing: super::processing::ProcessingSupervisor::new(updates),
                 uploads: CaptureUploader::new(2)?,
                 finished: CancellationToken::new(),
+                retirement_stop: CancellationToken::new(),
                 draining: std::sync::atomic::AtomicBool::new(false),
                 executor: tokio::runtime::Handle::current(),
                 #[cfg(test)]
@@ -639,6 +641,81 @@ impl RemoteCaptureCoordinator {
         })?
     }
 
+    pub async fn retire_capture(
+        &self,
+        profile: Arc<ProfileLease>,
+        client: Arc<RemoteClient>,
+        identity: CaptureIdentity,
+        cleanup_request_id: String,
+    ) -> Result<CaptureSnapshot, ApplicationError> {
+        let capacity = self.inner.starts.clone().try_acquire_owned().map_err(|_| {
+            error(
+                ErrorCode::ResourceLimit,
+                "Too many device capture operations",
+            )
+        })?;
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            let (profile_id, scope) = profile_scope(&profile).await?;
+            if identity.scope != scope {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "Select the capture's original profile destination before cleanup",
+                ));
+            }
+            validate_client(&scope, &client)?;
+            let generation = profile.generation().await?;
+            let host = inner.host(&profile_id).await?;
+            let admission = host.spool.admit_retirement(identity.clone()).await?;
+            let snapshot = admission.snapshot();
+            let request = hypr_loofah_protocol::CaptureRetirementRequest {
+                cleanup_request_id,
+                identity: snapshot.identity.clone(),
+                format: snapshot.format.clone(),
+                source: snapshot.seal.clone().ok_or_else(|| {
+                    error(ErrorCode::Conflict, "Capture must be sealed before cleanup")
+                })?,
+                publication: snapshot.publication.clone().ok_or_else(|| {
+                    error(
+                        ErrorCode::Conflict,
+                        "Capture requires its original verified publication before cleanup",
+                    )
+                })?,
+                processing: snapshot
+                    .processing
+                    .as_ref()
+                    .map(|declaration| declaration.request.clone()),
+            };
+            let authority = DeviceRetirementHost {
+                inner: inner.clone(),
+                profile_id,
+                identity,
+                _capacity: capacity,
+            };
+            hypr_capture_store::CaptureRetirementAuthority::check_current(&authority)?;
+            let proof = client
+                .verify_capture_retirement(
+                    profile,
+                    generation,
+                    request,
+                    inner.retirement_stop.clone(),
+                )
+                .await?;
+            let result = proof.retire_device(admission, authority).await;
+            inner
+                .upload_updates
+                .send_modify(|revision| *revision = revision.wrapping_add(1));
+            result
+        })
+        .await
+        .map_err(|_| {
+            error(
+                ErrorCode::Unavailable,
+                "Refresh the original cleanup status before retrying",
+            )
+        })?
+    }
+
     pub async fn resume_upload(
         &self,
         profile: Arc<ProfileLease>,
@@ -729,6 +806,56 @@ impl RemoteCaptureCoordinator {
                 && devices.iter().all(|report| report.safe_to_exit),
             devices,
         }
+    }
+}
+
+struct DeviceRetirementHost {
+    inner: Arc<Inner>,
+    profile_id: String,
+    identity: CaptureIdentity,
+    _capacity: tokio::sync::OwnedSemaphorePermit,
+}
+impl hypr_capture_store::CaptureRetirementAuthority for DeviceRetirementHost {
+    fn check_current(&self) -> Result<(), ApplicationError> {
+        let state = self
+            .inner
+            .state
+            .lock()
+            .map_err(|_| error(ErrorCode::Unavailable, "Capture owner requires review"))?;
+        if state.closing {
+            return Err(error(
+                ErrorCode::Cancelled,
+                "Capture owner is shutting down",
+            ));
+        }
+        let key = (self.profile_id.clone(), self.identity.capture_id.clone());
+        if let Some(capture) = state.captures.get(&key) {
+            let current = capture.device.current();
+            if capture.identity != self.identity
+                || !terminal(current.phase)
+                || !current.completion.supervisor_ended
+                || current.completion.resources_released_observed_at.is_none()
+            {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "Original capture resources have not finished draining",
+                ));
+            }
+        }
+        if state
+            .uploads
+            .get(&key)
+            .is_some_and(|entry| entry.identity != self.identity || !entry.ticket.is_finished())
+        {
+            return Err(error(
+                ErrorCode::Conflict,
+                "Original capture upload has not finished draining",
+            ));
+        }
+        drop(state);
+        self.inner
+            .processing
+            .ensure_retirement_drained(&self.profile_id, &self.identity)
     }
 }
 
@@ -990,6 +1117,7 @@ impl Inner {
         Ok(ticket)
     }
     fn request_shutdown(&self) {
+        self.retirement_stop.cancel();
         let mut state = self
             .state
             .lock()

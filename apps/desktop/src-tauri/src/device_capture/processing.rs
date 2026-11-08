@@ -292,6 +292,26 @@ impl ProcessingSupervisor {
         Ok(terminal)
     }
 
+    pub(super) fn ensure_retirement_drained(
+        &self,
+        profile: &str,
+        identity: &CaptureIdentity,
+    ) -> Result<(), ApplicationError> {
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| error(ErrorCode::Unavailable, "Processing owner requires review"))?;
+        if let Some(entry) = entries.get(&(profile.to_owned(), identity.capture_id.clone())) {
+            if entry.identity != *identity || !entry.finished.is_cancelled() {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "Original processing and caption owners are still draining",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn request_shutdown(&self) {
         self.stop.cancel();
     }

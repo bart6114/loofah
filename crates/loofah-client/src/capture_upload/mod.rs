@@ -9,7 +9,6 @@ use std::{
 
 use futures_util::FutureExt;
 use hypr_loofah_protocol::*;
-use sha2::{Digest, Sha256};
 use tokio::sync::{Semaphore, watch};
 use tokio_util::sync::CancellationToken;
 
@@ -538,44 +537,8 @@ async fn verify(
     vault: &str,
     stop: &CancellationToken,
 ) -> Result<()> {
-    let id = uuid::Uuid::new_v4().to_string();
-    let lease = client
-        .open_recording(vault, &publication.session_id, &id, stop.clone())
-        .await?
-        .ok_or_else(|| review("Published recording is absent; device audio was retained"))?;
-    let result = async {
-        if lease.metadata.sha256 != publication.canonical_audio_sha256
-            || lease.metadata.size_bytes != publication.canonical_audio_bytes
-        {
-            return Err(review(
-                "Canonical recording changed; device audio was retained",
-            ));
-        }
-        let mut hash = Sha256::new();
-        let mut offset = 0;
-        while offset < lease.metadata.size_bytes {
-            let bytes = client
-                .read_recording_chunk(&lease, offset, RECORDING_CHUNK_LIMIT, stop.clone())
-                .await?;
-            if bytes.is_empty() {
-                return Err(review("Canonical recording verification ended early"));
-            }
-            offset += bytes.len() as u64;
-            hash.update(bytes);
-        }
-        let actual: String = hash
-            .finalize()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
-        if actual != publication.canonical_audio_sha256 {
-            return Err(review(
-                "Canonical recording checksum did not match; device audio was retained",
-            ));
-        }
-        Ok(())
-    }
-    .await;
-    let _ = client.close_recording(vault, &id, stop.clone()).await;
-    result
+    let lease =
+        crate::capture_retirement::verify_canonical(client, publication, vault, stop).await?;
+    let _ = client.close_recording(vault, &lease.id, stop.clone()).await;
+    Ok(())
 }

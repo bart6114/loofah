@@ -44,6 +44,7 @@ pub struct CaptureWriter {
 /// Retain this owner through the actual commit, including detached filesystem work.
 pub struct CaptureRetirementAdmission {
     snapshot: CaptureSnapshot,
+    verified: store::VerifiedSource,
     _spool: Arc<CaptureSpool>,
     _usage: Arc<tokio::sync::OwnedRwLockWriteGuard<()>>,
 }
@@ -81,7 +82,7 @@ impl CaptureRetirementAdmission {
         spool
             .run(move |spool, state| {
                 let _admission = self;
-                store::retire(spool, state, request, authority)
+                store::retire(spool, state, request, &_admission.verified, authority)
             })
             .await
     }
@@ -260,7 +261,7 @@ impl CaptureSpool {
                 .map_err(|_| busy())?,
         );
         let admitted = usage.clone();
-        let snapshot = self
+        let (snapshot, verified) = self
             .run(move |spool, state| {
                 let _admitted = admitted;
                 let snapshot = store::snapshot(spool, state, &identity)?;
@@ -269,11 +270,13 @@ impl CaptureSpool {
                         "Source retirement requires a sealed published capture",
                     ));
                 }
-                Ok(snapshot)
+                let verified = store::verify_source(spool, state, &identity)?;
+                Ok((snapshot, verified))
             })
             .await?;
         Ok(CaptureRetirementAdmission {
             snapshot,
+            verified,
             _spool: self.clone(),
             _usage: usage,
         })

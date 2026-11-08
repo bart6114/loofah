@@ -4,6 +4,8 @@ mod auth;
 mod capture;
 mod capture_append;
 pub use capture_append::CaptureAppendPreparation;
+mod capture_retirement;
+pub use capture_retirement::VerifiedCaptureRetirement;
 pub mod capture_upload;
 pub use hypr_capture_store::capture_spool;
 mod drafts;
@@ -63,7 +65,7 @@ pub struct RemoteClient {
     capabilities: Capabilities,
     account: String,
     credentials: Arc<dyn CredentialStore>,
-    tokens: Mutex<auth::TokenState>,
+    tokens: Arc<Mutex<auth::TokenState>>,
     stop: CancellationToken,
     upload_writers: Arc<tokio::sync::Semaphore>,
 }
@@ -152,7 +154,7 @@ impl RemoteClient {
             capabilities,
             account,
             credentials,
-            tokens: Mutex::new(auth::TokenState::default()),
+            tokens: Arc::new(Mutex::new(auth::TokenState::default())),
             stop: CancellationToken::new(),
             upload_writers: Arc::new(tokio::sync::Semaphore::new(2)),
         }))
@@ -174,6 +176,7 @@ impl RemoteClient {
         *state = auth::TokenState {
             loaded: true,
             token: None,
+            generation: state.generation.saturating_add(1),
         };
         self.credentials.save(&self.account, None).await
     }
