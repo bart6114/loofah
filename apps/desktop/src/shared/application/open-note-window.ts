@@ -1,3 +1,5 @@
+import { t } from "@lingui/core/macro";
+
 import type { VaultScope } from "./vault-scope";
 
 export async function openScopedNoteWindow(
@@ -6,7 +8,7 @@ export async function openScopedNoteWindow(
 ) {
   const open = scope.client.openNoteWindow;
   if (!open || scope.getSnapshot().state !== "connected")
-    throw new Error("Reconnect to this workspace before opening its note.");
+    throw new Error(t`Reconnect to this workspace before opening its note.`);
   const abort = new AbortController();
   const release = scope.subscribe(() => {
     if (scope.getSnapshot().state !== "connected") abort.abort();

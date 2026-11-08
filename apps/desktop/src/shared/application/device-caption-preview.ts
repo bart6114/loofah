@@ -1,6 +1,9 @@
-import type { DeviceRecordingInfo } from "~/types/tauri.gen";
+import type { CaptureChannel, DeviceRecordingInfo } from "~/types/tauri.gen";
 
-export function deviceCaptionPreview(item: DeviceRecordingInfo | null) {
+export function deviceCaptionPreview(
+  item: DeviceRecordingInfo | null,
+  labels?: Record<CaptureChannel, string>,
+) {
   const processing = item?.processing;
   const preview = processing?.captions;
   const status = processing?.status;
@@ -59,12 +62,7 @@ export function deviceCaptionPreview(item: DeviceRecordingInfo | null) {
     text: retained.map(({ word }) => word.text).join(" "),
     bubbles: retained.map(({ word, final }, index) => ({
       id: `${preview.binding.generation_id}:${word.id ?? `${word.channel}:${word.start_ms}:${index}`}:${final}`,
-      speakerLabel:
-        word.role === "microphone"
-          ? "Microphone"
-          : word.role === "system_audio"
-            ? "System audio"
-            : "Mixed audio",
+      speakerLabel: labels?.[word.role] ?? word.role,
       text: word.text,
       isSelf: word.role === "microphone",
       isFinal: final,

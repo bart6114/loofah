@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/react/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getIdentifier } from "@tauri-apps/api/app";
 import { useEffect, useRef } from "react";
@@ -295,9 +296,15 @@ function DeviceRecordingOverlay({
   enabled: boolean;
   settings: ReturnType<typeof getFloatingOverlaySettings>;
 }) {
+  const { t } = useLingui();
+  const labels = {
+    microphone: t`Microphone`,
+    system_audio: t`System audio`,
+    mixed: t`Mixed audio`,
+  };
   const cache = useQueryClient();
-  const latest = useRef({ item, enabled, settings });
-  latest.current = { item, enabled, settings };
+  const latest = useRef({ item, enabled, settings, labels });
+  latest.current = { item, enabled, settings, labels };
   const bindings = useRef(new Map<string, CaptureIdentity>());
   const binding = useRef<{
     key: string;
@@ -382,7 +389,7 @@ function DeviceRecordingOverlay({
           const value = latest.current;
           if (JSON.stringify(value.item?.identity) !== original.fingerprint)
             return;
-          const captions = deviceCaptionPreview(value.item);
+          const captions = deviceCaptionPreview(value.item, value.labels);
           const settings = value.settings;
           await windows.floatingBarUpdate({
             captureKey: original.key,

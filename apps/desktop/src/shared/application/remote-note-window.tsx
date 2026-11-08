@@ -1,3 +1,4 @@
+import { Trans } from "@lingui/react/macro";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 
@@ -53,11 +54,18 @@ export function RemoteNoteWindow() {
   if (bootstrap.error)
     return (
       <div role="alert">
-        This note window is no longer connected to its original workspace. Open
-        it again from that workspace.
+        <Trans>
+          This note window is no longer connected to its original workspace.
+          Open it again from that workspace.
+        </Trans>
       </div>
     );
-  if (!bootstrap.data) return <div role="status">Opening note…</div>;
+  if (!bootstrap.data)
+    return (
+      <div role="status">
+        <Trans>Opening note…</Trans>
+      </div>
+    );
   return (
     <VaultClientProvider client={bootstrap.data.client}>
       <WindowWorkspace sessionId={bootstrap.data.sessionId} />
@@ -69,7 +77,7 @@ function WindowWorkspace({ sessionId }: { sessionId: string }) {
   if (!scope)
     return (
       <div role={error ? "alert" : "status"}>
-        {error?.message ?? "Opening note…"}
+        {error?.message ?? <Trans>Opening note…</Trans>}
       </div>
     );
   return (
@@ -106,8 +114,15 @@ function OriginalNote({ sessionId }: { sessionId: string }) {
   const owner = useVaultReadScope();
   if (!owner.current())
     return (
-      <div role="alert">This note's workspace is no longer available.</div>
+      <div role="alert">
+        <Trans>This note's workspace is no longer available.</Trans>
+      </div>
     );
-  if (!owner.readable) return <div role="status">Opening note…</div>;
+  if (!owner.readable)
+    return (
+      <div role="status">
+        <Trans>Opening note…</Trans>
+      </div>
+    );
   return <StandaloneNoteContent sessionId={sessionId} />;
 }

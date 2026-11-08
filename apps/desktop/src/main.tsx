@@ -59,13 +59,13 @@ declare module "@tanstack/react-router" {
   }
 }
 
-function App() {
+function App({ remoteNote = false }: { remoteNote?: boolean }) {
   const aiTaskStore = useMemo(() => createAITaskStore(), []);
 
   return (
     <>
-      <AITaskWindowSyncBridge store={aiTaskStore} />
-      <RegenerateTranscriptConfirmDialog />
+      {!remoteNote && <AITaskWindowSyncBridge store={aiTaskStore} />}
+      {!remoteNote && <RegenerateTranscriptConfirmDialog />}
       <RouterProvider
         router={router}
         context={{
@@ -80,7 +80,7 @@ function App() {
 function AppRoot({
   bootstrap,
 }: {
-  bootstrap: Awaited<ReturnType<typeof loadDesktopBootstrap>>;
+  bootstrap: Awaited<ReturnType<typeof loadDesktopBootstrap>> | null;
 }) {
   const theme = resolveThemeAppearance(
     getDesignTheme(useConfigValue("design_theme")),
@@ -91,14 +91,18 @@ function AppRoot({
     <QueryClientProvider client={queryClient}>
       <AppThemeProvider>
         <AppI18nProvider>
-          <DesktopBootstrapRoot state={bootstrap}>
-            <StartupBoundary>
-              <App />
-              <ArtifactInvalidationSync />
-              {isMainWindow ? <FloatingMeetingWindowHost /> : null}
-              {isMainWindow ? <DeviceEventListeners /> : null}
-            </StartupBoundary>
-          </DesktopBootstrapRoot>
+          {isRemoteNoteWindow ? (
+            <App remoteNote />
+          ) : (
+            <DesktopBootstrapRoot state={bootstrap!}>
+              <StartupBoundary>
+                <App />
+                <ArtifactInvalidationSync />
+                {isMainWindow ? <FloatingMeetingWindowHost /> : null}
+                {isMainWindow ? <DeviceEventListeners /> : null}
+              </StartupBoundary>
+            </DesktopBootstrapRoot>
+          )}
           <Toaster position="bottom-right" theme={theme} />
         </AppI18nProvider>
       </AppThemeProvider>
@@ -109,7 +113,9 @@ function AppRoot({
 initWindowsPlugin();
 document.documentElement.dataset.platform = platform();
 
-const isMainWindow = getCurrentWebviewWindowLabel() === "main";
+const windowLabel = getCurrentWebviewWindowLabel();
+const isMainWindow = windowLabel === "main";
+const isRemoteNoteWindow = windowLabel.startsWith("remote-note-");
 
 if (isMainWindow) {
   void initializeAppExitFlush().catch((error) => {
@@ -134,16 +140,18 @@ async function enableReactScanInDev() {
 
 async function renderApp() {
   startPerformanceDiagnostics();
-  const bootstrap = await loadDesktopBootstrap();
-  void initConfigStore().catch((error) => {
-    console.error("Failed to initialize the config store", error);
-  });
-  if (isMainWindow && bootstrap.info?.startup.selection.kind === "local") {
-    await initializeApplicationSettings().catch((error) => {
-      console.error("Failed to initialize application settings", error);
+  const bootstrap = isRemoteNoteWindow ? null : await loadDesktopBootstrap();
+  if (!isRemoteNoteWindow) {
+    void initConfigStore().catch((error) => {
+      console.error("Failed to initialize the config store", error);
     });
+    if (isMainWindow && bootstrap?.info?.startup.selection.kind === "local") {
+      await initializeApplicationSettings().catch((error) => {
+        console.error("Failed to initialize application settings", error);
+      });
+    }
+    await Promise.all([bootstrapThemeFromSettings(), enableReactScanInDev()]);
   }
-  await Promise.all([bootstrapThemeFromSettings(), enableReactScanInDev()]);
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
