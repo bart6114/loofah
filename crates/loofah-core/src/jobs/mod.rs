@@ -22,6 +22,7 @@ const MAX_PENDING: usize = 32;
 mod access;
 pub mod configured;
 pub mod generation;
+pub(crate) mod lifecycle;
 mod prepared;
 pub mod providers;
 mod result;

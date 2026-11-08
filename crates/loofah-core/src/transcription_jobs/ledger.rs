@@ -856,3 +856,148 @@ pub(crate) fn sync_parent(path: &Path) -> Result<(), ApplicationError> {
     }
     Ok(())
 }
+
+impl Journal {
+    pub(super) async fn replay_submission(
+        &self,
+        member: String,
+        request_id: String,
+        request: TranscriptionJobRequest,
+    ) -> Result<Option<TranscriptionJobSnapshot>, ApplicationError> {
+        let member = uuid(&member)?;
+        let request_id = uuid(&request_id)?;
+        self.run(move |state| {
+            let Some(record) = state
+                .records
+                .values()
+                .find(|record| record.member == member && record.request_id == request_id)
+            else {
+                return Ok(None);
+            };
+            if record.request != request {
+                return Err(error(ErrorCode::Conflict, "Transcription request changed"));
+            }
+            Ok(Some(record.snapshot.clone()))
+        })
+        .await
+    }
+    pub(super) async fn ensure_session_idle(&self, id: String) -> Result<(), ApplicationError> {
+        self.run(move |state| {
+            if state.records.values().any(|record| {
+                record.request.session_id == id
+                    && (!record.snapshot.state.is_terminal()
+                        || record.uncertain
+                        || state.active.contains_key(&record.snapshot.id))
+            }) {
+                return Err(crate::session_lifecycle_gate::session_lifecycle_busy());
+            }
+            Ok(())
+        })
+        .await
+    }
+}
+
+pub(super) async fn ensure_stored_session_idle(
+    root: PathBuf,
+    vault: String,
+    id: String,
+) -> Result<(), ApplicationError> {
+    tokio::task::spawn_blocking(move || {
+        match root.symlink_metadata() {
+            Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {}
+            _ => return Err(storage("Invalid transcription inventory")),
+        }
+        let mut requests = std::collections::HashSet::new();
+        for (scanned, entry) in std::fs::read_dir(&root).map_err(storage)?.enumerate() {
+            if scanned >= ENTRY_LIMIT {
+                return Err(capacity());
+            }
+            let entry = entry.map_err(storage)?;
+            let name = entry.file_name();
+            let Some(stem) = name
+                .to_str()
+                .and_then(|name| name.strip_suffix(".json"))
+                .filter(|stem| uuid(stem).is_ok())
+            else {
+                continue;
+            };
+            let record: Record =
+                serde_json::from_slice(&read(&entry.path(), RECORD_LIMIT)?).map_err(storage)?;
+            validate(&record, &vault, stem)?;
+            if !requests.insert((record.member.clone(), record.request_id.clone())) {
+                return Err(storage("Duplicate transcription request"));
+            }
+            if record.request.session_id == id
+                && (!record.snapshot.state.is_terminal() || record.uncertain)
+            {
+                return Err(crate::session_lifecycle_gate::session_lifecycle_busy());
+            }
+        }
+        Ok(())
+    })
+    .await
+    .map_err(storage)?
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pending_or_uncertain_batch_work_is_not_hidden_when_the_engine_is_disabled() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("transcription-jobs");
+        let journal = Journal::open(
+            directory.clone(),
+            crate::events::EventHub::new("vault".into(), 16),
+            TranscriptionLimits::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        let member = uuid::Uuid::new_v4().to_string();
+        let job = journal
+            .submit(
+                member.clone(),
+                uuid::Uuid::new_v4().to_string(),
+                TranscriptionJobRequest {
+                    session_id: "note".into(),
+                    expected_recording_sha256: "a".repeat(64),
+                    expected_transcript: AbsentTranscriptExpectation::Absent,
+                    model: "whisper-base".into(),
+                    languages: vec![],
+                    keywords: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            journal
+                .ensure_session_idle("note".into())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Conflict
+        );
+        assert!(journal.ensure_session_idle("other".into()).await.is_ok());
+        assert!(
+            ensure_stored_session_idle(directory.clone(), "vault".into(), "note".into())
+                .await
+                .is_err()
+        );
+        journal.cancel(member, job.id.clone()).await.unwrap();
+        assert!(journal.ensure_session_idle("note".into()).await.is_ok());
+        journal
+            .change(job.id, |record| record.uncertain = true)
+            .await
+            .unwrap();
+        assert!(journal.ensure_session_idle("note".into()).await.is_err());
+        drop(journal);
+        assert!(
+            ensure_stored_session_idle(directory, "vault".into(), "note".into())
+                .await
+                .is_err()
+        );
+    }
+}

@@ -231,10 +231,44 @@ impl VaultContext {
             if service.stop.is_cancelled() {
                 return Err(unavailable());
             }
+            if let Some(snapshot) = service
+                .journal
+                .replay_submission(member.clone(), request_id.clone(), input.clone())
+                .await?
+            {
+                return Ok(snapshot);
+            }
+            let _admission = context.admit_session_work(&input.session_id).await?;
+            let exists = context
+                .store
+                .read_meta(&input.session_id)
+                .await
+                .map_err(|cause| crate::vault::storage_error(cause, false))?
+                .is_some_and(|meta| meta.id == input.session_id);
+            if !exists {
+                return Err(error(ErrorCode::NotFound, "Session not found"));
+            }
             service.journal.submit(member, request_id, input).await
         })
         .await
         .map_err(|_| unavailable())?
+    }
+
+    pub(crate) async fn ensure_transcription_session_idle(
+        &self,
+        id: &str,
+    ) -> Result<(), ApplicationError> {
+        if let Some(service) = self.transcription.get() {
+            service.journal.ensure_session_idle(id.to_owned()).await
+        } else {
+            let root = self
+                .operations
+                .as_ref()
+                .ok_or_else(unavailable)?
+                .root
+                .join("transcription-jobs");
+            ledger::ensure_stored_session_idle(root, self.events.vault_id(), id.to_owned()).await
+        }
     }
 
     pub async fn transcription_job(
@@ -271,6 +305,19 @@ impl VaultContext {
             let service = context.transcription_service()?;
             if service.stop.is_cancelled() {
                 return Err(unavailable());
+            }
+            let record = service.journal.record(member.clone(), job.clone()).await?;
+            let _admission = context
+                .admit_session_work(&record.request.session_id)
+                .await?;
+            if context
+                .store
+                .read_meta(&record.request.session_id)
+                .await
+                .map_err(|cause| crate::vault::storage_error(cause, false))?
+                .is_none_or(|meta| meta.id != record.request.session_id)
+            {
+                return Err(error(ErrorCode::NotFound, "Session not found"));
             }
             service.journal.resume(member, job).await
         })

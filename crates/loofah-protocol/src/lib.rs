@@ -31,6 +31,8 @@ mod session_summaries;
 pub use session_summaries::*;
 mod session_cleanup;
 pub use session_cleanup::*;
+mod session_lifecycle;
+pub use session_lifecycle::*;
 mod tag_editing;
 pub use tag_editing::*;
 

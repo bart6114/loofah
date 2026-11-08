@@ -25,6 +25,7 @@ mod metadata;
 mod note_editor;
 mod operations;
 mod session_cleanup;
+mod session_lifecycle;
 mod session_lifecycle_gate;
 mod session_summaries;
 mod tag_editing;

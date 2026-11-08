@@ -154,14 +154,39 @@ impl VaultContext {
     }
 
     pub async fn submit_summary_job(
-        &self,
+        self: &std::sync::Arc<Self>,
         namespace: String,
         request_id: String,
         input: SummaryJobRequest,
     ) -> Result<ProcessingJobSnapshot, ApplicationError> {
-        self.processing_jobs()?
-            .submit(namespace, request_id, input)
-            .await
+        let context = self.clone();
+        tokio::spawn(async move {
+            let journal = context.processing_jobs()?;
+            if let Some(snapshot) = journal
+                .replay_submission(namespace.clone(), request_id.clone(), input.clone())
+                .await?
+            {
+                return Ok(snapshot);
+            }
+            let _admission = context.admit_session_work(&input.session_id).await?;
+            let exists = context
+                .store
+                .read_meta(&input.session_id)
+                .await
+                .map_err(|cause| crate::vault::storage_error(cause, false))?
+                .is_some_and(|meta| meta.id == input.session_id);
+            if !exists {
+                return Err(rejected(ErrorCode::NotFound, "Session not found"));
+            }
+            journal.submit(namespace, request_id, input).await
+        })
+        .await
+        .map_err(|_| {
+            rejected(
+                ErrorCode::Internal,
+                "Processing admission could not be confirmed",
+            )
+        })?
     }
 
     pub async fn processing_job(
