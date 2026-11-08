@@ -41,6 +41,7 @@ export type GeneralActions = {
       handlePersist?: LiveTranscriptPersistCallback;
       onStopped?: OnStoppedCallback;
       isAvailable?: () => boolean;
+      requestId?: string;
     },
   ) => Promise<boolean>;
   stop: () => void;
@@ -54,7 +55,11 @@ export type GeneralActions = {
   ) => Promise<void>;
   startTranscription: (
     params: TranscriptionParams,
-    options?: { handlePersist?: BatchPersistCallback },
+    options?: {
+      handlePersist?: BatchPersistCallback;
+      requestId?: string;
+      onTerminal?: () => void;
+    },
   ) => Promise<void>;
   stopTranscription: (sessionId: string) => Promise<void>;
   canStartLiveSession: (sessionId: string) => boolean;
@@ -114,6 +119,7 @@ export const createGeneralSlice = <
         targetSessionId,
         params,
         options?.isAvailable,
+        options?.requestId ?? crypto.randomUUID(),
       );
       if (!started) {
         if (options?.handlePersist) {
@@ -181,7 +187,10 @@ export const createGeneralSlice = <
       get().setBatchPersist(sessionId, options.handlePersist);
     }
 
-    await runBatchSession(get, sessionId, params);
+    await runBatchSession(get, sessionId, params, {
+      requestId: options?.requestId ?? crypto.randomUUID(),
+      onTerminal: options?.onTerminal,
+    });
   },
   stopTranscription: async (sessionId) => {
     if (!sessionId) {

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import type { TranscriptionParams } from "@hypr/plugin-transcription";
+import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { useListener } from "./contexts";
 import { useSTTConnection } from "./useSTTConnection";
@@ -18,6 +19,7 @@ import {
 } from "~/stt/capabilities";
 import { appendTranscriptWordsAndHints, createTranscript } from "~/stt/queries";
 import type { SpeakerHintWithId, WordWithId } from "~/stt/types";
+import { commands } from "~/types/tauri.gen";
 
 type RunOptions = {
   imported?: boolean;
@@ -105,6 +107,7 @@ export const useRunBatch = (
   return useCallback(
     async (filePath: string, options?: RunOptions) => {
       assertCurrent?.();
+      const requestId = crypto.randomUUID();
       const backend = getApplicationClient().store;
       const activity = beginSummaryActivity(sessionId, "processing");
       try {
@@ -191,100 +194,118 @@ export const useRunBatch = (
           options?.handlePersist;
         let lastTranscriptWrite = Promise.resolve();
         let transcriptWriteError: unknown;
+        let persistenceProven = true;
         const trackTranscriptWrite = (write: Promise<void>) => {
-          lastTranscriptWrite = write.catch((error) => {
+          const settled = write.catch((error) => {
             transcriptWriteError = error;
             console.error("[runBatch] failed to persist transcript", error);
           });
+          lastTranscriptWrite = Promise.all([
+            lastTranscriptWrite,
+            settled,
+          ]).then(() => {});
         };
 
-        const persist =
-          handlePersist ??
-          ((words, hints, persistOptions) => {
-            if (words.length === 0) {
-              return;
+        const persistValues: BatchPersistCallback = handlePersist
+          ? (words, hints, persistOptions) => {
+              const write = handlePersist(words, hints, persistOptions);
+              if (write === undefined) persistenceProven = false;
+              else trackTranscriptWrite(write);
             }
-
-            const newWords: WordWithId[] = [];
-            const newWordIds: string[] = [];
-
-            words.forEach((word) => {
-              const wordId = id();
-
-              newWords.push({
-                id: wordId,
-                text: word.text,
-                start_ms: word.start_ms,
-                end_ms: word.end_ms,
-                channel: word.channel,
-                metadata: JSON.stringify({
-                  ...word.metadata,
-                  capture_source:
-                    word.metadata?.capture_source ?? captureSource,
-                }),
-              });
-
-              newWordIds.push(wordId);
-            });
-
-            const newHints: SpeakerHintWithId[] = [];
-
-            hints.forEach((hint) => {
-              if (hint.data.type !== "provider_speaker_index") {
+          : (words, hints, persistOptions) => {
+              if (words.length === 0) {
                 return;
               }
 
-              const wordId = newWordIds[hint.wordIndex];
-              const word = words[hint.wordIndex];
+              const newWords: WordWithId[] = [];
+              const newWordIds: string[] = [];
 
-              if (!wordId || !word) {
-                return;
-              }
+              words.forEach((word) => {
+                const wordId = id();
 
-              newHints.push({
-                id: id(),
-                word_id: wordId,
-                type: "provider_speaker_index",
-                value: JSON.stringify({
-                  provider: hint.data.provider ?? target.provider,
-                  channel: hint.data.channel ?? word.channel,
-                  speaker_index: hint.data.speaker_index,
-                }),
+                newWords.push({
+                  id: wordId,
+                  text: word.text,
+                  start_ms: word.start_ms,
+                  end_ms: word.end_ms,
+                  channel: word.channel,
+                  metadata: JSON.stringify({
+                    ...word.metadata,
+                    capture_source:
+                      word.metadata?.capture_source ?? captureSource,
+                  }),
+                });
+
+                newWordIds.push(wordId);
               });
-            });
 
-            if (!transcriptId) {
-              transcriptId = id();
-              trackTranscriptWrite(
-                createTranscript(
-                  {
-                    id: transcriptId,
-                    sessionId,
-                    ownerUserId: session?.user_id ?? "",
-                    createdAt,
-                    startedAt: Date.now(),
-                    memo: memoMd,
-                    source: "batch_transcription",
-                    provider: target.provider,
-                    model: target.model,
-                    words: newWords,
-                    speakerHints: newHints,
-                    replaceSession: true,
-                  },
-                  { store: backend },
-                ),
-              );
-            } else {
-              trackTranscriptWrite(
-                appendTranscriptWordsAndHints(
-                  transcriptId,
-                  newWords,
-                  newHints,
-                  { ...persistOptions, store: backend },
-                ),
-              );
-            }
-          });
+              const newHints: SpeakerHintWithId[] = [];
+
+              hints.forEach((hint) => {
+                if (hint.data.type !== "provider_speaker_index") {
+                  return;
+                }
+
+                const wordId = newWordIds[hint.wordIndex];
+                const word = words[hint.wordIndex];
+
+                if (!wordId || !word) {
+                  return;
+                }
+
+                newHints.push({
+                  id: id(),
+                  word_id: wordId,
+                  type: "provider_speaker_index",
+                  value: JSON.stringify({
+                    provider: hint.data.provider ?? target.provider,
+                    channel: hint.data.channel ?? word.channel,
+                    speaker_index: hint.data.speaker_index,
+                  }),
+                });
+              });
+
+              if (!transcriptId) {
+                transcriptId = id();
+                trackTranscriptWrite(
+                  createTranscript(
+                    {
+                      id: transcriptId,
+                      sessionId,
+                      ownerUserId: session?.user_id ?? "",
+                      createdAt,
+                      startedAt: Date.now(),
+                      memo: memoMd,
+                      source: "batch_transcription",
+                      provider: target.provider,
+                      model: target.model,
+                      words: newWords,
+                      speakerHints: newHints,
+                      replaceSession: true,
+                    },
+                    { store: backend },
+                  ),
+                );
+              } else {
+                trackTranscriptWrite(
+                  appendTranscriptWordsAndHints(
+                    transcriptId,
+                    newWords,
+                    newHints,
+                    { ...persistOptions, store: backend },
+                  ),
+                );
+              }
+            };
+
+        const persist: BatchPersistCallback = (...args) => {
+          try {
+            return persistValues(...args);
+          } catch (error) {
+            persistenceProven = false;
+            throw error;
+          }
+        };
 
         const params: TranscriptionParams = {
           session_id: sessionId,
@@ -301,10 +322,43 @@ export const useRunBatch = (
 
         assertCurrent?.();
         // Admitted processing keeps its original persistence owner after the UI closes.
+        let producerTerminal = false;
+        let acknowledgementFailure: { error: unknown } | undefined;
         try {
-          await startTranscription(params, { handlePersist: persist });
+          await startTranscription(params, {
+            handlePersist: persist,
+            requestId,
+            onTerminal: () => {
+              producerTerminal = true;
+            },
+          });
         } finally {
           await lastTranscriptWrite;
+          if (producerTerminal && persistenceProven && !transcriptWriteError) {
+            try {
+              const acknowledged =
+                await commands.applicationFinishLocalSessionWork(
+                  sessionId,
+                  requestId,
+                );
+              if (acknowledged.status === "error")
+                acknowledgementFailure = {
+                  error: acknowledged.error,
+                };
+            } catch (error) {
+              acknowledgementFailure = { error };
+            }
+            if (acknowledgementFailure) {
+              console.error(
+                "[runBatch] could not confirm durable session work",
+                acknowledgementFailure.error,
+              );
+              sonnerToast.warning(
+                "Transcription completion could not be confirmed.",
+                { id: `local-session-work:${requestId}`, duration: Infinity },
+              );
+            }
+          }
         }
 
         if (transcriptWriteError) throw transcriptWriteError;

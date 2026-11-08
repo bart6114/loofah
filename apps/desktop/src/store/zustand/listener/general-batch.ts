@@ -84,6 +84,9 @@ export const runBatchSession = async <T extends BatchStore>(
   get: StoreApi<T>["getState"],
   sessionId: string,
   params: TranscriptionParams,
+  options: { requestId: string; onTerminal?: () => void } = {
+    requestId: crypto.randomUUID(),
+  },
 ) => {
   get().handleBatchStarted(sessionId);
 
@@ -211,6 +214,7 @@ export const runBatchSession = async <T extends BatchStore>(
         }
 
         if (payload.type === "completed") {
+          options.onTerminal?.();
           resolveSuccess(
             {
               response: payload.response,
@@ -222,11 +226,13 @@ export const runBatchSession = async <T extends BatchStore>(
         }
 
         if (payload.type === "stopped") {
+          options.onTerminal?.();
           rejectStopped(reject);
           return;
         }
 
         if (payload.type === "failed") {
+          options.onTerminal?.();
           rejectFailure(payload.error, reject, {
             terminalReason:
               payload.code === "timed_out" ? "timed_out" : "failed",
@@ -238,7 +244,7 @@ export const runBatchSession = async <T extends BatchStore>(
         unlisten = fn;
 
         transcriptionCommands
-          .startTranscription(params)
+          .startTranscription(params, options.requestId)
           .then((result) => {
             if (settled) {
               return;

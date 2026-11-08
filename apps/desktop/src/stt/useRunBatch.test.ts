@@ -11,6 +11,7 @@ import { useRunBatch } from "./useRunBatch";
 const {
   sessionTranscriptsMock,
   startTranscriptionMock,
+  finishLocalWorkMock,
   useListenerMock,
   useSessionMock,
   useSTTConnectionMock,
@@ -24,6 +25,7 @@ const {
 } = vi.hoisted(() => ({
   sessionTranscriptsMock: vi.fn(),
   startTranscriptionMock: vi.fn(),
+  finishLocalWorkMock: vi.fn(),
   useListenerMock: vi.fn(),
   useSessionMock: vi.fn(),
   useSTTConnectionMock: vi.fn(),
@@ -37,7 +39,10 @@ const {
 }));
 
 vi.mock("~/types/tauri.gen", () => ({
-  commands: { sessionTranscripts: sessionTranscriptsMock },
+  commands: {
+    sessionTranscripts: sessionTranscriptsMock,
+    applicationFinishLocalSessionWork: finishLocalWorkMock,
+  },
 }));
 
 vi.mock("~/shared/application/client", () => ({
@@ -181,6 +186,7 @@ describe("useRunBatch", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    finishLocalWorkMock.mockResolvedValue({ status: "ok", data: null });
     applicationClientMock.mockReturnValue({
       store: { sessionTranscripts: sessionTranscriptsMock },
     });
@@ -491,6 +497,176 @@ describe("useRunBatch", () => {
       "Select a transcription model in Settings",
     );
     expect(startTranscriptionMock).not.toHaveBeenCalled();
+  });
+  test.each([50, 150, 500])(
+    "waits for original durable batch writes before terminal acknowledgement at %sms",
+    async (delay) => {
+      let finish!: () => void;
+      createTranscriptMock.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      let admitted: { requestId: string } | undefined;
+      startTranscriptionMock.mockImplementationOnce(
+        async (_params, options) => {
+          admitted = options;
+          options.handlePersist(
+            [{ text: "retained", start_ms: 0, end_ms: 1, channel: 0 }],
+            [],
+          );
+          options.onTerminal();
+        },
+      );
+      let available = true;
+      const { result, unmount } = renderHook(() =>
+        useRunBatch("session-1", () => {
+          if (!available) throw new Error("retired");
+        }),
+      );
+      const work = result.current("/tmp/audio.wav");
+      await waitFor(() => expect(createTranscriptMock).toHaveBeenCalledOnce());
+      available = false;
+      unmount();
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      expect(finishLocalWorkMock).not.toHaveBeenCalled();
+      finish();
+      await work;
+      expect(finishLocalWorkMock).toHaveBeenCalledExactlyOnceWith(
+        "session-1",
+        admitted?.requestId,
+      );
+    },
+  );
+  test.each(["unknown-start", "failed-write", "void-custom"])(
+    "never acknowledges unproven batch durability: %s",
+    async (boundary) => {
+      if (boundary === "failed-write")
+        createTranscriptMock.mockRejectedValueOnce(new Error("write lost"));
+      startTranscriptionMock.mockImplementationOnce(
+        async (_params, options) => {
+          options.handlePersist(
+            [{ text: "retained", start_ms: 0, end_ms: 1, channel: 0 }],
+            [],
+          );
+          if (boundary !== "unknown-start") options.onTerminal();
+          if (boundary === "unknown-start")
+            throw new Error("start response lost");
+        },
+      );
+      const { result } = renderHook(() => useRunBatch("session-1"));
+      await result
+        .current(
+          "/tmp/audio.wav",
+          boundary === "void-custom" ? { handlePersist: () => {} } : undefined,
+        )
+        .catch(() => {});
+      expect(finishLocalWorkMock).not.toHaveBeenCalled();
+    },
+  );
+  test("drains all returned custom persistence promises, even out of order", async () => {
+    let first!: () => void, second!: () => void;
+    const handlePersist = vi
+      .fn()
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          first = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          second = resolve;
+        }),
+      );
+    startTranscriptionMock.mockImplementationOnce(async (_params, options) => {
+      options.handlePersist([], []);
+      options.handlePersist([], []);
+      options.onTerminal();
+    });
+    const { result } = renderHook(() => useRunBatch("session-1"));
+    const work = result.current("/tmp/audio.wav", { handlePersist });
+    await waitFor(() => expect(handlePersist).toHaveBeenCalledTimes(2));
+    second();
+    await Promise.resolve();
+    expect(finishLocalWorkMock).not.toHaveBeenCalled();
+    first();
+    await work;
+    expect(finishLocalWorkMock).toHaveBeenCalledOnce();
+  });
+  test.each([false, true])(
+    "acknowledges drained partial persistence after an actual stopped producer, preserving stop even if acknowledgement fails (%s)",
+    async (acknowledgementFails) => {
+      if (acknowledgementFails)
+        finishLocalWorkMock.mockRejectedValueOnce(
+          new Error("ack response lost"),
+        );
+      startTranscriptionMock.mockImplementationOnce(
+        async (_params, options) => {
+          options.handlePersist(
+            [{ text: "partial", start_ms: 0, end_ms: 1, channel: 0 }],
+            [],
+          );
+          options.onTerminal();
+          throw new Error("Transcription stopped.");
+        },
+      );
+      const { result } = renderHook(() => useRunBatch("session-1"));
+      await expect(result.current("/tmp/audio.wav")).rejects.toThrow(
+        "Transcription stopped.",
+      );
+      expect(createTranscriptMock).toHaveBeenCalledOnce();
+      expect(finishLocalWorkMock).toHaveBeenCalledOnce();
+    },
+  );
+  test("still drains a pending custom write when a different write has failed", async () => {
+    let finish!: () => void;
+    const handlePersist = vi
+      .fn()
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+      )
+      .mockImplementationOnce(async () => {
+        throw new Error("write failed");
+      });
+    startTranscriptionMock.mockImplementationOnce(async (_params, options) => {
+      options.handlePersist([], []);
+      options.handlePersist([], []);
+      options.onTerminal();
+    });
+    const { result } = renderHook(() => useRunBatch("session-1"));
+    const completed = vi.fn();
+    const work = result
+      .current("/tmp/audio.wav", { handlePersist })
+      .catch(completed);
+    await waitFor(() => expect(handlePersist).toHaveBeenCalledTimes(2));
+    expect(completed).not.toHaveBeenCalled();
+    finish();
+    await work;
+    expect(completed).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "write failed" }),
+    );
+    expect(finishLocalWorkMock).not.toHaveBeenCalled();
+  });
+  test("keeps successful saved transcription when only its completion acknowledgement is lost", async () => {
+    finishLocalWorkMock.mockRejectedValueOnce(new Error("reply lost"));
+    startTranscriptionMock.mockImplementationOnce(async (_params, options) => {
+      options.handlePersist(
+        [{ text: "saved", start_ms: 0, end_ms: 1, channel: 0 }],
+        [],
+      );
+      options.onTerminal();
+    });
+    const { result } = renderHook(() => useRunBatch("session-1"));
+    await expect(result.current("/tmp/audio.wav")).resolves.toBeUndefined();
+    expect(createTranscriptMock).toHaveBeenCalledOnce();
+    expect(startTranscriptionMock).toHaveBeenCalledOnce();
+    expect(finishLocalWorkMock).toHaveBeenCalledOnce();
+    expect(sonnerToastWarningMock).toHaveBeenCalledWith(
+      "Transcription completion could not be confirmed.",
+      expect.anything(),
+    );
   });
 });
 

@@ -27,7 +27,6 @@ import {
   getLiveTranscriptionConfig,
   getTranscriptionLanguages,
 } from "~/stt/capabilities";
-import { softDeleteTranscript } from "~/stt/queries";
 import { commands } from "~/types/tauri.gen";
 
 export function getPostCaptureAction(
@@ -81,13 +80,16 @@ export function useStartListening(
 
   const startListening = useCallback(async () => {
     if (!isAvailable()) return;
+    const requestId = crypto.randomUUID();
     const activity = beginSummaryActivity(sessionId, "recording");
     let started = false;
     try {
       let transcriptId: string | null = null;
       const startedAt = Date.now();
       let lastTranscriptWrite = Promise.resolve();
+      let persistenceFailed = false;
       const reportTranscriptWriteError = (error: unknown) => {
+        persistenceFailed = true;
         console.error("[listener] failed to persist transcript", error);
         sonnerToast.error(`Transcript is NOT being saved: ${error}`, {
           id: "live-transcript-persist-failed",
@@ -114,6 +116,7 @@ export function useStartListening(
                 () => catalogLocalSessionAudio(sessionId, audioPath),
               );
             } catch (error) {
+              persistenceFailed = true;
               console.error(
                 "[listener] failed to catalog recorded audio",
                 error,
@@ -137,6 +140,26 @@ export function useStartListening(
             }
           }
 
+          if (!persistenceFailed) {
+            try {
+              const acknowledged =
+                await commands.applicationFinishLocalSessionWork(
+                  sessionId,
+                  requestId,
+                );
+              if (acknowledged.status === "error") throw acknowledged.error;
+            } catch (error) {
+              console.error(
+                "[listener] could not confirm durable session work",
+                error,
+              );
+              sonnerToast.warning(
+                "Recording completion could not be confirmed.",
+                { id: `local-session-work:${requestId}`, duration: Infinity },
+              );
+              return;
+            }
+          }
           if (!isAvailable()) return;
 
           // Restricted to sessions that came out of this capture with no transcript at all:
@@ -251,14 +274,13 @@ export function useStartListening(
           handlePersist,
           onStopped,
           isAvailable,
+          requestId,
         },
       );
 
       if (!started) {
         await lastTranscriptWrite;
-        if (transcriptId) {
-          await softDeleteTranscript(sessionId, transcriptId);
-        }
+        // A lost start reply cannot prove the producer never wrote these words.
         return;
       }
 

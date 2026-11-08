@@ -11,6 +11,7 @@ const {
   queueAutoEnhanceIfSummaryEmptyMock,
   resetEnhanceTasksMock,
   startMock,
+  finishLocalWorkMock,
   runBatchMock,
   canRunBatchTranscriptionMock,
   useListenerMock,
@@ -34,6 +35,7 @@ const {
   queueAutoEnhanceIfSummaryEmptyMock: vi.fn(),
   resetEnhanceTasksMock: vi.fn(),
   startMock: vi.fn(),
+  finishLocalWorkMock: vi.fn(),
   runBatchMock: vi.fn(),
   canRunBatchTranscriptionMock: vi.fn(() => true),
   useListenerMock: vi.fn(),
@@ -132,6 +134,7 @@ vi.mock("~/types/tauri.gen", () => ({
   commands: {
     sessionAppendTranscript: sessionAppendTranscriptMock,
     sessionFinishTranscript: sessionFinishTranscriptMock,
+    applicationFinishLocalSessionWork: finishLocalWorkMock,
   },
 }));
 
@@ -236,6 +239,7 @@ describe("getPostCaptureAction", () => {
 describe("useStartListening", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    finishLocalWorkMock.mockResolvedValue({ status: "ok", data: null });
 
     getEnhancerServiceMock.mockImplementation(() => ({
       queueAutoEnhance: queueAutoEnhanceMock,
@@ -1388,4 +1392,157 @@ describe("useStartListening", () => {
       expect(useSummaryActivity.getState().sessions[sessionId]).toBeUndefined();
     },
   );
+  test.each([50, 150, 500])(
+    "acknowledges only the original generation after catalog and live writes drain at %sms, even after retirement",
+    async (delay) => {
+      let available = true;
+      let finishWrite!: (value: { status: "ok"; data: null }) => void;
+      sessionAppendTranscriptMock.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishWrite = resolve;
+        }),
+      );
+      const { result } = renderHook(() =>
+        useStartListening("session-1", () => available),
+      );
+      await result.current();
+      const callbacks = startMock.mock.calls[0][1];
+      expect(callbacks.requestId).toMatch(/^[0-9a-f-]{36}$/u);
+      callbacks.handlePersist({
+        new_words: [
+          { id: "w", text: "retained", start_ms: 0, end_ms: 1, channel: 0 },
+        ],
+        replaced_ids: [],
+        partials: [],
+      });
+      const stopped = callbacks.onStopped("session-1", {
+        durationSeconds: 1,
+        audioPath: "/tmp/capture.wav",
+        requestedLiveTranscription: true,
+        liveTranscriptionActive: true,
+        needsBatchRepair: false,
+      });
+      available = false;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      expect(finishLocalWorkMock).not.toHaveBeenCalled();
+      finishWrite({ status: "ok", data: null });
+      await stopped;
+      expect(sessionFinishTranscriptMock).toHaveBeenCalledOnce();
+      expect(catalogLocalSessionAudioMock).toHaveBeenCalledOnce();
+      expect(finishLocalWorkMock).toHaveBeenCalledExactlyOnceWith(
+        "session-1",
+        callbacks.requestId,
+      );
+      expect(queueAutoEnhanceIfSummaryEmptyMock).not.toHaveBeenCalled();
+    },
+  );
+  test.each(["append", "finish", "catalog"])(
+    "retains native work when %s persistence fails",
+    async (boundary) => {
+      if (boundary === "append")
+        sessionAppendTranscriptMock.mockRejectedValueOnce(
+          new Error("write lost"),
+        );
+      if (boundary === "finish")
+        sessionFinishTranscriptMock.mockResolvedValueOnce({
+          status: "error",
+          error: "finish lost",
+        });
+      if (boundary === "catalog")
+        catalogLocalSessionAudioMock.mockRejectedValueOnce(
+          new Error("raw remains"),
+        );
+      const { result } = renderHook(() =>
+        useStartListening("session-1", () => true),
+      );
+      await result.current();
+      const callbacks = startMock.mock.calls[0][1];
+      callbacks.handlePersist({
+        new_words: [
+          { id: "w", text: "retained", start_ms: 0, end_ms: 1, channel: 0 },
+        ],
+        replaced_ids: [],
+        partials: [],
+      });
+      await callbacks.onStopped("session-1", {
+        durationSeconds: 1,
+        audioPath: "/tmp/capture.wav",
+        requestedLiveTranscription: true,
+        liveTranscriptionActive: true,
+        needsBatchRepair: false,
+      });
+      expect(finishLocalWorkMock).not.toHaveBeenCalled();
+    },
+  );
+  test("keeps captured words and native work after a false or unknown start instead of deleting uncertain evidence", async () => {
+    startMock.mockImplementationOnce(async (_params, callbacks) => {
+      callbacks.handlePersist({
+        new_words: [
+          { id: "w", text: "retained", start_ms: 0, end_ms: 1, channel: 0 },
+        ],
+        replaced_ids: [],
+        partials: [],
+      });
+      return false;
+    });
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
+    await result.current();
+    expect(sessionAppendTranscriptMock).toHaveBeenCalledOnce();
+    expect(softDeleteTranscriptMock).not.toHaveBeenCalled();
+    expect(finishLocalWorkMock).not.toHaveBeenCalled();
+  });
+  test("does not release a newer same-session generation when an older stopped callback finishes late", async () => {
+    let finishCatalog!: (value: string) => void;
+    catalogLocalSessionAudioMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishCatalog = resolve;
+      }),
+    );
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
+    await result.current();
+    const first = startMock.mock.calls[0][1];
+    const stopped = first.onStopped("session-1", {
+      durationSeconds: 1,
+      audioPath: "/tmp/first.wav",
+      requestedLiveTranscription: false,
+      liveTranscriptionActive: false,
+      needsBatchRepair: false,
+    });
+    await vi.waitFor(() => expect(finishCatalog).toBeDefined());
+    await result.current();
+    const second = startMock.mock.calls[1][1];
+    expect(second.requestId).not.toBe(first.requestId);
+    finishCatalog("/vault/first.wav");
+    await stopped;
+    expect(finishLocalWorkMock).toHaveBeenCalledExactlyOnceWith(
+      "session-1",
+      first.requestId,
+    );
+  });
+  test("distinguishes uncertain completion acknowledgement from transcript save failure", async () => {
+    finishLocalWorkMock.mockRejectedValueOnce(new Error("reply lost"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
+    await result.current();
+    const callbacks = startMock.mock.calls[0][1];
+    await callbacks.onStopped("session-1", {
+      durationSeconds: 1,
+      audioPath: "/tmp/capture.wav",
+      requestedLiveTranscription: true,
+      liveTranscriptionActive: true,
+      needsBatchRepair: false,
+    });
+    expect(sonnerToastWarningMock).toHaveBeenCalledWith(
+      "Recording completion could not be confirmed.",
+      expect.anything(),
+    );
+    expect(sonnerToastErrorMock).not.toHaveBeenCalled();
+    expect(finishLocalWorkMock).toHaveBeenCalledOnce();
+    expect(runBatchMock).not.toHaveBeenCalled();
+  });
 });

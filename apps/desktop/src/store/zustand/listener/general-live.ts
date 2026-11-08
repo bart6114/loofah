@@ -103,8 +103,8 @@ function beginAttempt<T extends LiveStore>(
   };
 }
 
-const startSessionEffect = (params: CaptureParams) =>
-  fromResult(listenerCommands.startCapture(params));
+const startSessionEffect = (params: CaptureParams, requestId: string) =>
+  fromResult(listenerCommands.startCapture(params, requestId));
 
 const stopSessionEffect = () => fromResult(listenerCommands.stopCapture());
 
@@ -323,6 +323,7 @@ export const startLiveSession = <T extends LiveStore>(
   targetSessionId: string,
   params: CaptureParams,
   isAvailable?: () => boolean,
+  requestId: string = crypto.randomUUID(),
 ): Promise<boolean> => {
   const attempt = beginAttempt(set, get, targetSessionId);
   const handlers = createSessionEventHandlers(set, get, targetSessionId);
@@ -364,7 +365,7 @@ export const startLiveSession = <T extends LiveStore>(
       });
     }
 
-    yield* startSessionEffect(params);
+    yield* startSessionEffect(params, requestId);
     if (!attempt.active()) return;
 
     setLiveState(set, (live) => {

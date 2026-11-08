@@ -1242,16 +1242,21 @@ describe("General Listener Slice", () => {
           resolveStart = resolve;
         }),
       );
-      const start = store.getState().start({
-        session_id: "session-a",
-        languages: [],
-        onboarding: false,
-        model: "test-model",
-        base_url: "http://localhost",
-        api_key: "test-key",
-      });
+      const requestId = crypto.randomUUID();
+      const start = store.getState().start(
+        {
+          session_id: "session-a",
+          languages: [],
+          onboarding: false,
+          model: "test-model",
+          base_url: "http://localhost",
+          api_key: "test-key",
+        },
+        { requestId },
+      );
 
       await vi.waitFor(() => expect(startCaptureMock).toHaveBeenCalled());
+      expect(startCaptureMock.mock.calls[0][1]).toBe(requestId);
       const nextOperation = vi.fn(async () => {});
       const queued = enqueueSessionAudioOperation("session-a", nextOperation);
       expect(nextOperation).not.toHaveBeenCalled();

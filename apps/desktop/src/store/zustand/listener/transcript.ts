@@ -16,7 +16,7 @@ export type BatchPersistCallback = (
   words: WordLike[],
   hints: RuntimeSpeakerHint[],
   options?: { mode?: "append" | "replace" },
-) => void;
+) => void | Promise<void>;
 
 export type LiveTranscriptPersistCallback = (
   delta: LiveTranscriptDelta,
