@@ -157,3 +157,81 @@ async fn window_view_rejects_wrong_vault_login_provision_and_profile_or_login_ab
         assert!(!client.is_closed());
     }
 }
+
+#[tokio::test]
+async fn window_view_assets_streams_and_media_authorities_cannot_leave_original_selected_vault() {
+    let fixture = Fixture::with_tls(Some(Duration::ZERO)).await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .extend([
+            "audio_playback".into(),
+            "attachment_leases".into(),
+            "media_jobs".into(),
+        ]);
+    fixture.login(&client).await;
+    let root = tempfile::tempdir().unwrap();
+    let profile = profile(&fixture, &client, root.path()).await;
+    let view = client
+        .window_view(profile.clone(), scope(&client), CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(view.subscribe("other".into(), |_| true).is_err());
+    let lease = uuid::Uuid::new_v4().to_string();
+    assert_eq!(
+        view.open_recording("other", "note", &lease, CancellationToken::new())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Forbidden
+    );
+    assert_eq!(
+        view.open_attachment(
+            "other",
+            "note",
+            "image.png",
+            &lease,
+            CancellationToken::new()
+        )
+        .await
+        .err()
+        .unwrap()
+        .code,
+        ErrorCode::Forbidden
+    );
+    let current = profile.profile().await;
+    assert_eq!(current.vault_id.as_deref(), Some("personal"));
+    let media = crate::media_jobs::MediaScope {
+        profile_id: current.id,
+        server: client.address().into(),
+        member_id: "member".into(),
+        vault_id: "test".into(),
+    };
+    let authority = view
+        .bind_media(profile.clone(), media.clone(), CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(authority.scope(), &media);
+    let mut wrong = media;
+    wrong.vault_id = "personal".into();
+    assert_eq!(
+        view.check_window_media_scope(&profile, &wrong)
+            .unwrap_err()
+            .code,
+        ErrorCode::Forbidden
+    );
+    assert!(
+        view.bind_media(profile.clone(), wrong, CancellationToken::new())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        profile.profile().await.vault_id.as_deref(),
+        Some("personal")
+    );
+    assert!(fixture.state.event_connections.lock().await.is_empty());
+    assert_eq!(fixture.state.download_opens.load(Ordering::SeqCst), 0);
+}

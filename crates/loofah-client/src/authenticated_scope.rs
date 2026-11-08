@@ -72,6 +72,10 @@ impl RemoteClient {
 }
 
 impl AuthenticatedScope {
+    pub(crate) fn matches_profile(&self, profile: &Arc<ProfileLease>, id: &str) -> bool {
+        Arc::ptr_eq(&self.profile, profile) && self.generation.profile().id == id
+    }
+
     pub(crate) fn profile_retirement(&self) -> CancellationToken {
         self.generation.retirement()
     }

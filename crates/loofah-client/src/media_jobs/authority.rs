@@ -39,10 +39,11 @@ impl RemoteClient {
         self.media_jobs_capability(&cancel)?;
         let generation = profile.generation().await?;
         let original = generation.profile();
+        let selected_window = self.check_window_media_scope(&profile, &scope)?;
         if original.id != scope.profile_id
             || original.server != scope.server
             || original.member_id.as_deref() != Some(&scope.member_id)
-            || original.vault_id.as_deref() != Some(&scope.vault_id)
+            || (original.vault_id.as_deref() != Some(&scope.vault_id) && !selected_window)
             || self.address() != scope.server
             || !original.credential_accounts.contains(&self.account)
         {
@@ -141,12 +142,19 @@ impl DispatchGuard {
         .await;
         // The original bearer is now admitted. Response headers, bodies and
         // private file drains cannot retain the profile/login commit mutexes.
+        let lifetime = self.client.window_view_lifetime();
         drop(self);
-        match first {
+        let response = match first {
             std::task::Poll::Ready(value) => value,
             std::task::Poll::Pending => response.await,
         }
-        .map_err(|_| crate::unavailable())
+        .map_err(|_| crate::unavailable())?;
+        if response.status() == reqwest::StatusCode::FORBIDDEN
+            && let Some(lifetime) = lifetime
+        {
+            lifetime.cancel();
+        }
+        Ok(response)
     }
 
     pub fn check_current(&self) -> Result<()> {

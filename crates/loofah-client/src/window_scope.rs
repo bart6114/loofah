@@ -123,6 +123,31 @@ impl RemoteClient {
         }
     }
 
+    /// A child may use its original selected vault without changing the saved
+    /// profile default. Ordinary connections retain their existing profile policy.
+    pub fn check_window_media_scope(
+        &self,
+        profile: &Arc<ProfileLease>,
+        media: &crate::media_jobs::MediaScope,
+    ) -> Result<bool> {
+        self.check_window_scope()?;
+        let Some(window) = &self.window_scope else {
+            return Ok(false);
+        };
+        let scope = window.authority.scope();
+        if !window.authority.matches_profile(profile, &media.profile_id)
+            || media.server != scope.server
+            || media.member_id != scope.member_id
+            || media.vault_id != scope.vault_id
+        {
+            return Err(failure(
+                ErrorCode::Forbidden,
+                "Media belongs to a different original note workspace",
+            ));
+        }
+        Ok(true)
+    }
+
     pub fn window_view_lifetime(&self) -> Option<CancellationToken> {
         self.window_scope.as_ref().map(|scope| scope.stop.clone())
     }
