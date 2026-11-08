@@ -1,0 +1,903 @@
+{
+  "saved_at_utc": "2026-11-08T16:05:18.310947+00:00",
+  "code_checkpoint": "305df8f1129e31bdfeaa3cf1f136e8a544e1d8e8",
+  "purpose": "Portable handoff evidence, not a completion or final-head validation claim",
+  "machine_paths": "Historical evidence only. Rebuild on the destination workstation; do not execute old artifact paths. Binaries, models, raw logs, credentials and user vaults are not included.",
+  "records": {
+    "published_recovery": {
+      "original_path": "/Volumes/T7/loofah-backend-build/logs/capture-recovery-verification.json",
+      "sha256": "56537c3b61ad8d53491352e374e82857738a4daa8ce0567b0fbbd7823614f3d6",
+      "record": {
+        "integration_parent": "68126d9b571a98d27a71aff802b8b0dea9c09d2e",
+        "runner_parent": "f813d2cb78df04abb7fc4eafa91fa93705ab53a4",
+        "source_files": {
+          "Cargo.lock": "3b7f2c6f2e22a8cba4f3994b8606d235c50a771f6279fb846807f7c48120417c",
+          "apps/desktop/src-tauri/Cargo.toml": "5e851bb86f06ce0a402bf645615f0bab197861796f4a474f51b79f54143a3e64",
+          "apps/desktop/src-tauri/src/device_capture/coordinator_tests.rs": "b6005a78c260bb181fc2e524c6cfec04e6cda03cf556aa994ac827f1e023614a",
+          "apps/desktop/src-tauri/src/device_capture/remote.rs": "1f846ad2c443174d6d751ddd0fca2499cd6d8353619199389dc883e70f9325c7",
+          "apps/desktop/src-tauri/src/device_recordings.rs": "adce85b4dde2bd3e880ec5d914283505e56c8caa8ac9f7425cdbbb6c1cda7790",
+          "apps/desktop/src-tauri/src/lib.rs": "7113151eef7c34bb63b8b998a1dbe30482f0e1c4f51543b02a723bbaeb5a846a",
+          "apps/server/src/routes.rs": "ec3e7198ae97ff93006b195b5749e193fb64808b551d643e85f305e1c4990d5c",
+          "crates/capture-store/Cargo.toml": "d89b9a429266cf33bd711f3b38342dcc8d2628b7f359ec0e0ea644c2948ba3d3",
+          "crates/capture-store/src/lib.rs": "1dbb8384867c38d627affb1c8ec3bcc2c8a30bdc07d09ae428fbf4436539eb47",
+          "crates/loofah-core/src/capture_ingest/wav.rs": "0f98a9a685e275b202783fbfa3c2f29841c05c3e41a49eedbda967d900b03c94",
+          "crates/loofah-protocol/src/bin/export-types.rs": "693891ded0286b71bebbccd3dcbcf5fe09cbe55f7a038f86a6aa9523af7356ce",
+          "crates/capture-store/src/wave.rs": "46cb07b9632ea5183993e74c43cd53fbbbac75b892f4e36cf6930eaf6cf178d8",
+          "crates/capture-store/src/wave/export.rs": "a0bec8212ba93c47bd897aabc28992b8bd78ecd70c89b9394c47720f69591dbb",
+          "crates/capture-store/src/wave/tests.rs": "2c1000595cc8ad6ec68cc74a935a6e8616233bd72d277b9f4e0b5f0c31699555"
+        },
+        "unique_rust_cases": 104,
+        "artifacts": {
+          "/Volumes/T7/loofah-search-build/target-tauri/debug/deps/capture_store-3ca81bc64faf352e": {
+            "sha256": "a2022f2c6d29e4db3c144d534b7f170a44f51bf5164bb41fa5b831c059cbe40f",
+            "tests": [
+              "wave::export::tests::dropped_caller_keeps_owned_export_through_actual_file_publication",
+              "wave::export::tests::existing_destination_and_corrupt_source_never_publish_or_remove_original_audio",
+              "wave::export::tests::sealed_and_interrupted_exports_preserve_float_bits_channels_and_original_capture"
+            ]
+          },
+          "/Volumes/T7/loofah-search-build/target-tauri/debug/deps/loofah_desktop_lib-dd53531fd5af769a": {
+            "sha256": "21b44c369cffa1b453a61883d316a372a59478d05a105d6a3b675c06c0cfda09",
+            "tests": [
+              "device_capture::manager::tests::actual_root_frame_persists_the_original_observation_as_v2_and_reopens_exact_audio_hashes",
+              "device_capture::manager::tests::control_requires_the_original_profile_and_scope",
+              "device_capture::manager::tests::coordinator::abandoned_start_waiter_after_real_dispatch_cannot_lose_mapping_or_start_twice",
+              "device_capture::manager::tests::coordinator::append_is_refused_before_dispatch_or_spool_creation",
+              "device_capture::manager::tests::coordinator::concurrent_start_replay_reuses_one_capture_and_changed_declarations_never_retarget_it",
+              "device_capture::manager::tests::coordinator::dropping_coordinator_requests_real_device_stop_without_dropping_admitted_frames",
+              "device_capture::manager::tests::coordinator::existing_spool_request_after_restart_is_recovery_only_even_after_scope_selection_changes",
+              "device_capture::manager::tests::coordinator::explicit_start_scope_cannot_follow_a_later_saved_destination",
+              "device_capture::manager::tests::coordinator::offline_coordinator_pins_original_profile_scope_and_joins_real_source_before_shutdown",
+              "device_capture::manager::tests::coordinator::recovery_refuses_active_capture_without_sealing_or_exporting_a_live_prefix",
+              "device_capture::manager::tests::coordinator::signed_out_recovery_finishes_and_exports_original_audio_without_creating_a_vault_note",
+              "device_capture::manager::tests::coordinator::trusted_capture_parent_alias_resolves_once_but_owned_profile_symlink_is_rejected",
+              "device_capture::manager::tests::coordinator::untimed_saved_prefix_can_export_without_inventing_a_recording_timestamp_or_seal",
+              "device_capture::manager::tests::definite_rejection_and_root_disappearance_do_not_wait_for_supervisor_receipts",
+              "device_capture::manager::tests::early_interrupted_ui_is_not_cleanup_or_durability_proof_and_observation_survives",
+              "device_capture::manager::tests::event_loop_thread_can_request_shutdown_without_a_thread_local_runtime",
+              "device_capture::manager::tests::failed_source_has_independent_resource_proof_and_durable_interrupted_finish",
+              "device_capture::manager::tests::interrupted_nonzero_capture_waits_for_the_same_durable_observation_without_sealing_audio",
+              "device_capture::manager::tests::late_start_results_cannot_resurrect_a_retired_capture_ticket",
+              "device_capture::manager::tests::never_acknowledged_start_has_bounded_host_states_and_shutdown_waiters",
+              "device_capture::manager::tests::no_root_fails_before_spool_begin",
+              "device_capture::manager::tests::observation_busy_partial_write_and_lost_ack_reconfirm_the_same_value_before_durable_success",
+              "device_capture::manager::tests::observation_conversion_rejects_pre_epoch_and_unrepresentable_values_without_guessing_now",
+              "device_capture::manager::tests::pending_observation_outlives_deadline_detached_observer_and_dropped_callers_without_blocking_audio_drain",
+              "device_capture::manager::tests::repeated_ambiguous_observation_acknowledgments_never_promote_visible_metadata_to_durable_success",
+              "device_capture::manager::tests::resource_release_alone_cannot_finish_shutdown_while_durable_finalizer_is_blocked",
+              "device_capture::manager::tests::shutdown_deadline_retains_real_source_then_drains_queued_frames_after_resource_release",
+              "device_capture::manager::tests::stop_before_preparation_and_dropped_ticket_never_dispatch_capture",
+              "device_capture::manager::tests::stop_during_owned_preparation_and_dropped_caller_retains_manifest_without_dispatch",
+              "device_capture::manager::tests::terminal_observation_failure_stops_and_drains_audio_but_never_reports_durable_capture_success",
+              "device_capture::manager::tests::terminal_storage_failure_reports_resource_proof_and_preserved_prefix_without_durable_success",
+              "device_capture::manager::tests::unconfirmed_start_and_closed_completion_stay_pending_and_preserve_manifest",
+              "device_capture::manager::tests::zero_audio_capture_never_invents_or_persists_an_observation",
+              "device_capture::tests::concurrent_prepare_claims_one_device_capture_identity",
+              "device_capture::tests::empty_abandoned_capture_identity_is_not_restarted_after_a_gap",
+              "device_capture::tests::interruption_flush_receipt_does_not_seal_or_mutate_baseline",
+              "device_capture::tests::pending_capture_is_scoped_f32_and_sealed_without_a_canonical_session",
+              "device_capture::tests::real_device_helper_drains_realistic_fake_audio_into_reopenable_exact_spool_bytes",
+              "device_capture::tests::retryable_busy_retains_identical_chunk_until_storage_accepts_it",
+              "device_recordings::tests::terminal_inventory_preserves_only_the_exact_explicitly_recovered_prefix",
+              "device_recordings::tests::uninitialized_recording_state_drains_without_opening_storage_or_credentials",
+              "device_recordings::tests::unscanned_or_retargeted_inventory_is_unknown_not_idle",
+              "test::export_types"
+            ]
+          },
+          "/Volumes/T7/loofah-search-build/target-tauri/debug/deps/loofah_client-878d1869387b8939": {
+            "sha256": "9867586ddd3caa25aa55e86a623e97bd7d099c951f1a87e8c45367d2ae5ff4de",
+            "tests": [
+              "tests::capture::capture_ingestion_alone_cannot_publish_or_load_credentials",
+              "tests::capture_upload::pending_remote_binding_never_retargets_a_previously_bound_device_capture",
+              "tests::session_lifecycle::lifecycle_sdk_capability_validation_and_cancellation_fail_before_credentials",
+              "tests::session_lifecycle::lifecycle_sdk_validates_owners_tokens_revisions_budgets_and_typed_busy_over_tls",
+              "tests::waveforms_require_capabilities_and_validate_authenticated_https_replies_and_cancellation"
+            ]
+          },
+          "/Volumes/T7/loofah-search-build/target-tauri/debug/deps/loofah_core-1b3c39a48cc8e840": {
+            "sha256": "0273f0606eb7c90a9e74b4b0f353aae69884d83e471f87e6a537bee0782b19da",
+            "tests": [
+              "media_leases::shutdown_tests::terminal_shutdown_joins_cancelled_actual_chunk_and_waveform_work_before_releasing_the_lease",
+              "media_leases::waveform::tests::cancelled_waveform_retains_admission_and_file_ownership_until_blocking_input_finishes",
+              "media_leases::waveform::tests::waveform_never_caches_a_partial_decode_after_a_timestamp_preserving_in_place_change",
+              "media_leases::waveform::tests::waveform_refuses_unsupported_channel_cost_and_releases_worker_admission",
+              "media_leases::waveform::tests::waveform_uses_verified_pinned_bytes_and_its_own_cache_without_touching_vault_files",
+              "session_lifecycle::tests::busy_replay_of_a_moved_but_unacknowledged_request_keeps_unknown_outcome",
+              "session_lifecycle::tests::cancelling_the_waiter_keeps_the_original_grant_and_owned_move_until_commit",
+              "session_lifecycle::tests::local_trusted_principal_can_delete_restore_and_replay_without_a_login_session",
+              "session_lifecycle::tests::pending_admission_refuses_delete_immediately_without_queuing_an_exclusive_writer",
+              "session_lifecycle::tests::revoked_membership_never_admits_a_directory_move_or_receipt",
+              "session_lifecycle_gate::request_tests::active_request_admission_is_namespaced_and_released_only_with_the_original_owner",
+              "session_lifecycle_gate::tests::exclusive_admission_never_queues_behind_shared_work_or_blocks_nested_admission",
+              "session_lifecycle_gate::tests::inactive_session_entries_do_not_accumulate_or_detach_a_live_owner",
+              "session_lifecycle_gate::tests::shared_admission_waits_only_for_the_owned_short_lifecycle_commit",
+              "vault::capture_ingest::publication::gates::tests::ambiguous_commits_remain_gated_after_caller_exit_and_precommit_retry_failure",
+              "vault::capture_ingest::publication::gates::tests::independent_publication_tickets_cannot_clear_each_others_read_gates",
+              "vault::capture_ingest::publication::gates::tests::only_the_last_resolved_ticket_invalidates_recording_availability",
+              "vault::capture_ingest::publication::gates::tests::review_and_global_uncertainty_fail_closed_without_blocking_unrelated_known_sessions",
+              "vault::capture_ingest::publication::tests::a_lost_caller_and_owner_shutdown_keep_ownership_until_the_preintent_attempt_drains",
+              "vault::capture_ingest::publication::tests::a_reader_that_passed_admission_before_a_publication_gate_is_rechecked_after_snapshot_wait",
+              "vault::capture_ingest::publication::tests::a_recording_created_after_hashing_is_preserved_and_definite_no_intent_releases_only_its_gate",
+              "vault::capture_ingest::publication::tests::absent_only_publication_preserves_notes_metadata_and_raw_capture_and_replays_exact_receipt",
+              "vault::capture_ingest::publication::tests::authorization_is_rechecked_after_staging_and_denial_never_publishes_or_discards_source",
+              "vault::capture_ingest::publication::tests::bootstrap_finishes_admitted_publication_before_readiness_without_reencoding_or_touching_notes",
+              "vault::capture_ingest::publication::tests::committed_canonical_audio_and_prefix_ack_survive_restart_before_publication_observation",
+              "vault::capture_ingest::publication::tests::dropped_bootstrap_waiter_retains_the_real_vault_lease_through_admitted_recovery_io",
+              "vault::capture_ingest::publication::tests::dropped_capture_admission_waiter_cannot_bypass_exclusive_lifecycle_or_lose_durable_start",
+              "vault::capture_ingest::publication::tests::dropped_note_creation_waiter_retains_shared_lifecycle_guard_through_real_commit",
+              "vault::capture_ingest::publication::tests::dropping_a_network_waiter_does_not_cancel_owned_publication_or_its_capture_observation",
+              "vault::capture_ingest::publication::tests::dropping_pending_creation_waiter_keeps_owned_creation_binding_and_publication_alive",
+              "vault::capture_ingest::publication::tests::lifecycle_inventory_covers_other_members_pending_future_targets_and_original_bindings",
+              "vault::capture_ingest::publication::tests::pending_bound_mismatch_and_creation_request_collision_fail_without_new_note_or_recording",
+              "vault::capture_ingest::publication::tests::pending_capture_creates_one_online_note_at_producer_time_without_retargeting_raw_identity",
+              "vault::capture_ingest::publication::tests::pending_commit_denial_reports_partial_persistence_and_retry_preserves_created_note",
+              "vault::capture_ingest::publication::tests::pending_completed_creation_and_publication_never_resurrect_a_deleted_note",
+              "vault::capture_ingest::publication::tests::pending_creation_and_binding_recover_after_restart_without_recreating_or_overwriting_note",
+              "vault::capture_ingest::publication::tests::pending_creation_requires_nonzero_sealed_audio_and_fresh_creation_authority",
+              "vault::capture_ingest::publication::tests::publication_never_selects_another_authenticated_members_capture",
+              "vault::capture_ingest::publication::tests::publication_rejects_conflicting_audio_transcripts_missing_targets_and_changed_seals",
+              "vault::capture_ingest::publication::tests::unsafe_publication_inventory_blocks_recording_delivery_but_keeps_text_notes_usable",
+              "vault::capture_ingest::publication::tests::unsafe_reopened_capture_inventory_fails_closed_without_touching_raw_files",
+              "vault::capture_ingest::publication::tests::verified_publication_releases_lifecycle_inventory_but_unknown_publication_never_does",
+              "vault::capture_ingest::tests::authorization_is_rechecked_after_storage_initialization_and_denial_admits_no_capture",
+              "vault::capture_ingest::tests::capture_admission_owns_the_real_vault_lease_after_its_caller_is_dropped",
+              "vault::capture_ingest::wav::tests::bounded_reader_retains_context_until_its_consumer_is_dropped",
+              "vault::capture_ingest::wav::tests::two_hour_wav_header_is_bounded_and_its_frame_count_is_not_rounded",
+              "vault::capture_ingest::wav::tests::verified_streaming_wav_preserves_exact_float_bits_and_channel_order",
+              "vault::capture_ingest::wav::tests::wav_source_changed_after_verification_fails_the_reader_instead_of_reporting_eof"
+            ]
+          },
+          "/Volumes/T7/loofah-search-build/target-tauri/debug/deps/loofah_server-6235c16c55d71628": {
+            "sha256": "ff274a0ba0889a391d97e72c19dce129014d26f6770c8598d3400d0368f19ce1",
+            "tests": [
+              "tests::session_lifecycle::checked_session_lifecycle_cas_and_historical_decisions_never_overwrite_or_recreate",
+              "tests::session_lifecycle::checked_session_lifecycle_requires_access_uuid_and_strict_input_without_cross_vault_tokens",
+              "tests::session_lifecycle::checked_session_lifecycle_sdk_replays_lost_replies_at_50_150_500ms_without_redeleting",
+              "tests::waveform::waveform_authorization_monitor_allows_prompt_revocation_and_cancels_on_expiry_and_shutdown",
+              "tests::waveform::waveform_reads_are_owner_and_vault_scoped_and_do_not_publish_stale_sidecars"
+            ]
+          }
+        },
+        "rust_results": [
+          {
+            "label": "capture-recovery-native-export",
+            "exit": 0,
+            "seconds": 121.37
+          },
+          {
+            "label": "capture-recovery-protocol-export",
+            "exit": 0,
+            "seconds": 13.17
+          },
+          {
+            "label": "capture-recovery-wav",
+            "exit": 0,
+            "seconds": 30.41
+          },
+          {
+            "label": "capture-recovery-device_capture",
+            "exit": 0,
+            "seconds": 27.48
+          },
+          {
+            "label": "capture-recovery-device_recordings",
+            "exit": 0,
+            "seconds": 13.44
+          },
+          {
+            "label": "capture-recovery-session_lifecycle",
+            "exit": 0,
+            "seconds": 74.04
+          },
+          {
+            "label": "capture-recovery-capture_ingest",
+            "exit": 0,
+            "seconds": 38.77
+          }
+        ],
+        "checks": [
+          {
+            "label": "capture-recovery-all-targets-check",
+            "exit": 0,
+            "seconds": 92.45
+          },
+          {
+            "label": "capture-recovery-library-clippy",
+            "exit": 0,
+            "seconds": 292.44
+          }
+        ],
+        "frontend": {
+          "tests": 2518,
+          "files": 277,
+          "typecheck": "passed",
+          "localization": "extract+compile passed"
+        },
+        "initial_failures": [
+          "2 fixture helper visibility errors corrected",
+          "formatter first used wrong cwd; corrected formatter before actual test/export cohort"
+        ],
+        "new_wave_and_lifecycle_lints": 0,
+        "retained_diagnostics": "82 total library diagnostics; pre-existing Native dead-code/cache unwrap and dependencies retained",
+        "not_claimed": [
+          "fresh Windows validation for this unpublished source",
+          "physical microphone/2hour acceptance",
+          "Local shared lifecycle activation",
+          "automatic recording processing",
+          "full plan completion"
+        ]
+      }
+    },
+    "frontend_local_work": {
+      "original_path": "/Volumes/T7/loofah-backend-build/agents/document-editor/logs/local-session-work-verification.json",
+      "sha256": "01b3ec9054bf6b26ac886eba884ef08ddd35cd508b09fcdfe8b0361b7ff82736",
+      "record": {
+        "commit": "ed163e9e928ddd87d9bb35c90839e5603230f13d",
+        "owned_files": [
+          "apps/desktop/src/stt/useStartListening.ts",
+          "apps/desktop/src/stt/useStartListening.test.ts",
+          "apps/desktop/src/stt/useRunBatch.ts",
+          "apps/desktop/src/stt/useRunBatch.test.ts",
+          "apps/desktop/src/store/zustand/listener/general.ts",
+          "apps/desktop/src/store/zustand/listener/general.test.ts",
+          "apps/desktop/src/store/zustand/listener/general-live.ts",
+          "apps/desktop/src/store/zustand/listener/general-batch.ts",
+          "apps/desktop/src/store/zustand/listener/general-batch.test.ts",
+          "apps/desktop/src/store/zustand/listener/transcript.ts"
+        ],
+        "generated_validation_inputs_excluded": {
+          "apps/desktop/src/types/tauri.gen.ts": "c3a85b8f1ec47863aaebe0c456b76f6767fd5617b9b257b75a4600e0e8c252f0",
+          "apps/desktop/src/shared/application/protocol.gen.ts": "4bec3ff71df55d43a6aff79a48d03c8ef1a023ffca64660c84668679bf92fed2",
+          "plugins/transcription/js/bindings.gen.ts": "9aa4c57ed362498b811fe991ad4627cb037da13504b512fd1e117109ded012be"
+        },
+        "tests": {
+          "unique_passed": 190,
+          "useStartListening": 56,
+          "useRunBatch": 55,
+          "listener_transcript_upload": 79,
+          "logs": [
+            "local-session-work-hook-regressions.log",
+            "local-session-work-listener-regressions.log"
+          ]
+        },
+        "typecheck": {
+          "command": "pnpm -F desktop typecheck",
+          "exit": 0,
+          "log": "local-session-work-typecheck.log"
+        },
+        "lint": {
+          "oxlint_errors": 0,
+          "eslint_errors": 0,
+          "baseline_warnings": 12,
+          "log": "local-session-work-lint.log"
+        },
+        "format": "dprint check 10 owned paths and git diff --check passed",
+        "semantics": [
+          "One caller UUID captured before start IPC and forwarded unchanged.",
+          "Only observed terminal event plus every admitted durable write allows exact acknowledgement; unknown/failed writes retain guard.",
+          "All custom promises drain even if another fails; custom void cannot prove completion.",
+          "Retirement never abandons admitted persistence; older generation acknowledgement retains original UUID.",
+          "False/unknown start never deletes captured words.",
+          "Lost acknowledgement preserves confirmed saved output and producer error; no automatic inference or mutation retry."
+        ],
+        "limitations": [
+          "Requires Root Core/plugin/native producer registry+actual exports, excluded inputs not committed.",
+          "No new recovery UI for retained unknown/failed work; Local lifecycle capability remains disabled until authoritative host barrier acceptance.",
+          "No Cargo/Windows runtime execution by worker; parent owns combined Native/Windows acceptance."
+        ],
+        "status": " M apps/desktop/src/shared/application/protocol.gen.ts\n M apps/desktop/src/types/tauri.gen.ts\n M plugins/transcription/js/bindings.gen.ts\n"
+      }
+    },
+    "server_capture_processing": {
+      "original_path": "/Volumes/T7/loofah-backend-build/agents/capture/logs/capture-processing-verification.json",
+      "sha256": "4ec65fc756d22f63fc8d9143b2e34792f6062b4785df010c4226519de0eee592",
+      "record": {
+        "source": {
+          "head": "506df067d08e7bb7d3543bbde485cad440368360",
+          "source": "/Volumes/T7/src/loofah-separation-transcription-cpu",
+          "files": {
+            "apps/server/README.md": "c42ec74379c1e9c0d2c4fd694bd4983e451048472a1063c7d4809fda4c6245e4",
+            "apps/server/src/lib.rs": "28e69a1f10cbebc0bd8e78962e920a995fc795cbf280a03f130c29f414dc1a09",
+            "apps/server/src/routes.rs": "64ff8da682519507dd7314cd8a3b13760e3134e927de37e8062ac88ce76ea28e",
+            "apps/server/src/routes/capture_live.rs": "b554d0bc72f7e38f1bc57e7194015295865f5b9333adbffb598a762a43659af9",
+            "apps/server/src/routes/capture_processing.rs": "4f004c66bdd9f17da36ac5c4494972ac273610f82a99d57a1f3fa59c3e9a4605",
+            "apps/server/src/service.rs": "1c58ca4c95e6e9f79b6ce7682b3b94fdb6d0d11c7d2a52ae887b335d98f38678",
+            "apps/server/src/tests.rs": "d686cdfffe202bd378f5d9254dd0bd68b4f6d713db640f4b3b6f7dca0fa6ac3c",
+            "apps/server/src/tests/capture_processing.rs": "301d2c5920a6382bc406999820400f1b4f7ca4b6b9bf3e895445bded7e5cb0e9",
+            "apps/server/src/tests/transcription_host/capture_live.rs": "f90af75ecdd904e6a78159548f63a6c3e4a2dca2dd244d14dd8997db2a721b67",
+            "apps/server/src/transcription_authorization.rs": "402173d943205c734ae458b4386941292eed1a534715f60bea1e18aa85b0bda3",
+            "crates/loofah-core/src/capture_ingest.rs": "271b4dc9b7a7aa17a1180846576f90f9d175f219b7953c85adec8185f742fe01",
+            "crates/loofah-core/src/capture_ingest/lifecycle.rs": "9d1c283665afdefedf7f9b417d306b997a270ddf9b670fb26e158ac47e44e98c",
+            "crates/loofah-core/src/capture_live/mod.rs": "a9e41c872d328e3e42c4dbb6425d4ec4d560e3768f467b05e390791faff56f95",
+            "crates/loofah-core/src/capture_live/tests.rs": "a1342b77faef24f08f8ed0f86a873817b20a2c23291905bef6627ca8949805b9",
+            "crates/loofah-core/src/capture_live/worker.rs": "af83f1f294be32e066a0e2240f82907d4a4c8bde9c542af70c8fcc4cef73b087",
+            "crates/loofah-core/src/capture_processing/ledger.rs": "ce3010042de38d08bab77d22d26e27d9fc533127f12eb65ff384f5e9c256ee1c",
+            "crates/loofah-core/src/capture_processing/mod.rs": "a605dc895a12b5bbcd39f3f2c2c39847b31532245dd8840c35ba0b293bc98cc0",
+            "crates/loofah-core/src/capture_processing/origin.rs": "18e25fa70ec4cdf9d3f4312746f5ba8fa6634f19de946a6efa7cce7b83aa8c80",
+            "crates/loofah-core/src/capture_processing/tests.rs": "3aa447ba0d7f811ece84ed60985876f50dc686805914e0512ee30aea166328d4",
+            "crates/loofah-core/src/capture_processing/worker.rs": "0b315b259f5c96f104658631364cd834121a3dbc9bfc25b1b4f9e6b673a4aa38",
+            "crates/loofah-core/src/jobs/access.rs": "5b3102ab8850d90e1120b4ef44ac16bab545631f46416d61249bfc6909b00559",
+            "crates/loofah-core/src/jobs/capture_origin_tests.rs": "f0eb4882e8cb97628a202dc1bbdd27e306464aa22d4ba9552c546ca481d86c37",
+            "crates/loofah-core/src/jobs/lifecycle.rs": "01b6e4d0c583844843145077ac415ddad88c8abd85783fc4184988f0e974199e",
+            "crates/loofah-core/src/jobs/mod.rs": "c99ad5ec7cb32bee7c51017d724a1614b032a7f9aeaf7852657c6ccfd9b96c31",
+            "crates/loofah-core/src/jobs/source.rs": "c0e7b1a295451a02917e73a14b2c09435f89ec3a98b53f866efd2b6813087818",
+            "crates/loofah-core/src/jobs/worker.rs": "4505adf02b6d847078331362d1634d625de6f793a188a5301faf96ce5a406137",
+            "crates/loofah-core/src/lib.rs": "66a0b869659d49c4d6050920791e3bd132742c9807fac49a96f7abf1a58f3d12",
+            "crates/loofah-core/src/runtime.rs": "fc05e9dbf3b0b1fd57fccbd7e2830d1d6cd7a480d6992b04e5ddfd7b20c28b32",
+            "crates/loofah-core/src/transcription_jobs/ledger.rs": "8064a109bafad7a455ce3b3d8dfedd8bb775e5da7280cf9729b3966877985f22",
+            "crates/loofah-core/src/transcription_jobs/mod.rs": "c8e7f40ebc7288470bdd7afe06fd6ade147c8cfabe9590ac2327c6c38c4a81d6",
+            "crates/loofah-core/src/transcription_jobs/origin_tests.rs": "28e378c8850c0437b5a657efd20181eacc2d272d0182ae4171f5595f2819c874",
+            "crates/loofah-core/src/transcription_jobs/worker.rs": "91e4a064c8b72cdefbcd0701ec2e3ea9ea9a38851635fc83c7b84c9f0f65dae9",
+            "crates/loofah-core/src/vault.rs": "3f6465bf216eef797fb47ee598d2c521ceb2ad0ca7cee040dda3162448a174bf",
+            "crates/vault-write/src/transcript_publication/mod.rs": "f5414a982202a08d225c35dca11b9e0be1252b42ac176d779b510a0c7f28bcde",
+            "crates/vault-write/src/transcript_publication/source_guard.rs": "4a9dce2eb8dc19aa57a2c633cb8aea59d864235450d56973b4f3e50fe3ef9172"
+          }
+        },
+        "tests": [
+          {
+            "name": "loofah_core",
+            "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/crates/loofah-core/src/lib.rs",
+            "fresh": false,
+            "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/loofah_core-12f06e6fcb506d9d",
+            "sha256": "ada4ae42b1e2cabcb1c9093028ca8ee0b9dbb2d14f6416f4eac296d8d751fd56",
+            "filter": "capture_processing::tests::",
+            "expected": 22,
+            "tests": [
+              "capture_processing::tests::cancellation_retains_lifecycle_exclusion_until_admitted_summary_has_actually_drained",
+              "capture_processing::tests::cancellation_stops_processing_without_sealing_or_discarding_raw_audio",
+              "capture_processing::tests::complete_empty_transcript_summarizes_saved_notes_only_when_explicitly_requested",
+              "capture_processing::tests::complete_empty_without_saved_note_input_fails_before_any_summary_provider_call",
+              "capture_processing::tests::complete_empty_without_summary_declaration_never_starts_a_provider",
+              "capture_processing::tests::coordinator_panic_fails_closed_without_stopping_durable_capture_or_restarting_children",
+              "capture_processing::tests::crashed_paid_attempt_is_interrupted_and_never_inferred_again_on_restart",
+              "capture_processing::tests::disabled_coordinator_blocks_queued_pipeline_children_but_keeps_manual_summaries_available",
+              "capture_processing::tests::dropped_admission_caller_keeps_owned_authorization_and_durable_declaration",
+              "capture_processing::tests::exact_intent_replay_rejects_retarget_options_and_foreign_members",
+              "capture_processing::tests::existing_capture_delivers_captions_before_seal_then_uses_live_publication",
+              "capture_processing::tests::failed_native_inference_is_not_automatically_retried",
+              "capture_processing::tests::missing_parent_never_turns_marked_queued_summary_into_manual_inference",
+              "capture_processing::tests::no_declaration_never_starts_old_capture_processing",
+              "capture_processing::tests::processing_crash_child",
+              "capture_processing::tests::restart_model_rebind_never_runs_queued_old_intent_with_new_bytes",
+              "capture_processing::tests::restart_reuses_completed_children_without_repeating_paid_or_native_work",
+              "capture_processing::tests::revoked_membership_prevents_children_and_keeps_source_readiness_blocked",
+              "capture_processing::tests::sealed_pending_capture_repairs_then_summarizes_once_without_a_frontend",
+              "capture_processing::tests::summary_source_changes_retain_generated_output_without_paid_retry",
+              "capture_processing::tests::unavailable_before_native_prepare_retries_the_same_repair_without_duplicate_inference",
+              "capture_processing::tests::unknown_future_duplicate_or_foreign_journals_fail_closed_without_rewrite"
+            ],
+            "exit_code": 0
+          },
+          {
+            "name": "loofah_core",
+            "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/crates/loofah-core/src/lib.rs",
+            "fresh": false,
+            "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/loofah_core-12f06e6fcb506d9d",
+            "sha256": "ada4ae42b1e2cabcb1c9093028ca8ee0b9dbb2d14f6416f4eac296d8d751fd56",
+            "filter": "jobs::capture_origin_tests::",
+            "expected": 1,
+            "tests": [
+              "jobs::capture_origin_tests::ordinary_summary_bytes_match_previous_reader_and_marked_admission_is_fail_closed"
+            ],
+            "exit_code": 0
+          },
+          {
+            "name": "loofah_core",
+            "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/crates/loofah-core/src/lib.rs",
+            "fresh": false,
+            "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/loofah_core-12f06e6fcb506d9d",
+            "sha256": "ada4ae42b1e2cabcb1c9093028ca8ee0b9dbb2d14f6416f4eac296d8d751fd56",
+            "filter": "transcription_jobs::ledger::origin_tests::",
+            "expected": 1,
+            "tests": [
+              "transcription_jobs::ledger::origin_tests::ordinary_batch_bytes_match_previous_reader_and_marked_admission_is_fail_closed"
+            ],
+            "exit_code": 0
+          },
+          {
+            "name": "vault_write",
+            "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/crates/vault-write/src/lib.rs",
+            "fresh": true,
+            "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/vault_write-5a185ae8209490e6",
+            "sha256": "a07c964f6f0b46f21aad022659135d5814c3b5c2dabe75976693f1004d09b171",
+            "filter": "transcript_publication::source_guard::tests::",
+            "expected": 4,
+            "tests": [
+              "transcript_publication::source_guard::tests::absent_transcript_binding_distinguishes_presence_even_for_equal_revision_domain_bytes",
+              "transcript_publication::source_guard::tests::guard_never_follows_transcript_symlinks_or_touches_user_files",
+              "transcript_publication::source_guard::tests::guard_retains_transcript_serialization_without_holding_global_write_lock",
+              "transcript_publication::source_guard::tests::source_guards_allow_ordinary_note_edits_and_detect_both_byte_revisions"
+            ],
+            "exit_code": 0
+          },
+          {
+            "name": "loofah_protocol",
+            "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/crates/loofah-protocol/src/lib.rs",
+            "fresh": true,
+            "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/loofah_protocol-b66a0e9ffbf43f92",
+            "sha256": "f262d716de42a8c8331694a9bcd2d0d6d74ebe21bc6baaafe39a586fab4fbc3d",
+            "filter": "",
+            "expected": 31,
+            "tests": [
+              "capture::tests::capture_formats_keep_supported_mono_layouts_and_reject_ambiguous_or_future_input",
+              "capture::tests::capture_identity_commits_scope_target_and_explicit_channel_order",
+              "capture::tests::version_one_capture_and_chunk_hashes_keep_the_existing_spool_wire_format",
+              "capture_live::tests::captions_reject_pending_words_wrong_roles_and_duplicate_ids",
+              "capture_live::tests::live_request_is_bounded_and_has_no_client_path_or_principal",
+              "capture_live::tests::native_consumption_is_not_complete_coverage",
+              "capture_processing::tests::defaults_are_explicit_host_resolution_and_no_summary",
+              "capture_processing::tests::intent_never_accepts_client_paths_principals_or_provider_credentials",
+              "capture_processing::tests::models_options_and_summary_targets_reuse_existing_portable_limits",
+              "capture_processing::tests::unknown_state_stays_terminal_and_does_not_claim_safe_cleanup",
+              "document_editor::tests::compound_editor_request_requires_all_revisions_and_rejects_transport_source_fields",
+              "endpoint::tests::endpoint_policy_preserves_literal_loopback_identity_and_url_semantics",
+              "jobs::tests::job_response_fields_are_additive_while_requests_reject_unknown_inputs",
+              "jobs::tests::old_and_explicit_preserve_requests_keep_the_exact_original_bytes",
+              "jobs::tests::optional_title_results_preserve_old_response_bytes_and_accept_additive_fields",
+              "jobs::tests::unknown_or_duplicate_title_policies_are_rejected",
+              "session_cleanup::tests::cleanup_binds_one_opaque_session_and_never_accepts_a_client_emptiness_claim_or_path",
+              "session_lifecycle::tests::historical_outcomes_round_trip_without_filesystem_paths",
+              "session_lifecycle::tests::requests_accept_only_checked_ids_revisions_and_opaque_tokens",
+              "session_summaries::tests::queries_bound_work_and_reject_paths_controls_and_unknown_fields",
+              "tag_editing::tests::strict_contracts_preserve_raw_queries_and_bound_requests_without_ai_policy",
+              "tests::additive_request_fields_are_accepted_but_expected_revision_is_required",
+              "tests::artifact_details_are_additive_and_unknown_targets_refresh_safely",
+              "tests::conflicts_have_a_typed_current_document_and_events_keep_a_vault_scope",
+              "timeline::tests::timeline_contract_bounds_requests_and_rejects_future_fields",
+              "transcript_overview::tests::malformed_or_unbounded_replies_fail_instead_of_truncating",
+              "transcript_overview::tests::metadata_preserves_explicit_times_and_raw_labels_without_inference",
+              "transcription::tests::explicit_empty_options_and_omitted_options_have_identical_canonical_requests",
+              "transcription::tests::initial_contract_is_absent_only_without_paths_or_client_metadata",
+              "transcription::tests::options_and_recording_revisions_are_bounded_without_reinterpreting_strings",
+              "transcription_policy::tests::policy_is_bounded_public_metadata_and_disabled_is_explicit"
+            ],
+            "exit_code": 0
+          },
+          {
+            "name": "loofah_server",
+            "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/apps/server/src/lib.rs",
+            "fresh": false,
+            "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/loofah_server-84db5b596cdf5dce",
+            "sha256": "0c6ca81cbbb092ff079dfdf26a2e551c26471525254c23d2d787fe1380493a20",
+            "filter": "tests::capture_processing::",
+            "expected": 2,
+            "tests": [
+              "tests::capture_processing::notes_only_processing_refusal_preserves_raw_capture_and_creates_no_note",
+              "tests::capture_processing::processing_declaration_requires_original_identity_and_current_vault_membership"
+            ],
+            "exit_code": 0
+          },
+          {
+            "name": "loofah_core",
+            "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/crates/loofah-core/src/lib.rs",
+            "fresh": false,
+            "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/loofah_core-12f06e6fcb506d9d",
+            "sha256": "ada4ae42b1e2cabcb1c9093028ca8ee0b9dbb2d14f6416f4eac296d8d751fd56",
+            "filter": "capture_live::tests::",
+            "expected": 13,
+            "tests": [
+              "capture_live::tests::abandoned_start_callers_retain_bounded_admission_until_owned_preparation_settles",
+              "capture_live::tests::already_sealed_capture_never_starts_a_substitute_live_generation",
+              "capture_live::tests::captions_are_durable_before_seal_and_replay_does_not_restart_native",
+              "capture_live::tests::disabled_live_service_checks_retained_journal_read_only_with_bounds_and_no_model",
+              "capture_live::tests::dropped_live_start_waiter_respects_exclusive_lifecycle_and_durably_admits_before_inference",
+              "capture_live::tests::future_caption_payload_and_prospective_quota_failure_preserve_existing_bytes",
+              "capture_live::tests::generation_delivery_is_capture_and_member_scoped_and_denial_precedes_ledger_io",
+              "capture_live::tests::joined_receipt_and_persisted_words_promote_only_matching_published_recording",
+              "capture_live::tests::ledger_restart_interrupts_without_restarting_engine_and_rejects_future_or_duplicate_manifest",
+              "capture_live::tests::lifecycle_exclusion_keeps_live_and_uncertain_generations_blocked_after_raw_publication",
+              "capture_live::tests::malformed_completion_never_claims_complete_coverage_or_publishes",
+              "capture_live::tests::restart_retains_pending_commit_as_uncertain_with_result_without_inference_replay",
+              "capture_live::tests::revoked_membership_cancels_only_live_and_shutdown_retains_native_owner"
+            ],
+            "exit_code": 0
+          },
+          {
+            "name": "loofah_core",
+            "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/crates/loofah-core/src/lib.rs",
+            "fresh": false,
+            "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/loofah_core-12f06e6fcb506d9d",
+            "sha256": "ada4ae42b1e2cabcb1c9093028ca8ee0b9dbb2d14f6416f4eac296d8d751fd56",
+            "filter": "transcription_jobs::tests::",
+            "expected": 16,
+            "tests": [
+              "transcription_jobs::tests::an_early_adapter_error_and_runtime_cancellation_cannot_release_actual_native_ownership",
+              "transcription_jobs::tests::cancellation_retains_late_output_and_native_admission_until_real_source_release",
+              "transcription_jobs::tests::crash_child",
+              "transcription_jobs::tests::empty_speech_still_checks_source_and_never_creates_a_canonical_transcript",
+              "transcription_jobs::tests::exact_replay_preserves_metadata_ids_hints_and_unknown_files_without_regeneration",
+              "transcription_jobs::tests::existing_even_empty_corrupt_or_unknown_transcripts_and_private_quota_prevent_inference",
+              "transcription_jobs::tests::fresh_commit_authorization_runs_before_store_locks_and_refusal_keeps_saved_result",
+              "transcription_jobs::tests::host_interruption_is_distinct_from_member_revocation_and_keeps_late_result",
+              "transcription_jobs::tests::immutable_copy_and_source_cas_keep_later_recording_note_and_transcript_edits",
+              "transcription_jobs::tests::job_events_are_private_and_transcript_publication_invalidates_canonical_readers",
+              "transcription_jobs::tests::killed_children_reconcile_retained_results_without_paid_replay_or_resurrection",
+              "transcription_jobs::tests::readonly_queries_and_empty_claims_do_not_wake_an_idle_worker",
+              "transcription_jobs::tests::retained_result_resume_is_checked_without_reresolving_a_model_or_regenerating",
+              "transcription_jobs::tests::revoked_membership_cancels_but_preserves_output_and_never_promotes",
+              "transcription_jobs::tests::shared_engine_admission_precedes_copy_across_vaults_and_cancels_queued_work",
+              "transcription_jobs::tests::strict_journal_reopen_rejects_future_duplicate_or_changed_private_records_without_rewriting"
+            ],
+            "exit_code": 0
+          },
+          {
+            "name": "loofah_core",
+            "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/crates/loofah-core/src/lib.rs",
+            "fresh": false,
+            "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/loofah_core-12f06e6fcb506d9d",
+            "sha256": "ada4ae42b1e2cabcb1c9093028ca8ee0b9dbb2d14f6416f4eac296d8d751fd56",
+            "filter": "runtime::processing::tests::",
+            "expected": 5,
+            "tests": [
+              "runtime::processing::tests::crashed_worker_disables_processing_but_preserves_notes_and_recovers_interrupted_status",
+              "runtime::processing::tests::dropping_runtime_marks_retained_context_unavailable_and_drains_actual_processing",
+              "runtime::processing::tests::graceful_shutdown_drains_processing_and_retains_late_output_without_applying_it",
+              "runtime::processing::tests::processing_is_opt_in_and_completed_work_survives_runtime_restart_without_regeneration",
+              "runtime::processing::tests::shutdown_flushes_transcript_before_timeout_and_keeps_vault_owned_until_processing_drains"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "real_cpu": {
+          "binary": "/Volumes/T7/src/loofah-separation-transcription-cpu/target/debug/deps/loofah_server-84db5b596cdf5dce",
+          "sha256": "0c6ca81cbbb092ff079dfdf26a2e551c26471525254c23d2d787fe1380493a20",
+          "source": "/Volumes/T7/src/loofah-separation-transcription-cpu/apps/server/src/lib.rs",
+          "fresh": false,
+          "test": "tests::transcription_host::capture_live::real_configured_cpu_live_captions_precede_seal_and_promote_matching_capture",
+          "model": "/Volumes/T7/loofah-backend-build/agents/processing/models/ggml-base-q8_0.bin",
+          "model_sha256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
+          "exit_code": 0
+        },
+        "metrics": {
+          "CPU_LIVE_FIRST_CAPTION_WALL_MS": "2231",
+          "CPU_CAPTURE_PROCESSING_SUCCEEDED": "true",
+          "CPU_LIVE_SOURCE_SECONDS": "20",
+          "CPU_LIVE_CAPTION_COUNT": "10",
+          "CPU_LIVE_CAPTION_BYTES": "13362",
+          "CPU_LIVE_TWO_HOUR_PROJECTED_CAPTIONS": "3600",
+          "CPU_LIVE_TWO_HOUR_PROJECTED_CAPTION_BYTES": "4810320",
+          "CPU_LIVE_MODEL_SHA256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
+          "CPU_LIVE_SOURCE_SHA256": "f2a4b0b185786f3bcc6881b625d64e0ef5d36cf893f967be31e88305f0e1fd25",
+          "CPU_LIVE_CANONICAL_SHA256": "311b4d6dbf34d712976fcf7bdee9b82a22a98db698aac3312149c63d8f46331d",
+          "CPU_LIVE_TRANSCRIPT_SHA256": "33ba48ec49aa41ef164943629c077835d001df3650662f4c6529df33cec7a220"
+        },
+        "checks": {
+          "feature_all_targets": "passed",
+          "feature_library_clippy": "passed; existing dependency lints and one private test-only wrapper dead-code warning",
+          "default_all_targets_pre_origin": "passed; final default check follows test-only wrapper hygiene"
+        },
+        "remaining": [
+          "Root SDK/native durable declaration trigger and public capability pairing",
+          "exact integrated Linux/Windows CI",
+          "two-hour physical capture and adverse-network acceptance; projection is not such a run"
+        ],
+        "logs": {
+          "capture-processing-final5-artifacts.jsonl": "fe6b374122d50d316caa1edd2c30ac6c78341d0b9c17302b1b99675cc058f95c",
+          "capture-processing-feature-check.log": "86087eb82cbc2471a4093cfe46d12cedff4ab17588d5e4c5091c6b46ce50776b",
+          "capture-processing-feature-clippy.log": "12ef2a307b95ea7fc7b8a07185d1aaa8a4e3e2dc363f934d7b36f854912a3722",
+          "capture-processing-final5-test-proof.json": "dd761d8888f257cafe07fc37609920ebecbdf4033ee1a197b6cf16756c4fd128",
+          "capture-processing-real-cpu-tests.log": "f839a79677081659c7b52422071dfa72821a20d03c776bd8f49bb4b2c4d84549",
+          "capture-processing-real-cpu-proof.json": "4a68c0eb3102031081a835ce8b78a19355d8bdb12a80265565f20c5859a39e26",
+          "capture-processing-hygiene-default-check.log": "b4c859778b06c8d108b99b3af59485fb80b23cc5a14dfad9663c70071cd8096d",
+          "capture-processing-hygiene-feature-clippy.log": "d1f659c5ea2cb781dc474fe1023e84f2070d7a938d112bb11ca48949c79bafca"
+        },
+        "feature_commit": "35784a24b5dd412601329e3be4837e13006b188b",
+        "final_commit": "dfb827577637dcdf11c1d322b32ba4413afa0daa",
+        "protocol_commit": "506df067d08e7bb7d3543bbde485cad440368360",
+        "hygiene": {
+          "commit": "dfb827577637dcdf11c1d322b32ba4413afa0daa",
+          "change": "one cfg(test) attribute on private Journal.submit wrapper; test code/body unchanged",
+          "current_source_sha256": {
+            "apps/server/README.md": "c42ec74379c1e9c0d2c4fd694bd4983e451048472a1063c7d4809fda4c6245e4",
+            "apps/server/src/lib.rs": "28e69a1f10cbebc0bd8e78962e920a995fc795cbf280a03f130c29f414dc1a09",
+            "apps/server/src/routes.rs": "64ff8da682519507dd7314cd8a3b13760e3134e927de37e8062ac88ce76ea28e",
+            "apps/server/src/routes/capture_live.rs": "b554d0bc72f7e38f1bc57e7194015295865f5b9333adbffb598a762a43659af9",
+            "apps/server/src/routes/capture_processing.rs": "4f004c66bdd9f17da36ac5c4494972ac273610f82a99d57a1f3fa59c3e9a4605",
+            "apps/server/src/service.rs": "1c58ca4c95e6e9f79b6ce7682b3b94fdb6d0d11c7d2a52ae887b335d98f38678",
+            "apps/server/src/tests.rs": "d686cdfffe202bd378f5d9254dd0bd68b4f6d713db640f4b3b6f7dca0fa6ac3c",
+            "apps/server/src/tests/capture_processing.rs": "301d2c5920a6382bc406999820400f1b4f7ca4b6b9bf3e895445bded7e5cb0e9",
+            "apps/server/src/tests/transcription_host/capture_live.rs": "f90af75ecdd904e6a78159548f63a6c3e4a2dca2dd244d14dd8997db2a721b67",
+            "apps/server/src/transcription_authorization.rs": "402173d943205c734ae458b4386941292eed1a534715f60bea1e18aa85b0bda3",
+            "crates/loofah-core/src/capture_ingest.rs": "271b4dc9b7a7aa17a1180846576f90f9d175f219b7953c85adec8185f742fe01",
+            "crates/loofah-core/src/capture_ingest/lifecycle.rs": "9d1c283665afdefedf7f9b417d306b997a270ddf9b670fb26e158ac47e44e98c",
+            "crates/loofah-core/src/capture_live/mod.rs": "a9e41c872d328e3e42c4dbb6425d4ec4d560e3768f467b05e390791faff56f95",
+            "crates/loofah-core/src/capture_live/tests.rs": "a1342b77faef24f08f8ed0f86a873817b20a2c23291905bef6627ca8949805b9",
+            "crates/loofah-core/src/capture_live/worker.rs": "af83f1f294be32e066a0e2240f82907d4a4c8bde9c542af70c8fcc4cef73b087",
+            "crates/loofah-core/src/capture_processing/ledger.rs": "ce3010042de38d08bab77d22d26e27d9fc533127f12eb65ff384f5e9c256ee1c",
+            "crates/loofah-core/src/capture_processing/mod.rs": "a605dc895a12b5bbcd39f3f2c2c39847b31532245dd8840c35ba0b293bc98cc0",
+            "crates/loofah-core/src/capture_processing/origin.rs": "18e25fa70ec4cdf9d3f4312746f5ba8fa6634f19de946a6efa7cce7b83aa8c80",
+            "crates/loofah-core/src/capture_processing/tests.rs": "3aa447ba0d7f811ece84ed60985876f50dc686805914e0512ee30aea166328d4",
+            "crates/loofah-core/src/capture_processing/worker.rs": "0b315b259f5c96f104658631364cd834121a3dbc9bfc25b1b4f9e6b673a4aa38",
+            "crates/loofah-core/src/jobs/access.rs": "5b3102ab8850d90e1120b4ef44ac16bab545631f46416d61249bfc6909b00559",
+            "crates/loofah-core/src/jobs/capture_origin_tests.rs": "f0eb4882e8cb97628a202dc1bbdd27e306464aa22d4ba9552c546ca481d86c37",
+            "crates/loofah-core/src/jobs/lifecycle.rs": "01b6e4d0c583844843145077ac415ddad88c8abd85783fc4184988f0e974199e",
+            "crates/loofah-core/src/jobs/mod.rs": "c99ad5ec7cb32bee7c51017d724a1614b032a7f9aeaf7852657c6ccfd9b96c31",
+            "crates/loofah-core/src/jobs/source.rs": "c0e7b1a295451a02917e73a14b2c09435f89ec3a98b53f866efd2b6813087818",
+            "crates/loofah-core/src/jobs/worker.rs": "4505adf02b6d847078331362d1634d625de6f793a188a5301faf96ce5a406137",
+            "crates/loofah-core/src/lib.rs": "66a0b869659d49c4d6050920791e3bd132742c9807fac49a96f7abf1a58f3d12",
+            "crates/loofah-core/src/runtime.rs": "fc05e9dbf3b0b1fd57fccbd7e2830d1d6cd7a480d6992b04e5ddfd7b20c28b32",
+            "crates/loofah-core/src/transcription_jobs/ledger.rs": "50fa9581b45ae6b932445224467abc0c45771b66c4fa41f557cb945c91ea9453",
+            "crates/loofah-core/src/transcription_jobs/mod.rs": "c8e7f40ebc7288470bdd7afe06fd6ade147c8cfabe9590ac2327c6c38c4a81d6",
+            "crates/loofah-core/src/transcription_jobs/origin_tests.rs": "28e378c8850c0437b5a657efd20181eacc2d272d0182ae4171f5595f2819c874",
+            "crates/loofah-core/src/transcription_jobs/worker.rs": "91e4a064c8b72cdefbcd0701ec2e3ea9ea9a38851635fc83c7b84c9f0f65dae9",
+            "crates/loofah-core/src/vault.rs": "3f6465bf216eef797fb47ee598d2c521ceb2ad0ca7cee040dda3162448a174bf",
+            "crates/vault-write/src/transcript_publication/mod.rs": "f5414a982202a08d225c35dca11b9e0be1252b42ac176d779b510a0c7f28bcde",
+            "crates/vault-write/src/transcript_publication/source_guard.rs": "4a9dce2eb8dc19aa57a2c633cb8aea59d864235450d56973b4f3e50fe3ef9172"
+          },
+          "default_all_targets": "passed59.75s",
+          "cpu_feature_library_clippy": "passed27.21s; existing dependency lints only; zero new owned warnings",
+          "native_inference_repeated": false
+        },
+        "target_root_released": true,
+        "own_processes_remaining": false
+      }
+    },
+    "cli_owner_checkpoint": {
+      "original_path": "/Volumes/T7/loofah-backend-build/agents/batch-transcription/logs/local-cli-routing-paused.json",
+      "sha256": "a0a1e8974bcf7d8839d03d30fecbab8308d11d05af7f2fd7076ae822137baea0",
+      "record": {
+        "time_utc": "2026-11-08T16:00:10.741488+00:00",
+        "reason": "Explicit user workstation pause",
+        "checkpoint": "6c85c593de018f6f9a4753a5781d66d22775caff",
+        "processes": [
+          {
+            "pid": 53830,
+            "ppid": 10426,
+            "command": "sample 40258 1 5 -file /Volumes/T7/loofah-backend-build/agents/batch-transcription/logs/local-cli-routing-rustc-sample.txt"
+          }
+        ],
+        "validation": "No-run compile completed successfully; suites, default production check and Clippy NOT RUN before explicit pause",
+        "signal": "SIGINT",
+        "cargo_build_actual_result": "Session36382 already completed exit0 before pause signal; no Cargo/rustc remained to signal",
+        "sample": "SIGINT showed Interrupted but process remained; SIGTERM sent only to own sample53830/its descendants",
+        "tests_executed": 0,
+        "compiled_test_executables_not_executed": [
+          {
+            "crate": "storage",
+            "fresh": false,
+            "source": "/Volumes/T7/src/loofah-separation-batch-transcription/crates/storage/src/lib.rs",
+            "executable": "/Volumes/T7/src/loofah-separation-batch-transcription/target/debug/deps/storage-80348af5f4f7a2e8",
+            "sha256": "f7c400c5afe2af467e5c3c6d6f3115759a8a24be8ebea96ba41bf346d928c30b"
+          },
+          {
+            "crate": "loofah_protocol",
+            "fresh": false,
+            "source": "/Volumes/T7/src/loofah-separation-batch-transcription/crates/loofah-protocol/src/lib.rs",
+            "executable": "/Volumes/T7/src/loofah-separation-batch-transcription/target/debug/deps/loofah_protocol-e1099acb8b228dee",
+            "sha256": "202c7ef7fca9d067e5c0cc7cf83f11a61a502e4805f0d6229c63a2d4c3a1b5e1"
+          },
+          {
+            "crate": "loofah_local_owner",
+            "fresh": false,
+            "source": "/Volumes/T7/src/loofah-separation-batch-transcription/crates/loofah-local-owner/src/lib.rs",
+            "executable": "/Volumes/T7/src/loofah-separation-batch-transcription/target/debug/deps/loofah_local_owner-7ea2cc63d1a2d676",
+            "sha256": "3e9aefe223a9bf256647dc1625002b84c0ba6c8cc278b35afa60a8aa14028de5"
+          },
+          {
+            "crate": "loofah_core",
+            "fresh": false,
+            "source": "/Volumes/T7/src/loofah-separation-batch-transcription/crates/loofah-core/src/lib.rs",
+            "executable": "/Volumes/T7/src/loofah-separation-batch-transcription/target/debug/deps/loofah_core-94668fda273a2007",
+            "sha256": "c47f831658b03dc824b1e188cdf117d862a7637fbb1ae4f6652eb31a91116b26"
+          },
+          {
+            "crate": "loof_cli",
+            "fresh": false,
+            "source": "/Volumes/T7/src/loofah-separation-batch-transcription/apps/cli/src/lib.rs",
+            "executable": "/Volumes/T7/src/loofah-separation-batch-transcription/target/debug/deps/loof_cli-1085b923a96791c7",
+            "sha256": "3d59d6fec0d9b610c06820d8a3109a272d589283ece8f79afe43e7fb92dbe968"
+          }
+        ],
+        "git_status": ""
+      }
+    },
+    "processing_sdk_source_only": {
+      "original_path": "/Volumes/T7/loofah-backend-build/agents/document-editor/logs/capture-processing-sdk-source-proof.json",
+      "sha256": "71cc76724c6b80ab26067ed0960c77fce4e774f1772bb1fabbdf1181ce7f1b0e",
+      "record": {
+        "commit": "c10ba0bf90058632ff605b27d1a9b13162c0fd32",
+        "protocol_prerequisite": "506df067d08e7bb7d3543bbde485cad440368360",
+        "files": {
+          "crates/loofah-client/src/requests.rs": "9c0023e111519aa4f2518929da0cc6af37987f4c35dc7496a43f2df454fdfb99",
+          "crates/loofah-client/src/requests/capture_processing.rs": "e4ecf2b80d26bab18d5a4619c09f88c9a8ce2b77c75f29f0f2aada6f35bf0c59",
+          "crates/loofah-client/src/tests.rs": "d848ba863cd4dec237e49f7683bd37174d62794617e7ca185557a5ac6e649d02",
+          "crates/loofah-client/src/tests/capture_processing.rs": "e4161f2e9490c320401adf1048e15bf42d3f6ecaaa1e94481a7325f40dd228ac"
+        },
+        "tests_authored": [
+          "processing_sdk_validates_capability_owner_request_and_cancellation_before_credentials",
+          "processing_sdk_binds_all_snapshots_and_rejects_malformed_or_oversize_https_replies",
+          "processing_sdk_accepts_operator_resolution_and_portable_pending_session_publication",
+          "processing_sdk_lost_ack_never_retries_and_explicit_replay_preserves_original_intent_over_real_latency"
+        ],
+        "execution_status": "SOURCE-ONLY. No Cargo compile, tests, check or Clippy executed by A; reserved Root1595 and B36382 cache cohorts active. Parent will validate in combined frozen Native graph.",
+        "format": "dprint fmt4ownedpaths and git diff --check passed",
+        "pending_validation": [
+          "cargo test -p loofah-client --lib tests::capture_processing --locked --offline",
+          "cargo check -p loofah-client --all-targets --locked --offline",
+          "cargo clippy -p loofah-client --lib --locked --offline"
+        ],
+        "scope": [
+          "Three typed PUT/GET/cancel adapters, no provider or business orchestration.",
+          "Cap before credentials, pre-dispatch NotCommitted vs post-dispatch Unknown, stable original identity.request_id.",
+          "64KiB reply bound; capture/fingerprint/intent/full request/model/child/publication checks.",
+          "Pending assigned session validated portable; authoritative assigned-session binding comparison remains Native, no duplicate Core ID derivation."
+        ],
+        "dirty_inputs_excluded": " M apps/desktop/src/shared/application/protocol.gen.ts\n M apps/desktop/src/types/tauri.gen.ts\n M plugins/transcription/js/bindings.gen.ts\n"
+      }
+    }
+  },
+  "local_work_focused": [
+    {
+      "filter": "local_session_work::",
+      "exit_code": 0,
+      "seconds": 363.1703119277954,
+      "log": "/Volumes/T7/loofah-backend-build/logs/local-work-test-local_session_work__.log"
+    },
+    {
+      "filter": "tracked_local_completion_requires_native_drain_and_finished_file_writers",
+      "exit_code": 0,
+      "seconds": 35.8659610748291,
+      "log": "/Volumes/T7/loofah-backend-build/logs/local-work-test-tracked_local_completion_requires_native_drain_and_finished_file_writers.log"
+    },
+    {
+      "filter": "native_tests",
+      "exit_code": 0,
+      "seconds": 34.04039931297302,
+      "log": "/Volumes/T7/loofah-backend-build/logs/local-work-test-native_tests.log"
+    },
+    {
+      "filter": "startup_recovery_",
+      "exit_code": 0,
+      "seconds": 33.81786489486694,
+      "log": "/Volumes/T7/loofah-backend-build/logs/local-work-test-startup_recovery_.log"
+    },
+    {
+      "filter": "local_cli::tests",
+      "exit_code": 0,
+      "seconds": 60.51352381706238,
+      "log": "/Volumes/T7/loofah-backend-build/logs/local-work-test-local_cli__tests.log"
+    },
+    {
+      "filter": "acquired_lease_runtime_reuses_original_descriptor_and_preserves_local_content_limits",
+      "exit_code": 0,
+      "seconds": 39.9974410533905,
+      "log": "/Volumes/T7/loofah-backend-build/logs/local-work-test-acquired_lease_runtime_reuses_original_descriptor_and_preserves_local_content_limits.log"
+    },
+    {
+      "filter": "pending_or_uncertain_batch_work_is_not_hidden_when_the_engine_is_disabled",
+      "exit_code": 0,
+      "seconds": 38.47899627685547,
+      "log": "/Volumes/T7/loofah-backend-build/logs/local-work-test-pending_or_uncertain_batch_work_is_not_hidden_when_the_engine_is_disabled.log"
+    },
+    {
+      "filter": "export_types",
+      "exit_code": 0,
+      "seconds": 41.793641090393066,
+      "log": "/Volumes/T7/loofah-backend-build/logs/local-work-test-export_types.log"
+    }
+  ],
+  "frontend": [
+    {
+      "name": "frontend",
+      "exit_code": 0,
+      "seconds": 94.38100790977478
+    },
+    {
+      "name": "typecheck",
+      "exit_code": 0,
+      "seconds": 14.408238887786865
+    },
+    {
+      "name": "locales",
+      "exit_code": 0,
+      "seconds": 4.936873912811279
+    }
+  ],
+  "pre_pipeline_checks": [
+    {
+      "name": "check",
+      "exit_code": 0,
+      "seconds": 102.39242482185364
+    },
+    {
+      "name": "clippy",
+      "exit_code": 101,
+      "seconds": 300.3346161842346
+    }
+  ],
+  "interrupted_combined_run": {
+    "status": "interrupted_after_explicit_user_pause",
+    "source_head": "e7330ef84",
+    "includes_sdk_and_cli_checkpoints": false,
+    "compile_completed": true,
+    "observed_passing_cases": [
+      "actors::root::tests::tracked_local_completion_requires_native_drain_and_finished_file_writers",
+      "capture_processing::tests::cancellation_retains_lifecycle_exclusion_until_admitted_summary_has_actually_drained",
+      "capture_processing::tests::cancellation_stops_processing_without_sealing_or_discarding_raw_audio",
+      "capture_processing::tests::complete_empty_transcript_summarizes_saved_notes_only_when_explicitly_requested",
+      "capture_processing::tests::complete_empty_without_saved_note_input_fails_before_any_summary_provider_call",
+      "capture_processing::tests::complete_empty_without_summary_declaration_never_starts_a_provider",
+      "capture_processing::tests::coordinator_panic_fails_closed_without_stopping_durable_capture_or_restarting_children",
+      "capture_processing::tests::crashed_paid_attempt_is_interrupted_and_never_inferred_again_on_restart",
+      "capture_processing::tests::defaults_are_explicit_host_resolution_and_no_summary",
+      "capture_processing::tests::disabled_coordinator_blocks_queued_pipeline_children_but_keeps_manual_summaries_available",
+      "capture_processing::tests::dropped_admission_caller_keeps_owned_authorization_and_durable_declaration",
+      "capture_processing::tests::exact_intent_replay_rejects_retarget_options_and_foreign_members",
+      "capture_processing::tests::existing_capture_delivers_captions_before_seal_then_uses_live_publication",
+      "capture_processing::tests::failed_native_inference_is_not_automatically_retried",
+      "capture_processing::tests::intent_never_accepts_client_paths_principals_or_provider_credentials",
+      "capture_processing::tests::missing_parent_never_turns_marked_queued_summary_into_manual_inference",
+      "capture_processing::tests::models_options_and_summary_targets_reuse_existing_portable_limits",
+      "capture_processing::tests::no_declaration_never_starts_old_capture_processing",
+      "capture_processing::tests::processing_crash_child",
+      "capture_processing::tests::restart_model_rebind_never_runs_queued_old_intent_with_new_bytes",
+      "capture_processing::tests::restart_reuses_completed_children_without_repeating_paid_or_native_work",
+      "capture_processing::tests::revoked_membership_prevents_children_and_keeps_source_readiness_blocked",
+      "capture_processing::tests::sealed_pending_capture_repairs_then_summarizes_once_without_a_frontend",
+      "capture_processing::tests::summary_source_changes_retain_generated_output_without_paid_retry",
+      "capture_processing::tests::unavailable_before_native_prepare_retries_the_same_repair_without_duplicate_inference",
+      "capture_processing::tests::unknown_future_duplicate_or_foreign_journals_fail_closed_without_rewrite",
+      "capture_processing::tests::unknown_state_stays_terminal_and_does_not_claim_safe_cleanup",
+      "jobs::capture_origin_tests::ordinary_summary_bytes_match_previous_reader_and_marked_admission_is_fail_closed",
+      "local_cli::tests::cancelling_cli_waiter_keeps_owned_append_until_the_actual_store_transaction_finishes",
+      "local_cli::tests::local_controls_reject_unknown_operations_fields_and_empty_variant_extensions",
+      "local_cli::tests::shared_cli_deletion_preserves_unknown_attachments_and_replays_historical_details_after_restore",
+      "local_cli::tests::shared_cli_routes_rich_creation_metadata_append_and_tag_deltas_through_cas",
+      "local_cli::tests::unchecked_local_import_and_transcription_are_not_advertised_or_dispatched",
+      "local_session_work::tests::definitive_rejection_releases_only_its_own_admission",
+      "local_session_work::tests::dropping_callers_and_duplicate_starts_never_release_unconfirmed_work",
+      "local_session_work::tests::late_acknowledgements_cannot_release_another_generation_and_wrong_sessions_are_rejected",
+      "local_session_work::tests::native_completion_and_durable_persistence_are_independent_barriers",
+      "runtime::ownership_tests::acquired_lease_runtime_reuses_original_descriptor_and_preserves_local_content_limits",
+      "tests::capture_processing::notes_only_processing_refusal_preserves_raw_capture_and_creates_no_note",
+      "tests::capture_processing::processing_declaration_requires_original_identity_and_current_vault_membership",
+      "transcription_jobs::ledger::lifecycle_tests::pending_or_uncertain_batch_work_is_not_hidden_when_the_engine_is_disabled",
+      "vault::capture_ingest::publication::bootstrap::native_tests::cancelled_native_startup_waiter_keeps_context_original_lease_and_initialization_owner",
+      "vault::capture_ingest::publication::bootstrap::native_tests::failed_discovery_blocks_recordings_and_keeps_notes_and_unknown_files_intact",
+      "vault::capture_ingest::publication::bootstrap::native_tests::managed_native_context_recovers_its_existing_gates_once_before_readiness",
+      "vault::capture_ingest::publication::bootstrap::native_tests::uninitialized_context_cannot_start_recording_recovery_after_readiness",
+      "vault::local_operations::tests::relative_or_traversing_host_paths_are_never_interpreted_from_the_cli_cwd"
+    ],
+    "completed_result_lines": [
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out; finished in 0.00s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 138 filtered out; finished in 0.00s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 83 filtered out; finished in 0.31s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 142 filtered out; finished in 0.00s",
+      "test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 387 filtered out; finished in 65.73s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.00s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 127 filtered out; finished in 12.06s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 69 filtered out; finished in 0.00s"
+    ],
+    "overall_suite_pass_claimed": false,
+    "remaining_checks": "Store/plugin remainder, all-target check, Clippy and protocol export were not completed in this run. Source-only SDK/CLI integration still needs fresh validation."
+  },
+  "hosted_ci_for_previous_head": {
+    "head": "ade7bb6e51b45beb92d9296f6eb986657694afe2",
+    "passed": [
+      "backend-ci",
+      "cli-ci",
+      "ci",
+      "zizmor",
+      "desktop frontend job"
+    ],
+    "failed": {
+      "desktop-ci": {
+        "run": 42490673420,
+        "cause": "Noncanonical macOS temp fixture root; corrected in6067361c9"
+      },
+      "windows-ci": {
+        "run": 42490673498,
+        "architectures": [
+          "x64",
+          "ARM64"
+        ],
+        "causes": [
+          "Verbatim-path fixture normalized ParentDir away; corrected inc7e311b54",
+          "std::fs::write truncated locked fixture before failing; corrected in945228d3b"
+        ]
+      }
+    },
+    "new_head_requires_fresh_ci": true
+  }
+}
