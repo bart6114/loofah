@@ -751,6 +751,8 @@ async fn executable_restart_recovers_known_legacy_operation_and_refuses_future_o
                 "restore",
                 "--snapshot",
                 "snapshot",
+                "--secrets",
+                "private",
                 "--storage-root",
                 "restored",
             ],
