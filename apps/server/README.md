@@ -369,7 +369,8 @@ spool quota index; media declared bytes are reservations, not a claim about byte
 received. Media sampling reads only bounded private admission records (4,096
 entries and 16 MiB per vault), never audio payloads or unknown vault attachments.
 Unavailable or incomplete samples explicitly report that state rather than zero.
-A busy spool mutex yields unavailable without delaying capture. Storage pressure
+Disabled means that service is not initialized or configured; it does not assert
+that no retained history exists. A busy spool mutex yields unavailable without delaying capture. Storage pressure
 is low below 1 GiB or 10%, critical below 64 MiB or 1%; unsupported mounts report
 unavailable. This is advisory sampling, not a new storage quota policy.
 
