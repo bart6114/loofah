@@ -190,10 +190,19 @@ export function AudioImportDialog() {
           <p className="text-muted-foreground text-sm">
             <Trans>Drop audio files or a folder here</Trans>
           </p>
-          <Button variant="outline" size="sm" onClick={handleChooseFiles}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleChooseFiles}
+            disabled={!available}
+          >
             <Trans>Choose files</Trans>
           </Button>
         </div>
+
+        {!available && (
+          <p role="status">Media import is unavailable for this vault.</p>
+        )}
 
         {candidates.length > 0 && (
           <div className="flex max-h-56 flex-col gap-1 overflow-y-auto">
@@ -260,7 +269,10 @@ export function AudioImportDialog() {
 
         <DialogFooter>
           {candidates.length > 0 ? (
-            <Button onClick={handleImport} disabled={selectedCount === 0}>
+            <Button
+              onClick={handleImport}
+              disabled={!available || selectedCount === 0}
+            >
               {selectedCount === 1 ? (
                 <Trans>Import 1 file</Trans>
               ) : (
