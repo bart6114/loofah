@@ -493,6 +493,7 @@ impl RemoteCaptureCoordinator {
         self.inner.upload_updates.subscribe()
     }
 
+    #[cfg(test)]
     pub fn capture_tickets(
         &self,
         profile_id: &str,

@@ -179,6 +179,7 @@ impl DeviceCaptureHost {
         })
     }
 
+    #[cfg(test)]
     pub fn start(
         self: &Arc<Self>,
         intent: CaptureStartIntent,

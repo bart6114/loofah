@@ -71,6 +71,7 @@ pub struct PreparedDeviceCapture {
 }
 
 impl PreparedDeviceCapture {
+    #[cfg(test)]
     pub async fn prepare(
         spool: Arc<CaptureSpool>,
         identity: CaptureIdentity,
@@ -168,6 +169,7 @@ impl PreparedDeviceCapture {
         self.args
     }
 
+    #[cfg(test)]
     pub async fn start(self) -> Result<DeviceCaptureKey, DeviceSinkError> {
         let key = self.key.clone();
         let sink = self.sink.clone();
