@@ -81,18 +81,7 @@ pub struct SessionListEntry {
     pub has_transcript_words: bool,
 }
 
-/// The slim `session_list_headers` row -- exactly what the always-mounted list
-/// subscribers (timeline, summaries, tags, float) consume.
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
-pub struct SessionListHeader {
-    pub id: String,
-    pub title: String,
-    pub created_at: String,
-    pub folder: Option<String>,
-    pub tags: Vec<String>,
-    pub author: Option<String>,
-    pub has_transcript_words: bool,
-}
+pub use hypr_loofah_protocol::SessionListHeader;
 
 /// Key for the vault-root `tasks.json` in the tasks map (sessions can never claim it:
 /// session IDs are non-empty path segments).

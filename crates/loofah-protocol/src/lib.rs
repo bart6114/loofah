@@ -21,6 +21,8 @@ mod transcript_overview;
 pub use transcript_overview::*;
 mod transcription;
 pub use transcription::*;
+mod timeline;
+pub use timeline::*;
 mod session_summaries;
 pub use session_summaries::*;
 mod session_cleanup;
