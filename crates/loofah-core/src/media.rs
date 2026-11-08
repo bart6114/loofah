@@ -131,6 +131,7 @@ impl VaultContext {
             cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
             cause
         })?;
+        self.ensure_recording_publication_ready(session_id)?;
         if input.expected_sha256.len() != 64
             || !input
                 .expected_sha256
@@ -160,6 +161,7 @@ impl VaultContext {
                 .store
                 .prepare_recording_deletion(&session_id, &input.expected_sha256)
                 .await;
+            context.ensure_recording_publication_ready(&session_id)?;
             let checked = match prepared {
                 Ok(Some(RecordingDeletionPlan::Prepared(commit))) => {
                     (*commit).recheck().await.map(Some)
@@ -170,10 +172,12 @@ impl VaultContext {
                 Ok(None) => Ok(None),
                 Err(cause) => Err(cause),
             };
+            context.ensure_recording_publication_ready(&session_id)?;
             let _grant = authorize().await.map_err(|mut cause| {
                 cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
                 cause
             })?;
+            context.ensure_recording_publication_ready(&session_id)?;
             let (result, commit_started) = match checked {
                 Ok(Some(RecordingDeletionPlan::Prepared(commit))) => {
                     ((*commit).commit().await, true)
@@ -247,6 +251,9 @@ impl VaultContext {
         source: &MediaSource,
     ) -> Result<(), ApplicationError> {
         self.validate(session_id)?;
+        if matches!(source, MediaSource::Recording) {
+            self.ensure_recording_publication_ready(session_id)?;
+        }
         if let MediaSource::Attachment(id) = source {
             hypr_vault_read::paths::validate_attachment_id(id)
                 .map_err(|_| error(ErrorCode::Validation, "Invalid attachment ID"))?;
@@ -284,8 +291,10 @@ impl VaultContext {
                         .store
                         .open_recording(&id)
                         .await
-                        .map_err(|cause| storage_error(cause, false))?
-                        .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))?;
+                        .map_err(|cause| storage_error(cause, false))?;
+                    context.ensure_recording_publication_ready(&id)?;
+                    let source =
+                        source.ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))?;
                     match source {
                         RecordingSnapshot::Absent => return Ok(None),
                         RecordingSnapshot::Busy => {

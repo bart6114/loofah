@@ -85,6 +85,13 @@ impl VaultRuntime {
         .await
         .map_err(|error| StoreError::Io(error.to_string()))??;
         let store = Arc::new(SessionStore::new(vault.clone()));
+        let (lease, recording_publications) = VaultContext::bootstrap_recording_publications(
+            store.clone(),
+            id.clone(),
+            operation_root.join("recording-publications"),
+            lease,
+        )
+        .await?;
         store.set_startup_pending(true);
         let (watcher, source) = if let Some(changes) = changes {
             (None, changes)
@@ -113,6 +120,7 @@ impl VaultRuntime {
         )
         .with_operation_storage(operation_root.to_path_buf());
         context.lease = Some(lease);
+        context.recording_publications = recording_publications;
         let context = Arc::new(context);
         let stop = CancellationToken::new();
         let mut settings_changes = context.settings.subscribe_processing();

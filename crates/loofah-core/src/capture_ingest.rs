@@ -12,6 +12,9 @@ use tokio::sync::{OnceCell, Semaphore};
 
 use super::{VaultContext, error};
 
+#[path = "capture_ingest/publication/mod.rs"]
+pub(crate) mod publication;
+
 pub(super) struct CaptureIngestion {
     server: String,
     limits: CaptureSpoolLimits,
