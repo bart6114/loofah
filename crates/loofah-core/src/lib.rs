@@ -24,6 +24,7 @@ pub mod media_leases;
 mod metadata;
 mod note_editor;
 mod operations;
+pub use operations::InitialSessionMetadata;
 mod session_cleanup;
 mod session_lifecycle;
 mod session_lifecycle_gate;

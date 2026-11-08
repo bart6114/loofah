@@ -103,6 +103,19 @@ checks the service's private vault-wide staging inventory without exposing other
 members' captures or removing raw files. Retained live ledgers are checked without
 loading a model or rewriting recovery state when the CPU service is disabled.
 
+The shared internal metadata-creation operation accepts the existing local CLI
+timestamps, tags, author, skill and initial note in one durable decision. It uses
+the same deterministic request identity and preserves version-1 creation replay.
+Its version-2 receipts live in `session-creations/{session}.json`; incomplete
+decisions block checked session changes. Notes/metadata, extracted tasks and tag
+registration are separate checked file steps, so a later failure reports the
+identified pending note and retains its decision for review or exact retry.
+Completed replay returns the original accepted metadata without overwriting user
+edits, recreating deleted notes or re-registering subsequently deleted tags.
+Keep these receipts in backups; older binaries cannot replay this internal
+operation. The HTTPS creation contract is unchanged, and remote CLI metadata
+flags require an explicit future contract rather than being silently dropped.
+
 A published response contains the exact source seal, session ID, canonical SHA-256
 and byte count. Verify a separate authenticated canonical artifact read before
 considering device cleanup. Neither upload acknowledgment nor this response alone

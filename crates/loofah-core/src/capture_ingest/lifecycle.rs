@@ -24,6 +24,12 @@ impl VaultContext {
         session: &str,
     ) -> Result<(), ApplicationError> {
         self.validate(session).map_err(super::not_committed)?;
+        if let Some(operations) = &self.operations {
+            operations
+                .ensure_creation_idle(session, self.store.content_limits().recovery_bytes)
+                .await
+                .map_err(super::not_committed)?;
+        }
         self.ensure_recording_publication_ready(session)?;
         self.ensure_capture_live_lifecycle_idle(session)
             .await

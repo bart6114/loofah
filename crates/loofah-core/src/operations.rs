@@ -15,6 +15,10 @@ use crate::{
     vault::{error, storage_error},
 };
 
+#[path = "operations/rich_creation.rs"]
+mod rich_creation;
+pub use rich_creation::InitialSessionMetadata;
+
 pub(crate) struct SessionOperations {
     pub(crate) root: PathBuf,
     lock: tokio::sync::Mutex<()>,
@@ -31,6 +35,16 @@ struct Creation {
 }
 
 impl VaultContext {
+    pub fn created_session_id(
+        &self,
+        namespace: &str,
+        request_id: &str,
+    ) -> Result<String, ApplicationError> {
+        let request_id = uuid::Uuid::parse_str(request_id)
+            .map_err(|_| error(ErrorCode::Validation, "A UUID request ID is required"))?;
+        Ok(creation_identity(namespace, request_id).1)
+    }
+
     pub fn with_operation_storage(mut self, root: PathBuf) -> Self {
         self.operations = Some(SessionOperations {
             root,
@@ -196,7 +210,20 @@ impl SessionOperations {
         created_at: Option<String>,
     ) -> Result<SessionDocument, ApplicationError> {
         let _guard = self.lock.lock().await;
+        self.create_locked(store, namespace, request_id, request, created_at)
+            .await
+    }
+
+    async fn create_locked(
+        &self,
+        store: &SessionStore,
+        namespace: &str,
+        request_id: uuid::Uuid,
+        request: CreateSessionRequest,
+        created_at: Option<String>,
+    ) -> Result<SessionDocument, ApplicationError> {
         let (key, session_id) = creation_identity(namespace, request_id);
+        rich_creation::reject_rich_reuse(&self.root, &session_id).await?;
         let path = self.root.join(format!("{key}.json"));
         let read_path = path.clone();
         let stored = tokio::task::spawn_blocking(move || match std::fs::read(read_path) {
@@ -259,20 +286,21 @@ impl SessionOperations {
             persist(&path, &creation).await?;
             creation
         };
-        let meta = SessionMeta {
-            id: creation.session_id.clone(),
-            title: creation.request.title.clone(),
-            created_at: creation.created_at.clone(),
-            started_at: None,
-            ended_at: None,
-            tags: vec![],
-            tag_suggestions: None,
-            tracking_id: None,
-            folder: None,
-            author: None,
-            skill: None,
-            extra: Default::default(),
-        };
+        let meta = legacy_meta(&creation);
+        let response = self
+            .finish_creation(store, &meta, &creation.request.markdown)
+            .await?;
+        creation.response = Some(response.clone());
+        persist(&path, &creation).await?;
+        Ok(response)
+    }
+
+    async fn finish_creation(
+        &self,
+        store: &SessionStore,
+        meta: &SessionMeta,
+        markdown: &str,
+    ) -> Result<SessionDocument, ApplicationError> {
         if store
             .read_meta(&meta.id)
             .await
@@ -280,26 +308,59 @@ impl SessionOperations {
             .is_none()
         {
             store
-                .create_note_session(&meta, &creation.request.markdown)
+                .create_note_session(meta, markdown)
                 .await
                 .map_err(|cause| storage_error(cause, true))?;
         }
+        self.finish_created(store, meta).await
+    }
+
+    async fn finish_created(
+        &self,
+        store: &SessionStore,
+        meta: &SessionMeta,
+    ) -> Result<SessionDocument, ApplicationError> {
         let response = store
             .reconcile_note_tasks(&self.root.join("document-saves"), &meta.id)
             .await
             .map_err(|cause| {
-                let mut error = storage_error(cause, false);
-                error.mutation_outcome = Some(MutationOutcome::Unknown);
-                error
+                let mut cause = storage_error(cause, false);
+                cause.mutation_outcome = Some(MutationOutcome::Unknown);
+                cause
             })?
             .ok_or_else(|| error(ErrorCode::Internal, "Session creation did not persist"))?;
-        creation.response = Some(response.clone());
-        persist(&path, &creation).await?;
+        let mut registered = std::collections::BTreeSet::new();
+        for tag in &meta.tags {
+            if registered.insert(hypr_vault_read::normalize_tag_name(tag)) {
+                store.ensure_tag_checked(tag).await.map_err(|cause| {
+                    let mut cause = storage_error(cause, false);
+                    cause.mutation_outcome = Some(MutationOutcome::Persisted);
+                    cause
+                })?;
+            }
+        }
         Ok(response)
     }
 }
 
-async fn persist(path: &Path, creation: &Creation) -> Result<(), ApplicationError> {
+fn legacy_meta(creation: &Creation) -> SessionMeta {
+    SessionMeta {
+        id: creation.session_id.clone(),
+        title: creation.request.title.clone(),
+        created_at: creation.created_at.clone(),
+        started_at: None,
+        ended_at: None,
+        tags: vec![],
+        tag_suggestions: None,
+        tracking_id: None,
+        folder: None,
+        author: None,
+        skill: None,
+        extra: Default::default(),
+    }
+}
+
+async fn persist<T: Serialize>(path: &Path, creation: &T) -> Result<(), ApplicationError> {
     let content = serde_json::to_string(creation).map_err(|_| {
         error(
             ErrorCode::Internal,
