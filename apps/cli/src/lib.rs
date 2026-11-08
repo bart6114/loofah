@@ -15,6 +15,11 @@ pub use error::{Error, Result};
 pub use output::JSON_SCHEMA_VERSION;
 
 pub async fn run(args: Args) -> Result<u8> {
+    let json_progress = args.json || matches!(&args.command, cli::Command::Mcp);
+    output::with_progress_format(json_progress, run_inner(args)).await
+}
+
+async fn run_inner(args: Args) -> Result<u8> {
     if let cli::Command::Profiles { command } = args.command {
         if args.profile.is_some() || args.base.is_some() || args.vault_path.is_some() {
             return Err(Error::operation(

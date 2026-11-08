@@ -179,3 +179,29 @@ mod tests {
         assert_eq!(std::fs::read_to_string(path).unwrap(), "replacement");
     }
 }
+
+tokio::task_local! {
+    static JSON_PROGRESS: bool;
+}
+
+pub(crate) async fn with_progress_format<T>(
+    json: bool,
+    operation: impl std::future::Future<Output = T>,
+) -> T {
+    JSON_PROGRESS.scope(json, operation).await
+}
+
+pub(crate) fn startup_progress(phase: &str, started: std::time::Instant) {
+    let mut stderr = std::io::stderr().lock();
+    if JSON_PROGRESS.try_with(|json| *json).unwrap_or(true) {
+        let event = serde_json::json!({
+            "schema_version": JSON_SCHEMA_VERSION,
+            "phase": phase,
+            "elapsed_ms": started.elapsed().as_millis(),
+        });
+        let _ = writeln!(stderr, "{event}");
+    } else {
+        let _ = writeln!(stderr, "Local search: {phase}");
+    }
+    let _ = stderr.flush();
+}

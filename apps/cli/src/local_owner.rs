@@ -79,6 +79,24 @@ impl LocalGateway {
                             None,
                         )
                     } else {
+                        let cache = self.cache.clone();
+                        let cache_owner = lease.clone();
+                        let initializing = tokio::task::spawn_blocking(move || {
+                            let _owner = cache_owner;
+                            match cache.check() {
+                                Ok(()) => Ok(false),
+                                Err(hypr_search_cache::Error::NotReady) => Ok(true),
+                                Err(cause) => Err(cause),
+                            }
+                        })
+                        .await
+                        .map_err(|cause| {
+                            Error::operation("inspect local search", cause.to_string())
+                        })??;
+                        let started = std::time::Instant::now();
+                        if initializing {
+                            crate::output::startup_progress("initializing", started);
+                        }
                         let runtime = VaultRuntime::open_leased(
                             format!("local:{key}"),
                             lease.clone(),
@@ -102,6 +120,9 @@ impl LocalGateway {
                             .wait_until_initialized()
                             .await
                             .map_err(|cause| Error::operation("prepare local search", cause))?;
+                        if initializing {
+                            crate::output::startup_progress("ready", started);
+                        }
                         (
                             Dispatcher::Application(Arc::new(
                                 LocalCli::new(runtime.context.clone())?.with_media_host(Arc::new(

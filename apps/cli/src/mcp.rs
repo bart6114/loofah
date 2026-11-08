@@ -288,7 +288,7 @@ fn command_error(error: Error) -> McpError {
             action: "search meetings",
             reason,
         } => McpError::invalid_params(reason, None),
-        Error::Remote(error) => {
+        Error::Remote(error) | Error::Local(error) => {
             let data = serde_json::json!({ "code": error.code, "retryable": error.retryable, "request_id": error.request_id });
             match error.code {
                 hypr_loofah_protocol::ErrorCode::Validation

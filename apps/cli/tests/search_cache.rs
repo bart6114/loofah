@@ -40,7 +40,6 @@ fn response(output: &Output) -> Value {
 fn first_vault_commands_initialize_before_dispatch_and_keep_stdout_clean() {
     for args in [
         vec!["sessions", "list"],
-        vec!["sessions", "get", "a"],
         vec!["sessions", "rename", "a", "Changed"],
         vec!["tags", "list"],
         vec!["sessions", "search", "initial"],
@@ -80,6 +79,26 @@ fn first_vault_commands_initialize_before_dispatch_and_keep_stdout_clean() {
 }
 
 #[test]
+fn per_id_reads_do_not_initialize_global_search_or_migrate_config() {
+    let vault = tempfile::tempdir().unwrap();
+    seed(vault.path());
+    let config =
+        r#"{"current_stt_provider":"am","current_stt_model":"am-parakeet-v3","future":42}"#;
+    std::fs::write(vault.path().join("config.json"), config).unwrap();
+    let cache = hypr_search_cache::Cache::for_vault(vault.path()).unwrap();
+    for args in [vec!["sessions", "get", "a"], vec!["sessions", "path", "a"]] {
+        let output = run(vault.path(), &args);
+        response(&output);
+        assert!(output.stderr.is_empty());
+        assert!(!cache.path().exists());
+        assert_eq!(
+            std::fs::read_to_string(vault.path().join("config.json")).unwrap(),
+            config
+        );
+    }
+}
+
+#[test]
 fn doctor_does_not_initialize_and_explicit_init_streams_progress_separately() {
     let vault = tempfile::tempdir().unwrap();
     seed(vault.path());
@@ -108,13 +127,10 @@ fn doctor_does_not_initialize_and_explicit_init_streams_progress_separately() {
     );
 }
 
-#[test]
-fn mcp_first_start_initializes_without_polluting_the_protocol_stream() {
+fn mcp_search(vault: &Path) -> (Vec<Value>, String) {
     use std::io::{BufRead, Write};
-    let vault = tempfile::tempdir().unwrap();
-    seed(vault.path());
     let stderr = tempfile::NamedTempFile::new().unwrap();
-    let mut child = command(vault.path(), &["mcp"])
+    let mut child = command(vault, &["mcp"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(stderr.reopen().unwrap())
@@ -139,6 +155,12 @@ fn mcp_first_start_initializes_without_polluting_the_protocol_stream() {
         let initialized = receiver
             .recv_timeout(std::time::Duration::from_secs(15))
             .map_err(|error| error.to_string())??;
+        let idle_lease = hypr_storage::vault::VaultLease::try_acquire_existing(vault)
+            .map_err(|cause| cause.to_string())?;
+        if !matches!(idle_lease, hypr_storage::vault::LeaseAttempt::Acquired(_)) {
+            return Err("idle MCP unexpectedly owns the vault".into());
+        }
+        drop(idle_lease);
         writeln!(
             stdin,
             "{}",
@@ -155,14 +177,21 @@ fn mcp_first_start_initializes_without_polluting_the_protocol_stream() {
     child.wait().unwrap();
     reader.join().unwrap();
     let responses = responses.unwrap();
+    (responses, std::fs::read_to_string(stderr.path()).unwrap())
+}
+
+#[test]
+fn mcp_first_query_initializes_without_polluting_the_protocol_stream() {
+    let vault = tempfile::tempdir().unwrap();
+    seed(vault.path());
+    let (responses, stderr) = mcp_search(vault.path());
     assert_eq!(responses[0]["id"], 1);
     assert!(responses[0].get("error").is_none());
     assert_eq!(
         responses[1]["result"]["structuredContent"]["hits"][0]["session_id"],
         "a"
     );
-    let events: Vec<Value> = std::fs::read_to_string(stderr.path())
-        .unwrap()
+    let events: Vec<Value> = stderr
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
@@ -190,7 +219,7 @@ fn incompatible_cache_is_rebuilt_automatically_but_corruption_requires_repair() 
     assert_eq!(response(&search)["data"][0]["session_id"], "a");
     assert!(!search.stderr.is_empty());
     std::fs::write(&pointer, "../invalid").unwrap();
-    for args in [vec!["sessions", "list"], vec!["mcp"]] {
+    for args in [vec!["sessions", "list"]] {
         let output = run(vault.path(), &args);
         assert!(!output.status.success());
         assert!(output.stdout.is_empty());
@@ -203,6 +232,17 @@ fn incompatible_cache_is_rebuilt_automatically_but_corruption_requires_repair() 
                 .contains("loof init")
         );
     }
+    let (responses, stderr) = mcp_search(vault.path());
+    assert!(responses[0].get("error").is_none());
+    assert_eq!(responses[1]["error"]["code"], -32603);
+    assert!(
+        responses[1]["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("loof init")
+    );
+    assert!(stderr.is_empty());
+    assert_eq!(std::fs::read_to_string(&pointer).unwrap(), "../invalid");
     response(&run(vault.path(), &["init"]));
     assert!(cache.status().ready);
 }
