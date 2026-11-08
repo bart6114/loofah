@@ -31,6 +31,7 @@ pub async fn application_local_media_import_audio<R: Runtime>(
     input: UploadAttachmentRequest,
     source: DeviceAttachmentSource,
     created_at: Option<String>,
+    content_type: Option<String>,
 ) -> Result<LocalMediaStatus, ApplicationError> {
     validate_request(&request_id)?;
     let service = service(&app)?;
@@ -42,7 +43,13 @@ pub async fn application_local_media_import_audio<R: Runtime>(
         .try_state::<DeviceUploadIo>()
         .ok_or_else(unavailable)?
         .reader(window.label(), source.clone(), &input)?;
-    let filename = input.filename.clone();
+    let extension =
+        hypr_fs_sync_core::audio::import_source_extension(&input.filename, content_type.as_deref());
+    let stem = std::path::Path::new(&input.filename)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("imported-audio");
+    let filename = format!("{stem}.{extension}");
     let temporary = app
         .path()
         .app_cache_dir()
