@@ -763,7 +763,7 @@ function ScopedHeaderViewTranscriptActive({
         id: `regenerate-transcript-${sessionId}`,
         text: "Re-transcribe",
         action: () => {
-          void regenerate();
+          void regenerate().catch(() => {});
         },
       });
     }

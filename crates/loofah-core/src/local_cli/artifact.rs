@@ -136,7 +136,7 @@ mod tests {
     }
     #[test]
     fn materialization_retains_original_authority_until_actual_input_owner_retires() {
-        let root = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let source = root.path().join("input.wav");
         std::fs::write(&source, b"original source").unwrap();
         let file = File::open(&source).unwrap();
@@ -163,7 +163,7 @@ mod tests {
     }
     #[test]
     fn materialization_rejects_changed_source_and_unsafe_destination_names() {
-        let root = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let source = root.path().join("input.wav");
         std::fs::write(&source, b"original source").unwrap();
         let file = File::open(&source).unwrap();

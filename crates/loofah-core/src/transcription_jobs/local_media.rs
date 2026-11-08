@@ -223,7 +223,7 @@ mod tests {
     async fn completed_manual_output_survives_cancel_or_revocation_and_keeps_source_through_final_validation()
      {
         for cancel_after_result in [true, false] {
-            let root = tempfile::tempdir().unwrap();
+            let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
             let vault = root.path().join("vault");
             std::fs::create_dir(&vault).unwrap();
             let hypr_storage::vault::LeaseAttempt::Acquired(lease) =
