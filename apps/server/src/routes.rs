@@ -26,6 +26,7 @@ mod processing_settings;
 mod session_cleanup;
 mod session_summaries;
 mod tag_editing;
+mod transcript_overview;
 
 pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
@@ -35,6 +36,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .merge(processing_settings::router())
         .merge(session_cleanup::router())
         .merge(session_summaries::router())
+        .merge(transcript_overview::router())
         .merge(tag_editing::router())
         .route("/me", get(me).post(provision))
         .route("/members", get(directory))
@@ -174,6 +176,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "capture_publication".into(),
             "notes".into(),
             "session_summaries".into(),
+            "transcript_overview".into(),
             "tag_editing".into(),
             "session_cleanup".into(),
             "note_editor_read".into(),

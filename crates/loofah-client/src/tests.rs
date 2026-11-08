@@ -2,6 +2,7 @@ mod attachments;
 mod capture;
 mod downloads;
 mod tag_editing;
+mod transcript_overview;
 mod uploads;
 use std::{
     collections::HashMap,
@@ -73,6 +74,7 @@ struct Provider {
     denied: AtomicBool,
     stalled_events: AtomicBool,
     recording_mode: AtomicUsize,
+    overview_mode: AtomicUsize,
     attachment_mode: AtomicUsize,
     attachment_removals: Mutex<Vec<String>>,
     attachment_uploads: Mutex<Vec<(String, UploadAttachmentRequest, Vec<u8>)>>,
@@ -118,6 +120,7 @@ impl Fixture {
             denied: AtomicBool::new(false),
             stalled_events: AtomicBool::new(false),
             recording_mode: AtomicUsize::new(0),
+            overview_mode: AtomicUsize::new(0),
             attachment_mode: AtomicUsize::new(0),
             attachment_removals: Mutex::new(Vec::new()),
             attachment_uploads: Mutex::new(Vec::new()),
@@ -181,6 +184,10 @@ impl Fixture {
                 get(attachments::read)
                     .head(attachments::head)
                     .delete(attachments::close),
+            )
+            .route(
+                "/api/v1/vaults/test/sessions/note/transcript-overview",
+                get(transcript_overview::overview),
             )
             .with_state(state.clone());
         let task = tokio::spawn(async move {

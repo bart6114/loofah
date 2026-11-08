@@ -526,6 +526,15 @@ pub async fn application_agent_segments<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_transcript_overview<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<hypr_loofah_protocol::TranscriptOverview, ApplicationError> {
+    context(&app)?.transcript_overview(&session_id, None).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_read_metadata<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
@@ -621,6 +630,52 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(vault.path().join("sessions/note/notes.md")).unwrap(),
             "Restored local text"
+        );
+    }
+
+    #[tokio::test]
+    async fn local_transcript_overview_is_login_free_and_preserves_legacy_metadata_capacity() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = Arc::new(hypr_vault_write::SessionStore::new(vault.path().into()));
+        let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"Local","created_at":"2026-11-08T00:00:00Z","tags":[]})).unwrap();
+        store
+            .create_note_session(&meta, "PRIVATE BODY")
+            .await
+            .unwrap();
+        let labels: Vec<String> = (0..=hypr_loofah_protocol::TRANSCRIPT_OVERVIEW_LABEL_LIMIT)
+            .map(|i| i.to_string())
+            .collect();
+        let file = serde_json::json!({"transcripts":[{"id":"t","started_at":5,"speaker_hints":labels.iter().map(|label| serde_json::json!({"word_id":"w","type":"speaker_label","value":label})).collect::<Vec<_>>()}]});
+        std::fs::write(
+            vault.path().join("sessions/note/transcript.json"),
+            serde_json::to_vec(&file).unwrap(),
+        )
+        .unwrap();
+        store.refresh_session("note").await.unwrap();
+        let context = Arc::new(VaultContext::new(
+            "local:test".into(),
+            store,
+            StartupState::new(Some(vault.path())),
+            Arc::new(ConfigState::load_or_default(vault.path())),
+            Arc::new(SearchService::default()),
+        ));
+        let app = tauri::test::mock_builder()
+            .manage(context)
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let value = application_transcript_overview(app.handle().clone(), "note".into())
+            .await
+            .unwrap();
+        assert_eq!(value.speaker_labels, labels);
+        assert!(!value.has_words);
+        assert_eq!(value.started_at, Some(5.0));
+        assert_eq!(value.ended_at, None);
+        assert_eq!(
+            application_transcript_overview(app.handle().clone(), "missing".into())
+                .await
+                .unwrap_err()
+                .code,
+            hypr_loofah_protocol::ErrorCode::NotFound
         );
     }
 

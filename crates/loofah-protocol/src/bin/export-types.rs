@@ -76,6 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<TasksSnapshot>()
         .register::<ReplaceTasksRequest>()
         .register::<TasksSaveOutcome>()
+        .register::<TranscriptOverview>()
         .register::<TranscriptWithData>()
         .register::<RemoteAuthConfig>()
         .register::<ApplicationError>()

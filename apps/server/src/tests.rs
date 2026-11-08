@@ -16,6 +16,7 @@ mod session_summaries;
 mod tag_editing;
 mod tasks;
 mod template_jobs;
+mod transcript_overview;
 mod waveform;
 
 use std::sync::Arc;

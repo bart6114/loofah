@@ -104,6 +104,10 @@ pub enum RemoteOperation {
         target: DocumentTarget,
         input: SaveDocumentRequest,
     },
+    TranscriptOverview {
+        vault_id: String,
+        session_id: String,
+    },
     Transcripts {
         vault_id: String,
         session_id: String,
@@ -262,6 +266,7 @@ pub enum RemoteReply {
     Documents(Vec<EnhancedDoc>),
     Document(DocumentSnapshot),
     DocumentSave(DocumentSaveOutcome),
+    TranscriptOverview(TranscriptOverview),
     Transcripts(Vec<TranscriptWithData>),
     AudioMetadata(Option<FileMetadata>),
     AttachmentInfo(Option<FileInfo>),
@@ -320,6 +325,7 @@ impl RemoteClient {
         let required_feature = match &operation {
             RemoteOperation::DeleteEmptySession { .. } => Some("session_cleanup"),
             RemoteOperation::SessionSummaries { .. } => Some("session_summaries"),
+            RemoteOperation::TranscriptOverview { .. } => Some("transcript_overview"),
             RemoteOperation::TagSuggestions { .. }
             | RemoteOperation::EnsureTag { .. }
             | RemoteOperation::AcceptTagSuggestion { .. }
@@ -353,6 +359,7 @@ impl RemoteClient {
             let description = match operation {
                 RemoteOperation::DeleteEmptySession { .. } => "conditional session cleanup",
                 RemoteOperation::SessionSummaries { .. } => "session summaries",
+                RemoteOperation::TranscriptOverview { .. } => "transcript overview",
                 RemoteOperation::TagSuggestions { .. }
                 | RemoteOperation::EnsureTag { .. }
                 | RemoteOperation::AcceptTagSuggestion { .. }
@@ -442,6 +449,13 @@ impl RemoteClient {
             );
             error.request_id = Some(request_id.to_owned());
             error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            return Err(error);
+        }
+        if let RemoteOperation::TranscriptOverview { session_id, .. } = &operation
+            && validate_session_id(session_id).is_err()
+        {
+            let mut error = invalid("Invalid session ID");
+            error.request_id = Some(request_id.to_owned());
             return Err(error);
         }
         if let RemoteOperation::AttachmentInfo { attachment_id, .. }
@@ -947,6 +961,19 @@ impl RemoteClient {
                     vec!["vaults", vault_id, "sessions", session_id, "tasks"],
                 )
             }
+            RemoteOperation::TranscriptOverview {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "sessions",
+                    session_id,
+                    "transcript-overview",
+                ],
+            ),
             RemoteOperation::Metadata {
                 vault_id,
                 session_id,
@@ -1149,6 +1176,12 @@ impl RemoteClient {
                 }
                 RemoteOperation::ReplaceTasks { .. } => {
                     RemoteReply::TasksSave(json_body(response, 16 * 1024 * 1024).await?)
+                }
+                RemoteOperation::TranscriptOverview { .. } => {
+                    let overview: TranscriptOverview =
+                        json_body(response, TRANSCRIPT_OVERVIEW_RESPONSE_LIMIT).await?;
+                    validate_transcript_overview(&overview).map_err(|_| unavailable())?;
+                    RemoteReply::TranscriptOverview(overview)
                 }
                 RemoteOperation::Metadata { .. } => {
                     RemoteReply::Metadata(json_body(response, 16 * 1024 * 1024).await?)
