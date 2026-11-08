@@ -311,7 +311,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
 - [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Typed contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server configuration wires allowed providers, host credentials and current member authorization into bounded processing. Member-private summary-body HTTP job APIs, the Rust SDK and scoped job invalidations are implemented. Native IPC/jobs, local Keychain/ChatGPT adapters and shared frontend job requests/cache invalidation are implemented. Durable device submission recovery and summary job controls are implemented in the opt-in notes workspace. Shared processing settings/model selection are implemented. Existing-template body/task/tag generation and shared portable title/model-resource helpers are implemented. Optional title-stage orchestration, capability gates, scoped opt-in/results and exact-policy device recovery are implemented. Remaining main frontend AI migration, streaming previews and any uncovered existing summary/tag/template policy, owner-managed provider secrets, server model management and authenticated transcription remain open.
-- [ ] **Phase 6: resilient remote capture.** Neutral durable capture storage, first-audio timing, an internal managed native host and authenticated chunk/status/seal staging APIs are implemented. Native timing and real lost-reply/latency tests pass. Absent-only canonical WAV publication storage and verified bounded streaming WAV sources are implemented; Core publication/recovery gates are being integrated. Trusted device source admission, durable uploader orchestration, public controls/lifecycle, live transcription, append/repair and end-to-end finalization remain open.
+- [ ] **Phase 6: resilient remote capture.** Neutral durable capture storage, first-audio timing, an internal managed native host and authenticated chunk/status/seal staging APIs are implemented. Native timing and real lost-reply/latency tests pass. Absent-only canonical WAV publication, startup/same-process media gates and the authenticated SDK/HTTP path are implemented and validated. Trusted device source admission, durable uploader orchestration, public controls/lifecycle, live transcription, append/repair and end-to-end finalization remain open.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
 
 Local remains the default and no authentication or account provisioning has been added to local startup. Remote deployment is available only through the opt-in experimental notes preview. This implementation must remain experimental until every acceptance criterion above is verified.
@@ -3292,3 +3292,73 @@ uploader lifecycle, canonical publication transport, live/batch transcription an
 server model resources, deployment/restore/downgrade acceptance and production
 macOS/Windows recording/UX validation. Recording recovery remains separate from
 general offline editing of remote vaults.
+
+## Checked publication and actual-main read checkpoint
+
+Current source `9f166ae94` integrates the following newer work; the earlier
+checkpoint sections remain historical. All seven delivery phases stay open.
+
+- Existing-session, absent-only recording publication is exposed through shared
+  Core and authenticated HTTP/SDK operations. The source seal, immutable scope,
+  original declaration UUID, audio layout and producer timing bind the operation.
+  A full raw checksum pass precedes bounded WAV staging; fresh authorization
+  follows preparation and remains owned through durable canonical completion and
+  capture acknowledgment/observation. No source audio is deleted.
+- Store-owned complete bounded receipt discovery and opaque recovery plans avoid
+  resurrecting completed/deleted recordings. Strict duplicate-free parsing,
+  timestamp bounds and transcript-presence guards preserve existing data. Core
+  recovers admitted writes before readiness and gates recording reads/deletion
+  both before and after awaited work. Actual ungating emits narrow recording
+  invalidation so an eager subscriber cannot retain a transient error forever.
+- Root's six integrated capture HTTP tests pass, including SDK lost-reply/status/
+  replay and an independent authenticated canonical recording read at 50/150/500
+  ms RTT. The private source and note remain intact. Pending-session publication,
+  append and an existing transcript are refused unchanged. Store recovery worker
+  passed 44 focused cases/18 new; Core worker passed 58 selected cases/16 new.
+- CPU speech resource ownership is integrated around the existing direct Whisper
+  kernel: operator path/size/SHA verification, one batch or live reservation by
+  default, bounded optional progress, complete retained result and actual worker/
+  source/model-destruction ownership. Seventeen fake ownership tests, normal
+  package check and library Clippy pass. This is not a public transcription job,
+  working live session or new Linux inference acceptance claim.
+- Actual main linked-note/delete labels now use bounded scoped session summaries;
+  linked rows no longer load referenced note bodies/tasks. Scope QueryClients own
+  balanced mount leases, fixing paused queries that otherwise failed to resume
+  under the main window's separate QueryClientProvider. Worker 185 relevant tests
+  and Root 68 integration cases pass.
+- Actual main date edits use metadata-only reads and checked created_at patches.
+  Form picks/revisions survive refresh, conflicts and uncertain results; explicit
+  review precedes retry, and an already-matching canonical value avoids a duplicate
+  write. Canonical replies do not seed historical snapshots. Author badges share
+  that same metadata query without fetching note bodies. Root's date/author
+  selection passes 46 cases after a wording regression for unrelated tag changes;
+  earlier combined date/main and author/main selections pass 58 and 64.
+- Derived transcript screen/export caches and warm readiness now belong to the
+  captured Scope object/QueryClient and owning session/transcript/request hash.
+  Late results, terminal retirement, same-string Scope replacement and null live
+  placeholders cannot reuse another owner's segments. Explicit-data formatting
+  stays device-local and works offline. Worker 107 and Root 44 relevant tests pass;
+  transcript/people source reads still need migration.
+
+Actual generated bindings remain unchanged from `0818a893e`; combined frontend
+checks/typechecks, changed-source formatting, strict locale generation/drift,
+normal desktop library check and headless dependency guard pass. The normal
+native check retains 31 known unwired capture warnings. The new resource graph
+also excludes Tauri/listener/device dependencies. These checks do not replace
+production macOS UX, real speech/capture or native Windows acceptance.
+
+Both architectures in the preceding Windows run have now completed and show the
+same capture-fixture lease-release race as macOS. The bounded specific-error
+reopen fix is integrated and its 28 local capture tests pass. The corrective batch
+can now be pushed without canceling healthy CI; fresh hosted results must be
+recorded for its exact SHA.
+
+Important remaining constraints: no main remote profile/remote-only startup,
+public recording controls/uploader/quit ownership, pending-note/append flow,
+authenticated live/batch transcription or checked transcript promotion yet. The
+service currently retains raw staging under a 2 GiB/64-capture quota per vault;
+publication does not reclaim it. Verified retention/cleanup and sustained recording
+acceptance are required. The later startup/document/watch cancellation ownership
+gap remains a separate hardening audit. Linux CPU live/diarization, imports,
+remaining content/CLI ownership and mutations, restore/downgrade and full platform
+acceptance remain open. No merge/release or complete deployment-mode claim.

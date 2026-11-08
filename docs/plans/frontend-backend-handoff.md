@@ -2,219 +2,135 @@
 
 ## Current state
 
-The user resumed **all work**. Goal: fully implement, test and validate
-`docs/plans/frontend-backend-separation.md`. This is a continuation checkpoint,
-not a pause or a completion claim.
+The user resumed all work. Goal: fully implement, test and validate
+`docs/plans/frontend-backend-separation.md`. This checkpoint does not claim
+completion. All seven delivery phases remain open.
 
-- Root worktree: `/Volumes/T7/src/loofah-backend-separation`.
+- Integration worktree: `/Volumes/T7/src/loofah-backend-separation`.
 - Branch: `refactor/frontend-backend-separation`.
-- Source: `0818a893e7af829b3a70425b359e7aa8ed6c9597`.
-- Compiled locale checkpoint: `3306a0988a9083766328c5cc8f847aa18585d48a`.
-- Last push: `aade2e309e08c93249c6d440e64b3e9485457b86`.
+- Last source checkpoint: `9f166ae9403b7027c9e4c4605c95850c30231feb`.
+- Last pushed head: `aade2e309e08c93249c6d440e64b3e9485457b86`.
 - Draft PR: <https://github.com/bart6114/loofah/pull/123>; no merge or release.
-- Original `/Volumes/T7/src/free-meeting-transcriber`, `main`: tracked files
-  remain clean and untouched; pre-existing untracked docs are preserved.
+- Original `/Volumes/T7/src/free-meeting-transcriber` remains on main with tracked
+  files untouched. Preserve its pre-existing untracked documentation.
 
-Default local use remains standalone, offline and **login-free**, including solo
-use. Preserve macOS and Windows 11 x64/ARM64. Linux is headless only. No bases,
-CRDTs, general remote-vault offline editing, mobile or collaborative editing.
-Every local artifact/cache/temp/log/model must resolve physically to T7.
+Verify live HEAD, status, processes, agents and CI before resuming. Default local
+use remains standalone, offline and login-free, including solo use. Preserve
+macOS and Windows 11 x64/ARM64; Linux is headless only. Exclude bases, CRDTs,
+general remote-vault offline editing, mobile and real-time collaborative editing.
+Every local build artifact, cache, temporary file, log and model stays physically
+on T7. Use isolated worktrees.
 
-Read live Git status, HEAD, agent/process state and CI before continuing. Source
-changes below are committed; Root's Cargo/native/frontend pipelines have finished.
-C owns the exclusive shared Cargo target-root build window. B is writing Core
-publication without Cargo. A is starting slim main-app reads. Do not cancel
-healthy work or run another shared-cache build without coordination.
+## Implemented since the previous pushed batch
 
-## Latest integrated work and evidence
+The main plan records earlier extracted operations, HTTPS/SSE, scoped clients and
+drafts, checked editing, media/attachments, processing and CLI/MCP remote reads.
+New integrated work includes:
 
-Earlier shared operations, authenticated HTTPS/SSE, scoped clients/drafts, opt-in
-notes workspace, checked editing/tasks/metadata/tags, media/attachments, processing
-settings/jobs, CLI/MCP remote reads and internal native capture are described in
-the main plan. None establishes full main-shell or remote capture completion.
+- Lossless title metadata patches, optional durable summary/title orchestration,
+  exact-policy device recovery, capability gates and actual generated contracts.
+  Preserve omits the new field exactly; title failure never discards a successful
+  body. Retained generated output can differ from the subsequently titled body.
+- Verified streaming WAV source and absent-only recording publication, complete
+  bounded receipt discovery/recovery, Core media readiness gates and fresh
+  authorization through canonical commit. HTTP/SDK publication is integrated.
+  Source audio is retained; independent canonical reads are still required before
+  any future device cleanup policy.
+- CPU speech resource ownership around the existing kernel: explicit verified
+  operator model, bounded batch/live admission, actual native/source/model drain,
+  lossy optional batch progress and complete authoritative terminal result.
+  This is not a public STT job or completed typed live inference feature.
+- Actual main New Note, slim linked-session summaries, balanced Scope QueryClient
+  mounting, checked Date editing, shared author metadata reads and scoped derived
+  transcript/export caches. Legacy source reads and rich main editor paths still
+  require migration; never replace their local facade with a global active router.
+- A capture test now waits for the specific retryable spool lease release after
+  shutdown. It preserves every original manifest/hash assertion.
 
-New Root checkpoints after the last pushed batch:
+Important evidence under `/Volumes/T7/loofah-backend-build/`:
 
-| Root commit | Change                                                          |
-| ----------- | --------------------------------------------------------------- |
-| `ca7f9af3e` | Verified absent-only WAV publication primitive in `vault-write` |
-| `b700e51a8` | Preserve/default and optional generated-title job contracts     |
-| `338c1f1e7` | Durable body confirmation and optional Core title stage         |
-| `7a3da095d` | Plain main New Note through captured client/tabs scope          |
-| `b7af0fe3c` | Lossless raw title metadata patch and actual-byte preflight     |
-| `67e4e06f3` | Capture-fixture bounded lease reopen, test only                 |
-| `9fa1fa50f` | Verified streaming WAV source, four new tests                   |
-| `77f4b5b43` | Scoped title opt-in, exact-policy recovery and result UI        |
-| `0818a893e` | SDK/capability gates, real network tests, actual exports/docs   |
-| `3306a0988` | All 109 locale catalogs extracted and strictly compiled         |
+| Check                     | Evidence                                                                                                                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Optional title stage      | `agents/title-stage/logs/core-stage-test-provenance-final.json`; final jobs 128 pass plus 8 crash children                                                                                                         |
+| Lossless title metadata   | `agents/title-metadata/logs/test-provenance.json`; 101 focused pass                                                                                                                                               |
+| Recording recovery        | `agents/capture/publication-recovery-verification.json`;44 focused pass                                                                                                                                          |
+| Core capture publication  | `agents/capture-publication/logs/verification-final.json`;58 selected pass                                                                                                                                       |
+| CPU resource owner        | `agents/capture/logs/stt-resources-verification.json`;17 ownership cases                                                                                                                                         |
+| HTTP publication          | `logs/capture-publication-api-provenance.json`;6 pass including lost reply/replay/independent read at 50/150/500 ms RTT                                                                                            |
+| Title HTTP/protocol       | `logs/generated-title-api-provenance.json`; real lost-reply title behavior and actual export checks                                                                                                              |
+| Main frontend             | `logs/main-session-headers-integrated-tests.log`, `main-session-date-integrated-tests.log`, `main-session-author-integrated-tests.log`, `transcript-cache-integrated-tests.log`, `date-review-wording-tests.log` |
+| Normal native check       | `logs/publication-speech-native-check.log`;pass with 31 known unwired capture warnings                                                                                                                            |
+| Headless dependency guard | `logs/publication-speech-headless-dependencies.txt`;no Tauri/device dependencies                                                                                                                                 |
 
-Title requests omit Preserve exactly as before. Opt-in requires `generated_titles`
-before credentials/dispatch. The worker confirms the body, then uses its pinned
-model/settings for the optional title. Body success survives title failure,
-cancellation, conflict or uncertainty. Canonical title application preserves the
-existing heading policy; retained generated text remains the original output.
-Newer device title drafts survive. Private opt-in jobs use schema 2 and bounded
-title sidecars; canonical title transactions use existing schema 4. Do not reset
-unreadable records or repeat paid work on restart/downgrade. Review/drain with the
-current version or restore matching binary plus complete storage backup.
+Actual generated files at this checkpoint:
 
-Important validation:
-
-- Title metadata worker: 101 focused cases/nine new regressions, actual crash
-  fixture, default all-target check, source/freshness/list/hash proofs:
-  `/Volumes/T7/loofah-backend-build/agents/title-metadata/logs/`.
-- Title stage: worker full Core 277 passed/two helpers ignored before equivalent
-  lint simplifications; final jobs 128 passed/two helpers ignored, eight actual
-  crash subprocesses, checks/Clippy. Final proof files:
-  `/Volumes/T7/loofah-backend-build/agents/title-stage/logs/core-stage-test-provenance-final.json`,
-  `core-stage-sources-final.sha256`, `core-jobs-tests-final.log`.
-- Original publication primitive: worker 479 passed/five helpers ignored,
-  26 publication cases/six actual crash subprocesses:
-  `/Volumes/T7/loofah-backend-build/agents/capture/recording-publication-verification.json`.
-- Root WAV: four passed, exact samples/channel order, corrupted second pass,
-  retained context on cancellation, two-hour header geometry (not two-hour capture
-  acceptance). SDK missing-title-capability test passed before credential access.
-  Proof: `/Volumes/T7/loofah-backend-build/logs/capture-wav-sdk-provenance.json`.
-- Root protocol: four job-contract tests, including actual optional TypeScript
-  export and exact old request bytes. Network title replay at 50/150/500 ms RTT
-  loses the first reply and repeats neither model call. The 150 ms case proves
-  invalid title output retains successful unchanged body. Eight existing API
-  tests passed in the first run; a new test incorrectly expected no canonical
-  heading stamp, was corrected, then passed. Proof:
-  `/Volumes/T7/loofah-backend-build/logs/generated-title-api-provenance.json`.
-- Native 28 capture cases/default parallel, both targets/policies receipt
-  round-trip without login/vault session, actual export, normal desktop check.
-  Logs `capture-reopen-native-tests.log`, `title-policy-native-receipt-tests.log`,
-  `generated-title-final-native-export.log`, `generated-title-native-check.log`.
-- Root Core/client/server all-target check passed. Unwired WAV/internal capture
-  methods still emit unsuppressed warnings; do not suppress them for clean logs.
-- Frontend worker 117 unique focused tests; Root integrated 165 cases/six files,
-  actual-binding typecheck, owned format, strict catalogs and committed drift
-  check pass. Logs `generated-title-integrated-{ui-tests,typecheck}.log` and
-  `generated-title-i18n-{extract,compile,drift-check}.log` under the same T7 logs.
-
-Actual generated files:
-
-- `apps/desktop/src/types/tauri.gen.ts`:
+- `apps/desktop/src/types/tauri.gen.ts` SHA256
   `37ac8b22422c84fc951284a49c7e4061277d004800614dcd31d7e657aebd1cdd`.
-- `apps/desktop/src/shared/application/protocol.gen.ts`:
+- `apps/desktop/src/shared/application/protocol.gen.ts` SHA256
   `4c9d0800a69ffbdc1d74a93fe6647b07cfe825e1151861491a7965b975ad7e4a`.
 
-Specta's pinned macro parses custom serde skip after Specta attributes, resetting
-optional=false. `SummaryJobRequest` deliberately puts serde `default` last; the
-export golden test guards that behavior. Never hand-edit generated contracts.
+Do not hand-edit generated bindings. For TitlePolicy, serde `default` must follow
+its custom `skip_serializing_if` attribute so Specta exports the field optional.
 
-## Active worker ownership
+## Active distribution and build windows
 
-Reuse the three authorized agents. Do not spawn a new team.
+- A (`frontend_distribution`): next slim TranscriptOverview contract/read across
+  adapters and scoped main consumers, from 9f166. Narrow shared-registration edit
+  exception granted; Root still exports bindings/locales. Agree contract first.
+- B (`backend_distribution`): completed Store-only first transcript publication,
+  commit `bb33b5d382a02f484fd82664dfb31730df26add4`, base e03cee596. Six scoped
+  files; 83 cases pass, check 0 diagnostics, library Clippy 31 baseline/0 new.
+  Proof `agents/transcript-publication/logs/verification.json`; executable SHA256
+  `dcd9f9edae3770ad3148a95edce580ee54ca3729cdcfde9fdaf92019fc7f59de`.
+  Integration remains pending at this checkpoint. B now audits startup ownership
+  read-only. Service::vault already owns initialization in a detached task;
+  direct runtime initialization and Drop/shutdown-timeout paths need tracing.
+- C (`capture_distribution`): typed f32 live facade, bounded atomic per-channel
+  admission and authoritative outputs, scoped existing VAD/Whisper reuse and
+  actual native thread joining. Source freeze/build follows final credit review.
+  C owns the exclusive target-root Cargo window. No other target-root build until
+  C explicitly releases it. Run fake/legacy gates before opt-in real CPU test.
+- Root: integrate reviewed commits, keep docs and PR accurate, run normal native
+  integration checks using the separate existing target-tauri cache when needed.
 
-**A — `/root/frontend_distribution`**: slim actual-main summary reads, fresh base
-`3306a0988`. Own only `session/queries.ts::useSessionSummary`, linked-row
-`editor-bridge/session-view.tsx` and focused tests. Use existing bounded
-`VaultScope.sessionSummariesOptions`, avoid downloading/parsing referenced note
-bodies for dates. Test dedupe, immutable host/cache identity, replacement/late
-results, terminal access loss and offline login-free local behavior. No profile
-activation, legacy AI/capture, new backend API or full repeated frontend suite.
-Prior clean feature commit `1ac2238c` is already integrated as `77f4b5b43`; two
-Root-generated validation inputs in that old worker tree are intentionally dirty
-and excluded.
+Source must stay frozen through each dependent build. Require compiler artifact
+`fresh=false`, own source path and dep-file, exact nonzero new-test inventory,
+source hashes and executable SHA. A zero-match test result is not verification.
+Never cancel healthy builds or wipe/bypass shared caches to avoid locks. macOS
+binary assessment can stall compilation or launch for minutes; inspect first.
 
-**B — `/root/backend_distribution`**: `/Volumes/T7/src/loofah-capture-publication`,
-`refactor/backend-capture-publication`, base `9fa1fa50f`. Core publication code,
-Context gates, runtime recovery and recording read/delete gates; no Cargo while
-C owns target-root. Approved API `publish_capture_authorized(member, capture_id,
-expected_seal, repeatable_authorize) -> CaptureIngestStatus`. ExistingSession with
-expected audio absent only; reject PendingSession/append for this checkpoint.
-Derive scope, original UUID, encoder-domain source binding, layout and timing
-from authenticated sealed storage. Verify full PCM, stream deterministic WAV,
-join actual producer/prepare I/O on all outcomes, recheck, then reacquire fresh
-authorization through commit and spool observation. Keep raw sources. No endpoint
-or capability before integration. Successful response alone cannot authorize
-device cleanup; require independent canonical read verification.
+## CI and next integration batch
 
-Install per-session/per-operation active+unresolved gates before preparation.
-Retain them after ambiguous commit; one ticket cannot clear another. Gate media
-before and after awaited recording opens and delete preparation/recheck. Unknown
-unscoped inventory issues deny recording vault-wide while notes remain usable.
-C supplies opaque recovery plans. Bootstrap trusted service-owner recovery needs
-no JWT or model work, holds the actual vault lease through new recovery I/O, and
-runs before context exposure. Existing subsequent document/startup cancellation
-ownership gaps are not claimed solved. No STT endpoint exists yet; future STT
-must use the guarded source.
+The last fully green head remains `93dada10bb592c824ae59eeff72187b5079a9558`,
+including Windows x64/ARM64 installers. The later aade batch has finished all
+workflows: four succeeded; macOS Rust and both Windows architectures failed the
+same capture-fixture lease-release race. The integrated test-only fix passes 28
+local capture tests. No healthy previous run remains to wait for; push the next
+validated corrective batch, update the draft PR and record its exact SHA/results.
+Do not claim the optional speech-model lane or real hardware acceptance ran.
 
-**C — `/root/capture_distribution`**:
-`/Volumes/T7/src/loofah-separation-publication-recovery`,
-`refactor/backend-publication-recovery`, base `b7af0fe3c`. Own recording publication
-module/tests only. Approved bounded complete pending/review inventory, strict
-receipt/path/vault validation and opaque prepared recovery handles; Committed
-receipts omitted and never resurrected after later deletion. Overflow/incomplete
-scan fails closed, no truncated success. Return prepared plan so Core can hash,
-reauthorize and commit separately. Preserve uncertainty/stages, never infer or
-remove orphan sources/files. Also bound inherited ended_at before intent and
-check known transcript.json absence under the existing transcript lease for
-initial publication; committed replay permits later legitimate transcription.
-No global SessionStore field or canonical schema change. C currently owns the
-exclusive target-root validation window; obtain explicit release before B/Root
-Cargo work. Verify fresh=false, own source, exact new test inventory and SHA.
+## Remaining acceptance gates
 
-## Next integration and completion gates
+Main profile selection and remote-only startup; remaining rich editor/tasks,
+transcript/people/content/import/export and CLI-owner/mutation migrations;
+owner-managed provider credentials; trusted device capture source/uploader,
+public controls, quit ownership, pending-note/append recovery; authenticated
+live/batch STT, checked transcript promotion and portable diarization; verified
+source retention/cleanup; restore/upgrade/downgrade and full platform QA.
 
-1. Review C storage recovery, integrate clean commit; review B publisher/gates,
-   integrate only after focused ownership/auth/crash/restart tests and default
-   check. Root owns subsequent HTTPS/SDK thin adapters and real latency/lost-reply
-   end-to-end validation; advertise capability only with a safe complete path.
-2. Integrate A slim queries after focused verification. Main-shell/profile and
-   remote-only startup remain broader work. Legacy global store commands,
-   mutations, tasks/people, timeline/selection, windows, AI and capture must be
-   scoped before activating remote in the actual main shell.
-3. Continue trusted native source, durable uploader, lifecycle/public controls,
-   pending-session creation, append/repair, live/batch transcription and Linux
-   model management. Neither private staging nor WAV storage is remote recording.
-4. Complete remaining mutations/imports/exports, CLI owner bridge/mutations,
-   credentials, deployment restore/upgrade/downgrade, realistic network outages,
-   real two-hour recording, production performance and macOS/Windows acceptance.
-5. Keep all seven plan phases open until full acceptance. No merge/release based
-   on a helper, opt-in workspace, synthetic fixture or previous SHA's CI.
+The current service retains raw capture sources under a 2 GiB/64-capture quota per
+vault. Publication does not reclaim it. Continuous-use recording needs verified
+retention/cleanup and replay semantics after pruning. Do not silently delete the
+only recoverable audio. Recording queues are distinct from offline remote editing.
 
-## Hosted CI and build rules
+Production macOS responsiveness, real capture/STT, realistic 50/150/500 ms networks,
+disconnects, two-hour recordings and Windows native x64/ARM64 remain required.
+The runtime cancellation audit must distinguish detached Service initialization
+from direct open/Drop paths before proposing changes.
 
-Last fully green head: `93dada10bb592c824ae59eeff72187b5079a9558`, all six hosted
-workflows including Windows x64/ARM64 installers. Speech-model dispatch was
-skipped, so this is not hardware/model recording acceptance.
+## Preserved recovery state
 
-Last pushed `aade2e309`: backend/CLI/general/security/frontend pass; macOS and
-Windows x64 failed the same capture-fixture lease-release race. Test-only fix
-`67e4e06f3` is integrated and 28 native capture tests pass. ARM64 is still active
-at this save. Wait for completion before pushing the validated corrective batch;
-fix actual failures, do not wait forever for an unchanged failed SHA to be green.
-Current run `42436692171`; x64 job `128596929979`, ARM job `128596930244`.
-macOS failure run `42436692175`, job `128596929946`.
-
-Use exclusive Cargo validation windows; Cargo command locks alone once selected
-a stale wrong-worktree binary with zero new tests. Reject zero-match runs and
-pin compiler source/freshness/test list/hash. Sources stay frozen through builds
-and actual crash children. Root centrally owns native builds and binding export.
-Use installed Cargo, `--locked --offline`, shared targets physically at
-`/Volumes/T7/loofah-search-build/{target-root,target-tauri}`. Fresh worktrees run
-`scripts/setup-shared-target.sh` and verify physical destinations first.
-
-Set these paths for tools:
-
-```sh
-export PATH=/Users/bart/.cargo/bin:$PATH
-export TMPDIR=/Volumes/T7/loofah-backend-build/tmp
-export NPM_CONFIG_CACHE=/Volumes/T7/loofah-backend-build/npm-cache
-export DPRINT_CACHE_DIR=/Volumes/T7/loofah-backend-build/dprint-cache
-export CLANG_MODULE_CACHE_PATH=/Volumes/T7/loofah-backend-build/clang-module-cache
-export SWIFTPM_MODULECACHE_OVERRIDE=/Volumes/T7/loofah-backend-build/swift-module-cache
-```
-
-Use targeted checks, no redundant full suites. Native export runs from
-`apps/desktop/src-tauri`, then oxfmt the generated file from Root. Protocol exporter
-writes its exact output; do not format it. Catalog drift check needs the generated
-catalogs committed first. Markdown uses T7 tmp/markdown-dprint.json.
-
-Preserve pause archive `/Volumes/T7/loofah-backend-build/pause-2026-11-07T093537Z/`
-and existing stashes. Root stash `d13afbb1cb44a7939c3a5755458f97652e3630b1` was
-restored/hash-verified and incorporated into `0868995b4`; do not reapply it.
-Other old stashes are preserved, not instructions to overwrite current work.
+Pause archive: `/Volumes/T7/loofah-backend-build/pause-2026-11-07T093537Z/`.
+Stash `d13afbb1cb44a7939c3a5755458f97652e3630b1` was already restored,
+hash-verified and incorporated in 0868995b4; do not reapply it. Preserve other
+pre-existing stashes without treating them as instructions.

@@ -1,12 +1,19 @@
 # Run the Loofah server
 
-The server is experimental. It currently exposes authenticated vault, note, existing-content, search, attachment-upload and change-stream APIs. The full server connection experience, server AI processing, recording ingestion and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server.
+The server is experimental. It exposes authenticated vault, note, existing-content, search, attachment-upload, configured summary/title jobs, capture staging/publication and change-stream APIs. The full desktop connection experience, resilient remote recording and server transcription are still being implemented. The desktop's default local mode works without an account or server.
 
-The existing Whisper implementation now exposes a cancellable Rust batch kernel without Tauri or device capture. JSON, SSE and internal callers share model/audio ownership and cancellation handling. This is an extraction boundary for server transcription; the server does not yet advertise a transcription endpoint or accept recordings for processing. The dedicated Linux CPU CI job passed the kernel and existing HTTP/live inference tests with a checksum-pinned model and verified generic CPU compilation. Server transcription wiring and complete platform acceptance remain open.
+The existing Whisper implementation now exposes a cancellable Rust batch kernel without Tauri or device capture. JSON, SSE and internal callers share model/audio ownership and cancellation handling. This is an extraction boundary for server transcription; the server does not yet advertise a transcription endpoint or accept recordings for processing. The dedicated Linux CPU CI job passed the kernel and existing HTTP/live inference tests with a checksum-pinned model and verified generic CPU compilation. Server transcription wiring and complete platform acceptance remain open. The internal
+`WhisperResources` owner now verifies an operator-provisioned CPU model before and
+after loading, bounds admission, retains source/native ownership through actual
+batch completion, and drains model destruction on shutdown. Its optional progress
+queue is lossy while the complete terminal result remains available. A live
+reservation is not live inference; typed live input and authenticated Core jobs
+remain under implementation. Model paths stay operator configuration, not client
+request fields.
 
 Capture identity, format, chunk, seal and receipt types live in the shared protocol with the unchanged version-1 fingerprint and checksum-chain functions. The neutral `capture-store` crate stores durable staging on the device and service. A first-audio producer observation upgrades a capture manifest to schema 2 without changing its audio hashes; older readers refuse that manifest. Existing untimed schema-1 captures remain readable without an invented timestamp.
 
-The experimental `capture_ingestion` capability exposes authenticated staging APIs below. These endpoints retain private upload chunks; they do not publish a recording into a session, run transcription, expose remote recording controls, or authorize deletion of device audio. Local desktop capture remains login-free. The separate experimental `capture_publication` capability adds verified publication for an existing note with no recording or transcript. The SDK checks this capability before credentials; staging support alone cannot dispatch publication.
+The experimental `capture_ingestion` capability exposes authenticated staging APIs below. Staging retains private upload chunks. Canonical publication uses the separate capability below; transcription, remote recording controls and device cleanup remain distinct operations. Local desktop capture remains login-free. The separate experimental `capture_publication` capability adds verified publication for an existing note with no recording or transcript. The SDK checks this capability before credentials; staging support alone cannot dispatch publication.
 
 | Method | Path below `/api/v1/vaults/{vault}`     | Result                                                                                                        |
 | ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -37,7 +44,11 @@ considering device cleanup. Neither upload acknowledgment nor this response alon
 authorizes deleting device audio; server raw source is retained. A lost reply is
 recovered through status and explicit identical retry without another file publish.
 These APIs are internal building blocks; remote recording controls, uploader
-lifecycle and server transcription remain in progress.
+lifecycle and server transcription remain in progress. The current service spool
+retains raw bytes with a default 2 GiB quota per vault and 64 capture entries;
+publication does not reclaim that quota. Verified retention/cleanup and sustained
+recording acceptance remain required before treating this as a continuous-use
+recording deployment.
 
 Back up the recording-publications bookkeeping with its vault. Resolve pending
 intents with the current reader before rollback; older executables can ignore this
