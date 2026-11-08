@@ -88,9 +88,11 @@ async fn abandoned_waiter_keeps_physical_owner_and_shutdown_waits_for_both_lanes
     drop(live);
     queued(&mut drain).await;
     release.send(()).unwrap();
-    tokio::time::timeout(Duration::from_secs(2), drain)
-        .await
-        .unwrap();
+    drop(
+        tokio::time::timeout(Duration::from_secs(2), drain)
+            .await
+            .unwrap(),
+    );
 }
 
 #[tokio::test]
@@ -108,9 +110,11 @@ async fn physical_worker_panic_closes_admission_before_releasing_its_slot() {
         admission.batch(&CancellationToken::new()).await,
         Err(AdmissionError::Stopped)
     ));
-    tokio::time::timeout(Duration::from_secs(2), admission.drain())
-        .await
-        .unwrap();
+    drop(
+        tokio::time::timeout(Duration::from_secs(2), admission.drain())
+            .await
+            .unwrap(),
+    );
 }
 
 #[tokio::test]
@@ -126,7 +130,9 @@ async fn startup_and_shutdown_own_every_configured_group() {
     let mut drain = Box::pin(admission.drain());
     queued(&mut drain).await;
     drop(loading);
-    tokio::time::timeout(Duration::from_secs(2), drain)
-        .await
-        .unwrap();
+    drop(
+        tokio::time::timeout(Duration::from_secs(2), drain)
+            .await
+            .unwrap(),
+    );
 }
