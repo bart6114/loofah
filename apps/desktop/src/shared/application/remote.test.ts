@@ -18,6 +18,12 @@ const native = vi.hoisted(() => ({
   remoteAttachmentClose: vi.fn(),
   remoteAttachmentCopy: vi.fn(),
   remoteUploadAttachmentSource: vi.fn(),
+  remoteMediaRequest: vi.fn(),
+  remoteMediaSubmit: vi.fn(),
+  remoteMediaRecover: vi.fn(),
+  remoteMediaCancel: vi.fn(),
+  remoteMediaResumeSource: vi.fn(),
+  remoteMediaSubmissions: vi.fn(),
   attachmentTargets: new Map<string, string>(),
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
@@ -701,5 +707,139 @@ describe("native remote connection", () => {
     await first;
     await second;
     expect(native.remoteDisconnect).toHaveBeenCalledOnce();
+  });
+});
+
+describe("scoped media bridge", () => {
+  function declaration(requestId: string) {
+    return {
+      request_id: requestId,
+      operation: {
+        kind: "import_audio" as const,
+        session_id: null,
+        expected: null,
+        filename: "original.wav",
+        content_type: "audio/wav",
+        created_at: null,
+        transcribe: false,
+        source: { sha256: "a".repeat(64), size_bytes: 14 },
+      },
+      transcription: null,
+      summary: null,
+    };
+  }
+  async function connection() {
+    native.remoteConnect.mockResolvedValueOnce({
+      status: "ok",
+      data: {
+        ...info,
+        capabilities: { ...info.capabilities, features: ["media_jobs"] },
+      },
+    });
+    return NativeRemoteConnection.connect(info.server);
+  }
+  it("refuses missing capability and mismatched declaration IDs before native dispatch", async () => {
+    const client = await NativeRemoteConnection.connect(info.server);
+    const id = crypto.randomUUID();
+    await expect(
+      client.submitMedia(
+        "private",
+        declaration(id),
+        { kind: "path", path: "/device/original.wav" },
+        { requestId: id },
+      ),
+    ).rejects.toMatchObject({
+      detail: {
+        code: "incompatible_version",
+        mutation_outcome: "not_committed",
+      },
+    });
+    const supported = await connection();
+    await expect(
+      supported.submitMedia("private", declaration(id), null, {
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({
+      detail: { code: "validation", mutation_outcome: "not_committed" },
+    });
+    expect(native.remoteMediaSubmit).not.toHaveBeenCalled();
+  });
+  it("passes exact original declarations and device sources once, leaving unknown writes for explicit recovery", async () => {
+    const client = await connection();
+    const id = crypto.randomUUID();
+    const input = declaration(id);
+    const failure = {
+      ...error,
+      code: "unavailable",
+      request_id: id,
+      mutation_outcome: "unknown",
+    };
+    native.remoteMediaSubmit.mockResolvedValue({
+      status: "error",
+      error: failure,
+    });
+    const source = { kind: "staged" as const, id: "original-stage" };
+    await expect(
+      client.submitMedia("private", input, source, { requestId: id }),
+    ).rejects.toMatchObject({ detail: failure });
+    expect(native.remoteMediaSubmit).toHaveBeenCalledExactlyOnceWith(
+      "connection",
+      "private",
+      input,
+      source,
+    );
+    expect(native.remoteMediaRecover).not.toHaveBeenCalled();
+    expect(native.remoteMediaResumeSource).not.toHaveBeenCalled();
+    const status = {
+      declaration: input,
+      revision: "b".repeat(64),
+      phase: "review",
+      media: null,
+    };
+    native.remoteMediaRecover.mockResolvedValue({ status: "ok", data: status });
+    await expect(client.recoverMedia("private", id)).resolves.toEqual(status);
+    expect(native.remoteMediaRecover).toHaveBeenCalledExactlyOnceWith(
+      "connection",
+      "private",
+      id,
+    );
+  });
+  it("cancels only the original in-flight submission and marks its late success unknown", async () => {
+    const client = await connection();
+    const id = crypto.randomUUID();
+    const input = declaration(id);
+    let finish!: (result: unknown) => void;
+    native.remoteMediaSubmit.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const cancel = new AbortController();
+    const pending = client.submitMedia(
+      "private",
+      input,
+      { kind: "path", path: "/device/original.wav" },
+      { requestId: id, signal: cancel.signal },
+    );
+    cancel.abort();
+    expect(native.remoteCancelRequest).toHaveBeenCalledWith("connection", id);
+    finish({
+      status: "ok",
+      data: {
+        declaration: input,
+        revision: "b".repeat(64),
+        phase: "running",
+        media: null,
+      },
+    });
+    await expect(pending).rejects.toMatchObject({
+      detail: {
+        code: "cancelled",
+        request_id: id,
+        mutation_outcome: "unknown",
+      },
+    });
+    expect(native.remoteMediaSubmit).toHaveBeenCalledTimes(1);
   });
 });

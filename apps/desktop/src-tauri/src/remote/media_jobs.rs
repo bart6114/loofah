@@ -194,10 +194,16 @@ pub async fn remote_media_submit<R: tauri::Runtime>(
         .await?;
     if !first {
         // An ordinary renderer retry cannot repeat an unknown source upload or paid dispatch.
-        return verify_status(
-            &submission,
-            authority.status(&submission.declaration.request_id).await?,
-        );
+        let status = authority.status(&submission.declaration.request_id).await.map_err(|mut cause| {
+            if cause.code == ErrorCode::NotFound {
+                cause.code = ErrorCode::Unavailable;
+                cause.message = "The original device declaration was saved; explicitly recover that request before selecting source again".into();
+                cause.mutation_outcome = Some(MutationOutcome::Unknown);
+                cause.retryable = false;
+            }
+            cause
+        })?;
+        return verify_status(&submission, status);
     }
     let reader = reader(&app, window.label(), &submission, source)?;
     let admission = authority.declare(&submission).await?;
