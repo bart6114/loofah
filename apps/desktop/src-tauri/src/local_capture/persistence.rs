@@ -250,7 +250,7 @@ pub(super) fn start(
                 }
                 delta = receive.recv(), if deltas_open => {
                     if let Some(delta) = delta { persist_delta(&context, &session, &transcript_id, started_at, delta, &mut wrote_transcript, &mut failure).await; }
-                    else { deltas_open = false; failure.get_or_insert_with(|| "Capture persistence stream ended unexpectedly".into()); }
+                    else { deltas_open = false; }
                 }
                 changed = completion.changed(), if completion_open => {
                     if changed.is_err() {
