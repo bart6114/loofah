@@ -8,6 +8,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavailable};
 
+mod document_editor;
+
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
@@ -103,6 +105,17 @@ pub enum RemoteOperation {
         session_id: String,
         target: DocumentTarget,
         input: SaveDocumentRequest,
+    },
+    DocumentEditor {
+        vault_id: String,
+        session_id: String,
+        target: DocumentTarget,
+    },
+    SaveDocumentEditor {
+        vault_id: String,
+        session_id: String,
+        target: DocumentTarget,
+        input: SaveDocumentEditorRequest,
     },
     TranscriptOverview {
         vault_id: String,
@@ -266,6 +279,8 @@ pub enum RemoteReply {
     Documents(Vec<EnhancedDoc>),
     Document(DocumentSnapshot),
     DocumentSave(DocumentSaveOutcome),
+    DocumentEditor(DocumentEditorSnapshot),
+    DocumentEditorSave(DocumentEditorSaveOutcome),
     TranscriptOverview(TranscriptOverview),
     Transcripts(Vec<TranscriptWithData>),
     AudioMetadata(Option<FileMetadata>),
@@ -308,6 +323,7 @@ impl RemoteClient {
             let mut error = invalid("A UUID request ID is required");
             if matches!(operation, RemoteOperation::DeleteEmptySession { .. })
                 || tag_write(&operation)
+                || document_editor::is_save(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
@@ -317,6 +333,7 @@ impl RemoteClient {
             let mut error = cancelled();
             if matches!(operation, RemoteOperation::DeleteEmptySession { .. })
                 || tag_write(&operation)
+                || document_editor::is_save(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
@@ -338,6 +355,8 @@ impl RemoteClient {
             | RemoteOperation::ProcessingJob { .. }
             | RemoteOperation::ProcessingJobResult { .. }
             | RemoteOperation::CancelProcessingJob { .. } => Some("summary_body_jobs"),
+            RemoteOperation::DocumentEditor { .. } => Some("document_editor_read"),
+            RemoteOperation::SaveDocumentEditor { .. } => Some("document_editor_write"),
             RemoteOperation::NoteEditor { .. } => Some("note_editor_read"),
             RemoteOperation::SaveNoteEditor { .. } => Some("note_editor_write"),
             RemoteOperation::AudioMetadata { .. } => Some("audio_metadata_read"),
@@ -360,6 +379,8 @@ impl RemoteClient {
                 RemoteOperation::DeleteEmptySession { .. } => "conditional session cleanup",
                 RemoteOperation::SessionSummaries { .. } => "session summaries",
                 RemoteOperation::TranscriptOverview { .. } => "transcript overview",
+                RemoteOperation::DocumentEditor { .. }
+                | RemoteOperation::SaveDocumentEditor { .. } => "the compound document editor",
                 RemoteOperation::TagSuggestions { .. }
                 | RemoteOperation::EnsureTag { .. }
                 | RemoteOperation::AcceptTagSuggestion { .. }
@@ -391,6 +412,7 @@ impl RemoteClient {
             if matches!(
                 operation,
                 RemoteOperation::SaveNoteEditor { .. }
+                    | RemoteOperation::SaveDocumentEditor { .. }
                     | RemoteOperation::DeleteEmptySession { .. }
                     | RemoteOperation::SaveProcessingSettings { .. }
                     | RemoteOperation::SubmitSummaryJob { .. }
@@ -451,6 +473,13 @@ impl RemoteClient {
             error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             return Err(error);
         }
+        document_editor::validate_operation(&operation).map_err(|mut error| {
+            error.request_id = Some(request_id.to_owned());
+            if document_editor::is_save(&operation) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            error
+        })?;
         if let RemoteOperation::TranscriptOverview { session_id, .. } = &operation
             && validate_session_id(session_id).is_err()
         {
@@ -726,6 +755,39 @@ impl RemoteClient {
                 Method::GET,
                 vec!["vaults", vault_id, "sessions", session_id, "documents"],
             ),
+            RemoteOperation::DocumentEditor {
+                vault_id,
+                session_id,
+                target,
+            }
+            | RemoteOperation::SaveDocumentEditor {
+                vault_id,
+                session_id,
+                target,
+                ..
+            } => {
+                let method = if let RemoteOperation::SaveDocumentEditor { input, .. } = &operation {
+                    body = Some(value(input)?);
+                    Method::PUT
+                } else {
+                    Method::GET
+                };
+                let segments = match target {
+                    DocumentTarget::Summary => vec![
+                        "vaults", vault_id, "sessions", session_id, "summary", "editor",
+                    ],
+                    DocumentTarget::TemplateOutput { document_id } => vec![
+                        "vaults",
+                        vault_id,
+                        "sessions",
+                        session_id,
+                        "outputs",
+                        document_id,
+                        "editor",
+                    ],
+                };
+                (method, segments)
+            }
             RemoteOperation::Document {
                 vault_id,
                 session_id,
@@ -1013,7 +1075,7 @@ impl RemoteClient {
             result = self.access_token() => result,
         }
         .map_err(|mut error| {
-            if tag_write(&operation) {
+            if tag_write(&operation) || document_editor::is_save(&operation) {
                 error.request_id.get_or_insert_with(|| request_id.into());
                 error
                     .mutation_outcome
@@ -1043,6 +1105,16 @@ impl RemoteClient {
                 return Ok(RemoteReply::NoteSave(
                     json_body(response, 8 * 1024 * 1024).await?,
                 ));
+            }
+            if status == reqwest::StatusCode::CONFLICT
+                && let RemoteOperation::SaveDocumentEditor {
+                    session_id, target, ..
+                } = &operation
+            {
+                let outcome: DocumentEditorSaveOutcome =
+                    json_body(response, DOCUMENT_EDITOR_RESPONSE_LIMIT).await?;
+                document_editor::validate_outcome(&outcome, session_id, target, true)?;
+                return Ok(RemoteReply::DocumentEditorSave(outcome));
             }
             if status == reqwest::StatusCode::CONFLICT
                 && matches!(operation, RemoteOperation::SaveDocument { .. })
@@ -1244,6 +1316,22 @@ impl RemoteClient {
                 }
                 RemoteOperation::Documents { .. } => {
                     RemoteReply::Documents(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::DocumentEditor {
+                    session_id, target, ..
+                } => {
+                    let snapshot: DocumentEditorSnapshot =
+                        json_body(response, DOCUMENT_EDITOR_RESPONSE_LIMIT).await?;
+                    document_editor::validate_snapshot(&snapshot, &session_id, &target)?;
+                    RemoteReply::DocumentEditor(snapshot)
+                }
+                RemoteOperation::SaveDocumentEditor {
+                    session_id, target, ..
+                } => {
+                    let outcome: DocumentEditorSaveOutcome =
+                        json_body(response, DOCUMENT_EDITOR_RESPONSE_LIMIT).await?;
+                    document_editor::validate_outcome(&outcome, &session_id, &target, false)?;
+                    RemoteReply::DocumentEditorSave(outcome)
                 }
                 RemoteOperation::Document { .. } => {
                     RemoteReply::Document(json_body(response, 32 * 1024 * 1024).await?)

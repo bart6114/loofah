@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{DocumentSnapshot, MetadataSnapshot, TaskInput, TasksSnapshot};
 
+pub const DOCUMENT_EDITOR_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct DocumentEditorSnapshot {
     pub document: DocumentSnapshot,

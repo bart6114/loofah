@@ -1,5 +1,6 @@
 mod attachments;
 mod capture;
+mod document_editor;
 mod downloads;
 mod tag_editing;
 mod transcript_overview;
@@ -33,13 +34,17 @@ use crate::*;
 #[derive(Default)]
 struct MemoryCredentials {
     values: Mutex<HashMap<String, String>>,
+    loads: AtomicUsize,
     saves: AtomicUsize,
     fail: AtomicBool,
     save_delay: AtomicUsize,
 }
 impl CredentialStore for MemoryCredentials {
     fn load<'a>(&'a self, account: &'a str) -> CredentialFuture<'a, Option<String>> {
-        Box::pin(async move { Ok(self.values.lock().await.get(account).cloned()) })
+        Box::pin(async move {
+            self.loads.fetch_add(1, Ordering::SeqCst);
+            Ok(self.values.lock().await.get(account).cloned())
+        })
     }
     fn save<'a>(&'a self, account: &'a str, value: Option<&'a str>) -> CredentialFuture<'a, ()> {
         Box::pin(async move {
@@ -75,6 +80,8 @@ struct Provider {
     stalled_events: AtomicBool,
     recording_mode: AtomicUsize,
     overview_mode: AtomicUsize,
+    document_editor_mode: AtomicUsize,
+    document_editor_calls: Mutex<Vec<Value>>,
     attachment_mode: AtomicUsize,
     attachment_removals: Mutex<Vec<String>>,
     attachment_uploads: Mutex<Vec<(String, UploadAttachmentRequest, Vec<u8>)>>,
@@ -121,6 +128,8 @@ impl Fixture {
             stalled_events: AtomicBool::new(false),
             recording_mode: AtomicUsize::new(0),
             overview_mode: AtomicUsize::new(0),
+            document_editor_mode: AtomicUsize::new(0),
+            document_editor_calls: Mutex::new(Vec::new()),
             attachment_mode: AtomicUsize::new(0),
             attachment_removals: Mutex::new(Vec::new()),
             attachment_uploads: Mutex::new(Vec::new()),
@@ -188,6 +197,14 @@ impl Fixture {
             .route(
                 "/api/v1/vaults/test/sessions/note/transcript-overview",
                 get(transcript_overview::overview),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/summary/editor",
+                get(document_editor::read).put(document_editor::save),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/outputs/{document}/editor",
+                get(document_editor::read).put(document_editor::save),
             )
             .with_state(state.clone());
         let task = tokio::spawn(async move {

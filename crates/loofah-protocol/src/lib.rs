@@ -2,7 +2,8 @@
 
 mod document_editor;
 pub use document_editor::{
-    DocumentEditorSaveOutcome, DocumentEditorSnapshot, SaveDocumentEditorRequest,
+    DOCUMENT_EDITOR_RESPONSE_LIMIT, DocumentEditorSaveOutcome, DocumentEditorSnapshot,
+    SaveDocumentEditorRequest,
 };
 
 use serde::{Deserialize, Serialize};
