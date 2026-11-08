@@ -94,9 +94,10 @@ impl TranscriptionMetadata {
 }
 
 pub struct TranscriptionAccess {
-    /// Membership revocation and host stop only. An admitted job survives the
-    /// original HTTP token's expiry/logout while membership remains valid.
+    /// Membership revocation only. An admitted job survives the original HTTP
+    /// token's expiry/logout while membership remains valid.
     pub cancelled: CancellationToken,
+    pub interrupted: CancellationToken,
     pub owner: Box<dyn Send>,
 }
 
@@ -281,7 +282,7 @@ impl VaultContext {
         self: &Arc<Self>,
         member: String,
         job: String,
-    ) -> Result<Option<TranscriptWithData>, ApplicationError> {
+    ) -> Result<Option<TranscriptionJobResult>, ApplicationError> {
         let context = self.clone();
         tokio::spawn(async move {
             let service = context.transcription_service()?;
@@ -289,7 +290,15 @@ impl VaultContext {
                 service.journal.interrupt().await?;
             }
             let record = service.journal.record(member, job).await?;
-            service.journal.result(&record).await
+            Ok(service
+                .journal
+                .result(&record)
+                .await?
+                .map(|transcript| TranscriptionJobResult {
+                    job_id: record.snapshot.id,
+                    session_id: record.request.session_id,
+                    transcript,
+                }))
         })
         .await
         .map_err(|_| unavailable())?

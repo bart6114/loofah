@@ -149,6 +149,7 @@ impl Drop for Unblock {
 struct Auth {
     allowed: AtomicBool,
     revoked: CancellationToken,
+    interrupted: CancellationToken,
     final_gate: Mutex<Option<Arc<Semaphore>>>,
     final_entered: Semaphore,
     probe: Mutex<Option<std::sync::Weak<VaultContext>>>,
@@ -158,6 +159,7 @@ impl Auth {
         Arc::new(Self {
             allowed: AtomicBool::new(true),
             revoked: CancellationToken::new(),
+            interrupted: CancellationToken::new(),
             final_gate: Mutex::new(None),
             final_entered: Semaphore::new(0),
             probe: Mutex::new(None),
@@ -170,10 +172,14 @@ impl TranscriptionAuthorizer for Auth {
         _: &'a TranscriptionWork,
     ) -> TranscriptionFuture<'a, Result<TranscriptionAccess, TranscriptionFailure>> {
         Box::pin(async move {
+            if self.interrupted.is_cancelled() {
+                return Err(TranscriptionFailure::Interrupted);
+            }
             if !self.allowed.load(Ordering::Acquire) {
                 return Err(TranscriptionFailure::AccessDenied);
             }
             Ok(TranscriptionAccess {
+                interrupted: self.interrupted.clone(),
                 cancelled: self.revoked.child_token(),
                 owner: Box::new(()),
             })
@@ -188,6 +194,9 @@ impl TranscriptionAuthorizer for Auth {
             let gate = self.final_gate.lock().unwrap().clone();
             if let Some(gate) = gate {
                 gate.acquire().await.unwrap().forget();
+            }
+            if self.interrupted.is_cancelled() {
+                return Err(TranscriptionFailure::Interrupted);
             }
             if !self.allowed.load(Ordering::Acquire) {
                 return Err(TranscriptionFailure::AccessDenied);
@@ -327,7 +336,8 @@ async fn exact_replay_preserves_metadata_ids_hints_and_unknown_files_without_reg
         .transcription_job_result(MEMBER.into(), done.id.clone())
         .await
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .transcript;
     assert_eq!(result.user_id, MEMBER);
     assert_eq!(result.created_at, snapshot.created_at);
     assert_eq!(result.ended_at, None);
@@ -429,7 +439,8 @@ async fn immutable_copy_and_source_cas_keep_later_recording_note_and_transcript_
             .transcription_job_result(MEMBER.into(), job.id)
             .await
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .transcript;
         assert!(result.memo_md.contains("Before transcription"));
         fixture.finish().await;
     }
@@ -507,7 +518,8 @@ async fn cancellation_retains_late_output_and_native_admission_until_real_source
         .transcription_job_result(MEMBER.into(), job.id)
         .await
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .transcript;
     assert!(output.started_at >= materialization_after);
     assert!(!fixture.transcript().exists());
     fixture.finish().await;
@@ -531,6 +543,60 @@ async fn revoked_membership_cancels_but_preserves_output_and_never_promotes() {
     let done = terminal(&context, &job.id).await;
     assert_eq!(done.state, TranscriptionJobState::Cancelled);
     assert_eq!(done.failure, Some(TranscriptionFailure::AccessDenied));
+    assert!(done.result_available);
+    assert!(!fixture.transcript().exists());
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn host_interruption_is_distinct_from_member_revocation_and_keeps_late_result() {
+    let fixture = Fixture::new(true).await;
+    let _unblock = Unblock(fixture.engine.clone());
+    let context = fixture.context();
+    let job = fixture.submit().await;
+    fixture.engine.started().await;
+    fixture.auth.interrupted.cancel();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(30), terminal(&context, &job.id))
+            .await
+            .is_err()
+    );
+    fixture.engine.release();
+    let done = terminal(&context, &job.id).await;
+    assert_eq!(done.state, TranscriptionJobState::Interrupted);
+    assert_eq!(done.failure, Some(TranscriptionFailure::Interrupted));
+    assert!(done.result_available);
+    assert!(!fixture.transcript().exists());
+    fixture.finish().await;
+
+    let fixture = Fixture::new(false).await;
+    fixture.auth.interrupted.cancel();
+    let context = fixture.context();
+    let job = fixture.submit().await;
+    let done = terminal(&context, &job.id).await;
+    assert_eq!(done.state, TranscriptionJobState::Interrupted);
+    assert_eq!(done.failure, Some(TranscriptionFailure::Interrupted));
+    assert_eq!(fixture.engine.0.calls.load(Ordering::Acquire), 0);
+    fixture.finish().await;
+
+    let fixture = Fixture::new(false).await;
+    let context = fixture.context();
+    let gate = Arc::new(Semaphore::new(0));
+    *fixture.auth.final_gate.lock().unwrap() = Some(gate.clone());
+    let job = fixture.submit().await;
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        fixture.auth.final_entered.acquire(),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .forget();
+    fixture.auth.interrupted.cancel();
+    gate.add_permits(1);
+    let done = terminal(&context, &job.id).await;
+    assert_eq!(done.state, TranscriptionJobState::Interrupted);
+    assert_eq!(done.failure, Some(TranscriptionFailure::Interrupted));
     assert!(done.result_available);
     assert!(!fixture.transcript().exists());
     fixture.finish().await;
@@ -720,7 +786,8 @@ async fn retained_result_resume_is_checked_without_reresolving_a_model_or_regene
         .transcription_job_result(MEMBER.into(), job.id.clone())
         .await
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .transcript;
     context
         .resume_transcription_result(MEMBER.into(), job.id.clone())
         .await

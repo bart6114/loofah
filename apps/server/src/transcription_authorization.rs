@@ -46,6 +46,8 @@ impl TranscriptionAuthorizer for CatalogTranscriptionAuthorizer {
             drop(self.authorize(work).await?);
             let cancelled = CancellationToken::new();
             let revoked = cancelled.clone();
+            let interrupted = CancellationToken::new();
+            let host_interrupted = interrupted.clone();
             let owner_stop = CancellationToken::new();
             let end = owner_stop.clone();
             let host_stop = self.stop.clone();
@@ -57,27 +59,32 @@ impl TranscriptionAuthorizer for CatalogTranscriptionAuthorizer {
                     tokio::select! {
                         biased;
                         _ = end.cancelled() => return,
-                        _ = host_stop.cancelled() => { revoked.cancel(); return; },
+                        _ = host_stop.cancelled() => { host_interrupted.cancel(); return; },
                         changed = changes.changed() => {
-                            if changed.is_err() { revoked.cancel(); return; }
+                            if changed.is_err() { host_interrupted.cancel(); return; }
                         },
                     }
                     let access = tokio::select! {
                         biased;
                         _ = end.cancelled() => return,
-                        _ = host_stop.cancelled() => { revoked.cancel(); return; },
+                        _ = host_stop.cancelled() => { host_interrupted.cancel(); return; },
                         access = catalog.access_member(&member, &vault, true) => access,
                     };
                     match access {
                         Ok(grant) => drop(grant),
-                        Err(_) => {
-                            revoked.cancel();
+                        Err(error) => {
+                            if member_failure(error) == TranscriptionFailure::Interrupted {
+                                host_interrupted.cancel();
+                            } else {
+                                revoked.cancel();
+                            }
                             return;
                         }
                     }
                 }
             });
             Ok(TranscriptionAccess {
+                interrupted,
                 cancelled,
                 owner: Box::new(MembershipWatch {
                     stop: owner_stop,

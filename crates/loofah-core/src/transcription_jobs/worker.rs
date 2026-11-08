@@ -8,7 +8,17 @@ use std::panic::AssertUnwindSafe;
 struct Signals {
     cancel: CancellationToken,
     access: CancellationToken,
+    interrupted: CancellationToken,
     stop: CancellationToken,
+}
+
+impl Signals {
+    fn cancelled(&self) -> bool {
+        self.cancel.is_cancelled()
+            || self.access.is_cancelled()
+            || self.interrupted.is_cancelled()
+            || self.stop.is_cancelled()
+    }
 }
 
 pub(crate) struct TranscriptionWorker {
@@ -119,7 +129,7 @@ async fn execute(
             return journal
                 .finish(
                     record.snapshot.id,
-                    TranscriptionJobState::Failed,
+                    authorization_failure(cause),
                     Some(cause),
                     None,
                 )
@@ -128,16 +138,19 @@ async fn execute(
     };
     let TranscriptionAccess {
         cancelled: access_cancelled,
+        interrupted,
         owner: access_owner,
     } = access;
     let monitor_cancel = cancel.clone();
     let revoked = access_cancelled.clone();
+    let host_interrupted = interrupted.clone();
     let monitor = tokio::spawn(async move {
-        tokio::select! {_ = monitor_cancel.cancelled()=>{},_ = revoked.cancelled()=>monitor_cancel.cancel()}
+        tokio::select! {_ = monitor_cancel.cancelled()=>{},_ = revoked.cancelled()=>monitor_cancel.cancel(),_ = host_interrupted.cancelled()=>monitor_cancel.cancel()}
     });
     let signals = Signals {
         cancel: cancel.clone(),
         access: access_cancelled,
+        interrupted,
         stop: stop.clone(),
     };
     let result =
@@ -148,16 +161,21 @@ async fn execute(
     result
 }
 
-fn cancellation(
-    access: &CancellationToken,
-    stop: &CancellationToken,
-) -> (TranscriptionJobState, Option<TranscriptionFailure>) {
-    if access.is_cancelled() {
+fn authorization_failure(cause: TranscriptionFailure) -> TranscriptionJobState {
+    if cause == TranscriptionFailure::Interrupted {
+        TranscriptionJobState::Interrupted
+    } else {
+        TranscriptionJobState::Failed
+    }
+}
+
+fn cancellation(signals: &Signals) -> (TranscriptionJobState, Option<TranscriptionFailure>) {
+    if signals.access.is_cancelled() {
         (
             TranscriptionJobState::Cancelled,
             Some(TranscriptionFailure::AccessDenied),
         )
-    } else if stop.is_cancelled() {
+    } else if signals.stop.is_cancelled() || signals.interrupted.is_cancelled() {
         (
             TranscriptionJobState::Interrupted,
             Some(TranscriptionFailure::Interrupted),
@@ -177,8 +195,8 @@ async fn execute_observed(
 ) -> Result<(), ApplicationError> {
     let id = record.snapshot.id.clone();
     let mut baseline = None;
-    if signals.cancel.is_cancelled() {
-        let (s, f) = cancellation(&signals.access, &signals.stop);
+    if signals.cancelled() {
+        let (s, f) = cancellation(signals);
         return journal.finish(id, s, f, None).await;
     }
     if record.action == ledger::Action::Generate {
@@ -188,8 +206,8 @@ async fn execute_observed(
         {
             Ok(prepared) => prepared,
             Err(cause) => {
-                if signals.cancel.is_cancelled() {
-                    let (s, f) = cancellation(&signals.access, &signals.stop);
+                if signals.cancelled() {
+                    let (s, f) = cancellation(signals);
                     return journal.finish(id, s, f, None).await;
                 }
                 return journal
@@ -205,10 +223,10 @@ async fn execute_observed(
                     return fail(journal, record, &cause, signals).await;
                 }
             };
-        if signals.cancel.is_cancelled() {
+        if signals.cancelled() {
             drop(source);
             drop(prepared);
-            let (state, failure) = cancellation(&signals.access, &signals.stop);
+            let (state, failure) = cancellation(signals);
             return journal.finish(id, state, failure, None).await;
         }
         let binding = source.binding.clone();
@@ -248,8 +266,8 @@ async fn execute_observed(
         let transcript = match generated {
             Ok(transcript) => transcript,
             Err(cause) => {
-                if signals.cancel.is_cancelled() {
-                    let (s, f) = cancellation(&signals.access, &signals.stop);
+                if signals.cancelled() {
+                    let (s, f) = cancellation(signals);
                     return journal.finish(id, s, f, None).await;
                 }
                 return journal
@@ -277,8 +295,8 @@ async fn execute_observed(
         *record = journal.retain_result(id.clone(), transcript).await?;
         baseline = Some(original);
     }
-    if signals.cancel.is_cancelled() {
-        let (s, f) = cancellation(&signals.access, &signals.stop);
+    if signals.cancelled() {
+        let (s, f) = cancellation(signals);
         return journal.finish(id, s, f, None).await;
     }
     publish(context, journal, authorizer, record, baseline, signals).await
@@ -290,8 +308,8 @@ async fn fail(
     cause: &ApplicationError,
     signals: &Signals,
 ) -> Result<(), ApplicationError> {
-    if signals.cancel.is_cancelled() {
-        let (s, f) = cancellation(&signals.access, &signals.stop);
+    if signals.cancelled() {
+        let (s, f) = cancellation(signals);
         return journal.finish(record.snapshot.id.clone(), s, f, None).await;
     }
     let state = if cause.mutation_outcome == Some(MutationOutcome::Unknown) {
@@ -325,12 +343,12 @@ async fn publish(
         Ok(grant) => grant,
         Err(cause) => {
             return journal
-                .finish(id, TranscriptionJobState::Failed, Some(cause), None)
+                .finish(id, authorization_failure(cause), Some(cause), None)
                 .await;
         }
     };
-    if signals.cancel.is_cancelled() {
-        let (s, f) = cancellation(&signals.access, &signals.stop);
+    if signals.cancelled() {
+        let (s, f) = cancellation(signals);
         return journal.finish(id, s, f, None).await;
     }
     if let Err(cause) = context.ensure_recording_publication_ready(&record.request.session_id) {
@@ -443,10 +461,10 @@ async fn publish(
                 .await;
         }
     };
-    if signals.cancel.is_cancelled() {
+    if signals.cancelled() {
         drop(plan);
         drop(grant);
-        let (s, f) = cancellation(&signals.access, &signals.stop);
+        let (s, f) = cancellation(signals);
         return journal.finish(id, s, f, None).await;
     }
     if let Err(cause) = context.ensure_recording_publication_ready(&record.request.session_id) {

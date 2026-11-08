@@ -2,6 +2,15 @@ use serde::{Deserialize, Serialize};
 
 pub const TRANSCRIPTION_RESULT_LIMIT: usize = 64 * 1024 * 1024;
 pub const TRANSCRIPTION_SNAPSHOT_LIMIT: usize = 64 * 1024;
+pub const TRANSCRIPTION_RESULT_RESPONSE_LIMIT: usize =
+    TRANSCRIPTION_RESULT_LIMIT + TRANSCRIPTION_SNAPSHOT_LIMIT;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct TranscriptionJobResult {
+    pub job_id: String,
+    pub session_id: String,
+    pub transcript: crate::TranscriptWithData,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
