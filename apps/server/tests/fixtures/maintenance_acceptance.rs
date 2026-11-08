@@ -185,7 +185,7 @@ impl Server {
     }
 }
 async fn maintenance(root: &Path, args: &[&str], success: bool) -> Value {
-    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_loofah-server"))
+    let child = tokio::process::Command::new(env!("CARGO_BIN_EXE_loofah-server"))
         .args(args)
         .current_dir(root)
         .stdout(Stdio::piped())
@@ -797,7 +797,7 @@ async fn executable_restart_recovers_known_legacy_operation_and_refuses_future_o
                     )
                     .unwrap()
                 )
-                .unwrap(),
+                .unwrap()["tasks"],
                 serde_json::to_value(&tasks).unwrap()
             );
             assert!(!root.join("restored").join(&pending).exists());
