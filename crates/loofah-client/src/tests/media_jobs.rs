@@ -295,3 +295,112 @@ async fn media_upload_uses_original_admission_and_lost_reply_never_replays() {
         submission.declaration
     );
 }
+
+#[tokio::test]
+async fn cancelled_media_upload_keeps_original_profile_until_actual_source_read_drains() {
+    struct BlockedSource {
+        entered: Option<tokio::sync::oneshot::Sender<()>>,
+        release: std::sync::mpsc::Receiver<()>,
+        dropped: Option<tokio::sync::oneshot::Sender<()>>,
+    }
+    impl std::io::Read for BlockedSource {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            if let Some(entered) = self.entered.take() {
+                let _ = entered.send(());
+                let _ = self.release.recv();
+            }
+            Ok(0)
+        }
+    }
+    impl Drop for BlockedSource {
+        fn drop(&mut self) {
+            if let Some(dropped) = self.dropped.take() {
+                let _ = dropped.send(());
+            }
+        }
+    }
+    let extra = Router::new()
+        .route(
+            "/api/v1/vaults/vault/media/requests",
+            post(|Json(input): Json<MediaDeclaration>| async move {
+                let status = MediaRequestStatus {
+                    declaration: input.clone(),
+                    revision: "a".repeat(64),
+                    phase: MediaPhase::Receiving,
+                    media: None,
+                };
+                Json(MediaAdmission {
+                    declaration: input,
+                    revision: status.revision.clone(),
+                    status,
+                })
+            }),
+        )
+        .route(
+            "/api/v1/vaults/vault/media/requests/{request}/source",
+            axum::routing::put(|_: axum::body::Bytes| async { StatusCode::NO_CONTENT }),
+        );
+    let fixture = Fixture::with_extra_routes(Some(Duration::ZERO), extra).await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("media_jobs".into());
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap();
+    let (bound, profile) = authority(&fixture, &client, &path, CancellationToken::new()).await;
+    let store = MediaSubmissions::new(path.join("receipts")).unwrap();
+    let (submission, _) = store
+        .prepare(bound.scope().clone(), declaration())
+        .await
+        .unwrap();
+    let admission = bound.declare(&submission).await.unwrap();
+    let submission = store
+        .observe_admission(&submission, &admission)
+        .await
+        .unwrap();
+    let (entered_send, entered) = tokio::sync::oneshot::channel();
+    let (release, receive) = std::sync::mpsc::channel();
+    let (dropped_send, dropped) = tokio::sync::oneshot::channel();
+    let source = BlockedSource {
+        entered: Some(entered_send),
+        release: receive,
+        dropped: Some(dropped_send),
+    };
+    let call = bound.for_request(CancellationToken::new());
+    let pending =
+        tokio::spawn(async move { call.upload_source(&submission, &admission, source).await });
+    let started = tokio::time::timeout(Duration::from_secs(10), entered).await;
+    if !matches!(started, Ok(Ok(()))) {
+        let _ = release.send(());
+        panic!("source reader did not start");
+    }
+    pending.abort();
+    let _ = pending.await;
+    drop(bound);
+    drop(profile);
+    drop(client);
+    let profiles = ConnectionProfiles::new(path.join("profiles")).unwrap();
+    let retained = profiles.open("media").await.is_err();
+    let _ = release.send(());
+    assert!(
+        retained,
+        "cancelled caller released original profile while source read remained active"
+    );
+    tokio::time::timeout(Duration::from_secs(10), dropped)
+        .await
+        .unwrap()
+        .unwrap();
+    let reopened = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(profile) = profiles.open("media").await {
+                break profile;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(reopened.profile().await.name, "media");
+}
