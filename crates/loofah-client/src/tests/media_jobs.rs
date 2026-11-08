@@ -612,6 +612,15 @@ async fn media_guard_refresh_does_not_hold_profile_and_rechecks_original_generat
 
 #[tokio::test]
 async fn concurrent_refresh_never_holds_profile_while_commit_guards_wait_for_tokens() {
+    struct CompletionWake(tokio::sync::Notify);
+    impl std::task::Wake for CompletionWake {
+        fn wake(self: Arc<Self>) {
+            self.0.notify_one();
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.notify_one();
+        }
+    }
     for media in [false, true] {
         let fixture = Fixture::with_tls(Some(Duration::ZERO)).await;
         let mut client = fixture.client().await;
@@ -646,12 +655,24 @@ async fn concurrent_refresh_never_holds_profile_while_commit_guards_wait_for_tok
             }
         };
         tokio::pin!(commit);
-        // The media guard has refreshed, but is queued before acquiring the
-        // profile. A different operation now begins a slow refresh.
+        // Observe completion of the media guard's owned access-token worker,
+        // then poll it onto the held profile gate before starting another refresh.
+        let completed = Arc::new(CompletionWake(tokio::sync::Notify::new()));
+        let waker = std::task::Waker::from(completed.clone());
+        let mut cx = std::task::Context::from_waker(&waker);
         assert!(matches!(
-            futures_util::poll!(&mut commit),
+            std::future::Future::poll(commit.as_mut(), &mut cx),
             std::task::Poll::Pending
         ));
+        if media {
+            tokio::time::timeout(Duration::from_secs(2), completed.0.notified())
+                .await
+                .unwrap();
+            assert!(matches!(
+                std::future::Future::poll(commit.as_mut(), &mut cx),
+                std::task::Poll::Pending
+            ));
+        }
         let access = client.access_token().await.unwrap();
         client.expire_access(&access).await;
         fixture.state.delay.store(500, Ordering::SeqCst);
@@ -661,25 +682,33 @@ async fn concurrent_refresh_never_holds_profile_while_commit_guards_wait_for_tok
             futures_util::poll!(&mut refresh),
             std::task::Poll::Pending
         ));
-        assert!(client.tokens.try_lock().is_err());
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while client.tokens.try_lock().is_ok() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
         drop(gate);
         assert!(matches!(
             futures_util::poll!(&mut commit),
             std::task::Poll::Pending
         ));
-        // Old code retained the profile while queued on the refresh token lock.
-        tokio::time::timeout(Duration::from_millis(200), profile.save(original))
-            .await
-            .unwrap()
-            .unwrap();
-        tokio::time::timeout(Duration::from_secs(2), refresh)
-            .await
-            .unwrap()
-            .unwrap();
-        let error = tokio::time::timeout(Duration::from_secs(2), commit)
-            .await
-            .unwrap()
-            .unwrap_err();
+        // Drive commit through its blocking profile-file check while the separate
+        // refresh stays paused. Old code retained the profile behind that refresh.
+        let update = async {
+            tokio::time::timeout(Duration::from_millis(200), profile.save(original))
+                .await
+                .unwrap()
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(2), refresh)
+                .await
+                .unwrap()
+                .unwrap();
+        };
+        let (commit, ()) =
+            tokio::join!(tokio::time::timeout(Duration::from_secs(2), commit), update);
+        let error = commit.unwrap().unwrap_err();
         assert_eq!(error.code, ErrorCode::Conflict);
         assert_eq!(fixture.state.refreshes.load(Ordering::SeqCst), 1);
     }
