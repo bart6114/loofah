@@ -3516,6 +3516,7 @@ dependencies = [
  "tauri-utils 0.1.0",
  "tempfile",
  "tokio",
+ "tokio-rustls 0.26.4",
  "tokio-util",
  "tracing",
  "transcribe-whisper-local",
@@ -7705,6 +7706,7 @@ name = "loofah-core"
 version = "0.1.0"
 dependencies = [
  "agent-access",
+ "aspasia",
  "async-stream",
  "audio-utils",
  "axum",
