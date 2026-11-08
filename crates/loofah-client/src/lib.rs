@@ -3,6 +3,8 @@
 mod auth;
 mod capture;
 mod capture_append;
+mod capture_append_authority;
+pub use capture_append_authority::{CaptureAppendAuthority, CaptureAppendDispatchGuard};
 pub use capture_append::CaptureAppendPreparation;
 mod capture_retirement;
 pub use capture_retirement::VerifiedCaptureRetirement;

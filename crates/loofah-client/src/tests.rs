@@ -1,5 +1,6 @@
 mod attachments;
 mod capture;
+mod capture_append_authority;
 mod capture_live;
 mod capture_processing;
 mod capture_upload;

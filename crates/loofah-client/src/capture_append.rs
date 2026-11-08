@@ -5,8 +5,8 @@ use std::{
 };
 
 use hypr_loofah_protocol::{
-    CaptureAppendAdmission, CaptureAppendRequest, ErrorCode, validate_capture_append_admission,
-    validate_capture_append_request,
+    CaptureAppendAdmission, CaptureAppendRequest, CaptureScope, ErrorCode,
+    validate_capture_append_admission, validate_capture_append_request,
 };
 use sha2::{Digest, Sha256};
 
@@ -43,6 +43,84 @@ impl CaptureAppendPreparation {
             ensure_directory(&directory)?;
             immutable(&directory.join("request.json"), &request)?;
             Ok(Self { request, directory })
+        })
+        .await
+        .map_err(io)?
+    }
+
+    /// Discovers original requests without making a network request or changing their authority.
+    pub async fn inventory(
+        root: PathBuf,
+        scope: CaptureScope,
+    ) -> Result<Vec<CaptureAppendRequest>> {
+        if !root.is_absolute()
+            || root
+                .components()
+                .any(|part| matches!(part, std::path::Component::ParentDir))
+        {
+            return Err(damaged());
+        }
+        tokio::task::spawn_blocking(move || {
+            let hash = Sha256::digest(serde_json::to_vec(&scope).map_err(io)?)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            let directory = root.join(hash);
+            match std::fs::symlink_metadata(&directory) {
+                Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+                Err(cause) => return Err(io(cause)),
+                Ok(meta) if !meta.is_dir() || meta.file_type().is_symlink() => {
+                    return Err(damaged());
+                }
+                Ok(_) => {}
+            }
+            ensure_directory(&directory)?;
+            let mut requests = Vec::new();
+            let mut bytes = 0u64;
+            for entry in std::fs::read_dir(&directory).map_err(io)? {
+                if requests.len() >= 4096 {
+                    return Err(damaged());
+                }
+                let entry = entry.map_err(io)?;
+                let name = entry.file_name().into_string().map_err(|_| damaged())?;
+                if uuid::Uuid::parse_str(&name)
+                    .ok()
+                    .filter(|id| !id.is_nil() && id.to_string() == name)
+                    .is_none()
+                    || !entry.file_type().map_err(io)?.is_dir()
+                {
+                    return Err(damaged());
+                }
+                let path = entry.path().join("request.json");
+                bytes = bytes
+                    .checked_add(std::fs::symlink_metadata(&path).map_err(io)?.len())
+                    .ok_or_else(damaged)?;
+                if bytes > 64 * 1024 * 1024 {
+                    return Err(damaged());
+                }
+                let raw: serde_json::Value = read(&path)?.ok_or_else(damaged)?;
+                let request: CaptureAppendRequest =
+                    serde_json::from_value(raw.clone()).map_err(|_| damaged())?;
+                validate_capture_append_request(&request).map_err(|_| damaged())?;
+                if request.scope != scope
+                    || request.admission_id != name
+                    || serde_json::to_value(&request).map_err(io)? != raw
+                {
+                    return Err(damaged());
+                }
+                let prepared = Self {
+                    request: request.clone(),
+                    directory: entry.path(),
+                };
+                if let Some(admission) =
+                    read::<CaptureAppendAdmission>(&entry.path().join("admission.json"))?
+                {
+                    prepared.validate(&admission)?;
+                }
+                requests.push(request);
+            }
+            requests.sort_by(|a, b| a.admission_id.cmp(&b.admission_id));
+            Ok(requests)
         })
         .await
         .map_err(io)?
@@ -210,6 +288,48 @@ mod tests {
             processing: None,
         }
     }
+    #[tokio::test]
+    async fn inventory_recovers_original_scope_and_refuses_unknown_or_partial_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let input = request();
+        let prepared = CaptureAppendPreparation::prepare(root.clone(), input.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            CaptureAppendPreparation::inventory(root.clone(), input.scope.clone())
+                .await
+                .unwrap(),
+            vec![input.clone()]
+        );
+        let mut other = input.scope.clone();
+        other.member_id = "other".into();
+        assert!(
+            CaptureAppendPreparation::inventory(root.clone(), other)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let mut unknown = serde_json::to_value(&input).unwrap();
+        unknown["future_authority"] = serde_json::json!(true);
+        std::fs::write(
+            prepared.directory.join("request.json"),
+            serde_json::to_vec(&unknown).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            CaptureAppendPreparation::inventory(root.clone(), input.scope.clone())
+                .await
+                .is_err()
+        );
+        std::fs::write(prepared.directory.join("request.json"), b"{").unwrap();
+        assert!(
+            CaptureAppendPreparation::inventory(root, input.scope)
+                .await
+                .is_err()
+        );
+    }
+
     #[tokio::test]
     async fn identity_is_durable_before_dispatch_and_never_retargets_on_retry() {
         let root = tempfile::tempdir().unwrap();

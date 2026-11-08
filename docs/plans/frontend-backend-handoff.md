@@ -396,3 +396,11 @@ repeat this inference merely because unrelated adapter code changed.
   records into Git. Old process handles and absolute executable paths are not
   usable on the destination workstation. No stash or uncommitted owned source is
   needed to resume.
+
+Append producer admission now has an SDK process-local authority bound to the
+original profile generation, authenticated member and login generation. Native
+holds its short dispatch guard through producer admission; profile/login ABA,
+disconnect and window cancellation invalidate it. Bounded append-preparation
+inventory restores original durable requests after restart without dispatching
+HTTP or minting replacement requests; malformed or future identity evidence
+requires review. These SDK changes await the shared integration validation lane.
