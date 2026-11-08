@@ -652,9 +652,21 @@ for review and never automatically resubmits. New speaker names use a checked
 people-registry writer that preserves unknown fields and refuses corrupt or
 ambiguous registries. Canonical transcript reads do not wait for inference's
 publication lock; mutations retain the original lifecycle/physical-work admission
-through actual Store work. The Local renderer retains its existing qualification
-flag and does not enable this new path yet. Focused frontend verification passed 136 tests including the snapshot-binding regression. Rust/Native/platform qualification for
-this source checkpoint remains on the sole integration build path.
+through actual Store work. The Local factory now exposes the same typed
+`transcriptEditor` methods only when
+called with `transcriptEditorAvailable: true`; its default remains false, so normal
+Local startup keeps the existing renderer and offline, login-free behavior. The
+adapter forwards the original transcript revision unchanged and reports late
+mutation cancellation as unknown without automatic replay. Native mutation
+wrappers require both the original Local lease and configured physical lifecycle
+host before entering Core; failed host registration cannot fall through to server
+admission. Checked assignment still retains the existing strict proof through
+actual Store writes. Read-only transcript snapshots remain available while a
+physical producer is busy. Default activation awaits the final Native and Windows
+qualification gates. The adapter and existing speaker-renderer cohort passed 74
+frontend tests, and desktop typecheck passed; the earlier snapshot-binding cohort
+passed 136 tests. The new Native missing-host/busy-host/success regression is
+source-ready for the sole integration build path.
 
 Native microphone/system-audio Permissions settings are available in Remote
 workspaces without hydrating vault configuration or preloading Local processors.

@@ -67,6 +67,9 @@ const native = vi.hoisted(() => ({
     applicationDeleteDocument: vi.fn(),
     applicationTranscripts: vi.fn(),
     applicationTranscriptOverview: vi.fn(),
+    applicationTranscriptEditor: vi.fn(),
+    applicationAssignTranscriptSpeakers: vi.fn(),
+    applicationEnsurePerson: vi.fn(),
     applicationAudioMetadata: vi.fn(),
     applicationAttachmentInfo: vi.fn(),
     applicationAttachmentMetadata: vi.fn(),
@@ -2117,4 +2120,125 @@ it("uses only the negotiated original preview transport and never falls back to 
   expect(
     native.commands.applicationProcessingJobPreview,
   ).toHaveBeenCalledOnce();
+});
+
+it("keeps Local checked transcript editing default-off and forwards an explicitly enabled original revision", async () => {
+  const normal = await connectLocalVault();
+  expect(normal.transcriptEditor).toBeUndefined();
+  expect(normal.features).not.toContain("transcript_editor");
+  expect(normal.features).toContain("legacy_desktop_transcript_controls");
+  expect(native.commands.applicationTranscriptEditor).not.toHaveBeenCalled();
+  const snapshot = {
+    session_id: "original",
+    session_created_at: "2026-11-08T00:00:00Z",
+    revision: "a".repeat(64),
+    transcripts: [],
+  };
+  const input = {
+    expected_revision: snapshot.revision,
+    assignments: [
+      {
+        transcript_id: "t",
+        channel: 0,
+        speaker_index: null,
+        speaker_label: "Alice",
+        anchor_word_id: "w",
+      },
+    ],
+  };
+  const conflict = {
+    kind: "conflict",
+    snapshot: { ...snapshot, revision: "b".repeat(64) },
+  };
+  const person = { id: "alice", name: "Alice" };
+  native.commands.applicationTranscriptEditor.mockResolvedValue({
+    status: "ok",
+    data: snapshot,
+  });
+  native.commands.applicationAssignTranscriptSpeakers.mockResolvedValue({
+    status: "ok",
+    data: conflict,
+  });
+  native.commands.applicationEnsurePerson.mockResolvedValue({
+    status: "ok",
+    data: person,
+  });
+  const local = await connectLocalVault({ transcriptEditorAvailable: true });
+  expect(local.features).toContain("transcript_editor");
+  expect(local.networkMode).toBe("always");
+  const api = local.transcriptEditor!;
+  expect(await api.read("original")).toEqual(snapshot);
+  expect(await api.assign("original", input)).toEqual(conflict);
+  expect(await api.ensurePerson({ name: "Alice" })).toEqual(person);
+  expect(
+    native.commands.applicationTranscriptEditor,
+  ).toHaveBeenCalledExactlyOnceWith("original");
+  expect(
+    native.commands.applicationAssignTranscriptSpeakers,
+  ).toHaveBeenCalledExactlyOnceWith("original", input);
+  expect(
+    native.commands.applicationEnsurePerson,
+  ).toHaveBeenCalledExactlyOnceWith({ name: "Alice" });
+  expect(input.expected_revision).toBe(snapshot.revision);
+});
+
+it("never dispatches pre-cancelled Local speaker edits and marks late cancellation unknown without replay", async () => {
+  const api = (await connectLocalVault({ transcriptEditorAvailable: true }))
+    .transcriptEditor!;
+  const input = {
+    expected_revision: "a".repeat(64),
+    assignments: [
+      {
+        transcript_id: "t",
+        channel: 0,
+        speaker_index: null,
+        speaker_label: "Alice",
+        anchor_word_id: "w",
+      },
+    ],
+  };
+  const early = new AbortController();
+  early.abort();
+  await expect(
+    api.read("original", { signal: early.signal }),
+  ).rejects.toThrow();
+  await expect(
+    api.assign("original", input, { signal: early.signal }),
+  ).rejects.toThrow();
+  await expect(
+    api.ensurePerson({ name: "Alice" }, { signal: early.signal }),
+  ).rejects.toThrow();
+  expect(native.commands.applicationTranscriptEditor).not.toHaveBeenCalled();
+  expect(
+    native.commands.applicationAssignTranscriptSpeakers,
+  ).not.toHaveBeenCalled();
+  expect(native.commands.applicationEnsurePerson).not.toHaveBeenCalled();
+  const late = new AbortController();
+  const requestId = crypto.randomUUID();
+  let complete!: (value: unknown) => void;
+  native.commands.applicationAssignTranscriptSpeakers.mockReturnValue(
+    new Promise((resolve) => {
+      complete = resolve;
+    }),
+  );
+  const pending = api.assign("original", input, {
+    signal: late.signal,
+    requestId,
+  });
+  late.abort();
+  complete({
+    status: "ok",
+    data: { kind: "saved", snapshot: { revision: "b".repeat(64) } },
+  });
+  await expect(pending).rejects.toMatchObject({
+    detail: {
+      code: "cancelled",
+      mutation_outcome: "unknown",
+      request_id: requestId,
+      retryable: false,
+    },
+  });
+  expect(
+    native.commands.applicationAssignTranscriptSpeakers,
+  ).toHaveBeenCalledExactlyOnceWith("original", input);
 });

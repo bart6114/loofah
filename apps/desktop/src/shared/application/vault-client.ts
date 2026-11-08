@@ -605,9 +605,11 @@ async function nativeSessionExport(
 export async function connectLocalVault({
   sessionLifecycleAvailable = false,
   documentDeletionAvailable = false,
+  transcriptEditorAvailable = false,
 }: {
   sessionLifecycleAvailable?: boolean;
   documentDeletionAvailable?: boolean;
+  transcriptEditorAvailable?: boolean;
 } = {}): Promise<VaultClient> {
   const [
     scope,
@@ -655,6 +657,7 @@ export async function connectLocalVault({
     features: [
       ...(sessionLifecycleAvailable ? ["session_lifecycle"] : []),
       ...(documentDeletionAvailable ? ["document_delete"] : []),
+      ...(transcriptEditorAvailable ? ["transcript_editor"] : []),
       ...(mediaAvailable ? ["media_jobs"] : []),
       ...(recordingProcessingAvailable ? ["local_recording_processing"] : []),
       ...(transcriptionAvailable
@@ -949,6 +952,21 @@ export async function connectLocalVault({
       ),
     documents: (sessionId, options) =>
       ipc(() => commands.applicationDocuments(sessionId), options),
+    transcriptEditor: transcriptEditorAvailable
+      ? {
+          read: (sessionId, options) =>
+            ipc(() => commands.applicationTranscriptEditor(sessionId), options),
+          assign: (sessionId, input, options) =>
+            ipc(
+              () =>
+                commands.applicationAssignTranscriptSpeakers(sessionId, input),
+              options,
+              true,
+            ),
+          ensurePerson: (input, options) =>
+            ipc(() => commands.applicationEnsurePerson(input), options, true),
+        }
+      : undefined,
     transcriptOverview: (sessionId, options) =>
       ipc(() => commands.applicationTranscriptOverview(sessionId), options),
     transcripts: (sessionId, options) =>
