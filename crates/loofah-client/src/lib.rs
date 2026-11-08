@@ -15,6 +15,7 @@ pub use hypr_capture_store::capture_spool;
 mod drafts;
 mod events;
 mod media;
+pub mod media_jobs;
 #[cfg(feature = "os-credentials")]
 mod os_credentials;
 mod profiles;

@@ -1,5 +1,6 @@
 pub(crate) mod attachments;
 pub(crate) mod media;
+pub(crate) mod media_jobs;
 
 use std::{
     collections::HashMap,

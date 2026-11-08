@@ -193,13 +193,13 @@ impl RemoteClient {
     }
 }
 
-enum UploadPart {
+pub(crate) enum UploadPart {
     Bytes(Vec<u8>),
     Complete,
     Failed,
 }
 
-fn produce(
+pub(crate) fn produce(
     mut source: impl Read,
     input: UploadAttachmentRequest,
     send: mpsc::Sender<UploadPart>,

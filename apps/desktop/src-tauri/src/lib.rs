@@ -252,6 +252,7 @@ pub async fn main() {
         .manage(local_owner::LocalOwnerState::default())
         .manage(job_submissions::JobSubmissionState::default())
         .manage(transcription_submissions::TranscriptionSubmissionState::default())
+        .manage(remote::media_jobs::MediaJobState::default())
         .manage(device_vault_state::DeviceVaultState::default())
         .manage(remote::RemoteState::default())
         .manage(device_recordings::DeviceRecordingState::default())
@@ -828,6 +829,12 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             remote::remote_login::<tauri::Wry>,
             remote::remote_cancel_login::<tauri::Wry>,
             remote::remote_request::<tauri::Wry>,
+            remote::media_jobs::remote_media_request::<tauri::Wry>,
+            remote::media_jobs::remote_media_submit::<tauri::Wry>,
+            remote::media_jobs::remote_media_recover::<tauri::Wry>,
+            remote::media_jobs::remote_media_cancel::<tauri::Wry>,
+            remote::media_jobs::remote_media_resume_source::<tauri::Wry>,
+            remote::media_jobs::remote_media_submissions::<tauri::Wry>,
             remote::remote_upload_attachment_source::<tauri::Wry>,
             remote::remote_cancel_request::<tauri::Wry>,
             remote::remote_subscribe::<tauri::Wry>,

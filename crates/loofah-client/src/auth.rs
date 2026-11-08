@@ -31,6 +31,10 @@ pub(crate) struct TokenState {
 }
 
 impl TokenState {
+    pub(crate) fn access_for_commit(&self) -> Option<&str> {
+        self.current_for_commit()
+            .then(|| self.token.as_ref().unwrap().access.as_str())
+    }
     pub(crate) fn current_for_commit(&self) -> bool {
         self.loaded
             && self

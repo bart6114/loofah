@@ -9,6 +9,8 @@ import type {
   ApplicationError,
   FileMetadata,
   UploadAttachmentRequest,
+  MediaDeclaration,
+  MediaRequestStatus,
 } from "./protocol.gen";
 import type { RequestOptions } from "./vault-client";
 
@@ -27,6 +29,9 @@ import {
   type DeviceAttachmentSource,
   type CaptureLiveBinding,
   type CaptureLiveEvent,
+  type MediaQuery,
+  type MediaReply,
+  type MediaSubmission,
 } from "~/types/tauri.gen";
 
 type Reply<K extends RemoteReply["kind"]> = Extract<
@@ -138,6 +143,175 @@ export class NativeRemoteConnection {
         });
       }
       return metadata;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  }
+
+  async mediaRequest<K extends MediaReply["kind"]>(
+    vaultId: string,
+    query: MediaQuery,
+    expected: K,
+    options?: RequestOptions,
+  ): Promise<Extract<MediaReply, { kind: K }>["value"]> {
+    const requestId = options?.requestId ?? crypto.randomUUID();
+    const reply = await this.mediaAction(requestId, options, false, async () =>
+      applicationResult(
+        await commands.remoteMediaRequest(
+          this.info.connection_id,
+          vaultId,
+          requestId,
+          query,
+        ),
+      ),
+    );
+    if (reply.kind !== expected)
+      throw new ApplicationRequestError({
+        code: "incompatible_version",
+        message: "The native host returned an unexpected media reply",
+        request_id: requestId,
+        retryable: false,
+        current_revision: null,
+        mutation_outcome: null,
+      });
+    return reply.value as Extract<MediaReply, { kind: K }>["value"];
+  }
+
+  submitMedia(
+    vaultId: string,
+    declaration: MediaDeclaration,
+    source: DeviceAttachmentSource | null,
+    options: RequestOptions & { requestId: string },
+  ): Promise<MediaRequestStatus> {
+    if (declaration.request_id !== options.requestId)
+      return Promise.reject(
+        new ApplicationRequestError({
+          code: "validation",
+          message: "The original media request ID changed",
+          request_id: options.requestId,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: "not_committed",
+        }),
+      );
+    return this.mediaAction(options.requestId, options, true, async () =>
+      applicationResult(
+        await commands.remoteMediaSubmit(
+          this.info.connection_id,
+          vaultId,
+          declaration,
+          source,
+        ),
+      ),
+    );
+  }
+
+  recoverMedia(
+    vaultId: string,
+    requestId: string,
+    options?: RequestOptions,
+  ): Promise<MediaRequestStatus> {
+    return this.mediaAction(requestId, options, true, async () =>
+      applicationResult(
+        await commands.remoteMediaRecover(
+          this.info.connection_id,
+          vaultId,
+          requestId,
+        ),
+      ),
+    );
+  }
+
+  cancelMedia(
+    vaultId: string,
+    requestId: string,
+    options?: RequestOptions,
+  ): Promise<MediaRequestStatus> {
+    return this.mediaAction(requestId, options, true, async () =>
+      applicationResult(
+        await commands.remoteMediaCancel(
+          this.info.connection_id,
+          vaultId,
+          requestId,
+        ),
+      ),
+    );
+  }
+
+  resumeMediaSource(
+    vaultId: string,
+    requestId: string,
+    source: DeviceAttachmentSource,
+    options?: RequestOptions,
+  ): Promise<MediaRequestStatus> {
+    return this.mediaAction(requestId, options, true, async () =>
+      applicationResult(
+        await commands.remoteMediaResumeSource(
+          this.info.connection_id,
+          vaultId,
+          requestId,
+          source,
+        ),
+      ),
+    );
+  }
+
+  mediaSubmissions(
+    vaultId: string,
+    options?: RequestOptions,
+  ): Promise<MediaSubmission[]> {
+    return this.mediaAction(
+      options?.requestId ?? crypto.randomUUID(),
+      options,
+      false,
+      async () =>
+        applicationResult(
+          await commands.remoteMediaSubmissions(
+            this.info.connection_id,
+            vaultId,
+          ),
+        ),
+    );
+  }
+
+  private async mediaAction<T>(
+    requestId: string,
+    options: RequestOptions | undefined,
+    mutation: boolean,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    this.assertOpen();
+    if (!this.info.capabilities.features.includes("media_jobs"))
+      throw new ApplicationRequestError({
+        code: "incompatible_version",
+        message: "This server does not support media jobs",
+        request_id: requestId,
+        retryable: false,
+        current_revision: null,
+        mutation_outcome: mutation ? "not_committed" : null,
+      });
+    const signal = options?.signal;
+    signal?.throwIfAborted();
+    const cancel = () => {
+      void commands
+        .remoteCancelRequest(this.info.connection_id, requestId)
+        .catch(() => {});
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const result = await run();
+      if (this.closed || signal?.aborted)
+        throw new ApplicationRequestError({
+          code: "cancelled",
+          message: mutation
+            ? "Media request may have been admitted; inspect or explicitly recover its original request"
+            : "Media request cancelled",
+          request_id: requestId,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: mutation ? "unknown" : null,
+        });
+      return result;
     } finally {
       signal?.removeEventListener("abort", cancel);
     }
