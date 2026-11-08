@@ -927,3 +927,184 @@ async fn replacement_source_uses_canonical_directory_and_recording_precedence() 
         Some(TranscriptSourcePreparation::NoRecording)
     ));
 }
+
+async fn subtitle_source(f: &Fixture) -> SubtitleSourceSnapshot {
+    let Some(SubtitleSourcePreparation::Ready(source)) = f
+        .store
+        .prepare_subtitle_source("note", crate::sha256(b"original subtitle"))
+        .await
+        .unwrap()
+    else {
+        panic!("subtitle source unavailable")
+    };
+    source
+}
+
+#[tokio::test]
+async fn subtitle_import_without_audio_preserves_unknown_prefix_fields_and_historical_receipt() {
+    let f = Fixture::new().await;
+    std::fs::remove_file(f.directory.join("audio.wav")).unwrap();
+    let mut old = serde_json::to_value(generated()).unwrap();
+    old["id"] = "prefix".into();
+    old["words"] = serde_json::json!([]);
+    old["speaker_hints"] = serde_json::json!([]);
+    old["future"] = serde_json::json!({"preserve":[1,true]});
+    let original = serde_json::json!({"transcripts":[old.clone()],"future":{"root":42}});
+    std::fs::write(f.canonical(), serde_json::to_vec(&original).unwrap()).unwrap();
+    let source = subtitle_source(&f).await;
+    assert!(source.transcript_present());
+    let outcome = f
+        .store
+        .prepare_subtitle_publication(&f.operations, f.identity.clone(), source, generated())
+        .await
+        .unwrap()
+        .recheck()
+        .await
+        .unwrap()
+        .commit()
+        .await
+        .unwrap();
+    assert!(matches!(
+        outcome,
+        TranscriptPublicationOutcome::Published { .. }
+    ));
+    let merged: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(f.canonical()).unwrap()).unwrap();
+    assert_eq!(merged["future"], original["future"]);
+    assert_eq!(merged["transcripts"][0], old);
+    assert_eq!(
+        merged["transcripts"][1],
+        serde_json::to_value(generated()).unwrap()
+    );
+    std::fs::remove_file(f.canonical()).unwrap();
+    assert!(matches!(
+        f.store
+            .completed_subtitle_publication(&f.operations, f.identity.clone())
+            .await
+            .unwrap(),
+        Some(TranscriptPublicationOutcome::AlreadyCommitted { .. })
+    ));
+    assert!(matches!(
+        f.status().await.commit().await.unwrap(),
+        TranscriptPublicationOutcome::AlreadyCommitted { .. }
+    ));
+    assert!(!f.canonical().exists());
+}
+
+#[tokio::test]
+async fn subtitle_import_rejects_changed_raw_presence_and_session_generation() {
+    for mutation in 0..3 {
+        let f = Fixture::new().await;
+        let source = subtitle_source(&f).await;
+        assert!(!source.transcript_present());
+        let plan = f
+            .store
+            .prepare_subtitle_publication(&f.operations, f.identity.clone(), source, generated())
+            .await
+            .unwrap()
+            .recheck()
+            .await
+            .unwrap();
+        if mutation == 0 {
+            std::fs::write(f.canonical(), b"").unwrap();
+        }
+        if mutation == 1 {
+            std::fs::write(f.canonical(), b"{\"transcripts\":[]}").unwrap();
+        }
+        if mutation == 2 {
+            let path = f.directory.join("_meta.json");
+            let mut meta: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            meta["created_at"] = "2026-11-09T10:00:00Z".into();
+            std::fs::write(path, serde_json::to_vec(&meta).unwrap()).unwrap();
+        }
+        assert!(matches!(
+            plan.commit().await.unwrap(),
+            TranscriptPublicationOutcome::Conflict
+        ));
+        if mutation == 0 {
+            assert_eq!(std::fs::read(f.canonical()).unwrap(), b"");
+        }
+        if mutation == 2 {
+            assert!(!f.canonical().exists());
+        }
+    }
+}
+
+#[tokio::test]
+async fn subtitle_import_rejects_duplicate_json_and_cannot_upgrade_audio_receipts() {
+    let f = Fixture::new().await;
+    std::fs::write(f.canonical(), b"{\"transcripts\":[],\"transcripts\":[]}").unwrap();
+    let source = subtitle_source(&f).await;
+    assert!(
+        f.store
+            .prepare_subtitle_publication(&f.operations, f.identity.clone(), source, generated())
+            .await
+            .is_err()
+    );
+    assert!(!f.paths().0.exists());
+    std::fs::remove_file(f.canonical()).unwrap();
+    let plan = f.prepare().await;
+    drop(plan);
+    assert!(
+        f.store
+            .completed_subtitle_publication(&f.operations, f.identity.clone())
+            .await
+            .is_err()
+    );
+    let source = subtitle_source(&f).await;
+    assert!(
+        f.store
+            .prepare_subtitle_publication(&f.operations, f.identity.clone(), source, generated())
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn subtitle_import_respects_active_recordings_and_recovers_all_publication_boundaries() {
+    let f = Fixture::new().await;
+    f.store.note_recording_active("note");
+    assert!(matches!(
+        f.store
+            .prepare_subtitle_source("note", crate::sha256(b"subtitle"))
+            .await
+            .unwrap(),
+        Some(SubtitleSourcePreparation::Busy)
+    ));
+    for boundary in 0..=3 {
+        let f = Fixture::new().await;
+        std::fs::remove_file(f.directory.join("audio.wav")).unwrap();
+        let source = subtitle_source(&f).await;
+        let plan = f
+            .store
+            .prepare_subtitle_publication(&f.operations, f.identity.clone(), source, generated())
+            .await
+            .unwrap();
+        assert!(
+            plan.commit_with(move |at| if at == boundary {
+                Err(StoreError::Io("Injected crash".into()))
+            } else {
+                Ok(())
+            })
+            .await
+            .is_err()
+        );
+        let result = std::fs::read(f.paths().1).unwrap();
+        let reopened = SessionStore::new(f.root.path().join("vault"));
+        let outcome = reopened
+            .prepare_transcript_publication_status(&f.operations, f.identity.clone())
+            .await
+            .unwrap()
+            .unwrap()
+            .commit()
+            .await
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            TranscriptPublicationOutcome::Published { .. }
+                | TranscriptPublicationOutcome::AlreadyCommitted { .. }
+        ));
+        assert_eq!(std::fs::read(f.canonical()).unwrap(), result);
+    }
+}

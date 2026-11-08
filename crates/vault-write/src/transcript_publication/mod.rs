@@ -31,7 +31,9 @@ use crate::{
 
 mod io;
 mod source_guard;
+mod subtitle;
 pub use source_guard::{ProcessingSourceBinding, ProcessingSourceGuard};
+pub use subtitle::{SubtitleSourcePreparation, SubtitleSourceSnapshot};
 #[cfg(test)]
 mod tests;
 
@@ -65,7 +67,7 @@ pub struct TranscriptPublicationBaseline(Arc<Baseline>);
 struct Baseline {
     owner: Arc<tokio::sync::Mutex<()>>,
     binding: Binding,
-    recording: FileSnapshot,
+    recording: Option<FileSnapshot>,
 }
 
 pub struct TranscriptSourceSnapshot {
@@ -77,7 +79,12 @@ impl TranscriptSourceSnapshot {
         self.baseline.clone()
     }
     pub fn recording_file(&self) -> &File {
-        self.baseline.0.recording.file()
+        self.baseline
+            .0
+            .recording
+            .as_ref()
+            .expect("audio-bound source")
+            .file()
     }
     pub fn recording_sha256(&self) -> &str {
         &self.baseline.0.binding.recording_sha256
@@ -229,8 +236,9 @@ impl SessionStore {
                             replacement,
                             transcript_present,
                             audio: audio_metadata,
+                            subtitle: None,
                         },
-                        recording,
+                        recording: Some(recording),
                     }))))
                 })
                 .await
@@ -256,7 +264,8 @@ impl SessionStore {
         generated: TranscriptWithData,
     ) -> Result<TranscriptPublicationPlan, StoreError> {
         identity.validate()?;
-        if !Arc::ptr_eq(&self.write_lock, &baseline.0.owner)
+        if baseline.0.binding.subtitle.is_some()
+            || !Arc::ptr_eq(&self.write_lock, &baseline.0.owner)
             || generated.session_id != baseline.0.binding.session_id
         {
             return Err(StoreError::Conflict(
@@ -421,6 +430,7 @@ async fn prepare_plan(
     let transcript_id = plan.receipt.transcript_id.clone();
     let session_id = plan.receipt.binding.session_id.clone();
     let limit = result_limit(plan.receipt.binding.replacement);
+    let subtitle = plan.receipt.binding.subtitle.is_some();
     let (result, empty, summary) = store
         .spawn_blocking(move || {
             let bytes = io::read(&path, limit)?.ok_or_else(|| {
@@ -435,21 +445,32 @@ async fn prepare_plan(
                 .map_err(io::serialization)?
                 .0;
             let file: TranscriptJson = serde_json::from_value(raw).map_err(io::serialization)?;
-            if file.transcripts.len() != 1 {
+            if (!subtitle && file.transcripts.len() != 1)
+                || file
+                    .transcripts
+                    .iter()
+                    .any(|transcript| transcript.session_id != session_id)
+            {
                 return Err(StoreError::Serialize(
                     "Invalid retained transcript result".into(),
                 ));
             }
-            validate_generated(&file.transcripts[0], limit != usize::MAX)?;
-            if file.transcripts[0].id != transcript_id
-                || file.transcripts[0].session_id != session_id
-            {
+            let mut matching = file
+                .transcripts
+                .iter()
+                .filter(|transcript| transcript.id == transcript_id);
+            let appended = matching.next().ok_or_else(|| {
+                StoreError::Conflict("Retained transcript identity changed".into())
+            })?;
+            if matching.next().is_some() {
                 return Err(StoreError::Conflict(
-                    "Retained transcript identity changed".into(),
+                    "Duplicate retained transcript identity".into(),
                 ));
             }
+            validate_generated(appended, limit != usize::MAX)?;
+            let empty = appended.words.is_empty();
             let summary = crate::transcript::summarize_transcript_bytes(&bytes)?;
-            Ok((bytes, file.transcripts[0].words.is_empty(), summary))
+            Ok((bytes, empty, summary))
         })
         .await
         .map_err(io::error)?
@@ -495,11 +516,17 @@ impl TranscriptPublicationPlan {
         else {
             return Ok(self.finish(TranscriptPublicationOutcome::Conflict));
         };
-        if audio_metadata(&meta.meta)? != self.receipt.binding.audio {
+        if !metadata_matches(&meta.meta, &self.receipt.binding)? {
             return Ok(self.finish(TranscriptPublicationOutcome::Conflict));
         }
         if busy(&store, &self.receipt.binding.session_id, &meta.meta).await {
             return Ok(self.finish(TranscriptPublicationOutcome::Busy));
+        }
+        if self.receipt.binding.subtitle.is_some() {
+            drop(snapshot);
+            let mut plan = self;
+            plan.checked = true;
+            return Ok(plan);
         }
         store
             .spawn_blocking(move || {
@@ -518,10 +545,13 @@ impl TranscriptPublicationPlan {
                 {
                     return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
                 }
-                if let Some(baseline) = &plan.baseline
-                    && !baseline.0.recording.unchanged(&recording)?
-                {
-                    return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
+                if let Some(baseline) = &plan.baseline {
+                    let Some(original) = baseline.0.recording.as_ref() else {
+                        return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
+                    };
+                    if !original.unchanged(&recording)? {
+                        return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
+                    }
                 }
                 let sha256 = io::hash_bounded(
                     recording.file(),
@@ -572,7 +602,7 @@ impl TranscriptPublicationPlan {
                     .record_refusal(TranscriptPublicationOutcome::Conflict)
                     .await;
             };
-            if audio_metadata(&meta.meta)? != plan.receipt.binding.audio {
+            if !metadata_matches(&meta.meta, &plan.receipt.binding)? {
                 drop(snapshot);
                 return plan
                     .record_refusal(TranscriptPublicationOutcome::Conflict)
@@ -677,13 +707,15 @@ impl TranscriptPublicationPlan {
         {
             return self.refuse_sync(&receipt_path);
         }
-        let current = io::select_with_limit(
-            &self.directory,
-            source_limit(self.receipt.binding.replacement),
-        )?;
-        if !matches!((&self.source,&current),(Some(before),Some((selection,after))) if selection == &self.receipt.binding.recording_selection && before.unchanged(after)?)
-        {
-            return self.refuse_sync(&receipt_path);
+        if self.receipt.binding.subtitle.is_none() {
+            let current = io::select_with_limit(
+                &self.directory,
+                source_limit(self.receipt.binding.replacement),
+            )?;
+            if !matches!((&self.source,&current),(Some(before),Some((selection,after))) if selection == &self.receipt.binding.recording_selection && before.unchanged(after)?)
+            {
+                return self.refuse_sync(&receipt_path);
+            }
         }
         let canonical = self.directory.join("transcript.json");
         let stage = self.directory.join(&self.receipt.stage_name);
@@ -812,6 +844,13 @@ async fn busy(store: &SessionStore, id: &str, meta: &crate::SessionMeta) -> bool
             .and_then(serde_json::Value::as_bool)
             == Some(true)
         || store.live.lock().await.contains_key(id)
+}
+
+fn metadata_matches(meta: &crate::SessionMeta, binding: &Binding) -> Result<bool, StoreError> {
+    match &binding.subtitle {
+        Some(source) => Ok(meta.created_at == source.session_created_at),
+        None => Ok(audio_metadata(meta)? == binding.audio),
+    }
 }
 
 fn audio_metadata(meta: &crate::SessionMeta) -> Result<hypr_vault_read::SessionAudio, StoreError> {

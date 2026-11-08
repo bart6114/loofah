@@ -54,6 +54,13 @@ pub(super) fn encode_result(
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(super) struct SubtitleBinding {
+    pub session_created_at: String,
+    pub source_sha256: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct Binding {
     pub session_id: String,
     pub recording_selection: String,
@@ -64,6 +71,8 @@ pub(super) struct Binding {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub transcript_present: bool,
     pub audio: hypr_vault_read::SessionAudio,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<SubtitleBinding>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,24 +102,38 @@ impl Receipt {
     pub fn validate(&self, expected: &TranscriptPublicationIdentity) -> Result<(), StoreError> {
         expected.validate()?;
         crate::validate_session_id(&self.binding.session_id)?;
-        if self.schema_version != 1
+        let subtitle = self.binding.subtitle.as_ref();
+        let valid_source = match subtitle {
+            Some(source) => {
+                self.schema_version == 2
+                    && self.binding.replacement
+                    && self.binding.recording_selection.is_empty()
+                    && self.binding.recording_sha256.is_empty()
+                    && valid_hash(&source.source_sha256)
+                    && chrono::DateTime::parse_from_rfc3339(&source.session_created_at).is_ok()
+            }
+            None => {
+                self.schema_version == 1
+                    && valid_hash(&self.binding.recording_sha256)
+                    && matches!(
+                        self.binding.recording_selection.as_str(),
+                        "audio.mp3"
+                            | "audio.wav"
+                            | "audio.ogg"
+                            | "audio/audio.mp3"
+                            | "audio/audio.wav"
+                            | "audio/audio.ogg"
+                    )
+            }
+        };
+        if !valid_source
             || &self.identity != expected
             || !valid_hash(&self.result_sha256)
-            || !valid_hash(&self.binding.recording_sha256)
             || !valid_hash(&self.binding.transcript_revision)
             || (!self.binding.replacement
                 && (self.binding.transcript_present
                     || self.binding.transcript_revision != absent_revision()))
             || !valid_text(&self.transcript_id, 512)
-            || !matches!(
-                self.binding.recording_selection.as_str(),
-                "audio.mp3"
-                    | "audio.wav"
-                    | "audio.ogg"
-                    | "audio/audio.mp3"
-                    | "audio/audio.wav"
-                    | "audio/audio.ogg"
-            )
         {
             return Err(StoreError::Conflict(
                 "Transcript publication receipt does not match this request".into(),
