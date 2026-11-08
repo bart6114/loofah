@@ -399,8 +399,9 @@ async fn drive(
             {
                 return Err(CaptureLiveFailure::SourceChanged);
             }
-            promote(context, service, record, publication, cancel, access).await?;
-            return Ok(());
+            if promote(context, service, record, publication, cancel, access).await? {
+                return Ok(());
+            }
         }
         if waiting.elapsed() > Duration::from_secs(120) {
             return Err(CaptureLiveFailure::Idle);
@@ -535,7 +536,7 @@ async fn promote(
     publication: &CapturePublication,
     cancel: &CancellationToken,
     access: &AccessSignals,
-) -> Result<(), CaptureLiveFailure> {
+) -> Result<bool, CaptureLiveFailure> {
     context
         .ensure_recording_publication_ready(&record.snapshot.session_id)
         .map_err(|_| CaptureLiveFailure::SourceChanged)?;
@@ -546,9 +547,14 @@ async fn promote(
         .map_err(|_| CaptureLiveFailure::Storage)?
     {
         Some(TranscriptSourcePreparation::Ready(source)) => source,
+        Some(TranscriptSourcePreparation::Busy) => {
+            #[cfg(test)]
+            service.journal.notify_promotion_busy();
+            return Ok(false);
+        }
         _ => {
             finish(context, service, record, CaptureLiveState::Conflict, None).await;
-            return Ok(());
+            return Ok(true);
         }
     };
     let expected_layout = if record.format.channels.len() == 2 {
@@ -635,6 +641,23 @@ async fn promote(
         .commit()
         .await
         .map_err(|_| CaptureLiveFailure::Storage)?;
+    if outcome == TranscriptPublicationOutcome::Busy {
+        // Store confirms this attempt never committed. Keep the exact retained result;
+        // the next attempt takes fresh source guards and authorization without inference.
+        *record = service
+            .journal
+            .worker()
+            .change(record.snapshot.generation_id.clone(), |r| {
+                r.commit_pending = false;
+                r.snapshot.state = CaptureLiveState::AwaitingRecording;
+            })
+            .await
+            .map_err(|_| CaptureLiveFailure::Storage)?;
+        changed(context, record);
+        #[cfg(test)]
+        service.journal.notify_promotion_busy();
+        return Ok(false);
+    }
     let (state, publication) = match outcome {
         TranscriptPublicationOutcome::Published {
             revision,
@@ -665,7 +688,7 @@ async fn promote(
         .await
         .map_err(|_| CaptureLiveFailure::Storage)?;
     changed(context, record);
-    Ok(())
+    Ok(true)
 }
 
 fn auth_failure(failure: TranscriptionFailure) -> CaptureLiveFailure {

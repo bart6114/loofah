@@ -103,6 +103,8 @@ struct Inner {
     failed: std::sync::atomic::AtomicBool,
     #[cfg(test)]
     worker_waiting: tokio::sync::Notify,
+    #[cfg(test)]
+    promotion_busy: tokio::sync::Notify,
 }
 
 impl Journal {
@@ -153,6 +155,8 @@ impl Journal {
                     failed: false.into(),
                     #[cfg(test)]
                     worker_waiting: tokio::sync::Notify::new(),
+                    #[cfg(test)]
+                    promotion_busy: tokio::sync::Notify::new(),
                 }),
                 false,
             ))
@@ -175,6 +179,16 @@ impl Journal {
     #[cfg(test)]
     pub(super) async fn wait_for_worker_admission(&self) {
         self.0.worker_waiting.notified().await;
+    }
+
+    #[cfg(test)]
+    pub(super) fn notify_promotion_busy(&self) {
+        self.0.promotion_busy.notify_one();
+    }
+
+    #[cfg(test)]
+    pub(super) async fn wait_for_promotion_busy(&self) {
+        self.0.promotion_busy.notified().await;
     }
 
     async fn run<T: Send + 'static>(

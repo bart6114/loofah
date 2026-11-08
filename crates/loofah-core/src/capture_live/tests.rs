@@ -160,6 +160,7 @@ struct Auth {
     revoked: CancellationToken,
     interrupted: CancellationToken,
     deny: std::sync::atomic::AtomicBool,
+    before_authorize: Mutex<Option<(tokio::sync::oneshot::Sender<()>, Arc<Semaphore>)>>,
 }
 impl Auth {
     fn new() -> Arc<Self> {
@@ -167,6 +168,7 @@ impl Auth {
             revoked: CancellationToken::new(),
             interrupted: CancellationToken::new(),
             deny: false.into(),
+            before_authorize: Mutex::new(None),
         })
     }
 }
@@ -194,6 +196,12 @@ impl CaptureLiveAuthorizer for Auth {
         Result<Box<dyn Send>, TranscriptionFailure>,
     > {
         Box::pin(async move {
+            let pause = self.before_authorize.lock().unwrap().take();
+            if let Some((entered, release)) = pause {
+                let _ = entered.send(());
+                let _release = release.acquire().await.unwrap();
+            }
+
             if self.deny.load(Ordering::Acquire) {
                 Err(TranscriptionFailure::AccessDenied)
             } else {
@@ -1479,4 +1487,123 @@ async fn saturated_public_ledger_reads_do_not_fail_or_restart_the_owned_live_wor
             .join("sessions/session/transcript.json")
             .exists()
     );
+}
+
+#[tokio::test]
+async fn busy_source_and_commit_admission_reuse_retained_live_result_with_fresh_guards() {
+    for stage in ["source", "commit", "changed_transcript"] {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let fake = Fake::new();
+        let auth = Auth::new();
+        let context = context(&root, fake.clone(), auth.clone()).await;
+        let (input, request, id) = begin(&context).await;
+        context
+            .start_capture_live_authorized(
+                MEMBER.into(),
+                input.identity.capture_id.clone(),
+                id.clone(),
+                request,
+                || async { Ok(()) },
+            )
+            .await
+            .unwrap();
+        append(&context, &input, 1).await;
+        until(&context, &input.identity.capture_id, &id, |snapshot| {
+            snapshot.next_caption_sequence == 2
+        })
+        .await;
+        let writer = context
+            .capture_writer(MEMBER.into(), input.identity.capture_id.clone())
+            .await
+            .unwrap();
+        let seal = writer.seal().await.unwrap();
+        fake.joined.notified().await;
+        context
+            .publish_capture_authorized(
+                MEMBER.into(),
+                input.identity.capture_id.clone(),
+                seal,
+                || async { Ok(()) },
+            )
+            .await
+            .unwrap();
+        let audio = if stage == "source" {
+            let audio = context.store.lock_session_audio("session").await.unwrap();
+            fake.released.add_permits(1);
+            audio
+        } else {
+            let (entered, reached) = tokio::sync::oneshot::channel();
+            let release = Arc::new(Semaphore::new(0));
+            *auth.before_authorize.lock().unwrap() = Some((entered, release.clone()));
+            fake.released.add_permits(1);
+            tokio::time::timeout(Duration::from_secs(5), reached)
+                .await
+                .unwrap()
+                .unwrap();
+            let audio = context.store.lock_session_audio("session").await.unwrap();
+            release.add_permits(1);
+            audio
+        };
+        let service = context.capture_live.get().unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            service.journal.wait_for_promotion_busy(),
+        )
+        .await
+        .unwrap();
+        let waiting = service
+            .journal
+            .worker()
+            .get(MEMBER.into(), id.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            waiting.snapshot.state,
+            CaptureLiveState::AwaitingRecording,
+            "{stage}"
+        );
+        assert!(!waiting.commit_pending, "{stage}");
+        assert!(waiting.snapshot.result_available);
+        assert_eq!(waiting.snapshot.failure, None);
+        assert!(!service.failed.load(Ordering::Acquire));
+        let retained = root.join("live").join(&id).join("result.json");
+        let result = std::fs::read(&retained).unwrap();
+        let canonical = context
+            .store
+            .vault_base()
+            .join("sessions/session/transcript.json");
+        assert!(!canonical.exists());
+        let edited = if stage == "changed_transcript" {
+            let mut edited: serde_json::Value = serde_json::from_slice(&result).unwrap();
+            edited["transcripts"][0]["words"][0]["speaker"] =
+                serde_json::json!("user-edited-speaker");
+            let bytes = serde_json::to_vec_pretty(&edited).unwrap();
+            std::fs::write(&canonical, &bytes).unwrap();
+            Some(bytes)
+        } else {
+            None
+        };
+        drop(audio);
+        let finished = until(&context, &input.identity.capture_id, &id, |snapshot| {
+            snapshot.state.is_terminal()
+        })
+        .await;
+        if let Some(edited) = edited {
+            assert_eq!(finished.state, CaptureLiveState::Conflict);
+            assert_eq!(std::fs::read(&canonical).unwrap(), edited);
+        } else {
+            assert_eq!(
+                finished.state,
+                CaptureLiveState::Completed,
+                "{stage}: {finished:?}"
+            );
+            assert!(finished.publication.is_some());
+        }
+        service.shutdown().await.unwrap();
+        assert!(!service.failed.load(Ordering::Acquire));
+        assert_eq!(fake.calls.load(Ordering::Acquire), 1);
+        assert_eq!(std::fs::read(retained).unwrap(), result);
+        assert_eq!(writer.read_chunk(0).await.unwrap().descriptor.frames, 16000);
+    }
 }
