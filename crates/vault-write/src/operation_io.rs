@@ -45,7 +45,7 @@ pub(crate) fn persist(path: &Path, receipt: &impl Serialize) -> Result<(), Store
     sync_parent(path)
 }
 
-fn ensure_directory(path: &Path) -> Result<(), StoreError> {
+pub(crate) fn ensure_directory(path: &Path) -> Result<(), StoreError> {
     if path.is_dir() {
         return Ok(());
     }

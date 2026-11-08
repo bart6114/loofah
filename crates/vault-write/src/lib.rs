@@ -44,6 +44,7 @@ pub mod tasks;
 mod tasks_revision;
 pub mod transcript;
 mod transcript_operation;
+pub mod transcript_publication;
 
 pub use attachments::SavedAttachment;
 pub use content::{

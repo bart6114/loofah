@@ -70,7 +70,7 @@ impl SessionStore {
     }
 }
 
-fn open_recording_in(directory: &Path) -> Result<Option<OpenedRecording>, StoreError> {
+pub(crate) fn open_recording_in(directory: &Path) -> Result<Option<OpenedRecording>, StoreError> {
     for filename in ["audio.mp3", "audio.wav", "audio.ogg"] {
         if let Some(file) = open_regular_file(&directory.join(filename))? {
             return Ok(Some(OpenedRecording { file, filename }));
