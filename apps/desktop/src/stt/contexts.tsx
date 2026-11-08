@@ -293,6 +293,15 @@ export const ListenerProvider = ({
   );
 };
 
+export const useListenerStore = () => {
+  const store = useContext(ListenerContext);
+  if (!store)
+    throw new Error(
+      "'useListenerStore' must be used within a 'ListenerProvider'",
+    );
+  return store;
+};
+
 export const useListener = <T,>(
   selector: Parameters<
     typeof useStore<ReturnType<typeof createListenerStore>, T>

@@ -7,6 +7,7 @@ import { useSTTConnection } from "./useSTTConnection";
 
 import { useSession } from "~/session/queries";
 import { beginSummaryActivity } from "~/session/summary-activity";
+import { getApplicationClient } from "~/shared/application/client";
 import { useConfigValue } from "~/shared/config";
 import { id } from "~/shared/utils";
 import type { BatchPersistCallback } from "~/store/zustand/listener/transcript";
@@ -17,7 +18,6 @@ import {
 } from "~/stt/capabilities";
 import { appendTranscriptWordsAndHints, createTranscript } from "~/stt/queries";
 import type { SpeakerHintWithId, WordWithId } from "~/stt/types";
-import { commands } from "~/types/tauri.gen";
 
 type RunOptions = {
   imported?: boolean;
@@ -91,7 +91,7 @@ export function getSessionSpeakerCount(
   return humanIds.size > 1 ? humanIds.size : undefined;
 }
 
-export const useRunBatch = (sessionId: string) => {
+export const useRunBatch = (sessionId: string, assertCurrent?: () => void) => {
   const session = useSession(sessionId);
 
   const startTranscription = useListener((state) => state.startTranscription);
@@ -100,6 +100,8 @@ export const useRunBatch = (sessionId: string) => {
 
   return useCallback(
     async (filePath: string, options?: RunOptions) => {
+      assertCurrent?.();
+      const backend = getApplicationClient().store;
       const activity = beginSummaryActivity(sessionId, "processing");
       try {
         if (!startTranscription) {
@@ -129,13 +131,13 @@ export const useRunBatch = (sessionId: string) => {
             "Select a transcription model in Settings before transcribing.",
           );
         }
-        if (
-          !(await canUseBatchTarget(
-            selectedTarget.provider,
-            selectedTarget.model,
-            languages,
-          ))
-        ) {
+        const supported = await canUseBatchTarget(
+          selectedTarget.provider,
+          selectedTarget.model,
+          languages,
+        );
+        assertCurrent?.();
+        if (!supported) {
           throw new Error(
             `${selectedTarget.model} cannot transcribe the selected meeting languages. Choose another model or change your spoken languages in Settings.`,
           );
@@ -144,8 +146,9 @@ export const useRunBatch = (sessionId: string) => {
 
         const priorTranscripts =
           options?.imported === undefined
-            ? await commands.sessionTranscripts(sessionId)
+            ? await backend.sessionTranscripts(sessionId)
             : null;
+        assertCurrent?.();
         if (priorTranscripts?.status === "error") {
           throw new Error(priorTranscripts.error);
         }
@@ -249,20 +252,23 @@ export const useRunBatch = (sessionId: string) => {
             if (!transcriptId) {
               transcriptId = id();
               trackTranscriptWrite(
-                createTranscript({
-                  id: transcriptId,
-                  sessionId,
-                  ownerUserId: session?.user_id ?? "",
-                  createdAt,
-                  startedAt: Date.now(),
-                  memo: memoMd,
-                  source: "batch_transcription",
-                  provider: target.provider,
-                  model: target.model,
-                  words: newWords,
-                  speakerHints: newHints,
-                  replaceSession: true,
-                }),
+                createTranscript(
+                  {
+                    id: transcriptId,
+                    sessionId,
+                    ownerUserId: session?.user_id ?? "",
+                    createdAt,
+                    startedAt: Date.now(),
+                    memo: memoMd,
+                    source: "batch_transcription",
+                    provider: target.provider,
+                    model: target.model,
+                    words: newWords,
+                    speakerHints: newHints,
+                    replaceSession: true,
+                  },
+                  { store: backend },
+                ),
               );
             } else {
               trackTranscriptWrite(
@@ -270,7 +276,7 @@ export const useRunBatch = (sessionId: string) => {
                   transcriptId,
                   newWords,
                   newHints,
-                  persistOptions,
+                  { ...persistOptions, store: backend },
                 ),
               );
             }
@@ -289,6 +295,8 @@ export const useRunBatch = (sessionId: string) => {
           max_speakers: options?.maxSpeakers,
         };
 
+        assertCurrent?.();
+        // Admitted processing keeps its original persistence owner after the UI closes.
         try {
           await startTranscription(params, { handlePersist: persist });
         } finally {
@@ -300,6 +308,13 @@ export const useRunBatch = (sessionId: string) => {
         activity.finish();
       }
     },
-    [conn, session, meetingLanguages, startTranscription, sessionId],
+    [
+      conn,
+      session,
+      meetingLanguages,
+      startTranscription,
+      sessionId,
+      assertCurrent,
+    ],
   );
 };

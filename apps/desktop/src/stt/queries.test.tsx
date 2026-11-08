@@ -1,11 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SegmentKeyUtils } from "./live-segment";
 
+import type { VaultClient } from "~/shared/application/vault-client";
+import { VaultHostContext } from "~/shared/application/vault-provider";
+import { VaultScope } from "~/shared/application/vault-scope";
 import { DEFAULT_USER_ID } from "~/shared/utils";
+import { enqueueDatabaseWrite } from "~/shared/write-queue";
 import type { TranscriptWithData } from "~/types/tauri.gen";
 
 const mocks = vi.hoisted(() => ({
@@ -86,14 +90,46 @@ import {
   useTranscriptLabelContext,
 } from "./queries";
 
+const scopes: VaultScope[] = [];
+afterEach(() => {
+  for (const scope of scopes.splice(0)) scope.dispose();
+});
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-
+  const client = {
+    scope: crypto.randomUUID(),
+    networkMode: "always",
+    canEdit: true,
+    features: ["content_read"],
+    transcripts: async (id: string) => {
+      const result = await mocks.sessionTranscripts(id);
+      if (result.status === "error") throw new Error(result.error);
+      return result.data;
+    },
+    people: async () => {
+      const result = await mocks.peopleList();
+      if (result.status === "error") throw new Error(result.error);
+      return result.data;
+    },
+    subscribe: async (changed: (event: unknown) => void) => {
+      changed({ kind: "connection", state: "connected", error: null });
+      return () => {};
+    },
+  } as unknown as VaultClient;
+  const scope = new VaultScope(client);
+  scopes.push(scope);
+  void scope.start();
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <VaultHostContext.Provider
+          value={{ scope, error: null, retry: () => {} }}
+        >
+          {children}
+        </VaultHostContext.Provider>
+      </QueryClientProvider>
     );
   };
 }
@@ -163,20 +199,25 @@ describe("transcript queries", () => {
   });
 
   it("defaults absent word/hint payloads to empty without hiding the row", async () => {
-    mocks.transcriptGet.mockResolvedValue({
+    mocks.sessionTranscripts.mockResolvedValue({
       status: "ok",
-      data: {
-        id: "transcript-1",
-        user_id: "user-1",
-        session_id: "session-1",
-        started_at: 1000,
-        ended_at: null,
-      },
+      data: [
+        {
+          id: "transcript-1",
+          user_id: "user-1",
+          session_id: "session-1",
+          started_at: 1000,
+          ended_at: null,
+        },
+      ],
     });
 
-    const { result } = renderHook(() => useTranscript("transcript-1"), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderHook(
+      () => useTranscript("session-1", "transcript-1"),
+      {
+        wrapper: createWrapper(),
+      },
+    );
 
     await waitFor(() => expect(result.current).not.toBeNull());
     expect(result.current).toEqual(
@@ -187,26 +228,29 @@ describe("transcript queries", () => {
         speakerHints: [],
       }),
     );
-    expect(mocks.transcriptGet).toHaveBeenCalledWith("transcript-1");
+    expect(mocks.transcriptGet).not.toHaveBeenCalled();
+    expect(mocks.sessionTranscripts).toHaveBeenCalledWith("session-1");
   });
 
   it.each(["", null, undefined])(
     "labels live and saved microphone segments as You with owner %s",
     async (userId) => {
-      mocks.transcriptGet.mockResolvedValue({
+      mocks.sessionTranscripts.mockResolvedValue({
         status: "ok",
-        data: {
-          id: "transcript-1",
-          user_id: userId,
-          session_id: "session-1",
-          started_at: 1000,
-          words: [],
-          speaker_hints: [],
-        },
+        data: [
+          {
+            id: "transcript-1",
+            user_id: userId,
+            session_id: "session-1",
+            started_at: 1000,
+            words: [],
+            speaker_hints: [],
+          },
+        ],
       });
 
       const { result } = renderHook(
-        () => useTranscriptLabelContext("transcript-1"),
+        () => useTranscriptLabelContext("session-1", "transcript-1"),
         { wrapper: createWrapper() },
       );
 
@@ -227,28 +271,30 @@ describe("transcript queries", () => {
   );
 
   it("resolves speaker labels straight from assigned hint values, not a lookup", async () => {
-    mocks.transcriptGet.mockResolvedValue({
+    mocks.sessionTranscripts.mockResolvedValue({
       status: "ok",
-      data: {
-        id: "transcript-1",
-        user_id: "self",
-        session_id: "session-1",
-        started_at: 1000,
-        ended_at: null,
-        words: [],
-        speaker_hints: [
-          {
-            id: "hint-1",
-            word_id: "word-1",
-            type: "speaker_label",
-            value: "Alice",
-          },
-        ],
-      },
+      data: [
+        {
+          id: "transcript-1",
+          user_id: "self",
+          session_id: "session-1",
+          started_at: 1000,
+          ended_at: null,
+          words: [],
+          speaker_hints: [
+            {
+              id: "hint-1",
+              word_id: "word-1",
+              type: "speaker_label",
+              value: "Alice",
+            },
+          ],
+        },
+      ],
     });
 
     const { result } = renderHook(
-      () => useTranscriptLabelContext("transcript-1"),
+      () => useTranscriptLabelContext("session-1", "transcript-1"),
       { wrapper: createWrapper() },
     );
 
@@ -264,34 +310,36 @@ describe("transcript queries", () => {
       status: "ok",
       data: [{ id: "bob_peters", name: "Bob Peters" }],
     });
-    mocks.transcriptGet.mockResolvedValue({
+    mocks.sessionTranscripts.mockResolvedValue({
       status: "ok",
-      data: {
-        id: "transcript-1",
-        user_id: "self",
-        session_id: "session-1",
-        started_at: 1000,
-        ended_at: null,
-        words: [],
-        speaker_hints: [
-          {
-            id: "hint-1",
-            word_id: "word-1",
-            type: "speaker_label",
-            value: "bob_peters",
-          },
-          {
-            id: "hint-2",
-            word_id: "word-2",
-            type: "speaker_label",
-            value: "kim",
-          },
-        ],
-      },
+      data: [
+        {
+          id: "transcript-1",
+          user_id: "self",
+          session_id: "session-1",
+          started_at: 1000,
+          ended_at: null,
+          words: [],
+          speaker_hints: [
+            {
+              id: "hint-1",
+              word_id: "word-1",
+              type: "speaker_label",
+              value: "bob_peters",
+            },
+            {
+              id: "hint-2",
+              word_id: "word-2",
+              type: "speaker_label",
+              value: "kim",
+            },
+          ],
+        },
+      ],
     });
 
     const { result } = renderHook(
-      () => useTranscriptLabelContext("transcript-1"),
+      () => useTranscriptLabelContext("session-1", "transcript-1"),
       { wrapper: createWrapper() },
     );
 
@@ -516,4 +564,38 @@ describe("transcript queries", () => {
       speaker_hints: [],
     });
   });
+});
+
+it("checks speaker ownership at queue execution, not only enqueue", async () => {
+  let allowed = true;
+  let finish!: () => void;
+  const block = enqueueDatabaseWrite(
+    "transcript:queued-speaker",
+    () =>
+      new Promise<void>((done) => {
+        finish = done;
+      }),
+  );
+  await waitFor(() => expect(finish).toBeDefined());
+  const pending = assignTranscriptSpeaker(
+    {
+      transcriptId: "queued-speaker",
+      segmentKey: {
+        channel: "RemoteParty",
+        speaker_index: 0,
+        speaker_human_id: null,
+      },
+      speakerLabel: "person",
+      anchorWordId: "word",
+    },
+    () => {
+      if (!allowed) throw new Error("retired");
+    },
+  );
+  const rejected = expect(pending).rejects.toThrow("retired");
+  allowed = false;
+  finish();
+  await block;
+  await rejected;
+  expect(mocks.sessionAssignTranscriptSpeaker).not.toHaveBeenCalled();
 });

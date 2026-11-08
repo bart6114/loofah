@@ -51,8 +51,17 @@ function isAudioUploadPath(path: string) {
   return AUDIO_EXTENSIONS.includes(fileExtension(path));
 }
 
-export function useUploadFile(sessionId: string) {
-  const runBatch = useRunBatch(sessionId);
+export function useUploadFile(sessionId: string, assertCurrent?: () => void) {
+  const check = useCallback(() => assertCurrent?.(), [assertCurrent]);
+  const current = useCallback(() => {
+    try {
+      check();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [check]);
+  const runBatch = useRunBatch(sessionId, assertCurrent);
   const queryClient = useQueryClient();
   const handleBatchStarted = useListener((state) => state.handleBatchStarted);
   const handleBatchFailed = useListener((state) => state.handleBatchFailed);
@@ -60,7 +69,7 @@ export function useUploadFile(sessionId: string) {
   const clearBatchSession = useListener((state) => state.clearBatchSession);
 
   const session = useSession(sessionId);
-  const updateSession = useUpdateSession(sessionId);
+  const updateSession = useUpdateSession(sessionId, assertCurrent);
   const updateSessionTabState = useTabs((state) => state.updateSessionTabState);
   const sessionTab = useTabs((state) => {
     const found = state.tabs.find(
@@ -71,11 +80,13 @@ export function useUploadFile(sessionId: string) {
   });
 
   const triggerEnhance = useCallback(() => {
+    check();
     const service = getEnhancerService();
     if (!service) return;
 
     void Promise.resolve(service.enhance(sessionId))
       .then((result) => {
+        check();
         if (
           (result.type === "started" || result.type === "already_active") &&
           sessionTab
@@ -89,20 +100,23 @@ export function useUploadFile(sessionId: string) {
       .catch((error) => {
         console.error("[enhancer] failed to enhance uploaded file", error);
       });
-  }, [sessionId, sessionTab, updateSessionTabState]);
+  }, [sessionId, sessionTab, updateSessionTabState, check]);
 
   const triggerEnhanceIfSummaryEmpty = useCallback(() => {
+    check();
     void Promise.resolve(
       getEnhancerService()?.queueAutoEnhanceIfSummaryEmpty(sessionId),
     ).catch((error) => {
       console.error("[enhancer] failed to queue uploaded file", error);
     });
-  }, [sessionId]);
+  }, [sessionId, check]);
 
   const applyEstimatedAudioNoteDate = useCallback(
     async (filePath: string) => {
       try {
+        check();
         const result = await fsSyncCommands.audioSourceMetadata(filePath);
+        check();
         if (result.status === "error") {
           return;
         }
@@ -114,17 +128,20 @@ export function useUploadFile(sessionId: string) {
           return;
         }
 
+        check();
         await updateSession({ created_at: estimatedCreatedAt });
+        check();
       } catch (error) {
         console.error("[upload] audio metadata inspection failed:", error);
       }
     },
-    [updateSession],
+    [updateSession, check],
   );
 
   const applyDroppedAudioNoteDate = useCallback(
     async (file: File) => {
       try {
+        check();
         if (!Number.isFinite(file.lastModified) || file.lastModified <= 0) {
           return;
         }
@@ -132,11 +149,12 @@ export function useUploadFile(sessionId: string) {
         await updateSession({
           created_at: new Date(file.lastModified).toISOString(),
         });
+        check();
       } catch (error) {
         console.error("[upload] dropped audio date inspection failed:", error);
       }
     },
-    [updateSession],
+    [updateSession, check],
   );
 
   const importWithProgress = useCallback(
@@ -150,6 +168,7 @@ export function useUploadFile(sessionId: string) {
       >,
     ) =>
       enqueueSessionAudioOperation(sessionId, async () => {
+        check();
         const unlisten = await fsSyncEvents.audioImportEvent.listen((e) => {
           if (
             e.payload.type === "audioImportProgress" &&
@@ -160,6 +179,7 @@ export function useUploadFile(sessionId: string) {
         });
 
         try {
+          check();
           const result = await runImport();
           if (result.status === "error") {
             throw new Error(result.error);
@@ -173,7 +193,7 @@ export function useUploadFile(sessionId: string) {
           unlisten();
         }
       }),
-    [sessionId, updateBatchProgress],
+    [sessionId, updateBatchProgress, check],
   );
 
   const runAudioImport = useCallback(
@@ -182,21 +202,32 @@ export function useUploadFile(sessionId: string) {
       inspectAudioDate: () => Promise<void>,
     ) => {
       const program = pipe(
-        Effect.promise(inspectAudioDate),
+        Effect.promise(async () => {
+          check();
+          await inspectAudioDate();
+          check();
+        }),
         Effect.tap(() =>
           Effect.sync(() => {
+            check();
             handleBatchStarted(sessionId, "importing");
           }),
         ),
         Effect.flatMap(() =>
           Effect.tryPromise({
-            try: importAudio,
+            try: async () => {
+              check();
+              const path = await importAudio();
+              check();
+              return path;
+            },
             catch: (error) =>
               error instanceof Error ? error : new Error(String(error)),
           }),
         ),
         Effect.tap(() =>
           Effect.sync(() => {
+            if (!current()) return;
             void queryClient.invalidateQueries({
               queryKey: ["audio", sessionId],
             });
@@ -205,13 +236,24 @@ export function useUploadFile(sessionId: string) {
         Effect.tap(() => Effect.sync(() => clearBatchSession(sessionId))),
         Effect.flatMap((importedPath) =>
           Effect.tryPromise({
-            try: () => runBatch(importedPath, { imported: true }),
+            try: () => {
+              check();
+              return runBatch(importedPath, { imported: true });
+            },
             catch: (error) => error,
           }),
         ),
-        Effect.tap(() => Effect.sync(() => triggerEnhanceIfSummaryEmpty())),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            if (current()) triggerEnhanceIfSummaryEmpty();
+          }),
+        ),
         Effect.catchAll((error: unknown) =>
           Effect.sync(() => {
+            if (!current()) {
+              clearBatchSession(sessionId);
+              return;
+            }
             if (isStoppedTranscriptionError(error)) {
               return;
             }
@@ -222,7 +264,7 @@ export function useUploadFile(sessionId: string) {
         ),
       );
 
-      Effect.runPromise(program).catch((error) => {
+      return Effect.runPromise(program).catch((error) => {
         console.error("[upload] audio failed:", error);
       });
     },
@@ -234,11 +276,14 @@ export function useUploadFile(sessionId: string) {
       runBatch,
       sessionId,
       triggerEnhanceIfSummaryEmpty,
+      check,
+      current,
     ],
   );
 
   const processFile = useCallback(
     (filePath: string, kind: "audio" | "transcript") => {
+      check();
       const normalizedPath = filePath.toLowerCase();
 
       if (kind === "transcript") {
@@ -252,6 +297,7 @@ export function useUploadFile(sessionId: string) {
         const program = pipe(
           fromResult(listener2Commands.parseSubtitle(filePath)),
           Effect.tap((subtitle) => {
+            check();
             if (subtitle.tokens.length === 0) {
               return Effect.void;
             }
@@ -271,8 +317,9 @@ export function useUploadFile(sessionId: string) {
             }));
 
             return Effect.tryPromise({
-              try: () =>
-                createTranscript({
+              try: () => {
+                check();
+                const input = {
                   id: transcriptId,
                   sessionId,
                   ownerUserId: session?.user_id ?? "",
@@ -281,30 +328,33 @@ export function useUploadFile(sessionId: string) {
                   memo: session?.raw_md ?? "",
                   source: "subtitle_import",
                   words,
-                }),
+                };
+                return assertCurrent
+                  ? createTranscript(input, { assertCurrent })
+                  : createTranscript(input);
+              },
               catch: (error) =>
                 error instanceof Error ? error : new Error(String(error)),
             }).pipe(
               Effect.tap(() =>
                 Effect.sync(() => {
-                  triggerEnhance();
+                  if (current()) triggerEnhance();
                 }),
               ),
             );
           }),
         );
 
-        Effect.runPromise(program).catch((error) => {
+        return Effect.runPromise(program).catch((error) => {
           console.error("[upload] transcript failed:", error);
         });
-        return;
       }
 
       if (!isAudioUploadPath(normalizedPath)) {
         return;
       }
 
-      runAudioImport(
+      return runAudioImport(
         () =>
           importWithProgress(() =>
             fsSyncCommands.audioImport(sessionId, filePath),
@@ -319,6 +369,9 @@ export function useUploadFile(sessionId: string) {
       applyEstimatedAudioNoteDate,
       importWithProgress,
       runAudioImport,
+      assertCurrent,
+      check,
+      current,
     ],
   );
 
@@ -327,12 +380,13 @@ export function useUploadFile(sessionId: string) {
       file: File,
       options?: { allowUnknownAudio?: boolean; contentType?: string },
     ) => {
+      check();
       if (!options?.allowUnknownAudio && !isAudioUploadFile(file)) {
         return;
       }
 
       const filePath = audioUploadFilePath(file);
-      runAudioImport(
+      return runAudioImport(
         async () => {
           if (filePath) {
             return importWithProgress(() =>
@@ -341,6 +395,7 @@ export function useUploadFile(sessionId: string) {
           }
 
           const data = Array.from(new Uint8Array(await file.arrayBuffer()));
+          check();
           return importWithProgress(() =>
             fsSyncCommands.audioImportData(
               sessionId,
@@ -353,13 +408,20 @@ export function useUploadFile(sessionId: string) {
         () => applyDroppedAudioNoteDate(file),
       );
     },
-    [applyDroppedAudioNoteDate, importWithProgress, runAudioImport, sessionId],
+    [
+      applyDroppedAudioNoteDate,
+      importWithProgress,
+      runAudioImport,
+      sessionId,
+      check,
+    ],
   );
 
   const processAudioPath = useCallback(
     (path: string) => {
+      check();
       if (!isAudioUploadFile({ name: path, type: "" })) return;
-      runAudioImport(
+      return runAudioImport(
         () =>
           importWithProgress(() => fsSyncCommands.audioImport(sessionId, path)),
         () => applyEstimatedAudioNoteDate(path),
@@ -370,6 +432,7 @@ export function useUploadFile(sessionId: string) {
       importWithProgress,
       runAudioImport,
       sessionId,
+      check,
     ],
   );
 
@@ -381,32 +444,41 @@ export function useUploadFile(sessionId: string) {
           : [{ name: "Transcript", extensions: TRANSCRIPT_EXTENSIONS }];
 
       const program = pipe(
-        Effect.promise(() => downloadDir()),
+        Effect.promise(async () => {
+          check();
+          const value = await downloadDir();
+          check();
+          return value;
+        }),
         Effect.flatMap((defaultPath) =>
-          Effect.promise(() =>
-            selectFile({
+          Effect.promise(async () => {
+            check();
+            const value = await selectFile({
               title: kind === "audio" ? "Upload Audio" : "Upload Transcript",
               multiple: false,
               directory: false,
               defaultPath,
               filters,
-            }),
-          ),
+            });
+            check();
+            return value;
+          }),
         ),
       );
 
-      Effect.runPromise(program)
+      return Effect.runPromise(program)
         .then((selection) => {
+          check();
           const path = Array.isArray(selection) ? selection[0] : selection;
           if (path) {
-            processFile(path, kind);
+            return processFile(path, kind);
           }
         })
         .catch((error) => {
           console.error("[upload] dialog failed:", error);
         });
     },
-    [processFile],
+    [processFile, check],
   );
 
   const uploadAudio = useCallback(

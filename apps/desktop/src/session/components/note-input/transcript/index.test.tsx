@@ -2,10 +2,11 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderUI,
   screen,
+  waitFor,
 } from "@testing-library/react";
-import { createRef } from "react";
+import { createRef, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -22,11 +23,19 @@ const {
   useAudioPlayerMock,
   regenerateTranscriptMock,
   transcriptQueryMock,
+  listenerStoreMock,
+  uploadFileHookMock,
+  regenerateHookMock,
+  viewerMock,
 } = vi.hoisted(() => ({
   useListenerMock: vi.fn(),
   transcriptQueryMock: vi.fn(),
   useAudioPlayerMock: vi.fn(),
   regenerateTranscriptMock: vi.fn(),
+  listenerStoreMock: vi.fn(),
+  uploadFileHookMock: vi.fn(),
+  regenerateHookMock: vi.fn(),
+  viewerMock: vi.fn(),
 }));
 
 vi.mock("~/stt/queries", () => ({
@@ -34,11 +43,12 @@ vi.mock("~/stt/queries", () => ({
 }));
 
 vi.mock("./actions", () => ({
-  useRegenerateTranscript: () => regenerateTranscriptMock,
+  useRegenerateTranscript: regenerateHookMock,
 }));
 
 vi.mock("~/stt/contexts", () => ({
   useListener: useListenerMock,
+  useListenerStore: listenerStoreMock,
 }));
 
 vi.mock("~/audio-player", () => ({
@@ -73,20 +83,19 @@ vi.mock("./screens/listening", () => ({
 }));
 
 vi.mock("./renderer", () => ({
-  TranscriptViewer: () => <div data-testid="transcript-viewer" />,
+  TranscriptViewer: viewerMock,
 }));
 
-vi.mock("~/stt/useUploadFile", () => ({
-  useUploadFile: vi.fn(() => ({
-    uploadAudio: vi.fn(),
-    uploadTranscript: vi.fn(),
-    processFile: vi.fn(),
-  })),
-}));
+vi.mock("~/stt/useUploadFile", () => ({ useUploadFile: uploadFileHookMock }));
 
 vi.mock("~/stt/pending-upload", () => ({
   consumePendingUpload: vi.fn(() => null),
 }));
+
+let defaultHost: ReturnType<typeof createRenderCacheHost>;
+function render(ui: ReactNode) {
+  return renderUI(ui, { wrapper: defaultHost.Host });
+}
 
 describe("Transcript", () => {
   const sessionId = "session-1";
@@ -95,6 +104,7 @@ describe("Transcript", () => {
     getSessionMode: (id: string) => "inactive" | "active" | "finalizing";
     batch: Record<string, { error?: string | null }>;
     live: {
+      sessionId: string | null;
       degraded: null;
       requestedLiveTranscription: boolean;
       liveTranscriptionActive: boolean;
@@ -116,7 +126,20 @@ describe("Transcript", () => {
 
   beforeEach(() => {
     cacheHosts = [];
+    defaultHost = createRenderCacheHost("local:transcript-controls", "always", {
+      features: ["legacy_desktop_transcript_controls"],
+    });
+    cacheHosts.push(defaultHost);
     regenerateTranscriptMock.mockClear();
+    uploadFileHookMock.mockReset().mockReturnValue({
+      uploadAudio: vi.fn(),
+      uploadTranscript: vi.fn(),
+      processFile: vi.fn(),
+    });
+    regenerateHookMock.mockReset().mockReturnValue(regenerateTranscriptMock);
+    viewerMock
+      .mockReset()
+      .mockImplementation(() => <div data-testid="transcript-viewer" />);
     animationFrames = [];
     vi.stubGlobal(
       "requestAnimationFrame",
@@ -132,6 +155,7 @@ describe("Transcript", () => {
       getSessionMode: () => "active",
       batch: {},
       live: {
+        sessionId,
         degraded: null,
         requestedLiveTranscription: true,
         liveTranscriptionActive: true,
@@ -141,6 +165,7 @@ describe("Transcript", () => {
       partialHintsByChannel: {},
     };
 
+    listenerStoreMock.mockReturnValue({ getState: () => listenerState });
     useListenerMock.mockImplementation((selector) => selector(listenerState));
     useAudioPlayerMock.mockReturnValue({ audioExists: false });
   });
@@ -154,8 +179,12 @@ describe("Transcript", () => {
   ])(
     "uses only the captured owning render cache for warm readiness: %s",
     (location) => {
-      const host = createRenderCacheHost("same-scope");
-      const other = createRenderCacheHost("same-scope");
+      const host = createRenderCacheHost("same-scope", "always", {
+        features: ["legacy_desktop_transcript_controls"],
+      });
+      const other = createRenderCacheHost("same-scope", "always", {
+        features: ["legacy_desktop_transcript_controls"],
+      });
       cacheHosts.push(host, other);
       const row = makeTranscript([
         { id: "w", text: "hello", start_ms: 0, end_ms: 100, channel: 0 },
@@ -247,7 +276,7 @@ describe("Transcript", () => {
     expect(screen.getByTestId("transcript-viewer")).toBeTruthy();
   });
 
-  it("shows the failure and retry action when a batch fails before producing words", () => {
+  it("shows the failure and retry action when a batch fails before producing words", async () => {
     listenerState.getSessionMode = () => "inactive";
     listenerState.batch[sessionId] = {
       error: "Transcription timed out after 60 seconds without progress.",
@@ -267,7 +296,9 @@ describe("Transcript", () => {
     );
     expect(screen.queryByTestId("transcript-viewer")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Re-transcribe" }));
-    expect(regenerateTranscriptMock).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(regenerateTranscriptMock).toHaveBeenCalledOnce(),
+    );
   });
 
   it("keeps transcript words visible after a batch failure", () => {
@@ -410,6 +441,45 @@ describe("Transcript", () => {
 
     expect(screen.queryByTestId("listening-state")).toBeNull();
     expect(screen.getByTestId("batch-state")).not.toBeNull();
+  });
+  it("never mounts local import/retranscribe hooks or projects local live/batch state under an unsupported host", () => {
+    const remote = createRenderCacheHost("remote:other", "online", {
+      features: ["content_read"],
+    });
+    cacheHosts.push(remote);
+    listenerState.getSessionMode = () => "active";
+    listenerState.liveSegments = [{ text: "Private local live words" }];
+    const saved = makeTranscript([
+      {
+        id: "remote-word",
+        text: "Remote canonical",
+        start_ms: 0,
+        end_ms: 100,
+        channel: 1,
+      },
+    ]);
+    render(
+      <remote.Host>
+        <Transcript
+          sessionId={sessionId}
+          transcripts={[saved]}
+          initiallyReady
+          scrollRef={createRef<HTMLDivElement>()}
+        />
+      </remote.Host>,
+    );
+    expect(uploadFileHookMock).not.toHaveBeenCalled();
+    expect(regenerateHookMock).not.toHaveBeenCalled();
+    expect(viewerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId,
+        transcripts: [saved],
+        liveSegments: [],
+        currentActive: false,
+      }),
+      undefined,
+    );
+    expect(screen.queryByText("Private local live words")).toBeNull();
   });
 });
 

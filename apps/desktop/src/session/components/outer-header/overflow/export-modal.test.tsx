@@ -67,7 +67,8 @@ let host: ReturnType<typeof createRenderCacheHost>;
 beforeEach(() => {
   vi.clearAllMocks();
   host = createRenderCacheHost("local:export", "always", {
-    features: ["transcript_overview"],
+    features: ["transcript_overview", "content_read"],
+    transcripts: mocks.read,
     transcriptOverview: mocks.overview,
   });
   mocks.overview.mockResolvedValue({
@@ -76,7 +77,7 @@ beforeEach(() => {
     started_at: 0,
     ended_at: 60000,
   });
-  mocks.read.mockResolvedValue({ status: "ok", data: [transcript] });
+  mocks.read.mockResolvedValue([transcript]);
   mocks.render.mockResolvedValue({
     status: "ok",
     data: [
@@ -131,9 +132,9 @@ it("exports duration without loading words, and only subscribes to words while s
   await waitFor(() =>
     expect(screen.queryByText("Preparing transcript...")).toBeNull(),
   );
-  const raw = host.rootClient
+  const raw = host.scope.queryClient
     .getQueryCache()
-    .find({ queryKey: ["session-transcripts", "s1"] })!;
+    .find({ queryKey: host.scope.transcriptsOptions("s1").queryKey })!;
   const rendered = host.scope.queryClient
     .getQueryCache()
     .findAll({
@@ -166,9 +167,9 @@ it("exports duration without loading words, and only subscribes to words while s
   view.setOpen(false);
   await act(() => vi.advanceTimersByTimeAsync(300001));
   expect(
-    host.rootClient
+    host.scope.queryClient
       .getQueryCache()
-      .find({ queryKey: ["session-transcripts", "s1"] }),
+      .find({ queryKey: host.scope.transcriptsOptions("s1").queryKey }),
   ).toBeUndefined();
   expect(
     host.scope.queryClient
@@ -186,11 +187,11 @@ it("exports duration without loading words, and only subscribes to words while s
 });
 
 it("keeps preparation pending across both fetch stages and retries a failed read", async () => {
-  let resolveRead!: (value: unknown) => void;
+  let rejectRead!: (error: Error) => void;
   let resolveRender!: (value: unknown) => void;
   mocks.read.mockReturnValueOnce(
-    new Promise((resolve) => {
-      resolveRead = resolve;
+    new Promise((_resolve, reject) => {
+      rejectRead = reject;
     }),
   );
   mocks.render.mockReturnValueOnce(
@@ -206,7 +207,7 @@ it("keeps preparation pending across both fetch stages and retries a failed read
       .getByRole("button", { name: "Preparing transcript..." })
       .hasAttribute("disabled"),
   ).toBe(true);
-  await act(async () => resolveRead({ status: "error", error: "unavailable" }));
+  await act(async () => rejectRead(new Error("unavailable")));
   await waitFor(() =>
     expect(screen.getByRole("alert").textContent).toContain(
       "Couldn't prepare export",

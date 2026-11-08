@@ -19,11 +19,13 @@ import type { TranscriptRecord } from "~/stt/queries";
 const LIVE_TRANSCRIPT_PLACEHOLDER_ID = "__live-transcript__";
 
 export function TranscriptViewer({
+  sessionId,
   transcripts,
   liveSegments,
   currentActive,
   scrollRef,
 }: {
+  sessionId: string;
   transcripts: readonly TranscriptRecord[];
   liveSegments: Segment[];
   currentActive: boolean;
@@ -104,6 +106,7 @@ export function TranscriptViewer({
             return (
               <div key={transcriptId} className="flex flex-col gap-8">
                 <RenderTranscript
+                  sessionId={sessionId}
                   transcriptId={transcriptId}
                   transcript={transcript}
                   transcripts={transcripts}

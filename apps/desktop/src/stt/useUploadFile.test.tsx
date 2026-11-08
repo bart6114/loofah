@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { isAudioUploadFile, useUploadFile } from "./useUploadFile";
 
+import { enqueueSessionAudioOperation } from "~/session/audio-operations";
+
 const {
   audioSourceMetadataMock,
   audioImportDataMock,
@@ -162,13 +164,163 @@ describe("useUploadFile", () => {
     );
   });
 
+  test.each(["audio", "transcript"] as const)(
+    "refuses a late %s picker after its host is unavailable",
+    async (kind) => {
+      let finish!: (path: string) => void;
+      let allowed = true;
+      selectFileMock.mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            finish = done;
+          }),
+      );
+      const check = () => {
+        if (!allowed) throw new Error("retired");
+      };
+      const { result } = renderHook(() => useUploadFile("session-1", check), {
+        wrapper: createWrapper(),
+      });
+      const pending =
+        kind === "audio"
+          ? result.current.uploadAudio()
+          : result.current.uploadTranscript();
+      await waitFor(() => expect(selectFileMock).toHaveBeenCalledOnce());
+      allowed = false;
+      await act(async () => {
+        finish(kind === "audio" ? "/tmp/file.wav" : "/tmp/file.vtt");
+        await pending;
+      });
+      expect(audioSourceMetadataMock).not.toHaveBeenCalled();
+      expect(audioImportMock).not.toHaveBeenCalled();
+      expect(parseSubtitleMock).not.toHaveBeenCalled();
+      expect(createTranscriptMock).not.toHaveBeenCalled();
+      expect(enhanceMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["metadata", "listener", "queue"])(
+    "rechecks the captured owner after waiting for %s",
+    async (boundary) => {
+      let allowed = true;
+      let finish!: () => void;
+      const blocker = new Promise<void>((done) => {
+        finish = done;
+      });
+      if (boundary === "metadata")
+        audioSourceMetadataMock.mockImplementationOnce(async () => {
+          await blocker;
+          return {
+            status: "ok",
+            data: {
+              createdAt: "2026-03-26T12:00:00.000Z",
+              modifiedAt: null,
+              durationMs: 30000,
+            },
+          };
+        });
+      if (boundary === "listener")
+        audioImportListenMock.mockImplementationOnce(async () => {
+          await blocker;
+          return vi.fn();
+        });
+      if (boundary === "queue")
+        void enqueueSessionAudioOperation("session-1", () => blocker);
+      const check = () => {
+        if (!allowed) throw new Error("retired");
+      };
+      const { result } = renderHook(() => useUploadFile("session-1", check), {
+        wrapper: createWrapper(),
+      });
+      const pending = result.current.processAudioPath("/tmp/file.wav");
+      await waitFor(() =>
+        expect(
+          boundary === "metadata"
+            ? audioSourceMetadataMock
+            : boundary === "listener"
+              ? audioImportListenMock
+              : handleBatchStartedMock,
+        ).toHaveBeenCalledOnce(),
+      );
+      allowed = false;
+      await act(async () => {
+        finish();
+        await pending;
+      });
+      expect(audioImportMock).not.toHaveBeenCalled();
+      expect(runBatchMock).not.toHaveBeenCalled();
+      if (boundary === "metadata")
+        expect(updateSessionMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test("lets an admitted copy settle but skips transcription after retirement", async () => {
+    let allowed = true;
+    let finish!: () => void;
+    audioImportMock.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          finish = () => done({ status: "ok", data: "/vault/copied.wav" });
+        }),
+    );
+    const { result } = renderHook(
+      () =>
+        useUploadFile("session-1", () => {
+          if (!allowed) throw new Error("retired");
+        }),
+      { wrapper: createWrapper() },
+    );
+    const pending = result.current.processAudioPath("/tmp/file.wav");
+    await waitFor(() => expect(audioImportMock).toHaveBeenCalledOnce());
+    allowed = false;
+    await act(async () => {
+      finish();
+      await pending;
+    });
+    expect(runBatchMock).not.toHaveBeenCalled();
+    expect(clearBatchSessionMock).toHaveBeenCalledWith("session-1");
+    expect(handleBatchFailedMock).not.toHaveBeenCalled();
+    expect(enhanceMock).not.toHaveBeenCalled();
+  });
+
+  test("refuses a parsed subtitle returned after retirement", async () => {
+    let allowed = true;
+    let finish!: () => void;
+    parseSubtitleMock.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          finish = () =>
+            done({
+              status: "ok",
+              data: { tokens: [{ text: "Late", start_time: 0, end_time: 1 }] },
+            });
+        }),
+    );
+    const { result } = renderHook(
+      () =>
+        useUploadFile("session-1", () => {
+          if (!allowed) throw new Error("retired");
+        }),
+      { wrapper: createWrapper() },
+    );
+    const pending = result.current.processFile("/tmp/file.vtt", "transcript");
+    await waitFor(() => expect(parseSubtitleMock).toHaveBeenCalledOnce());
+    allowed = false;
+    await act(async () => {
+      finish();
+      await pending;
+    });
+    expect(createTranscriptMock).not.toHaveBeenCalled();
+    expect(enhanceMock).not.toHaveBeenCalled();
+  });
+
   test("infers the session date for an ordinary audio upload", async () => {
     const { result } = renderHook(() => useUploadFile("session-1"), {
       wrapper: createWrapper(),
     });
 
     act(() => {
-      result.current.uploadAudio();
+      void result.current.uploadAudio();
     });
 
     await waitFor(() => {
@@ -194,7 +346,7 @@ describe("useUploadFile", () => {
     });
 
     act(() => {
-      result.current.processAudioFile(file);
+      void result.current.processAudioFile(file);
     });
 
     await waitFor(() => expect(runBatchMock).toHaveBeenCalled());
@@ -229,7 +381,7 @@ describe("useUploadFile", () => {
       expect(isAudioUploadFile(file)).toBe(true);
 
       act(() => {
-        result.current.processAudioFile(file);
+        void result.current.processAudioFile(file);
       });
 
       await waitFor(() => {
@@ -257,7 +409,7 @@ describe("useUploadFile", () => {
     });
 
     act(() => {
-      result.current.processAudioFile(file);
+      void result.current.processAudioFile(file);
     });
 
     await waitFor(() => expect(runBatchMock).toHaveBeenCalled());
@@ -288,7 +440,7 @@ describe("useUploadFile", () => {
     });
 
     act(() => {
-      result.current.processFile("/tmp/session.vtt", "transcript");
+      void result.current.processFile("/tmp/session.vtt", "transcript");
     });
 
     await waitFor(() => {

@@ -1,5 +1,12 @@
 import { Plural } from "@lingui/react/macro";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Checkbox } from "@hypr/ui/components/ui/checkbox";
 import {
@@ -10,6 +17,10 @@ import {
 import { cn } from "@hypr/utils";
 
 import { ensurePerson, type Person } from "~/people/queries";
+import {
+  legacyTranscriptControlsAvailable,
+  useVaultReadScope,
+} from "~/shared/application/use-vault-read-scope";
 import type { Segment } from "~/stt/live-segment";
 import { assignTranscriptSpeaker, type TranscriptRecord } from "~/stt/queries";
 
@@ -25,6 +36,7 @@ export const EMPTY_CHANNEL_ASSIGNMENT_STATE: ChannelAssignmentState = {
 
 export function SpeakerRenameControl({
   segment,
+  sessionId,
   transcriptId,
   color,
   label,
@@ -35,6 +47,7 @@ export function SpeakerRenameControl({
   channelAssignmentState = EMPTY_CHANNEL_ASSIGNMENT_STATE,
 }: {
   segment: Segment;
+  sessionId: string;
   transcriptId: string;
   color: string;
   label: string;
@@ -44,6 +57,41 @@ export function SpeakerRenameControl({
   people?: readonly Person[];
   channelAssignmentState?: ChannelAssignmentState;
 }) {
+  const { scope, current } = useVaultReadScope();
+  const target = useRef({ sessionId, transcriptId });
+  target.current = { sessionId, transcriptId };
+  const locked = useRef(disabled);
+  locked.current = disabled;
+  const active = useRef(false);
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+  const available = useCallback(
+    () =>
+      active.current &&
+      current() &&
+      !!sessionId &&
+      target.current.sessionId === sessionId &&
+      target.current.transcriptId === transcriptId &&
+      !locked.current &&
+      legacyTranscriptControlsAvailable(scope),
+    [scope, current, sessionId, transcriptId],
+  );
+  const check = useCallback(() => {
+    if (!available())
+      throw new Error("Transcript editing is unavailable for this connection");
+  }, [available]);
+  const assign = useCallback(
+    async (input: Parameters<typeof assignTranscriptSpeaker>[0]) => {
+      check();
+      await assignTranscriptSpeaker(input, check);
+      check();
+    },
+    [check],
+  );
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
   const [touched, setTouched] = useState(false);
@@ -114,13 +162,14 @@ export function SpeakerRenameControl({
   }, [draft]);
 
   const startEditing = useCallback(() => {
+    if (!available()) return;
     committedRef.current = false;
     setDraft(label);
     setTouched(false);
     setHighlightIndex(-1);
     setApplyToChannel(false);
     setEditing(true);
-  }, [label]);
+  }, [label, available]);
 
   const runAssignments = useCallback(
     async (speakerLabel: string) => {
@@ -131,7 +180,7 @@ export function SpeakerRenameControl({
         if (segment.key.speaker_index == null) {
           const anchorWordId = getAssignmentAnchorWordId(segment);
           if (anchorWordId) {
-            await assignTranscriptSpeaker({
+            await assign({
               transcriptId,
               segmentKey: segment.key,
               speakerLabel,
@@ -140,7 +189,7 @@ export function SpeakerRenameControl({
           }
         }
         for (const [speakerIndex, anchorWordId] of anchorWordIdBySpeakerIndex) {
-          await assignTranscriptSpeaker({
+          await assign({
             transcriptId,
             segmentKey: {
               channel: segment.key.channel,
@@ -159,7 +208,7 @@ export function SpeakerRenameControl({
         return;
       }
 
-      await assignTranscriptSpeaker({
+      await assign({
         transcriptId,
         segmentKey: segment.key,
         speakerLabel,
@@ -167,6 +216,7 @@ export function SpeakerRenameControl({
       });
     },
     [
+      assign,
       anchorWordIdBySpeakerIndex,
       applyToChannel,
       offerChannelWideAssign,
@@ -180,7 +230,7 @@ export function SpeakerRenameControl({
       optimisticName: string,
       run: () => Promise<{ id: string; name: string }>,
     ) => {
-      if (committedRef.current) {
+      if (committedRef.current || !available()) {
         return;
       }
       committedRef.current = true;
@@ -191,6 +241,7 @@ export function SpeakerRenameControl({
       setEditing(false);
       run()
         .then((person) => {
+          check();
           onAssigned?.(person.id);
           if (seq !== commitSeqRef.current) {
             return;
@@ -216,7 +267,7 @@ export function SpeakerRenameControl({
           setPendingLabel(null);
         });
     },
-    [label, onAssigned],
+    [label, onAssigned, available, check],
   );
 
   const canAssign =
@@ -236,11 +287,13 @@ export function SpeakerRenameControl({
     }
 
     commit(name, async () => {
+      check();
       const person = await ensurePerson(name);
+      check();
       await runAssignments(person.id);
       return { id: person.id, name: person.name };
     });
-  }, [canAssign, commit, draft, label, runAssignments]);
+  }, [canAssign, commit, draft, label, runAssignments, check]);
 
   const selectPerson = useCallback(
     (person: Person) => {
@@ -258,7 +311,7 @@ export function SpeakerRenameControl({
     [canAssign, commit, runAssignments],
   );
 
-  if (editing) {
+  if (editing && available()) {
     return (
       <Popover open={suggestions.length > 0 || offerChannelWideAssign}>
         <PopoverAnchor asChild>
@@ -365,7 +418,9 @@ export function SpeakerRenameControl({
   return (
     <button
       type="button"
-      disabled={disabled}
+      disabled={
+        disabled || !current() || !legacyTranscriptControlsAvailable(scope)
+      }
       onClick={startEditing}
       className={cn([
         "-my-0.5 rounded-full py-0.5 pr-2",
@@ -376,7 +431,7 @@ export function SpeakerRenameControl({
       ])}
       style={{ color }}
     >
-      {pendingLabel ?? label}
+      {available() ? (pendingLabel ?? label) : label}
     </button>
   );
 }

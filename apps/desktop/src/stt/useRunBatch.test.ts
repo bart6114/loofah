@@ -20,6 +20,7 @@ const {
   createTranscriptMock,
   appendTranscriptWordsAndHintsMock,
   idMock,
+  applicationClientMock,
 } = vi.hoisted(() => ({
   sessionTranscriptsMock: vi.fn(),
   startTranscriptionMock: vi.fn(),
@@ -32,10 +33,15 @@ const {
   createTranscriptMock: vi.fn(),
   appendTranscriptWordsAndHintsMock: vi.fn(),
   idMock: vi.fn(),
+  applicationClientMock: vi.fn(),
 }));
 
 vi.mock("~/types/tauri.gen", () => ({
   commands: { sessionTranscripts: sessionTranscriptsMock },
+}));
+
+vi.mock("~/shared/application/client", () => ({
+  getApplicationClient: applicationClientMock,
 }));
 
 vi.mock("./contexts", () => ({
@@ -175,6 +181,9 @@ describe("useRunBatch", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    applicationClientMock.mockReturnValue({
+      store: { sessionTranscripts: sessionTranscriptsMock },
+    });
     sessionTranscriptsMock.mockResolvedValue({ status: "ok", data: [] });
 
     let nextId = 0;
@@ -207,6 +216,93 @@ describe("useRunBatch", () => {
           ? undefined
           : [],
     );
+  });
+
+  test.each(["languages", "prior transcripts"])(
+    "does not admit transcription after losing its host during %s",
+    async (boundary) => {
+      let allowed = true;
+      let finish!: () => void;
+      const blocker = new Promise<void>((done) => {
+        finish = done;
+      });
+      if (boundary === "languages")
+        isSupportedLanguagesBatchMock.mockImplementationOnce(async () => {
+          await blocker;
+          return true;
+        });
+      else
+        sessionTranscriptsMock.mockImplementationOnce(async () => {
+          await blocker;
+          return { status: "ok", data: [] };
+        });
+      const { result } = renderHook(() =>
+        useRunBatch("session-1", () => {
+          if (!allowed) throw new Error("retired");
+        }),
+      );
+      const pending = result.current("/tmp/audio.wav");
+      const rejected = expect(pending).rejects.toThrow("retired");
+      await waitFor(() =>
+        expect(
+          boundary === "languages"
+            ? isSupportedLanguagesBatchMock
+            : sessionTranscriptsMock,
+        ).toHaveBeenCalledOnce(),
+      );
+      allowed = false;
+      finish();
+      await rejected;
+      expect(startTranscriptionMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test("drains admitted persistence using the original store after host closure and replacement", async () => {
+    let allowed = true;
+    let finishAppend!: () => void;
+    const originalStore = { sessionTranscripts: sessionTranscriptsMock };
+    applicationClientMock.mockReturnValue({ store: originalStore });
+    appendTranscriptWordsAndHintsMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((done) => {
+          finishAppend = done;
+        }),
+    );
+    startTranscriptionMock.mockImplementation(async (_params, options) => {
+      allowed = false;
+      applicationClientMock.mockReturnValue({
+        store: { sessionTranscripts: vi.fn() },
+      });
+      options.handlePersist(
+        [{ text: "first", start_ms: 0, end_ms: 100, channel: 0 }],
+        [],
+      );
+      options.handlePersist(
+        [{ text: "second", start_ms: 100, end_ms: 200, channel: 0 }],
+        [],
+      );
+    });
+    const { result, unmount } = renderHook(() =>
+      useRunBatch("session-1", () => {
+        if (!allowed) throw new Error("retired");
+      }),
+    );
+    const completed = vi.fn();
+    const pending = result.current("/tmp/audio.wav").then(completed);
+    await waitFor(() =>
+      expect(appendTranscriptWordsAndHintsMock).toHaveBeenCalledOnce(),
+    );
+    unmount();
+    expect(createTranscriptMock.mock.calls[0][1]).toEqual({
+      store: originalStore,
+    });
+    expect(appendTranscriptWordsAndHintsMock.mock.calls[0][3]).toEqual({
+      store: originalStore,
+    });
+    expect(completed).not.toHaveBeenCalled();
+    finishAppend();
+    await pending;
+    expect(completed).toHaveBeenCalledOnce();
   });
 
   test("waits for streamed persists before completing transcription", async () => {

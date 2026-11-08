@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { enqueueDatabaseWrite } from "~/shared/write-queue";
+
 const mocks = vi.hoisted(() => ({
   sessionGet: vi.fn(
     (): Promise<
@@ -103,6 +105,37 @@ describe("session store operations", () => {
     mocks.sessionDelete.mockResolvedValue({ status: "ok", data: null });
     mocks.sessionRestore.mockResolvedValue({ status: "ok", data: true });
     mocks.waitForPendingSoftDelete.mockResolvedValue(undefined);
+  });
+
+  it("checks captured audio-date ownership at metadata queue execution", async () => {
+    let allowed = true;
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((done) => {
+      entered = done;
+    });
+    const blocked = enqueueDatabaseWrite(
+      "session:queued-audio-date",
+      () =>
+        new Promise<void>((done) => {
+          release = done;
+          entered();
+        }),
+    );
+    await started;
+    const pending = updateSession(
+      "queued-audio-date",
+      { created_at: "2026-11-08T10:00:00Z" },
+      () => {
+        if (!allowed) throw new Error("retired");
+      },
+    );
+    const rejected = expect(pending).rejects.toThrow("retired");
+    allowed = false;
+    release();
+    await blocked;
+    await rejected;
+    expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
   });
 
   it("routes title changes through the store's meta patch, never raw SQL", async () => {

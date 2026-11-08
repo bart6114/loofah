@@ -28,7 +28,9 @@ export function createRenderCacheHost(
     },
     ...overrides,
   } as unknown as VaultClient);
-  scope.queryClient.setDefaultOptions({ queries: { retry: false } });
+  scope.queryClient.setDefaultOptions({
+    queries: { ...scope.queryClient.getDefaultOptions().queries, retry: false },
+  });
   const rootClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

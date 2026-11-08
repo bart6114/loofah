@@ -92,6 +92,7 @@ describe("TranscriptViewer", () => {
   it("does not pin inactive transcript sessions to the bottom on open", () => {
     render(
       <TranscriptViewer
+        sessionId="session-1"
         transcripts={[transcript]}
         liveSegments={[]}
         currentActive={false}
@@ -105,6 +106,7 @@ describe("TranscriptViewer", () => {
   it("keeps active transcript sessions pinned to the bottom", () => {
     render(
       <TranscriptViewer
+        sessionId="session-1"
         transcripts={[transcript]}
         liveSegments={[]}
         currentActive
@@ -118,6 +120,7 @@ describe("TranscriptViewer", () => {
   it("observes a content wrapper containing the transcript", () => {
     render(
       <TranscriptViewer
+        sessionId="session-1"
         transcripts={[transcript]}
         liveSegments={[]}
         currentActive
@@ -140,6 +143,7 @@ describe("TranscriptViewer", () => {
   it("renders live segments before a transcript row exists", () => {
     render(
       <TranscriptViewer
+        sessionId="session-1"
         transcripts={[]}
         liveSegments={[
           {
@@ -166,6 +170,7 @@ describe("TranscriptViewer", () => {
   it("does not show scroll controls when the transcript cannot scroll", () => {
     render(
       <TranscriptViewer
+        sessionId="session-1"
         transcripts={[transcript]}
         liveSegments={[]}
         currentActive
@@ -186,6 +191,7 @@ describe("TranscriptViewer", () => {
 
     render(
       <TranscriptViewer
+        sessionId="session-1"
         transcripts={[transcript]}
         liveSegments={[]}
         currentActive
@@ -221,6 +227,7 @@ describe("TranscriptViewer", () => {
 
     render(
       <TranscriptViewer
+        sessionId="session-1"
         transcripts={[transcript]}
         liveSegments={[]}
         currentActive
@@ -242,6 +249,7 @@ describe("TranscriptViewer", () => {
 
     render(
       <TranscriptViewer
+        sessionId="session-1"
         transcripts={[transcript]}
         liveSegments={[]}
         currentActive={false}
@@ -268,6 +276,7 @@ describe("TranscriptViewer", () => {
 
     render(
       <TranscriptViewer
+        sessionId="session-1"
         transcripts={[transcript]}
         liveSegments={[]}
         currentActive={false}

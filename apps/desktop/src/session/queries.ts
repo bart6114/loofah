@@ -143,10 +143,14 @@ export function useSessionSummary(
     : null;
 }
 
-export function useUpdateSession(sessionId: string) {
+export function useUpdateSession(
+  sessionId: string,
+  assertCurrent?: () => void,
+) {
   return useCallback(
-    (changes: SessionChanges) => updateSession(sessionId, changes),
-    [sessionId],
+    (changes: SessionChanges) =>
+      updateSession(sessionId, changes, assertCurrent),
+    [sessionId, assertCurrent],
   );
 }
 
@@ -464,8 +468,12 @@ export function deleteEnhancedNote(
 export function updateSession(
   sessionId: string,
   changes: SessionChanges,
+  assertCurrent?: () => void,
 ): Promise<void> {
+  assertCurrent?.();
+  const backend = getApplicationClient().store;
   return enqueueDatabaseWrite(`session:${sessionId}`, async () => {
+    assertCurrent?.();
     const patch: SessionMetaPatch = {};
     if (changes.title !== undefined) patch.title = changes.title;
     if (changes.created_at !== undefined) patch.created_at = changes.created_at;
@@ -474,10 +482,7 @@ export function updateSession(
 
     if (Object.keys(patch).length === 0) return;
 
-    const result = await getApplicationClient().store.sessionUpdateMeta(
-      sessionId,
-      patch,
-    );
+    const result = await backend.sessionUpdateMeta(sessionId, patch);
     if (result.status === "error") {
       throw new Error(`Failed to update session ${sessionId}: ${result.error}`);
     }

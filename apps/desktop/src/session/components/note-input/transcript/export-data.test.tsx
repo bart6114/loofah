@@ -27,13 +27,16 @@ const segments = (text: string) => [
 ];
 let hosts: ReturnType<typeof createRenderCacheHost>[];
 function host(scopeId?: string, networkMode?: "always" | "online") {
-  const value = createRenderCacheHost(scopeId, networkMode);
+  const value = createRenderCacheHost(scopeId, networkMode, {
+    features: ["content_read"],
+    transcripts: source.read,
+  });
   hosts.push(value);
   return value;
 }
 beforeEach(() => {
   hosts = [];
-  source.read.mockReset().mockResolvedValue({ status: "ok", data: [row()] });
+  source.read.mockReset().mockResolvedValue([row()]);
   source.render
     .mockReset()
     .mockResolvedValue({ status: "ok", data: segments("Original") });
@@ -58,7 +61,7 @@ function Probe({ id = "s1" }: { id?: string }) {
   );
 }
 
-it("keeps source reads on the unchanged source key and owns export cache by session, ordered transcript IDs and hash", async () => {
+it("owns source and export caches by Scope, session, ordered transcript IDs and hash", async () => {
   const backend = host();
   const view = render(
     <backend.Host>
@@ -70,18 +73,23 @@ it("keeps source reads on the unchanged source key and owns export cache by sess
     expect(screen.getAllByText("You:Original")).toHaveLength(2),
   );
   expect(source.read).toHaveBeenCalledOnce();
-  expect(source.read).toHaveBeenCalledWith("s1");
+  expect(source.read).toHaveBeenCalledWith("s1", {
+    signal: expect.any(AbortSignal),
+  });
   expect(source.render).toHaveBeenCalledOnce();
   expect(
     backend.rootClient
       .getQueryCache()
       .getAll()
       .map((query) => query.queryKey),
-  ).toEqual([["session-transcripts", "s1"]]);
+  ).toEqual([]);
   const key = backend.scope.queryClient
     .getQueryCache()
     .getAll()
-    .find((query) => query.state.data)?.queryKey;
+    .find(
+      (query) =>
+        query.queryKey[2] === "transcript_export_segments" && query.state.data,
+    )?.queryKey;
   expect(key?.slice(0, 5)).toEqual([
     "vault",
     backend.scope.client.scope,
@@ -107,14 +115,14 @@ it("does not reuse another transcript's result when IDs change but explicit form
     </backend.Host>,
   );
   await screen.findByText("You:Original");
-  source.read.mockResolvedValue({ status: "ok", data: [row("t2")] });
+  source.read.mockResolvedValue([row("t2")]);
   source.render.mockResolvedValue({
     status: "ok",
     data: segments("Replacement transcript"),
   });
   await act(async () => {
-    await backend.rootClient.refetchQueries({
-      queryKey: ["session-transcripts", "s1"],
+    await backend.scope.queryClient.refetchQueries({
+      queryKey: backend.scope.transcriptsOptions("s1").queryKey,
     });
   });
   await screen.findByText("You:Replacement transcript");
@@ -123,7 +131,11 @@ it("does not reuse another transcript's result when IDs change but explicit form
     backend.scope.queryClient
       .getQueryCache()
       .getAll()
-      .filter((query) => query.state.data)
+      .filter(
+        (query) =>
+          query.queryKey[2] === "transcript_export_segments" &&
+          query.state.data,
+      )
       .map((query) => query.queryKey[4]),
   ).toEqual([["t1"], ["t2"]]);
 });
@@ -201,18 +213,9 @@ it.each(["always", "online"] as const)(
   "formats loaded export input offline with %s client policy",
   async (policy) => {
     const backend = host("scope", policy);
-    backend.rootClient.setQueryData(
-      ["session-transcripts", "s1"],
-      [
-        {
-          id: "t1",
-          sessionId: "s1",
-          ownerUserId: "self",
-          startedAt: 0,
-          words: row().words,
-          speakerHints: [],
-        },
-      ],
+    backend.scope.queryClient.setQueryData(
+      backend.scope.transcriptsOptions("s1").queryKey,
+      [row()],
     );
     onlineManager.setOnline(false);
     act(() => backend.emit("reconnecting"));
@@ -228,10 +231,7 @@ it.each(["always", "online"] as const)(
 
 it("refuses export formatting if source records belong to a different session", async () => {
   const backend = host();
-  source.read.mockResolvedValue({
-    status: "ok",
-    data: [row("t1", "other-session")],
-  });
+  source.read.mockResolvedValue([row("t1", "other-session")]);
   render(
     <backend.Host>
       <Probe />

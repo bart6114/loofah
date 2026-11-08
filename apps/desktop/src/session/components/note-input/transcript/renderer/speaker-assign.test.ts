@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -30,9 +31,32 @@ vi.mock("~/people/queries", () => ({
   ensurePerson: ensurePersonMock,
 }));
 
+const source = vi.hoisted(() => {
+  const snapshot = { state: "connected", error: null };
+  return {
+    scope: {
+      client: {
+        canEdit: true,
+        features: ["legacy_desktop_transcript_controls"],
+      },
+      getSnapshot: () => snapshot,
+      subscribe: () => () => {},
+    },
+  };
+});
+vi.mock("~/shared/application/vault-provider", () => ({
+  useVaultHost: () => ({ scope: source.scope }),
+}));
+
 beforeEach(() => {
   cleanup();
   vi.clearAllMocks();
+  const snapshot = { state: "connected", error: null };
+  source.scope = {
+    client: { canEdit: true, features: ["legacy_desktop_transcript_controls"] },
+    getSnapshot: () => snapshot,
+    subscribe: () => () => {},
+  };
   assignTranscriptSpeakerMock.mockResolvedValue(undefined);
   ensurePersonMock.mockImplementation(async (name: string) => ({
     id: name
@@ -149,6 +173,7 @@ describe("SpeakerRenameControl", () => {
   it("renders the current label as a clickable pill", () => {
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -164,6 +189,7 @@ describe("SpeakerRenameControl", () => {
   it("is inert while the session is recording", () => {
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -184,6 +210,7 @@ describe("SpeakerRenameControl", () => {
     const onAssigned = vi.fn();
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -201,16 +228,19 @@ describe("SpeakerRenameControl", () => {
 
     await waitFor(() => {
       expect(ensurePersonMock).toHaveBeenCalledWith("Alice Smith");
-      expect(assignTranscriptSpeakerMock).toHaveBeenCalledWith({
-        transcriptId: "transcript-1",
-        segmentKey: {
-          channel: "RemoteParty",
-          speaker_index: 2,
-          speaker_human_id: null,
+      expect(assignTranscriptSpeakerMock).toHaveBeenCalledWith(
+        {
+          transcriptId: "transcript-1",
+          segmentKey: {
+            channel: "RemoteParty",
+            speaker_index: 2,
+            speaker_human_id: null,
+          },
+          speakerLabel: "alice_smith",
+          anchorWordId: "word-1",
         },
-        speakerLabel: "alice_smith",
-        anchorWordId: "word-1",
-      });
+        expect.any(Function),
+      );
     });
     await waitFor(() => expect(onAssigned).toHaveBeenCalledWith("alice_smith"));
   });
@@ -218,6 +248,7 @@ describe("SpeakerRenameControl", () => {
   it("saves the rename on blur without pressing Enter", async () => {
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -233,6 +264,7 @@ describe("SpeakerRenameControl", () => {
     await waitFor(() => {
       expect(assignTranscriptSpeakerMock).toHaveBeenCalledWith(
         expect.objectContaining({ speakerLabel: "bob" }),
+        expect.any(Function),
       );
     });
   });
@@ -245,6 +277,7 @@ describe("SpeakerRenameControl", () => {
     const onAssigned = vi.fn();
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -264,6 +297,7 @@ describe("SpeakerRenameControl", () => {
     await waitFor(() => {
       expect(assignTranscriptSpeakerMock).toHaveBeenCalledWith(
         expect.objectContaining({ speakerLabel: "bob_peters" }),
+        expect.any(Function),
       );
     });
     expect(ensurePersonMock).not.toHaveBeenCalled();
@@ -274,6 +308,7 @@ describe("SpeakerRenameControl", () => {
     const people = [{ id: "bob_peters", name: "Bob Peters" }];
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -295,6 +330,7 @@ describe("SpeakerRenameControl", () => {
     });
     expect(assignTranscriptSpeakerMock).toHaveBeenCalledWith(
       expect.objectContaining({ speakerLabel: "bob_peters" }),
+      expect.any(Function),
     );
     expect(ensurePersonMock).not.toHaveBeenCalled();
   });
@@ -306,6 +342,7 @@ describe("SpeakerRenameControl", () => {
     ];
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -323,6 +360,7 @@ describe("SpeakerRenameControl", () => {
     await waitFor(() => {
       expect(assignTranscriptSpeakerMock).toHaveBeenCalledWith(
         expect.objectContaining({ speakerLabel: "bob_peters" }),
+        expect.any(Function),
       );
     });
     expect(ensurePersonMock).not.toHaveBeenCalled();
@@ -331,6 +369,7 @@ describe("SpeakerRenameControl", () => {
   it("discards the draft on Escape without saving", () => {
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -351,6 +390,7 @@ describe("SpeakerRenameControl", () => {
   it("does not assign when the trimmed value is empty or unchanged", async () => {
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -373,6 +413,7 @@ describe("SpeakerRenameControl", () => {
     );
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -402,6 +443,7 @@ describe("SpeakerRenameControl", () => {
     assignTranscriptSpeakerMock.mockImplementation(() => new Promise(() => {}));
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -420,6 +462,7 @@ describe("SpeakerRenameControl", () => {
   it("hands display back to the label prop once the store round trip lands", async () => {
     const onAssigned = vi.fn();
     const props = {
+      sessionId: "session-1",
       segment: remoteSegment(),
       transcriptId: "transcript-1",
       color: "red",
@@ -449,6 +492,7 @@ describe("SpeakerRenameControl", () => {
       () => new Promise<void>((resolve) => (resolveAssign = resolve)),
     );
     const props = {
+      sessionId: "session-1",
       segment: remoteSegment(),
       transcriptId: "transcript-1",
       color: "red",
@@ -485,6 +529,7 @@ describe("SpeakerRenameControl", () => {
     });
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -512,6 +557,7 @@ describe("SpeakerRenameControl", () => {
       .mockImplementation(() => {});
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -542,6 +588,7 @@ describe("SpeakerRenameControl", () => {
       .mockImplementation(() => {});
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -594,6 +641,7 @@ describe("SpeakerRenameControl on a diarized channel", () => {
     const transcript = diarizedTranscript(false);
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -643,6 +691,7 @@ describe("SpeakerRenameControl on a diarized channel", () => {
     const transcript = diarizedTranscript(false);
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -663,22 +712,26 @@ describe("SpeakerRenameControl on a diarized channel", () => {
     await waitFor(() => {
       expect(assignTranscriptSpeakerMock).toHaveBeenCalledTimes(1);
     });
-    expect(assignTranscriptSpeakerMock).toHaveBeenCalledWith({
-      transcriptId: "transcript-1",
-      segmentKey: {
-        channel: "RemoteParty",
-        speaker_index: 2,
-        speaker_human_id: null,
+    expect(assignTranscriptSpeakerMock).toHaveBeenCalledWith(
+      {
+        transcriptId: "transcript-1",
+        segmentKey: {
+          channel: "RemoteParty",
+          speaker_index: 2,
+          speaker_human_id: null,
+        },
+        speakerLabel: "alice",
+        anchorWordId: "word-1",
       },
-      speakerLabel: "alice",
-      anchorWordId: "word-1",
-    });
+      expect.any(Function),
+    );
   });
 
   it("skips the channel-wide offer once the channel has an assignment", async () => {
     const transcript = diarizedTranscript(true);
     render(
       createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
         segment: remoteSegment(),
         transcriptId: "transcript-1",
         color: "red",
@@ -707,6 +760,7 @@ describe("SpeakerRenameControl on a diarized channel", () => {
         },
         anchorWordId: "word-1",
       }),
+      expect.any(Function),
     );
   });
 });
@@ -745,4 +799,131 @@ describe("getAssignmentAnchorWordId", () => {
 
     expect(getAssignmentAnchorWordId(segment)).toBe("word-2");
   });
+});
+
+describe("captured speaker mutation permission", () => {
+  it("stops a rename when recording disables the control during ensure", async () => {
+    let finish!: (value: { id: string; name: string }) => void;
+    ensurePersonMock.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          finish = done;
+        }),
+    );
+    const props = {
+      sessionId: "session-1",
+      transcriptId: "transcript-1",
+      segment: remoteSegment(),
+      color: "black",
+      label: "Speaker",
+      disabled: false,
+      onAssigned: vi.fn(),
+    };
+    const view = render(createElement(SpeakerRenameControl, props));
+    fireEvent.click(screen.getByRole("button", { name: "Speaker" }));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Pending" },
+    });
+    fireEvent.blur(screen.getByRole("textbox"));
+    await waitFor(() => expect(ensurePersonMock).toHaveBeenCalledOnce());
+    view.rerender(
+      createElement(SpeakerRenameControl, { ...props, disabled: true }),
+    );
+    await act(async () => {
+      finish({ id: "pending", name: "Pending" });
+    });
+    expect(assignTranscriptSpeakerMock).not.toHaveBeenCalled();
+    expect(props.onAssigned).not.toHaveBeenCalled();
+  });
+
+  it("disables unsupported/remote controls before ensure or assignment", () => {
+    source.scope.client.features = [];
+    render(
+      createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
+        transcriptId: "transcript-1",
+        segment: remoteSegment(),
+        color: "black",
+        label: "Speaker",
+      }),
+    );
+    const button = screen.getByRole("button", { name: "Speaker" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(button);
+    expect(ensurePersonMock).not.toHaveBeenCalled();
+    expect(assignTranscriptSpeakerMock).not.toHaveBeenCalled();
+  });
+  it("does not assign after permission is lost while ensurePerson is pending", async () => {
+    let finish!: (value: { id: string; name: string }) => void;
+    ensurePersonMock.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          finish = done;
+        }),
+    );
+    render(
+      createElement(SpeakerRenameControl, {
+        sessionId: "session-1",
+        transcriptId: "transcript-1",
+        segment: remoteSegment(),
+        color: "black",
+        label: "Speaker",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Speaker" }));
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "Private person" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(ensurePersonMock).toHaveBeenCalledOnce());
+    source.scope.client.canEdit = false;
+    await act(async () => {
+      finish({ id: "private", name: "Private person" });
+    });
+    await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+    expect(assignTranscriptSpeakerMock).not.toHaveBeenCalled();
+  });
+  it.each(["session", "scope"])(
+    "refuses an old pending rename after %s replacement",
+    async (kind) => {
+      let finish!: (value: { id: string; name: string }) => void;
+      ensurePersonMock.mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            finish = done;
+          }),
+      );
+      const props = {
+        sessionId: "session-1",
+        transcriptId: "same-transcript",
+        segment: remoteSegment(),
+        color: "black",
+        label: "Speaker",
+        onAssigned: vi.fn(),
+      };
+      const mounted = render(createElement(SpeakerRenameControl, props));
+      fireEvent.click(screen.getByRole("button", { name: "Speaker" }));
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "Pending person" },
+      });
+      fireEvent.blur(screen.getByRole("textbox"));
+      await waitFor(() => expect(ensurePersonMock).toHaveBeenCalledOnce());
+      if (kind === "scope")
+        source.scope = { ...source.scope, client: { ...source.scope.client } };
+      mounted.rerender(
+        createElement(SpeakerRenameControl, {
+          ...props,
+          sessionId: kind === "session" ? "other-session" : props.sessionId,
+          label: "Replacement speaker",
+        }),
+      );
+      await act(async () => {
+        finish({ id: "pending", name: "Pending person" });
+      });
+      expect(assignTranscriptSpeakerMock).not.toHaveBeenCalled();
+      expect(props.onAssigned).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("button", { name: "Replacement speaker" }),
+      ).toBeDefined();
+    },
+  );
 });

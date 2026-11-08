@@ -35,6 +35,7 @@ import { SpeakerLabelManager } from "~/stt/segment/shared";
 import { isTranscriptWordSeekable } from "~/stt/timing";
 
 export function RenderTranscript({
+  sessionId,
   transcriptId,
   transcript,
   transcripts,
@@ -46,6 +47,7 @@ export function RenderTranscript({
   startPlayback,
   audioExists,
 }: {
+  sessionId: string;
   transcriptId: string;
   transcript: TranscriptRecord | null;
   transcripts: readonly TranscriptRecord[];
@@ -84,6 +86,7 @@ export function RenderTranscript({
         />
       )}
       <SegmentsList
+        sessionId={sessionId}
         segments={segments}
         transcriptId={transcriptId}
         offsetMs={offsetMs}
@@ -103,6 +106,7 @@ export function RenderTranscript({
 const SegmentsList = memo(
   ({
     segments,
+    sessionId,
     transcriptId,
     offsetMs,
     currentMs,
@@ -115,6 +119,7 @@ const SegmentsList = memo(
     recording,
   }: {
     segments: Segment[];
+    sessionId: string;
     transcriptId: string;
     offsetMs: number;
     currentMs: number;
@@ -185,6 +190,7 @@ const SegmentsList = memo(
             ])}
           >
             <SegmentRenderer
+              sessionId={sessionId}
               segment={segment}
               offsetMs={offsetMs}
               transcriptId={transcriptId}
@@ -212,6 +218,7 @@ const SegmentsList = memo(
   (prevProps, nextProps) => {
     return (
       prevProps.transcriptId === nextProps.transcriptId &&
+      prevProps.sessionId === nextProps.sessionId &&
       prevProps.offsetMs === nextProps.offsetMs &&
       prevProps.currentMs === nextProps.currentMs &&
       prevProps.audioExists === nextProps.audioExists &&

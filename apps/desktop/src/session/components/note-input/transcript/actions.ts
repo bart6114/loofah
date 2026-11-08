@@ -11,9 +11,14 @@ import { collectAssignedHumanIdsFromTranscriptRows } from "~/stt/render-transcri
 import { isStoppedTranscriptionError, useRunBatch } from "~/stt/useRunBatch";
 import { commands } from "~/types/tauri.gen";
 
-async function countAssignedSpeakers(sessionId: string): Promise<number> {
+async function countAssignedSpeakers(
+  sessionId: string,
+  assertCurrent?: () => void,
+): Promise<number> {
   try {
+    assertCurrent?.();
     const result = await commands.sessionTranscripts(sessionId);
+    assertCurrent?.();
     if (result.status === "error") {
       return 0;
     }
@@ -23,12 +28,17 @@ async function countAssignedSpeakers(sessionId: string): Promise<number> {
   }
 }
 
-export function useRegenerateTranscript(sessionId: string) {
-  const runBatch = useRunBatch(sessionId);
+export function useRegenerateTranscript(
+  sessionId: string,
+  assertCurrent?: () => void,
+) {
+  const runBatch = useRunBatch(sessionId, assertCurrent);
   const handleBatchFailed = useListener((state) => state.handleBatchFailed);
 
   return useCallback(async () => {
+    assertCurrent?.();
     const result = await fsSyncCommands.audioPath(sessionId);
+    assertCurrent?.();
     if (result.status === "error") {
       sonnerToast.error("Recording not found. It may have been deleted.", {
         id: `transcript-regenerate-audio-missing-${sessionId}`,
@@ -38,19 +48,31 @@ export function useRegenerateTranscript(sessionId: string) {
 
     const audioPath = result.data;
 
-    const assignedSpeakerCount = await countAssignedSpeakers(sessionId);
+    const assignedSpeakerCount = await countAssignedSpeakers(
+      sessionId,
+      assertCurrent,
+    );
+    assertCurrent?.();
     if (assignedSpeakerCount > 0) {
       const confirmed =
         await confirmRegenerateSpeakerReset(assignedSpeakerCount);
+      assertCurrent?.();
       if (!confirmed) {
         return;
       }
     }
 
     try {
+      assertCurrent?.();
       await runBatch(audioPath);
+      assertCurrent?.();
       await getEnhancerService()?.queueAutoEnhanceIfSummaryEmpty(sessionId);
     } catch (error) {
+      try {
+        assertCurrent?.();
+      } catch {
+        return;
+      }
       if (isStoppedTranscriptionError(error)) {
         return;
       }
@@ -61,5 +83,5 @@ export function useRegenerateTranscript(sessionId: string) {
         description: msg,
       });
     }
-  }, [handleBatchFailed, runBatch, sessionId]);
+  }, [handleBatchFailed, runBatch, sessionId, assertCurrent]);
 }
