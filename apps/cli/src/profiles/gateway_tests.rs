@@ -97,7 +97,11 @@ impl Fixture {
                 let line = headers.lines().next().unwrap();
                 let mut parts = line.split_whitespace();
                 let method = parts.next().unwrap();
-                let path = parts.next().unwrap();
+                let target = parts.next().unwrap();
+                let path = target.split_once('?').map_or(target, |(path, query)| {
+                    assert!(query.is_empty(), "unexpected fixture query");
+                    path
+                });
                 let request = headers
                     .lines()
                     .find_map(|line| line.strip_prefix("x-request-id: "))
