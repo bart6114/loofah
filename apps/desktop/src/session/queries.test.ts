@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { enqueueDatabaseWrite } from "~/shared/write-queue";
+import * as application from "~/shared/application/client";
+import {
+  enqueueDatabaseWrite,
+  flushDatabaseWrites,
+} from "~/shared/write-queue";
 
 const mocks = vi.hoisted(() => ({
   sessionGet: vi.fn(
@@ -86,7 +90,7 @@ import {
   createSession,
   deleteEnhancedNote,
   isSessionEmpty,
-  restoreDeletedSession,
+  captureSessionRestore,
   softDeleteSession,
   saveSessionNote,
   updateEnhancedNoteContent,
@@ -412,25 +416,95 @@ describe("session store operations", () => {
   });
 
   it("waits for a pending delete to settle, then restores through the store", async () => {
-    await restoreDeletedSession({
-      session: { id: "session-1", title: "Planning" },
-      tombstone: "2026-07-10T12:00:00.000Z",
-      deletedAt: 1,
-    });
+    await captureSessionRestore("local:restore")("session-1", () => {});
 
-    expect(mocks.waitForPendingSoftDelete).toHaveBeenCalledWith("session-1");
+    expect(mocks.waitForPendingSoftDelete).toHaveBeenCalledWith(
+      "local:restore",
+      "session-1",
+    );
     expect(mocks.sessionRestore).toHaveBeenCalledWith("session-1");
+  });
+
+  it("restores through the original backend after another client becomes current during its pending-delete wait", async () => {
+    const originalRestore = vi.fn(async () => ({
+      status: "ok" as const,
+      data: true,
+    }));
+    const replacementRestore = vi.fn(async () => ({
+      status: "ok" as const,
+      data: true,
+    }));
+    const base = application.getApplicationClient();
+    const spy = vi.spyOn(application, "getApplicationClient").mockReturnValue({
+      ...base,
+      store: { ...base.store, sessionRestore: originalRestore },
+    });
+    let release!: () => void;
+    mocks.waitForPendingSoftDelete.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const original = captureSessionRestore("first");
+    spy.mockReturnValue({
+      ...base,
+      store: { ...base.store, sessionRestore: replacementRestore },
+    });
+    const restoring = original("same-id", () => {});
+    release();
+    await restoring;
+    expect(originalRestore).toHaveBeenCalledWith("same-id");
+    expect(replacementRestore).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("does not dispatch restore when admission changes during the original delete wait", async () => {
+    let release!: () => void;
+    mocks.waitForPendingSoftDelete.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    let available = true;
+    const restoring = captureSessionRestore("first")("same-id", () => {
+      if (!available) throw new Error("retired");
+    });
+    await vi.waitFor(() =>
+      expect(mocks.waitForPendingSoftDelete).toHaveBeenCalledOnce(),
+    );
+    available = false;
+    release();
+    await expect(restoring).rejects.toThrow("retired");
+    expect(mocks.sessionRestore).not.toHaveBeenCalled();
+  });
+
+  it("keeps an accepted Undo in exit flushing while its original delete settles", async () => {
+    let release!: () => void;
+    mocks.waitForPendingSoftDelete.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const restoring = captureSessionRestore("first")("same-id", () => {});
+    let exited = false;
+    const exiting = flushDatabaseWrites().then(() => {
+      exited = true;
+    });
+    await vi.waitFor(() =>
+      expect(mocks.waitForPendingSoftDelete).toHaveBeenCalledOnce(),
+    );
+    expect(exited).toBe(false);
+    release();
+    await Promise.all([restoring, exiting]);
+    expect(mocks.sessionRestore).toHaveBeenCalledWith("same-id");
+    expect(exited).toBe(true);
   });
 
   it("throws when nothing was trashed to restore", async () => {
     mocks.sessionRestore.mockResolvedValueOnce({ status: "ok", data: false });
 
     await expect(
-      restoreDeletedSession({
-        session: { id: "session-1", title: "Planning" },
-        tombstone: "2026-07-10T12:00:00.000Z",
-        deletedAt: 1,
-      }),
+      captureSessionRestore("local:restore")("session-1", () => {}),
     ).rejects.toThrow("was never soft-deleted");
   });
 
@@ -441,11 +515,7 @@ describe("session store operations", () => {
     });
 
     await expect(
-      restoreDeletedSession({
-        session: { id: "session-1", title: "Planning" },
-        tombstone: "2026-07-10T12:00:00.000Z",
-        deletedAt: 1,
-      }),
+      captureSessionRestore("local:restore")("session-1", () => {}),
     ).rejects.toThrow("boom");
   });
 });

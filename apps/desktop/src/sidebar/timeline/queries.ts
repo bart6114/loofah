@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 
 import { getApplicationClient } from "~/shared/application/client";
+import { useVaultHost } from "~/shared/application/vault-provider";
 import { useIndexQuery } from "~/shared/index-query";
 import type {
   TimelineSessionRow,
   TimelineSessionsTable,
 } from "~/sidebar/timeline/utils";
-import { useUndoDelete } from "~/store/zustand/undo-delete";
+import { useScopedPendingDeletions } from "~/store/zustand/undo-delete";
 import { type SessionListHeader } from "~/types/tauri.gen";
 
 const EMPTY_SESSIONS: Record<string, TimelineSessionRow> = {};
@@ -23,7 +24,9 @@ export function useTimelineSessionsTable(): TimelineSessionsTable {
       return mapTimelineSessionEntries(result.data);
     },
   });
-  const pendingDeletions = useUndoDelete((state) => state.pendingDeletions);
+  const { scope } = useVaultHost();
+  if (!scope) throw new Error("Timeline requires a captured vault host");
+  const pendingDeletions = useScopedPendingDeletions(scope.client.scope);
 
   // Sessions with a pending deletion are hidden optimistically, before the
   // delete write commits and the index re-emits.

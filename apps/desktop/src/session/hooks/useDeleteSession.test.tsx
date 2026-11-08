@@ -14,6 +14,13 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
+    listeners: new Set<
+      (state: {
+        pendingDeletions: Record<string, { data: DeletedSessionData }>;
+      }) => void
+    >(),
+    scope: { client: { scope: "local:delete" } },
+    captureRestore: vi.fn(() => vi.fn(async () => {})),
     allowed: true,
     capture: "idle",
     addDeletion: vi.fn(),
@@ -61,6 +68,7 @@ vi.mock("@hypr/ui/components/ui/toast", () => ({
 
 vi.mock("~/session/queries", () => ({
   softDeleteSession: mocks.softDeleteSession,
+  captureSessionRestore: mocks.captureRestore,
 }));
 
 // The hard-delete command must stay unreachable from the delete flow: `session_delete`
@@ -97,7 +105,20 @@ vi.mock("~/store/zustand/undo-delete", () => {
     selector: (state: ReturnType<typeof getState>) => unknown,
   ) => selector(getState());
   useUndoDelete.getState = getState;
-  return { useUndoDelete };
+  useUndoDelete.subscribe = (
+    changed: (state: {
+      pendingDeletions: typeof mocks.pendingDeletions;
+    }) => void,
+  ) => {
+    mocks.listeners.add(changed);
+    return () => {
+      mocks.listeners.delete(changed);
+    };
+  };
+  return {
+    useUndoDelete,
+    deletionKey: (scope: string, id: string) => JSON.stringify([scope, id]),
+  };
 });
 
 import {
@@ -111,15 +132,22 @@ describe("useDeleteSession", () => {
     vi.clearAllMocks();
     mocks.allowed = true;
     mocks.capture = "idle";
+    mocks.listeners.clear();
     for (const key of Object.keys(mocks.pendingDeletions)) {
       delete mocks.pendingDeletions[key];
     }
-    mocks.addDeletion.mockImplementation((data: DeletedSessionData) => {
-      mocks.pendingDeletions[data.session.id] = { data };
-    });
-    mocks.clearDeletion.mockImplementation((sessionId: string) => {
-      delete mocks.pendingDeletions[sessionId];
-    });
+    mocks.addDeletion.mockImplementation(
+      (scope: string, data: DeletedSessionData) => {
+        mocks.pendingDeletions[JSON.stringify([scope, data.session.id])] = {
+          data,
+        };
+      },
+    );
+    mocks.clearDeletion.mockImplementation(
+      (scope: string, sessionId: string) => {
+        delete mocks.pendingDeletions[JSON.stringify([scope, sessionId])];
+      },
+    );
     mocks.openTabs.length = 0;
     mocks.softDeleteSession.mockResolvedValue(mocks.deletedSessionData);
     mocks.emitTo.mockResolvedValue(undefined);
@@ -159,7 +187,7 @@ describe("useDeleteSession", () => {
     );
 
     // No confirm callback is registered, so `confirmDeletion` has nothing to run.
-    const onConfirm = mocks.addDeletion.mock.calls[0]?.[1];
+    const onConfirm = mocks.addDeletion.mock.calls[0]?.[2]?.onConfirm;
     expect(onConfirm).toBeUndefined();
     expect(mocks.deleteSessionFolder).not.toHaveBeenCalled();
   });
@@ -174,13 +202,13 @@ describe("useDeleteSession", () => {
     });
 
     expect(mocks.addDeletion).toHaveBeenCalledWith(
+      "local:delete",
       {
         session: { id: "session-1", title: "Note" },
         tombstone: expect.any(String),
         deletedAt: expect.any(Number),
       },
-      undefined,
-      undefined,
+      { batchId: undefined, restore: expect.any(Function) },
     );
     expect(mocks.softDeleteSession).toHaveBeenCalledWith(
       "session-1",
@@ -209,7 +237,10 @@ describe("useDeleteSession", () => {
     await waitFor(() => {
       expect(mocks.toastError).toHaveBeenCalledOnce();
     });
-    expect(mocks.clearDeletion).toHaveBeenCalledWith("session-1");
+    expect(mocks.clearDeletion).toHaveBeenCalledWith(
+      "local:delete",
+      "session-1",
+    );
     expect(mocks.deleteSessionFolder).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
@@ -224,7 +255,10 @@ describe("useDeleteSession", () => {
 
     expect(mocks.addDeletion).toHaveBeenCalledOnce();
     await waitFor(() => {
-      expect(mocks.clearDeletion).toHaveBeenCalledWith("session-1");
+      expect(mocks.clearDeletion).toHaveBeenCalledWith(
+        "local:delete",
+        "session-1",
+      );
     });
     expect(mocks.toastError).not.toHaveBeenCalled();
   });
@@ -315,6 +349,7 @@ describe("useDeleteSession", () => {
         "main",
         "hypr://session-deleted-for-undo",
         {
+          scope: "local:delete",
           sessionId: "session-1",
           data: mocks.deletedSessionData,
         },
@@ -359,10 +394,69 @@ describe("useDeleteSession", () => {
     });
   });
 
+  it("does not clear a newer same-time tombstone when an older delete fails", async () => {
+    let reject!: (error: Error) => void;
+    mocks.softDeleteSession.mockReturnValueOnce(
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+    );
+    const { result } = renderHook(() => useDeleteSession());
+    act(() => result.current("session-1"));
+    const key = JSON.stringify(["local:delete", "session-1"]);
+    const old = mocks.pendingDeletions[key];
+    act(() => {
+      void mocks.addDeletion(
+        "local:delete",
+        { ...old.data, session: { id: "session-1", title: "New" } },
+        { restore: async () => {} },
+      );
+    });
+    const newer = mocks.pendingDeletions[key];
+    await act(async () => {
+      reject(new Error("late failure"));
+      await Promise.resolve();
+    });
+    expect(mocks.pendingDeletions[key]).toBe(newer);
+    expect(mocks.clearDeletion).not.toHaveBeenCalled();
+    expect(mocks.openCurrent).not.toHaveBeenCalled();
+  });
+
+  it.each(["other-scope", "mismatched-id", "missing-scope"])(
+    "ignores %s undo events without touching another vault's windows or tombstones",
+    async (kind) => {
+      let receive!: (event: { payload: unknown }) => void;
+      mocks.listen.mockImplementation((_, callback) => {
+        receive = callback;
+        return Promise.resolve(() => {});
+      });
+      renderHook(() => useRemoteSessionDeletionUndoListener(true));
+      await waitFor(() => expect(receive).toBeTypeOf("function"));
+      const payload = {
+        scope:
+          kind === "other-scope"
+            ? "remote:other"
+            : kind === "missing-scope"
+              ? undefined
+              : "local:delete",
+        sessionId: kind === "mismatched-id" ? "other-id" : "session-1",
+        data: mocks.deletedSessionData,
+      };
+      act(() => receive({ payload }));
+      expect(mocks.addDeletion).not.toHaveBeenCalled();
+      expect(mocks.invalidateResource).not.toHaveBeenCalled();
+      expect(mocks.getAllWebviewWindows).not.toHaveBeenCalled();
+    },
+  );
+
   it("listens for forwarded standalone note deletions in the main window", async () => {
     let handler:
       | ((event: {
-          payload: { sessionId: string; data: DeletedSessionData };
+          payload: {
+            scope: string;
+            sessionId: string;
+            data: DeletedSessionData;
+          };
         }) => void)
       | null = null;
     mocks.listen.mockImplementation((_, callback) => {
@@ -382,13 +476,18 @@ describe("useDeleteSession", () => {
     act(() => {
       handler?.({
         payload: {
+          scope: "local:delete",
           sessionId: "session-1",
           data: mocks.deletedSessionData,
         },
       });
     });
 
-    expect(mocks.addDeletion).toHaveBeenCalledWith(mocks.deletedSessionData);
+    expect(mocks.addDeletion).toHaveBeenCalledWith(
+      "local:delete",
+      mocks.deletedSessionData,
+      { restore: expect.any(Function) },
+    );
     expect(mocks.invalidateResource).toHaveBeenCalledWith(
       "sessions",
       "session-1",
@@ -403,6 +502,7 @@ vi.mock("~/main/use-legacy-activity", async () => {
   return {
     useLegacyDesktopAccess: () => ({
       ...legacyActivityFixture(mocks.listenerGetState()),
+      scope: mocks.scope,
       isAvailable: () => mocks.allowed,
       activity: { captureState: () => mocks.capture },
     }),

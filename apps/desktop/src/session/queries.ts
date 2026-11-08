@@ -635,25 +635,24 @@ export async function isSessionEmpty(sessionId: string): Promise<boolean> {
   return result.data;
 }
 
-export async function restoreDeletedSession(
-  data: DeletedSessionData,
-): Promise<void> {
-  // The undo toast shows before the delete write commits. Wait for the in-flight
-  // delete to settle first -- session_restore looks for a folder under *today's*
-  // trash dir, which only exists once session_delete has actually moved it there.
-  await waitForPendingSoftDelete(data.session.id);
-
-  const result = await getApplicationClient().store.sessionRestore(
-    data.session.id,
-  );
-  if (result.status === "error") {
-    throw new Error(
-      `Failed to restore session ${data.session.id}: ${result.error}`,
+export function captureSessionRestore(scope: string) {
+  const backend = getApplicationClient().store;
+  return (sessionId: string, assertCurrent: () => void): Promise<void> =>
+    enqueueDatabaseWrite(
+      `undo-restore:${JSON.stringify([scope, sessionId])}`,
+      async () => {
+        assertCurrent();
+        await waitForPendingSoftDelete(scope, sessionId);
+        assertCurrent();
+        const result = await backend.sessionRestore(sessionId);
+        if (result.status === "error")
+          throw new Error(
+            `Failed to restore session ${sessionId}: ${result.error}`,
+          );
+        if (!result.data)
+          throw new Error(`Session ${sessionId} was never soft-deleted`);
+      },
     );
-  }
-  if (!result.data) {
-    throw new Error(`Session ${data.session.id} was never soft-deleted`);
-  }
 }
 
 // There is deliberately no "finalize the deletion" step: `session_delete` moves the whole

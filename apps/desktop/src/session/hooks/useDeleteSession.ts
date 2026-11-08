@@ -7,16 +7,19 @@ import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
 import { trackPendingSoftDelete } from "~/session/pending-soft-deletes";
-import { softDeleteSession } from "~/session/queries";
+import { softDeleteSession, captureSessionRestore } from "~/session/queries";
 import { useTabs, useTabsStore } from "~/store/zustand/tabs";
 import {
   type DeletedSessionData,
+  type PendingDeletion,
   useUndoDelete,
+  deletionKey,
 } from "~/store/zustand/undo-delete";
 
 const SESSION_DELETED_FOR_UNDO_EVENT = "hypr://session-deleted-for-undo";
 
 type SessionDeletedForUndoPayload = {
+  scope: string;
   sessionId: string;
   data: DeletedSessionData;
 };
@@ -43,14 +46,32 @@ async function closeSessionNoteWindows(
 function isSessionDeletedForUndoPayload(
   payload: unknown,
 ): payload is SessionDeletedForUndoPayload {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("scope" in payload) ||
+    typeof payload.scope !== "string" ||
+    !("sessionId" in payload) ||
+    typeof payload.sessionId !== "string" ||
+    !("data" in payload) ||
+    !payload.data ||
+    typeof payload.data !== "object"
+  )
+    return false;
+  const data = payload.data;
   return (
-    typeof payload === "object" &&
-    payload !== null &&
-    "sessionId" in payload &&
-    typeof payload.sessionId === "string" &&
-    "data" in payload &&
-    typeof payload.data === "object" &&
-    payload.data !== null
+    "session" in data &&
+    !!data.session &&
+    typeof data.session === "object" &&
+    "id" in data.session &&
+    data.session.id === payload.sessionId &&
+    "title" in data.session &&
+    typeof data.session.title === "string" &&
+    "tombstone" in data &&
+    typeof data.tombstone === "string" &&
+    "deletedAt" in data &&
+    typeof data.deletedAt === "number" &&
+    Number.isFinite(data.deletedAt)
   );
 }
 
@@ -78,11 +99,14 @@ export function useDeleteSession() {
         if (!current() || !state || state === "unknown")
           throw new Error("Session controls are unavailable.");
       };
+      const scope = legacy.scope.client.scope;
+      const key = deletionKey(scope, sessionId);
+      const restore = captureSessionRestore(scope);
       const { batchId, title } = options ?? {};
       // A repeat delete would replace the pending tombstone and its finalize
       // callback, then no-op in softDeleteSession and clear the undo toast —
       // leaving the note soft-deleted with no undo.
-      if (useUndoDelete.getState().pendingDeletions[sessionId]) {
+      if (useUndoDelete.getState().pendingDeletions[key]) {
         return;
       }
       const windowLabel = getCurrentWebviewWindowLabel();
@@ -106,12 +130,13 @@ export function useDeleteSession() {
       invalidateResource("sessions", sessionId);
 
       const commit = softDeleteSession(sessionId, tombstone, assertCurrent);
-      trackPendingSoftDelete(sessionId, commit);
+      trackPendingSoftDelete(scope, sessionId, commit);
 
+      let optimistic: PendingDeletion | undefined;
       const clearOptimisticDeletion = () => {
-        const pending = useUndoDelete.getState().pendingDeletions[sessionId];
-        if (pending?.data.tombstone === tombstone) {
-          clearDeletion(sessionId);
+        const pending = useUndoDelete.getState().pendingDeletions[key];
+        if (pending && pending === optimistic) {
+          clearDeletion(scope, sessionId);
         }
       };
 
@@ -120,21 +145,27 @@ export function useDeleteSession() {
         // time `commit` resolves, so letting the undo window lapse just dismisses the
         // toast. There is nothing to finalize (see session/queries.ts).
         addDeletion(
+          scope,
           {
             session: { id: sessionId, title: title ?? "" },
             tombstone,
             deletedAt: Date.now(),
           },
-          undefined,
-          batchId,
+          { batchId, restore: (assert) => restore(sessionId, assert) },
         );
+        optimistic = useUndoDelete.getState().pendingDeletions[key];
       }
 
+      let superseded = false;
+      const stop = useUndoDelete.subscribe((next) => {
+        const replacement = next.pendingDeletions[key];
+        if (replacement && replacement !== optimistic) superseded = true;
+      });
       void (async () => {
         let didDelete = false;
         try {
           const deletedData = await commit;
-          if (!current()) return;
+          if (!current() || superseded) return;
           if (!deletedData) {
             // The session was already deleted; drop the optimistic toast.
             if (isMainWindow) clearOptimisticDeletion();
@@ -144,13 +175,14 @@ export function useDeleteSession() {
 
           if (!isMainWindow) {
             await emitTo("main", SESSION_DELETED_FOR_UNDO_EVENT, {
+              scope,
               sessionId,
               data: deletedData,
             } satisfies SessionDeletedForUndoPayload);
           }
         } catch (error) {
           console.error("[delete-session] failed to finish deletion", error);
-          if (!didDelete && current()) {
+          if (!didDelete && current() && !superseded) {
             if (isMainWindow) clearOptimisticDeletion();
             if (hadOpenTab) {
               tabsStore
@@ -162,8 +194,14 @@ export function useDeleteSession() {
           // The `didDelete` branch needs no cleanup: the folder is already in
           // `.trash/`, whether or not main ever heard about this delete.
         } finally {
-          if (didDelete && current()) {
-            await closeSessionNoteWindows(sessionId, current);
+          try {
+            if (didDelete && current() && !superseded)
+              await closeSessionNoteWindows(
+                sessionId,
+                () => current() && !superseded,
+              );
+          } finally {
+            stop();
           }
         }
       })();
@@ -176,6 +214,7 @@ export function useDeleteSession() {
       isAvailable,
       legacy.activity,
       legacy.listener,
+      legacy.scope,
     ],
   );
 }
@@ -192,6 +231,8 @@ export function useRemoteSessionDeletionUndoListener(active: boolean) {
       return;
     }
 
+    const scope = legacy.scope.client.scope;
+    const restore = captureSessionRestore(scope);
     let disposed = false;
     const current = () =>
       !disposed && isAvailable("legacy_desktop_session_controls");
@@ -200,12 +241,26 @@ export function useRemoteSessionDeletionUndoListener(active: boolean) {
     void listen(SESSION_DELETED_FOR_UNDO_EVENT, (event) => {
       if (!current()) return;
       const payload = event.payload;
-      if (!isSessionDeletedForUndoPayload(payload)) {
+      if (!isSessionDeletedForUndoPayload(payload) || payload.scope !== scope) {
         return;
       }
 
+      const existing =
+        useUndoDelete.getState().pendingDeletions[
+          deletionKey(scope, payload.sessionId)
+        ];
+      if (
+        existing &&
+        (existing.data.tombstone === payload.data.tombstone ||
+          existing.data.deletedAt >= payload.data.deletedAt)
+      )
+        return;
       invalidateResource("sessions", payload.sessionId);
-      addDeletion(payload.data);
+      const data = payload.data;
+      const sessionId = payload.sessionId;
+      addDeletion(scope, data, {
+        restore: (assert) => restore(sessionId, assert),
+      });
       void closeSessionNoteWindows(payload.sessionId, current);
     }).then((fn) => {
       if (!current()) fn();
@@ -216,5 +271,12 @@ export function useRemoteSessionDeletionUndoListener(active: boolean) {
       disposed = true;
       unlisten?.();
     };
-  }, [active, invalidateResource, addDeletion, isAvailable, available]);
+  }, [
+    active,
+    invalidateResource,
+    addDeletion,
+    isAvailable,
+    available,
+    legacy.scope,
+  ]);
 }
