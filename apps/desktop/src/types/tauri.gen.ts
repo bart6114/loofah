@@ -2364,6 +2364,19 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async deviceRecordingTelemetry(
+    identity: CaptureIdentity,
+  ): Promise<Result<DeviceRecordingTelemetry | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_telemetry", { identity }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async deviceRecordingStop(
     identity: CaptureIdentity,
   ): Promise<Result<boolean, ApplicationError>> {
@@ -3707,6 +3720,12 @@ export type DeviceRecordingInventory = {
   scope: CaptureScope;
   ready: boolean;
   recordings: DeviceRecordingInfo[];
+};
+export type DeviceRecordingTelemetry = {
+  identity: CaptureIdentity;
+  mic: number;
+  speaker: number;
+  device: string | null;
 };
 export type DeviceVaultStateChanged = { scope: string };
 export type Document = {
