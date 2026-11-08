@@ -18,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 #[derive(Clone, Debug, PartialEq, serde::Serialize, specta::Type)]
 pub struct DeviceProcessingProgress {
     pub format: hypr_loofah_protocol::CaptureFormat,
+    pub captions: Option<super::DeviceCaptionPreview>,
     pub declaration: CaptureProcessingDeclaration,
     pub status: Option<CaptureProcessingSnapshot>,
     pub error: Option<ApplicationError>,
@@ -121,6 +122,7 @@ impl ProcessingSupervisor {
         let finished = CancellationToken::new();
         let (progress, rx) = watch::channel(DeviceProcessingProgress {
             format: snapshot.format,
+            captions: None,
             declaration,
             status: None,
             error: None,
@@ -137,10 +139,16 @@ impl ProcessingSupervisor {
         );
         let supervisor = self.clone();
         tokio::spawn(async move {
-            let outcome =
-                std::panic::AssertUnwindSafe(supervisor.run(&writer, &client, &stop, &progress))
-                    .catch_unwind()
-                    .await;
+            let mut captions = None;
+            let outcome = std::panic::AssertUnwindSafe(supervisor.run(
+                &writer,
+                &client,
+                &stop,
+                &progress,
+                &mut captions,
+            ))
+            .catch_unwind()
+            .await;
             let failure = match outcome {
                 Ok(Err(cause)) => Some(cause),
                 Err(_) => Some(error(
@@ -152,6 +160,10 @@ impl ProcessingSupervisor {
             if let Some(cause) = failure {
                 progress.send_modify(|value| value.error = Some(cause));
             }
+            if let Some(captions) = captions {
+                captions.close().await;
+            }
+            super::captions::retire(&client, &progress);
             writer.wait_for_io().await;
             drop(writer);
             drop(owner);
@@ -169,6 +181,7 @@ impl ProcessingSupervisor {
         client: &Arc<RemoteClient>,
         stop: &CancellationToken,
         progress: &watch::Sender<DeviceProcessingProgress>,
+        captions: &mut Option<super::captions::CaptionObserver>,
     ) -> Result<(), ApplicationError> {
         let mut declared = false;
         let mut delay = Duration::from_millis(500);
@@ -182,6 +195,12 @@ impl ProcessingSupervisor {
                 _ = stop.cancelled() => return Ok(()),
                 result = self.cycle(writer, client, stop, progress, &mut declared) => result,
             };
+            if result.is_ok() {
+                tokio::select! {
+                    _ = stop.cancelled() => return Ok(()),
+                    _ = super::captions::observe(captions, client, writer.identity(), progress, &self.updates, stop) => {},
+                }
+            }
             match result {
                 Ok(true) => return Ok(()),
                 Ok(false) => delay = Duration::from_millis(500),

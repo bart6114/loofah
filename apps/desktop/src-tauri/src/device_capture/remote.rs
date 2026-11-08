@@ -390,6 +390,7 @@ impl RemoteCaptureCoordinator {
                 let options = entry.processing.as_ref()?;
                 Some(super::DeviceProcessingProgress {
                     format: entry.format.clone(),
+                    captions: None,
                     declaration: hypr_capture_store::capture_spool::CaptureProcessingDeclaration {
                         request: options.request(hypr_loofah_protocol::capture_fingerprint(
                             identity,

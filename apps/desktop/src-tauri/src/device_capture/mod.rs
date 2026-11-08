@@ -1,5 +1,7 @@
 //! Device-only capture. No server admission, canonical vault writes or uploader lives here.
 
+mod captions;
+pub use captions::{DeviceCaptionPreview, DeviceCaptionWord};
 mod manager;
 mod processing;
 pub use processing::DeviceProcessingProgress;

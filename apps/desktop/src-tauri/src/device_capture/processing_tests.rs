@@ -38,6 +38,7 @@ struct Api {
     cancels: AtomicUsize,
     mode: AtomicUsize,
     original: Mutex<Option<Value>>,
+    writer: Mutex<Option<CaptureWriter>>,
     entered: tokio::sync::Notify,
     wait: tokio::sync::Notify,
 }
@@ -67,8 +68,10 @@ impl Fixture {
         let app = Router::new()
             .route("/.well-known/openid-configuration", get(move || { let value = discovery.clone(); async { Json(value) } }))
             .route("/api/v1/auth/config", get(move || { let value = config.clone(); async { Json(value) } }))
-            .route("/api/v1/capabilities", get(|| async { Json(json!({"api_major":1,"application_version":"test","features":["capture_processing","capture_ingestion"]})) }))
+            .route("/api/v1/capabilities", get(|| async { Json(json!({"api_major":1,"application_version":"test","features":["capture_processing","capture_ingestion","capture_live_transcription"]})) }))
             .route("/token", post(|| async { Json(json!({"token_type":"Bearer","access_token":"fixture-access","refresh_token":"fixture-refresh","expires_in":3600})) }))
+            .route("/api/v1/vaults/{vault}/captures/{capture}", get(capture_source))
+            .route("/api/v1/vaults/{vault}/captures/{capture}/live/{generation}/events", get(caption_events))
             .route("/api/v1/vaults/{vault}/captures/{capture}/processing", get(status).put(declare))
             .route("/api/v1/vaults/{vault}/captures/{capture}/processing/cancel", post(cancel))
             .with_state(api.clone());
@@ -124,6 +127,7 @@ impl Fixture {
             .unwrap()
     }
     async fn configure(&self, writer: &CaptureWriter) {
+        *self.api.writer.lock().unwrap() = Some(writer.clone());
         let snapshot = writer.snapshot().await.unwrap();
         *self.api.original.lock().unwrap() = Some(json!({
             "capture_id":snapshot.identity.capture_id,"intent_id":snapshot.identity.request_id,
@@ -402,4 +406,99 @@ async fn processing_pending_session_uses_authoritative_ingest_binding_instead_of
     }
     snapshot.session_id = Some("originally-bound-session".into());
     assert!(validate_pending_binding(&snapshot, &processing, &binding).is_err());
+}
+
+async fn capture_source(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+) -> Json<hypr_loofah_protocol::CaptureIngestStatus> {
+    authorized(&headers);
+    let writer = api.writer.lock().unwrap().clone().unwrap();
+    let snapshot = writer.snapshot().await.unwrap();
+    Json(hypr_loofah_protocol::CaptureIngestStatus {
+        identity: snapshot.identity,
+        format: snapshot.format,
+        prefix: CapturePrefixReceipt {
+            capture_fingerprint: snapshot.capture_fingerprint,
+            chunk_count: snapshot.chunk_count,
+            frames: snapshot.frames,
+            pcm_bytes: snapshot.pcm_bytes,
+            chain_digest: snapshot.chain_digest,
+        },
+        first_admitted_audio_observed_at_ms: snapshot.first_admitted_audio_observed_at_ms.unwrap(),
+        session_id: snapshot.session_id,
+        seal: snapshot.seal,
+        publication: snapshot.publication,
+    })
+}
+async fn caption_events(State(api): State<Arc<Api>>, headers: HeaderMap) -> impl IntoResponse {
+    use futures_util::StreamExt;
+    authorized(&headers);
+    let original = api.original.lock().unwrap().clone().unwrap();
+    let generation = original["intent_id"].as_str().unwrap();
+    assert_eq!(
+        headers["last-event-id"].to_str().unwrap(),
+        format!("{generation}:initial")
+    );
+    let page = json!({
+        "snapshot": { "capture_id":original["capture_id"], "capture_fingerprint":original["capture_fingerprint"], "generation_id":generation, "session_id":"note", "state":"running", "failure":null, "admitted_end_frame":1, "input_consumed_end_frame":1, "completed_through_frame":null, "next_caption_sequence":1, "result_available":false, "publication":null },
+        "captions":[{ "generation_id":generation, "sequence":0, "physical_channel":0, "role":"microphone", "new_words":[{"id":"word-1", "text":"hello", "start_ms":0, "end_ms":1, "channel":0, "state":"final"}], "partials":[], "replaced_ids":[], "languages":[] }], "next_cursor":null,
+    });
+    let event = axum::response::sse::Event::default()
+        .event("page")
+        .id(format!("{generation}:0"))
+        .data(page.to_string());
+    let stream =
+        futures_util::stream::once(async move { Ok::<_, std::convert::Infallible>(event) })
+            .chain(futures_util::stream::pending());
+    axum::response::Sse::new(stream)
+}
+
+#[tokio::test]
+async fn processing_captions_use_original_sdk_binding_and_logout_clears_visible_text() {
+    let fixture = Fixture::new().await;
+    let writer = fixture.writer(true).await;
+    fixture.configure(&writer).await;
+    admit(&writer).await;
+    let supervisor = ProcessingSupervisor::new(watch::channel(0).0);
+    let profile = fixture.start(&supervisor, &writer).await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if supervisor
+                .current(&profile, writer.identity())
+                .and_then(|value| value.captions)
+                .is_some_and(|captions| captions.words.iter().any(|word| word.text == "hello"))
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let captions = supervisor
+        .current(&profile, writer.identity())
+        .unwrap()
+        .captions
+        .unwrap();
+    assert_eq!(captions.binding.capture_id, writer.identity().capture_id);
+    assert_eq!(captions.binding.generation_id, writer.identity().request_id);
+    assert_eq!(captions.binding.format, CaptureFormat::stereo());
+    assert_eq!(captions.words.len(), 1);
+    fixture.client.logout().await.unwrap();
+    wait_finished(&supervisor, &profile, writer.identity()).await;
+    let captions = supervisor
+        .current(&profile, writer.identity())
+        .unwrap()
+        .captions
+        .unwrap();
+    assert!(captions.words.is_empty());
+    assert!(captions.partials.is_empty());
+    assert_eq!(
+        captions.connection,
+        hypr_loofah_client::ConnectionState::Closed
+    );
+    assert_eq!(fixture.api.cancels.load(Ordering::SeqCst), 0);
+    writer.append_chunk(1, 1, vec![0; 8]).await.unwrap();
+    supervisor.wait_shutdown().await;
 }

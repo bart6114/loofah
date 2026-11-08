@@ -295,6 +295,7 @@ fn saved(profile_id: &str, snapshot: CaptureSnapshot) -> DeviceRecordingInfo {
         processing: snapshot.processing.map(|declaration| {
             crate::device_capture::DeviceProcessingProgress {
                 format: snapshot.format,
+                captions: None,
                 declaration,
                 status: None,
                 error: None,
