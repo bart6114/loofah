@@ -1238,3 +1238,107 @@ async fn checked_audio_import_preserves_original_metadata_authority_and_date() {
     assert_eq!(fixture.cli.media_origin(&request).await.unwrap(), origin);
     fixture.stop().await;
 }
+
+#[tokio::test]
+async fn partial_import_status_keeps_original_metadata_after_canonical_edits_and_deletion() {
+    struct FailingTranscription;
+    impl LocalMediaHost for FailingTranscription {
+        fn normalize(
+            &self,
+            source: LocalCliArtifact,
+            _: String,
+            _: std::path::PathBuf,
+            _: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
+        ) -> LocalMediaFuture<LocalCliArtifact> {
+            Box::pin(async move { Ok(source) })
+        }
+        fn transcribe(
+            &self,
+            _: String,
+            _: LocalCliArtifact,
+            _: String,
+            _: String,
+            _: hypr_vault_read::SessionAudio,
+            _: crate::settings::AppConfig,
+            _: std::path::PathBuf,
+            _: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
+        ) -> LocalMediaFuture<LocalMediaTranscription> {
+            Box::pin(async {
+                Err(error(
+                    ErrorCode::Unavailable,
+                    "Original model admission failed",
+                ))
+            })
+        }
+    }
+    let mut fixture = Fixture::new().await;
+    fixture.cli = Arc::new(
+        LocalCli::new(fixture.cli.context.clone())
+            .unwrap()
+            .with_media_host(Arc::new(FailingTranscription)),
+    );
+    let request = uuid::Uuid::new_v4().to_string();
+    let reply = fixture
+        .cli
+        .execute(
+            request.clone(),
+            LocalCliOperation::Import {
+                filename: "original.mp3".into(),
+                title: Some("Original title".into()),
+                into: None,
+                transcribe: true,
+                metadata: LocalInitialSessionMetadata::default(),
+            },
+            Some(input_artifact(fixture._root.path())),
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap()
+        .reply;
+    let LocalCliReply::Imported {
+        meta,
+        transcription: Some(Err(_)),
+        audio_path,
+    } = reply
+    else {
+        panic!("Import must remain saved after model refusal")
+    };
+    assert!(audio_path.is_file());
+    let status = fixture.cli.media_status(&request).await.unwrap();
+    assert_eq!(status.state, LocalMediaState::Failed);
+    assert_eq!(status.imported.as_ref(), Some(&meta));
+    let path = fixture
+        .cli
+        .context
+        .store
+        .vault_base()
+        .join("sessions")
+        .join(&meta.id)
+        .join("_meta.json");
+    let mut edited = meta.clone();
+    edited.title = "Later user edit".into();
+    std::fs::write(&path, serde_json::to_vec(&edited).unwrap()).unwrap();
+    assert_eq!(
+        fixture
+            .cli
+            .media_status(&request)
+            .await
+            .unwrap()
+            .imported
+            .as_ref(),
+        Some(&meta)
+    );
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(
+        fixture
+            .cli
+            .media_status(&request)
+            .await
+            .unwrap()
+            .imported
+            .as_ref(),
+        Some(&meta)
+    );
+    assert!(!path.exists());
+    fixture.stop().await;
+}
