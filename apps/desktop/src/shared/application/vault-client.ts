@@ -47,6 +47,9 @@ import type {
   DocumentSnapshot,
   DocumentSaveOutcome,
   SaveDocumentRequest,
+  DocumentEditorSnapshot,
+  SaveDocumentEditorRequest,
+  DocumentEditorSaveOutcome,
   EnhancedDoc,
   NoteSaveOutcome,
   NoteSnapshot,
@@ -238,6 +241,17 @@ export type VaultClient = {
     target: DocumentTarget,
     options?: RequestOptions,
   ) => Promise<DocumentSnapshot>;
+  readDocumentEditor: (
+    sessionId: string,
+    target: DocumentTarget,
+    options?: RequestOptions,
+  ) => Promise<DocumentEditorSnapshot>;
+  saveDocumentEditor: (
+    sessionId: string,
+    target: DocumentTarget,
+    input: SaveDocumentEditorRequest,
+    options?: RequestOptions,
+  ) => Promise<DocumentEditorSaveOutcome>;
   saveDocument: (
     sessionId: string,
     target: DocumentTarget,
@@ -382,6 +396,9 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "session_cleanup",
       "note_editor_read",
       "note_editor_write",
+      "document_editor_read",
+      "document_editor_write",
+      "legacy_desktop_enhance",
       "audio_metadata_read",
       "attachment_info",
       "attachment_list",
@@ -485,6 +502,17 @@ export async function connectLocalVault(): Promise<VaultClient> {
       ),
     readDocument: (sessionId, target, options) =>
       ipc(() => commands.applicationReadDocument(sessionId, target), options),
+    readDocumentEditor: (sessionId, target, options) =>
+      ipc(
+        () => commands.applicationReadDocumentEditor(sessionId, target),
+        options,
+      ),
+    saveDocumentEditor: (sessionId, target, input, options) =>
+      ipc(
+        () => commands.applicationSaveDocumentEditor(sessionId, target, input),
+        options,
+        true,
+      ),
     saveDocument: (sessionId, target, input, options) =>
       ipc(
         () => commands.applicationSaveDocument(sessionId, target, input),
@@ -634,7 +662,9 @@ export function connectRemoteVault(
         "attachments",
         options,
       ),
-    features: connection.info.capabilities.features,
+    features: connection.info.capabilities.features.filter(
+      (feature) => feature !== "legacy_desktop_enhance",
+    ),
     processingPolicy: (options) =>
       connection.request(
         { kind: "processing_policy", vault_id: vaultId },
@@ -816,6 +846,29 @@ export function connectRemoteVault(
       connection.request(
         { kind: "document", vault_id: vaultId, session_id: sessionId, target },
         "document",
+        options,
+      ),
+    readDocumentEditor: (sessionId, target, options) =>
+      connection.request(
+        {
+          kind: "document_editor",
+          vault_id: vaultId,
+          session_id: sessionId,
+          target,
+        },
+        "document_editor",
+        options,
+      ),
+    saveDocumentEditor: (sessionId, target, input, options) =>
+      connection.request(
+        {
+          kind: "save_document_editor",
+          vault_id: vaultId,
+          session_id: sessionId,
+          target,
+          input,
+        },
+        "document_editor_save",
         options,
       ),
     saveDocument: (sessionId, target, input, options) =>

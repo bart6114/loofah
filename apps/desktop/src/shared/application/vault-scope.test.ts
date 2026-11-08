@@ -9,7 +9,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { AttachmentResource } from "./attachments";
 import { ApplicationRequestError } from "./errors";
 import type { PlaybackRecording } from "./playback";
-import type { NoteEditorSnapshot, NoteSnapshot } from "./protocol.gen";
+import type {
+  DocumentEditorSnapshot,
+  NoteEditorSnapshot,
+  NoteSnapshot,
+} from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 import { VaultScope } from "./vault-scope";
 
@@ -1285,5 +1289,94 @@ describe("vault-scoped query lifecycle", () => {
     expect(active.getSnapshot().state).toBe("access_denied");
     expect(active.queryClient.getQueryCache().getAll()).toHaveLength(0);
     active.dispose();
+  });
+});
+
+describe("compound document cache ownership", () => {
+  function documentSnapshot(revision: string): DocumentEditorSnapshot {
+    return {
+      document: { document: null, revision },
+      metadata: {
+        meta: {
+          id: "first",
+          title: "Title",
+          started_at: null,
+          ended_at: null,
+          created_at: "2026-11-08T00:00:00Z",
+          tags: [],
+          tracking_id: null,
+          folder: null,
+          author: null,
+        },
+        revision: "metadata",
+      },
+      tasks: { tasks: [], revision: "tasks" },
+    };
+  }
+  it("cancels pre-save reads and rereads canonical data without seeding a historical save echo", async () => {
+    const { active, backend } = fixture("scope");
+    await active.start();
+    let finish!: (value: unknown) => void;
+    const old = documentSnapshot("old");
+    const fresh = documentSnapshot("new");
+    backend.readDocumentEditor = vi
+      .fn()
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      )
+      .mockResolvedValue(fresh);
+    const target = { kind: "summary" as const };
+    const options = active.documentEditorOptions("first", target);
+    const pending = active.queryClient.fetchQuery(options).catch(() => {});
+    const other = active.documentEditorOptions("first", {
+      kind: "template_output",
+      document_id: "out",
+    }).queryKey;
+    const outside = active.documentEditorOptions("second", target).queryKey;
+    for (const key of [other, outside])
+      active.queryClient.setQueryData(key, old);
+    expect(await active.confirmDocumentEditor("first", target)).toEqual(fresh);
+    finish(old);
+    await pending;
+    expect(active.queryClient.getQueryData(options.queryKey)).toEqual(fresh);
+    expect(active.queryClient.getQueryState(other)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(outside)?.isInvalidated).toBe(
+      false,
+    );
+    expect(backend.readDocumentEditor).toHaveBeenCalledTimes(2);
+    active.dispose();
+  });
+  it.each(["docs", "sessions", "session_headers", "tasks"] as const)(
+    "invalidates compound snapshots for scoped %s changes",
+    async (entity) => {
+      const { active, emit } = fixture("scope");
+      await active.start();
+      const target = { kind: "summary" as const };
+      const key = active.documentEditorOptions("first", target).queryKey;
+      const other = active.documentEditorOptions("second", target).queryKey;
+      active.queryClient.setQueryData(key, documentSnapshot("r"));
+      active.queryClient.setQueryData(other, documentSnapshot("r"));
+      emit({
+        kind: "change",
+        change: { kind: "index_changed", entity, ids: ["first"] },
+      });
+      expect(active.queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+      expect(active.queryClient.getQueryState(other)?.isInvalidated).toBe(
+        false,
+      );
+      active.dispose();
+    },
+  );
+  it("does not reread or restore a retired scope", async () => {
+    const { active, backend } = fixture("scope");
+    await active.start();
+    backend.readDocumentEditor = vi.fn();
+    active.dispose();
+    expect(
+      await active.confirmDocumentEditor("first", { kind: "summary" }),
+    ).toBeUndefined();
+    expect(backend.readDocumentEditor).not.toHaveBeenCalled();
   });
 });

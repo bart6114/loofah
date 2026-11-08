@@ -452,6 +452,20 @@ export class VaultScope {
         this.run(() => this.client.readDocument(sessionId, target, { signal })),
     });
   }
+  documentEditorOptions(sessionId: string, target: DocumentTarget) {
+    const client = this.client;
+    const captured: DocumentTarget =
+      target.kind === "summary"
+        ? { kind: "summary" }
+        : { kind: "template_output", document_id: target.document_id };
+    return queryOptions({
+      queryKey: ["vault", client.scope, "document_editor", sessionId, captured],
+      queryFn: ({ signal }) =>
+        this.run(() =>
+          client.readDocumentEditor(sessionId, captured, { signal }),
+        ),
+    });
+  }
   documentTextOptions(sessionId: string, target: DocumentTarget) {
     const client = documentDraftClient(this.client, sessionId, target);
     return queryOptions({
@@ -641,6 +655,53 @@ export class VaultScope {
     }
   }
 
+  async confirmDocumentEditor(sessionId: string, target: DocumentTarget) {
+    const options = this.documentEditorOptions(sessionId, target);
+    await this.queryClient.cancelQueries({
+      queryKey: ["vault", this.client.scope, "document_editor", sessionId],
+    });
+    if (
+      this.disposed ||
+      ["access_denied", "login_required", "closed", "incompatible"].includes(
+        this.snapshot.state,
+      )
+    )
+      return;
+    for (const kind of [
+      "document_editor",
+      "document",
+      "document_text",
+      "docs",
+      "metadata",
+      "tasks",
+      "tasks_snapshot",
+      "session",
+      "note",
+      "note_editor",
+    ]) {
+      void this.queryClient.invalidateQueries({
+        queryKey: ["vault", this.client.scope, kind, sessionId],
+      });
+    }
+    for (const kind of ["session_page", "session_summaries"])
+      void this.queryClient.invalidateQueries({
+        queryKey: ["vault", this.client.scope, kind],
+      });
+    // A replayed save receipt can describe an older commit. Only a fresh read is canonical.
+    const snapshot = await this.queryClient.fetchQuery({
+      ...options,
+      staleTime: 0,
+    });
+    if (
+      this.disposed ||
+      ["access_denied", "login_required", "closed", "incompatible"].includes(
+        this.snapshot.state,
+      )
+    )
+      return;
+    return snapshot;
+  }
+
   private async confirmSnapshot<T>(key: readonly unknown[], value: T) {
     await this.queryClient.cancelQueries({ queryKey: key, exact: true });
     if (
@@ -789,6 +850,13 @@ export class VaultScope {
           if (kind === "note_editor")
             return (
               ["sessions", "tasks"].includes(change.entity) &&
+              (all || ids.has(String(id)))
+            );
+          if (kind === "document_editor")
+            return (
+              ["docs", "sessions", "session_headers", "tasks"].includes(
+                change.entity,
+              ) &&
               (all || ids.has(String(id)))
             );
           if (kind === "note" || kind === "session")

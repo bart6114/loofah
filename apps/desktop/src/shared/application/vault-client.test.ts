@@ -33,6 +33,8 @@ const native = vi.hoisted(() => ({
     applicationDocuments: vi.fn(),
     applicationReadDocument: vi.fn(),
     applicationSaveDocument: vi.fn(),
+    applicationReadDocumentEditor: vi.fn(),
+    applicationSaveDocumentEditor: vi.fn(),
     applicationTranscripts: vi.fn(),
     applicationTranscriptOverview: vi.fn(),
     applicationAudioMetadata: vi.fn(),
@@ -1422,4 +1424,92 @@ it("reads indexed transcript overviews through both captured adapters without lo
     options,
   );
   expect(native.commands.applicationTranscripts).not.toHaveBeenCalled();
+});
+
+it("routes compound document editing through the selected adapter and strips device-only remote capabilities", async () => {
+  const snapshot = {
+    document: { document: null, revision: "document" },
+    metadata: { revision: "meta" },
+    tasks: { tasks: [], revision: "tasks" },
+  };
+  const target = { kind: "summary" as const };
+  const input = {
+    markdown: "Summary",
+    title: null,
+    tasks: [],
+    expected_revision: "document",
+    expected_metadata_revision: "meta",
+    expected_tasks_revision: "tasks",
+  };
+  const saved = { kind: "saved", snapshot };
+  native.commands.applicationReadDocumentEditor.mockResolvedValue({
+    status: "ok",
+    data: snapshot,
+  });
+  native.commands.applicationSaveDocumentEditor.mockResolvedValue({
+    status: "ok",
+    data: saved,
+  });
+  const local = await connectLocalVault();
+  expect(local.features).toEqual(
+    expect.arrayContaining([
+      "document_editor_read",
+      "document_editor_write",
+      "legacy_desktop_enhance",
+    ]),
+  );
+  expect(await local.readDocumentEditor("same", target)).toEqual(snapshot);
+  expect(await local.saveDocumentEditor("same", target, input)).toEqual(saved);
+  expect(native.commands.applicationReadDocumentEditor).toHaveBeenCalledWith(
+    "same",
+    target,
+  );
+  expect(native.commands.applicationSaveDocumentEditor).toHaveBeenCalledWith(
+    "same",
+    target,
+    input,
+  );
+  const request = vi.fn().mockResolvedValue(snapshot);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: {
+          features: [
+            "document_editor_read",
+            "document_editor_write",
+            "legacy_desktop_enhance",
+          ],
+        },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  expect(remote.features).not.toContain("legacy_desktop_enhance");
+  const options = { signal: new AbortController().signal };
+  expect(await remote.readDocumentEditor("same", target, options)).toEqual(
+    snapshot,
+  );
+  expect(request).toHaveBeenLastCalledWith(
+    { kind: "document_editor", vault_id: "first", session_id: "same", target },
+    "document_editor",
+    options,
+  );
+  request.mockResolvedValue(saved);
+  expect(
+    await remote.saveDocumentEditor("same", target, input, options),
+  ).toEqual(saved);
+  expect(request).toHaveBeenLastCalledWith(
+    {
+      kind: "save_document_editor",
+      vault_id: "first",
+      session_id: "same",
+      target,
+      input,
+    },
+    "document_editor_save",
+    options,
+  );
 });

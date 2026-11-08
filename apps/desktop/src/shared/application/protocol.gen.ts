@@ -71,6 +71,14 @@ export type DeleteRecordingRequest = { expected_sha256: string }
 
 export type Document = { id: string; kind: string; template_id: string; title: string; markdown: string; sort_order: number; updated_at: string }
 
+export type DocumentEditorSaveOutcome = { kind: "saved"; snapshot: DocumentEditorSnapshot } | { kind: "conflict"; snapshot: DocumentEditorSnapshot }
+
+export type DocumentEditorSnapshot = { document: DocumentSnapshot; metadata: MetadataSnapshot;
+/**
+ * Logical target coordinates only; the revision guards the complete stored tasks file.
+ */
+tasks: TasksSnapshot }
+
 export type DocumentSaveOutcome = { kind: "saved"; snapshot: DocumentSnapshot } | { kind: "conflict"; snapshot: DocumentSnapshot }
 
 export type DocumentSnapshot = { document: EnhancedDoc | null; revision: string }
@@ -199,6 +207,8 @@ export type RemoveAttachmentRequest = { expected_sha256: string }
 export type RenderedTranscriptSegment = { is_current_user?: boolean | null; id: string; key: SegmentKey; speaker_label: string; start_ms: number; end_ms: number; text: string; words: SegmentWord[] }
 
 export type ReplaceTasksRequest = { source: TaskSource; tasks: TaskInput[]; expected_revision: string }
+
+export type SaveDocumentEditorRequest = { markdown: string; title: string | null; tasks: TaskInput[]; expected_revision: string; expected_metadata_revision: string; expected_tasks_revision: string }
 
 export type SaveDocumentRequest = { markdown: string; expected_revision: string }
 

@@ -177,6 +177,31 @@ pub async fn application_save_note_editor<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_read_document_editor<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    target: hypr_loofah_protocol::DocumentTarget,
+) -> Result<hypr_loofah_protocol::DocumentEditorSnapshot, ApplicationError> {
+    context(&app)?
+        .read_document_editor(&session_id, &target)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_save_document_editor<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    target: hypr_loofah_protocol::DocumentTarget,
+    input: hypr_loofah_protocol::SaveDocumentEditorRequest,
+) -> Result<hypr_loofah_protocol::DocumentEditorSaveOutcome, ApplicationError> {
+    context(&app)?
+        .save_document_editor(&session_id, &target, input)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_save_note<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
@@ -576,6 +601,80 @@ mod tests {
     use super::*;
     use hypr_loofah_core::{search::SearchService, settings::ConfigState, startup::StartupState};
     use hypr_loofah_protocol::{SessionSummaryOrder, SessionSummaryQuery};
+
+    #[tokio::test]
+    async fn local_document_editor_uses_shared_transaction_without_login() {
+        use hypr_loofah_protocol::{
+            DocumentEditorSaveOutcome, DocumentTarget, SaveDocumentEditorRequest,
+        };
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let vault = root.path().join("vault");
+        let store = Arc::new(hypr_vault_write::SessionStore::new(vault.clone()));
+        let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"Local","created_at":"2026-11-08T00:00:00Z","tags":[]})).unwrap();
+        store
+            .create_note_session(&meta, "Original raw note")
+            .await
+            .unwrap();
+        let context = Arc::new(
+            VaultContext::new(
+                "local:test".into(),
+                store,
+                StartupState::new(Some(&vault)),
+                Arc::new(ConfigState::load_or_default(&vault)),
+                Arc::new(SearchService::default()),
+            )
+            .with_operation_storage(root.path().join("runtime")),
+        );
+        let app = tauri::test::mock_builder()
+            .manage(context)
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let before = application_read_document_editor(
+            app.handle().clone(),
+            "note".into(),
+            DocumentTarget::Summary,
+        )
+        .await
+        .unwrap();
+        let input = SaveDocumentEditorRequest {
+            markdown: "Summary body".into(),
+            title: Some("Local changed".into()),
+            tasks: vec![],
+            expected_revision: before.document.revision,
+            expected_metadata_revision: before.metadata.revision,
+            expected_tasks_revision: before.tasks.revision,
+        };
+        let DocumentEditorSaveOutcome::Saved(saved) = application_save_document_editor(
+            app.handle().clone(),
+            "note".into(),
+            DocumentTarget::Summary,
+            input.clone(),
+        )
+        .await
+        .unwrap() else {
+            panic!("saved")
+        };
+        assert_eq!(saved.metadata.meta.title, "Local changed");
+        assert_eq!(
+            saved.document.document.as_ref().unwrap().markdown,
+            "Summary body"
+        );
+        assert_eq!(
+            application_save_document_editor(
+                app.handle().clone(),
+                "note".into(),
+                DocumentTarget::Summary,
+                input
+            )
+            .await
+            .unwrap(),
+            DocumentEditorSaveOutcome::Conflict(saved)
+        );
+        assert_eq!(
+            std::fs::read_to_string(vault.join("sessions/note/notes.md")).unwrap(),
+            "Original raw note"
+        );
+    }
 
     #[tokio::test]
     async fn local_cleanup_is_login_free_and_replay_preserves_a_restored_session() {

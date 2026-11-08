@@ -960,6 +960,42 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationReadDocumentEditor(
+    sessionId: string,
+    target: DocumentTarget,
+  ): Promise<Result<DocumentEditorSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_document_editor", {
+          sessionId,
+          target,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveDocumentEditor(
+    sessionId: string,
+    target: DocumentTarget,
+    input: SaveDocumentEditorRequest,
+  ): Promise<Result<DocumentEditorSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_document_editor", {
+          sessionId,
+          target,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationReadMetadata(
     sessionId: string,
   ): Promise<Result<MetadataSnapshot, ApplicationError>> {
@@ -2285,6 +2321,22 @@ export type Document = {
   sort_order: number;
   updated_at: string;
 };
+export type DocumentEditorRecovery = {
+  sessionId: string;
+  target: DocumentTarget;
+  metadata: MetadataSnapshot;
+};
+export type DocumentEditorSaveOutcome =
+  | { kind: "saved"; snapshot: DocumentEditorSnapshot }
+  | { kind: "conflict"; snapshot: DocumentEditorSnapshot };
+export type DocumentEditorSnapshot = {
+  document: DocumentSnapshot;
+  metadata: MetadataSnapshot;
+  /**
+   * Logical target coordinates only; the revision guards the complete stored tasks file.
+   */
+  tasks: TasksSnapshot;
+};
 export type DocumentSaveOutcome =
   | { kind: "saved"; snapshot: DocumentSnapshot }
   | { kind: "conflict"; snapshot: DocumentSnapshot };
@@ -2490,6 +2542,7 @@ export type NoteDraftRecovery = {
   draft: DraftText;
   uncertain: boolean;
   editorTasks?: EditorTaskRecovery | null;
+  documentEditor?: DocumentEditorRecovery | null;
 };
 export type NoteEditorSaveOutcome =
   | { kind: "saved"; snapshot: NoteEditorSnapshot }
@@ -2703,6 +2756,19 @@ export type RemoteOperation =
       target: DocumentTarget;
       input: SaveDocumentRequest;
     }
+  | {
+      kind: "document_editor";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+    }
+  | {
+      kind: "save_document_editor";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+      input: SaveDocumentEditorRequest;
+    }
   | { kind: "transcript_overview"; vault_id: string; session_id: string }
   | { kind: "transcripts"; vault_id: string; session_id: string }
   | { kind: "audio_metadata"; vault_id: string; session_id: string }
@@ -2812,6 +2878,8 @@ export type RemoteReply =
   | { kind: "documents"; value: EnhancedDoc[] }
   | { kind: "document"; value: DocumentSnapshot }
   | { kind: "document_save"; value: DocumentSaveOutcome }
+  | { kind: "document_editor"; value: DocumentEditorSnapshot }
+  | { kind: "document_editor_save"; value: DocumentEditorSaveOutcome }
   | { kind: "transcript_overview"; value: TranscriptOverview }
   | { kind: "transcripts"; value: TranscriptWithData[] }
   | { kind: "audio_metadata"; value: FileMetadata | null }
@@ -2856,6 +2924,14 @@ export type ReplaceTasksRequest = {
   source: TaskSource;
   tasks: TaskInput[];
   expected_revision: string;
+};
+export type SaveDocumentEditorRequest = {
+  markdown: string;
+  title: string | null;
+  tasks: TaskInput[];
+  expected_revision: string;
+  expected_metadata_revision: string;
+  expected_tasks_revision: string;
 };
 export type SaveDocumentRequest = {
   markdown: string;
