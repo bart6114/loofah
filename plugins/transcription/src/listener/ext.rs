@@ -107,6 +107,29 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener<'a, R, M> {
     }
 
     #[tracing::instrument(skip_all)]
+    pub async fn start_capture_tracked(
+        &self,
+        params: CaptureParams,
+        completion: crate::DeviceCaptureReporter,
+    ) -> Result<(), crate::Error> {
+        let cell = registry::where_is(RootActor::name())
+            .ok_or_else(|| crate::Error::ActorNotFound(RootActor::name()))?;
+        let actor: ActorRef<RootMsg> = cell.into();
+        match ractor::call!(
+            actor,
+            RootMsg::StartTrackedSession,
+            params.into(),
+            completion
+        ) {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(StartSessionError::SessionAlreadyRunning)) => {
+                Err(crate::Error::SessionAlreadyRunning)
+            }
+            _ => Err(crate::Error::StartSessionFailed),
+        }
+    }
+
+    #[tracing::instrument(skip_all)]
     pub async fn stop_capture(&self) {
         if let Some(cell) = registry::where_is(RootActor::name()) {
             let actor: ActorRef<RootMsg> = cell.into();

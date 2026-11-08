@@ -5,6 +5,24 @@ use hypr_loofah_protocol::{
 
 #[tauri::command]
 #[specta::specta]
+pub fn application_finish_local_session_work<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    request_id: String,
+) -> Result<(), ApplicationError> {
+    use tauri::Manager;
+    app.try_state::<hypr_loofah_core::local_session_work::LocalSessionWorkRegistry>()
+        .ok_or_else(|| {
+            hypr_loofah_client::failure(
+                hypr_loofah_protocol::ErrorCode::Unavailable,
+                "Local session work is unavailable",
+            )
+        })?
+        .persistence_finished(&session_id, &request_id)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_session_lifecycle<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,

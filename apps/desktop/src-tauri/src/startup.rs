@@ -33,6 +33,13 @@ pub fn spawn(app: AppHandle, store: Arc<SessionStore>) {
     let state = app.state::<StartupState>().inner().clone();
     tauri::async_runtime::spawn(async move {
         if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>() {
+            if let Err(error) = context.recover_recording_publications().await {
+                tracing::error!(%error, "recording publication recovery failed");
+                state.set_phase(StartupPhase::Failed {
+                    message: error.to_string(),
+                });
+                return;
+            }
             if let Err(error) = context.recover_document_writes().await {
                 tracing::error!(%error, "document recovery failed");
                 state.set_phase(StartupPhase::Failed {

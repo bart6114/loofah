@@ -9,7 +9,9 @@ use sha2::{Digest, Sha256};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
-use super::{hash, rejected};
+#[cfg(test)]
+use super::hash;
+use super::rejected;
 
 pub(super) struct VerifiedWave {
     pub snapshot: CaptureSnapshot,

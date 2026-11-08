@@ -185,9 +185,33 @@ async fn run_stream_loop(ctx: StreamContext, mode: ChannelMode) -> ProducerExit 
             break;
         }
     }
+    let control = capture_stream.drain_control();
+    let stop = capture_stream.request_stop();
+    if control.is_some() && stop.is_ok() {
+        while capture_stream.next().await.is_some() {}
+    }
     drop(capture_stream);
     report_integrity_failure(&ctx);
-    ProducerExit::default()
+    match (stop, control) {
+        (Ok(()), Some(control)) => match control.completion().await {
+            Ok(_) => ProducerExit {
+                resources_stopped: true,
+                ..ProducerExit::default()
+            },
+            Err(error) => ProducerExit {
+                error: Some(error.to_string()),
+                ..ProducerExit::default()
+            },
+        },
+        (Err(error), _) => ProducerExit {
+            error: Some(error.to_string()),
+            ..ProducerExit::default()
+        },
+        _ => ProducerExit {
+            error: Some("Capture resource completion is unavailable".into()),
+            ..ProducerExit::default()
+        },
+    }
 }
 
 async fn run_device_stream(ctx: StreamContext, mut stream: CaptureStream) -> ProducerExit {

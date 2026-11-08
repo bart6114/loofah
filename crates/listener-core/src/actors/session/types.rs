@@ -79,6 +79,7 @@ pub struct SessionContext {
     pub params: SessionParams,
     pub recording: crate::actors::RecordingDestination,
     pub device_ingress: Option<crate::actors::DeviceIngress>,
+    pub local_completion: Option<crate::actors::DeviceCaptureReporter>,
     pub device_root: Option<ractor::ActorRef<crate::actors::RootMsg>>,
     pub started_at_instant: Instant,
     pub started_at_system: SystemTime,

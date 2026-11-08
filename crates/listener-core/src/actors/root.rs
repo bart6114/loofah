@@ -29,12 +29,18 @@ pub struct DeviceCaptureArgs {
 
 pub enum RootMsg {
     StartSession(SessionParams, RpcReplyPort<Result<(), StartSessionError>>),
+    StartTrackedSession(
+        SessionParams,
+        DeviceCaptureReporter,
+        RpcReplyPort<Result<(), StartSessionError>>,
+    ),
     StartDeviceCapture(
         DeviceCaptureArgs,
         RpcReplyPort<Result<(), StartSessionError>>,
     ),
     StopDeviceCapture(DeviceCaptureKey, RpcReplyPort<bool>),
     DeviceResourcesStopped(DeviceCaptureKey, ractor::ActorId),
+    LocalResourcesStopped(ractor::ActorId),
     DeviceFirstAudioObserved(DeviceCaptureKey, ractor::ActorId, SystemTime),
     GetCaptureAdmission(RpcReplyPort<bool>),
     UpdateSessionConfig(SessionConfigUpdate, RpcReplyPort<()>),
@@ -119,8 +125,14 @@ impl Actor for RootActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             RootMsg::StartSession(params, reply) => {
-                let _ =
-                    reply.send(start_session_impl(myself.get_cell(), params, None, state).await);
+                let _ = reply
+                    .send(start_session_impl(myself.get_cell(), params, None, None, state).await);
+            }
+            RootMsg::StartTrackedSession(params, completion, reply) => {
+                let _ = reply.send(
+                    start_session_impl(myself.get_cell(), params, None, Some(completion), state)
+                        .await,
+                );
             }
             RootMsg::StartDeviceCapture(args, reply) => {
                 let params = SessionParams {
@@ -135,8 +147,9 @@ impl Actor for RootActor {
                     participant_human_ids: vec![],
                     self_human_id: None,
                 };
-                let _ = reply
-                    .send(start_session_impl(myself.get_cell(), params, Some(args), state).await);
+                let _ = reply.send(
+                    start_session_impl(myself.get_cell(), params, Some(args), None, state).await,
+                );
             }
             RootMsg::StopDeviceCapture(key, reply) => {
                 let matches = state
@@ -168,6 +181,29 @@ impl Actor for RootActor {
                     }
                     if capture.supervisor_done {
                         state.finalizing.remove(&key);
+                    }
+                }
+            }
+            RootMsg::LocalResourcesStopped(supervisor) => {
+                let matches = |capture: &TrackedCapture| {
+                    capture.key.local_id().is_some()
+                        && capture.completion.is_some()
+                        && capture.supervisor.get_id() == supervisor
+                };
+                if let Some(capture) = state.active.as_mut().filter(|capture| matches(capture)) {
+                    capture.resources_stopped = true;
+                } else {
+                    let key = state
+                        .finalizing
+                        .iter()
+                        .find(|(_, capture)| matches(capture))
+                        .map(|(key, _)| key.clone());
+                    if let Some(key) = key {
+                        let capture = state.finalizing.get_mut(&key).expect("matched capture");
+                        capture.resources_stopped = true;
+                        if capture.supervisor_done {
+                            state.finalizing.remove(&key);
+                        }
                     }
                 }
             }
@@ -235,7 +271,7 @@ fn physical_busy(state: &RootState) -> bool {
         || state
             .finalizing
             .values()
-            .any(|capture| capture.recording.is_device() && !capture.resources_stopped)
+            .any(|capture| !capture.resources_stopped)
 }
 fn device_admission(state: &RootState) -> bool {
     !physical_busy(state)
@@ -272,9 +308,13 @@ async fn start_session_impl(
     root_cell: ActorCell,
     mut params: SessionParams,
     device: Option<DeviceCaptureArgs>,
+    local_completion: Option<DeviceCaptureReporter>,
     state: &mut RootState,
 ) -> Result<(), StartSessionError> {
-    let completion = device.as_ref().map(|args| args.completion.clone());
+    let completion = device
+        .as_ref()
+        .map(|args| args.completion.clone())
+        .or_else(|| local_completion.clone());
     let stale = state
         .active
         .as_ref()
@@ -336,12 +376,13 @@ async fn start_session_impl(
         requested_transcription_mode,
         params: params.clone(),
         recording: recording.clone(),
-        device_root: if recording.is_device() {
+        device_root: if recording.is_device() || completion.is_some() {
             Some(root_cell.clone().into())
         } else {
             None
         },
         device_ingress,
+        local_completion,
         started_at_instant: Instant::now(),
         started_at_system: SystemTime::now(),
     };
@@ -356,7 +397,7 @@ async fn start_session_impl(
     let mut tracked = TrackedCapture {
         key,
         runtime: runtime.clone(),
-        resources_stopped: !recording.is_device(),
+        resources_stopped: !recording.is_device() && completion.is_none(),
         supervisor_done: stopped,
         completion,
         recording,
@@ -366,7 +407,7 @@ async fn start_session_impl(
         if let Some(completion) = &tracked.completion {
             completion.supervisor_ended(Some("Capture stopped during startup".into()));
         }
-        if tracked.recording.is_device() {
+        if tracked.completion.is_some() {
             state.finalizing.insert(tracked.key.clone(), tracked);
         } else {
             clear_sentry_session_context();
@@ -448,7 +489,7 @@ fn handle_supervisor_completion(state: &mut RootState, cell: ActorCell, reason: 
                 });
         }
     }
-    if capture.recording.is_device() && !capture.resources_stopped {
+    if capture.completion.is_some() && !capture.resources_stopped {
         capture.supervisor_done = true;
         state.finalizing.insert(capture.key.clone(), capture);
     }
@@ -479,12 +520,16 @@ mod tests {
     struct Runtime {
         events: Mutex<Vec<SessionLifecycleEvent>>,
         ready: std::sync::atomic::AtomicUsize,
+        vault: Option<std::path::PathBuf>,
     }
     impl hypr_storage::StorageRuntime for Runtime {
         fn global_base(&self) -> Result<std::path::PathBuf, hypr_storage::Error> {
             panic!("device capture opened local storage")
         }
         fn vault_base(&self) -> Result<std::path::PathBuf, hypr_storage::Error> {
+            if let Some(path) = &self.vault {
+                return Ok(path.clone());
+            }
             panic!("device capture opened local vault")
         }
     }
@@ -800,6 +845,112 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn tracked_local_completion_requires_native_drain_and_finished_file_writers() {
+        async fn rejects_new_capture(root: &ActorRef<RootMsg>, params: &SessionParams) {
+            let reporter = crate::actors::DeviceCaptureCompletion::channel().0;
+            assert!(matches!(
+                ractor::call!(root, RootMsg::StartTrackedSession, params.clone(), reporter)
+                    .unwrap(),
+                Err(StartSessionError::SessionAlreadyRunning)
+            ));
+            let device = args('9', Sink::new(false), Arc::new(Runtime::default()));
+            assert!(matches!(
+                ractor::call!(root, RootMsg::StartDeviceCapture, device).unwrap(),
+                Err(StartSessionError::SessionAlreadyRunning)
+            ));
+            assert!(!ractor::call!(root, RootMsg::GetCaptureAdmission).unwrap());
+        }
+        for controlled in [true, false] {
+            let directory = tempfile::tempdir().unwrap();
+            let runtime = Arc::new(Runtime {
+                vault: Some(directory.path().into()),
+                ..Runtime::default()
+            });
+            let audio = Arc::new(Audio::default());
+            let gate = Arc::new(tokio::sync::Semaphore::new(0));
+            let frames = audio.source_options(
+                Arc::new(CaptureIntegrity::default()),
+                false,
+                controlled,
+                Some(gate.clone()),
+                0,
+            );
+            let (root, task) = Actor::spawn(
+                None,
+                RootActor,
+                RootArgs {
+                    runtime: runtime.clone(),
+                    audio: audio.clone(),
+                },
+            )
+            .await
+            .unwrap();
+            let (reporter, mut completion) = crate::actors::DeviceCaptureCompletion::channel();
+            let params = SessionParams {
+                session_id: "local-note".into(),
+                languages: vec![],
+                onboarding: true,
+                transcription_mode: TranscriptionMode::Batch,
+                model: String::new(),
+                base_url: String::new(),
+                api_key: String::new(),
+                keywords: vec![],
+                participant_human_ids: vec![],
+                self_human_id: None,
+            };
+            let mut next = params.clone();
+            next.session_id = "second-local".into();
+            ractor::call!(root, RootMsg::StartTrackedSession, params, reporter)
+                .unwrap()
+                .unwrap();
+            frames.send(Ok(frame())).await.unwrap();
+            ractor::call!(root, RootMsg::StopSession).unwrap();
+            if controlled {
+                assert!(
+                    tokio::time::timeout(Duration::from_millis(50), ended(&runtime))
+                        .await
+                        .is_err()
+                );
+                assert!(
+                    completion
+                        .current()
+                        .resources_released_observed_at
+                        .is_none()
+                );
+                root.cast(RootMsg::LocalResourcesStopped(root.get_id()))
+                    .unwrap();
+                rejects_new_capture(&root, &next).await;
+                gate.add_permits(1);
+            }
+            ended(&runtime).await;
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while !completion.current().supervisor_ended {
+                    completion.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(
+                completion
+                    .current()
+                    .resources_released_observed_at
+                    .is_some(),
+                controlled
+            );
+            assert!(directory.path().join("sessions/local-note").is_dir());
+            if controlled {
+                admitted(&root).await;
+            } else {
+                rejects_new_capture(&root, &next).await;
+            }
+            assert_eq!(audio.1.load(Ordering::SeqCst), 1);
+            assert!(!directory.path().join("sessions/second-local").exists());
+            root.stop(None);
+            task.await.unwrap();
+        }
     }
 
     #[tokio::test]

@@ -288,23 +288,35 @@ pub(super) async fn finish_interrupted_recorder(state: &SessionState) {
     }
 }
 
-pub(super) async fn shutdown_children(state: &mut SessionState, reason: &str) {
-    if let Some(cell) = state.source_cell.take() {
-        stop_child(&cell, reason, "source").await;
-    }
-    if let Some(cell) = state.listener_cell.take() {
-        stop_child(&cell, reason, "listener").await;
-    }
-    if let Some(cell) = state.recorder_cell.take() {
-        stop_child(&cell, reason, "recorder").await;
-    }
+pub(super) async fn drain_local(state: &SessionState) -> bool {
+    let Some(cell) = &state.source_cell else {
+        return false;
+    };
+    let source: ActorRef<SourceMsg> = cell.clone().into();
+    ractor::call_t!(source, SourceMsg::DrainLocal, 30_000).unwrap_or(false)
 }
 
-async fn stop_child(cell: &ActorCell, reason: &str, child: &str) {
+pub(super) async fn shutdown_children(state: &mut SessionState, reason: &str) -> bool {
+    let mut stopped = true;
+    if let Some(cell) = state.source_cell.take() {
+        stopped &= stop_child(&cell, reason, "source").await;
+    }
+    if let Some(cell) = state.listener_cell.take() {
+        stopped &= stop_child(&cell, reason, "listener").await;
+    }
+    if let Some(cell) = state.recorder_cell.take() {
+        stopped &= stop_child(&cell, reason, "recorder").await;
+    }
+    stopped
+}
+
+async fn stop_child(cell: &ActorCell, reason: &str, child: &str) -> bool {
     if let Err(error) = cell
         .stop_and_wait(Some(reason.to_string()), Some(CHILD_STOP_TIMEOUT))
         .await
     {
         tracing::warn!(?error, %child, "child_stop_and_wait_failed");
+        return false;
     }
+    true
 }

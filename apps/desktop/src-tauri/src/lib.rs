@@ -391,48 +391,47 @@ pub async fn main() {
                             ));
                         store.set_startup_pending(true);
                         app_handle.manage(store.clone());
-                        use sha2::{Digest, Sha256};
-                        let canonical_base = std::fs::canonicalize(base.as_std_path())
-                            .unwrap_or_else(|_| base.as_std_path().to_path_buf());
-                        let vault_key: String =
-                            Sha256::digest(canonical_base.as_os_str().as_encoded_bytes())
-                                .iter()
-                                .map(|byte| format!("{byte:02x}"))
-                                .collect();
-                        let operation_root = app_handle
-                            .path()
-                            .app_local_data_dir()?
-                            .join("backend")
-                            .join(&vault_key)
-                            .join("creates");
-                        let context = std::sync::Arc::new(
-                            hypr_loofah_core::VaultContext::new(
-                                format!("local:{vault_key}"),
-                                store.clone(),
-                                startup,
-                                app_handle
-                                    .state::<std::sync::Arc<tauri_plugin_settings::ConfigState>>()
-                                    .inner()
-                                    .clone(),
-                                app_handle
-                                    .state::<tauri_plugin_tantivy::IndexState>()
-                                    .service
-                                    .clone(),
-                            )
-                            .with_operation_storage(operation_root)
-                            .with_vault_lease(
-                                app_handle
-                                    .state::<tauri_plugin_settings::LocalVaultLease>()
-                                    .0
-                                    .clone(),
-                            )?,
-                        );
-                        application::forward_changes(&app_handle, &context);
-                        app_handle.manage(context);
-
-                        search_index::spawn(app_handle.clone(), store.clone());
-                        session_store::spawn_dispatcher(app_handle.clone());
-                        startup::spawn(app_handle.clone(), store);
+                        let prepared = (|| -> Result<_, Box<dyn std::error::Error>> {
+                            let lease = app_handle
+                                .state::<tauri_plugin_settings::LocalVaultLease>()
+                                .0
+                                .clone();
+                            let vault_key = hypr_storage::vault::canonical_vault_key(lease.canonical_vault());
+                            let data = dirs::data_local_dir().ok_or_else(|| std::io::Error::other("Local application storage is unavailable"))?;
+                            let application = app_handle.path().app_local_data_dir()?;
+                            let operation_root = hypr_storage::vault::local_operation_root(&lease, &data, Some(&application))?;
+                            Ok(std::sync::Arc::new(
+                                hypr_loofah_core::VaultContext::new(
+                                    format!("local:{vault_key}"),
+                                    store.clone(),
+                                    startup.clone(),
+                                    app_handle
+                                        .state::<std::sync::Arc<tauri_plugin_settings::ConfigState>>()
+                                        .inner()
+                                        .clone(),
+                                    app_handle
+                                        .state::<tauri_plugin_tantivy::IndexState>()
+                                        .service
+                                        .clone(),
+                                )
+                                .with_operation_storage(operation_root)
+                                .with_vault_lease(lease)?,
+                            ))
+                        })();
+                        match prepared {
+                            Ok(context) => {
+                                application::forward_changes(&app_handle, &context);
+                                app_handle.manage(hypr_loofah_core::local_session_work::LocalSessionWorkRegistry::new(context.clone()));
+                                app_handle.manage(context);
+                                search_index::spawn(app_handle.clone(), store.clone());
+                                session_store::spawn_dispatcher(app_handle.clone());
+                                startup::spawn(app_handle.clone(), store);
+                            }
+                            Err(error) => {
+                                tracing::error!(%error, "local backend preparation failed");
+                                startup.set_phase(startup::StartupPhase::Failed { message: error.to_string() });
+                            }
+                        }
                     }
                     Err(error) => {
                         let startup = startup::state(&app_handle, None);
@@ -675,6 +674,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_lifecycle::application_session_lifecycle::<tauri::Wry>,
             session_lifecycle::application_delete_session::<tauri::Wry>,
             session_lifecycle::application_restore_session::<tauri::Wry>,
+            session_lifecycle::application_finish_local_session_work::<tauri::Wry>,
             application::application_session_summaries::<tauri::Wry>,
             application::application_transcript_overview::<tauri::Wry>,
             application::application_documents::<tauri::Wry>,
@@ -890,7 +890,7 @@ mod test {
 
     #[test]
     fn export_types() {
-        const OUTPUT_FILE: &str = "../src/types/tauri.gen.ts";
+        const OUTPUT_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/types/tauri.gen.ts");
 
         make_specta_builder::<tauri::Wry>()
             .export(

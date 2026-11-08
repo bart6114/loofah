@@ -460,6 +460,23 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationFinishLocalSessionWork(
+    sessionId: string,
+    requestId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_finish_local_session_work", {
+          sessionId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSessionSummaries(
     input: SessionSummaryQuery,
   ): Promise<Result<SessionSummary[], ApplicationError>> {

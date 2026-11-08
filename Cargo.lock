@@ -14021,6 +14021,7 @@ version = "0.1.0"
 dependencies = [
  "audio",
  "language",
+ "loofah-core",
  "owhisper-client",
  "owhisper-interface",
  "ractor",

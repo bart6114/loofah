@@ -13,6 +13,18 @@ use crate::{
 
 const BATCH_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
+struct PendingLocalWork(Option<hypr_loofah_core::local_session_work::LocalSessionWork>);
+
+impl Drop for PendingLocalWork {
+    fn drop(&mut self) {
+        if !std::thread::panicking()
+            && let Some(work) = &self.0
+        {
+            let _ = work.not_started();
+        }
+    }
+}
+
 pub struct Listener2<'a, R: tauri::Runtime, M: tauri::Manager<R>> {
     manager: &'a M,
     _runtime: std::marker::PhantomData<fn() -> R>,
@@ -23,6 +35,15 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
         &self,
         params: TranscriptionParams,
     ) -> Result<(), core::Error> {
+        self.start_transcription_owned(params, None).await
+    }
+
+    pub async fn start_transcription_owned(
+        &self,
+        params: TranscriptionParams,
+        work: Option<hypr_loofah_core::local_session_work::LocalSessionWork>,
+    ) -> Result<(), core::Error> {
+        let mut admission = PendingLocalWork(work);
         let state = self.manager.state::<crate::SharedState>();
         let guard = state.lock().await;
         let app = guard.app.clone();
@@ -99,6 +120,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
 
         let runtime = Arc::new(TauriBatchRuntime {
             _audio_guard: audio_guard,
+            work: admission.0.take(),
             app: app.clone(),
             control: control.clone(),
         });
@@ -205,8 +227,18 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> Listener2PluginExt<R> for T {
 
 struct TauriBatchRuntime {
     _audio_guard: Option<tokio::sync::OwnedMutexGuard<()>>,
+    work: Option<hypr_loofah_core::local_session_work::LocalSessionWork>,
     app: tauri::AppHandle,
     control: Arc<BatchSessionControl>,
+}
+
+impl Drop for TauriBatchRuntime {
+    fn drop(&mut self) {
+        // Prepared audio, diarization and native ASR each retain this runtime until actual I/O ends.
+        if let Some(work) = &self.work {
+            let _ = work.producer_finished();
+        }
+    }
 }
 
 impl core::BatchRuntime for TauriBatchRuntime {

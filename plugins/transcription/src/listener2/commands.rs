@@ -10,11 +10,25 @@ use crate::listener2::Listener2PluginExt;
 pub async fn start_transcription<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     params: TranscriptionParams,
+    request_id: String,
 ) -> Result<(), String> {
-    app.listener2()
-        .start_transcription(params)
-        .await
-        .map_err(|e| e.to_string())
+    use tauri::Manager;
+    let registry = app
+        .try_state::<hypr_loofah_core::local_session_work::LocalSessionWorkRegistry>()
+        .map(|state| state.inner().clone())
+        .ok_or_else(|| "Local session work is unavailable".to_string())?;
+    tokio::spawn(async move {
+        let work = registry
+            .begin(params.session_id.clone(), request_id)
+            .await
+            .map_err(|cause| cause.to_string())?;
+        app.listener2()
+            .start_transcription_owned(params, Some(work))
+            .await
+            .map_err(|cause| cause.to_string())
+    })
+    .await
+    .map_err(|cause| format!("Local transcription admission is unconfirmed: {cause}"))?
 }
 
 #[tauri::command]

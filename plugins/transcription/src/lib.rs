@@ -157,7 +157,7 @@ mod test {
 
     #[test]
     fn export_types() {
-        const OUTPUT_FILE: &str = "./js/bindings.gen.ts";
+        const OUTPUT_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/js/bindings.gen.ts");
 
         make_specta_builder::<tauri::Wry>()
             .export(

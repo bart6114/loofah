@@ -26,6 +26,7 @@ use stream::start_source_loop;
 use hypr_device_monitor::{DeviceMonitorHandle, DeviceSwitch, DeviceSwitchMonitor};
 
 pub enum SourceMsg {
+    DrainLocal(RpcReplyPort<bool>),
     GetMicDevice(RpcReplyPort<Option<String>>),
     PrepareListenerRefresh(RpcReplyPort<ListenerRefreshReplay>),
     SetListenerRouting(ListenerRouting),
@@ -323,6 +324,20 @@ impl Actor for SourceActor {
                     begin_device_drain(&myself, st, Some(error.0), None).await;
                 }
             }
+            SourceMsg::DrainLocal(reply) => {
+                if st.device_ingress.is_some() {
+                    let _ = reply.send(false);
+                } else {
+                    if let Some(cancel) = st.stream_cancel_token.take() {
+                        cancel.cancel();
+                    }
+                    let stopped = match st.run_task.take() {
+                        Some(task) => task.await.is_ok_and(|outcome| outcome.resources_stopped),
+                        None => false,
+                    };
+                    let _ = reply.send(stopped);
+                }
+            }
             SourceMsg::DeviceHalt(reason) => {
                 begin_device_drain(&myself, st, Some(reason), None).await;
             }
@@ -452,7 +467,13 @@ impl Actor for SourceActor {
             // A device producer retains native cleanup ownership after the actor exits.
             drop(st.run_task.take());
         } else if let Some(task) = st.run_task.take() {
-            task.abort();
+            let outcome = task.await?;
+            if !outcome.resources_stopped {
+                return Err(outcome
+                    .error
+                    .unwrap_or_else(|| "Capture resources have not stopped".into())
+                    .into());
+            }
         }
 
         Ok(())

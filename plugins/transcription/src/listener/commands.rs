@@ -33,39 +33,56 @@ pub async fn get_current_microphone_device<R: tauri::Runtime>(
 pub async fn start_capture<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     params: CaptureParams,
+    request_id: String,
 ) -> Result<(), String> {
     use tauri::Manager;
-
-    // Acquire before capture opens files so whole-vault relocation cannot race it.
-    let store = app
-        .try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>()
-        .map(|state| state.inner().clone());
-    let session_id = params.session_id.clone();
-    let leased = match &store {
-        Some(store) => {
-            store
-                .prepare_recording(&session_id)
-                .await
-                .map_err(|e| e.to_string())?;
-            true
+    let registry = app
+        .try_state::<hypr_loofah_core::local_session_work::LocalSessionWorkRegistry>()
+        .map(|state| state.inner().clone())
+        .ok_or_else(|| "Local session work is unavailable".to_string())?;
+    tokio::spawn(async move {
+        let session_id = params.session_id.clone();
+        let work = registry
+            .begin(session_id.clone(), request_id)
+            .await
+            .map_err(|cause| cause.to_string())?;
+        let store = app
+            .try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>()
+            .map(|state| state.inner().clone());
+        let Some(store) = store else {
+            let _ = work.not_started();
+            return Err("Local vault is unavailable".into());
+        };
+        if let Err(cause) = store.prepare_recording(&session_id).await {
+            let _ = work.not_started();
+            return Err(cause.to_string());
         }
-        None => false,
-    };
-
-    let result = app
-        .listener()
-        .start_capture(params)
-        .await
-        .map_err(|e| e.to_string());
-    // Release only this command's own lease on startup failure: a concurrent
-    // recording's reservation must stay intact.
-    if result.is_err()
-        && leased
-        && let Some(store) = &store
-    {
-        let _ = store.release_recording_prepare(&session_id).await;
-    }
-    result
+        let (reporter, mut completion) = crate::DeviceCaptureCompletion::channel();
+        let result = app.listener().start_capture_tracked(params, reporter).await;
+        if matches!(
+            result,
+            Err(crate::Error::SessionAlreadyRunning | crate::Error::ActorNotFound(_))
+        ) {
+            let _ = store.release_recording_prepare(&session_id).await;
+            let _ = work.not_started();
+        } else {
+            tokio::spawn(async move {
+                loop {
+                    let proof = completion.current();
+                    if proof.supervisor_ended && proof.resources_released_observed_at.is_some() {
+                        let _ = work.producer_finished();
+                        return;
+                    }
+                    if completion.changed().await.is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+        result.map_err(|cause| cause.to_string())
+    })
+    .await
+    .map_err(|cause| format!("Local capture admission is unconfirmed: {cause}"))?
 }
 
 #[tauri::command]

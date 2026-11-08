@@ -144,7 +144,23 @@ impl Actor for SessionActor {
                 } else {
                     None
                 };
-                children::shutdown_children(state, "session_stop").await;
+                let local_stopped = if state.ctx.local_completion.is_some() {
+                    children::drain_local(state).await
+                } else {
+                    false
+                };
+                let stopped = children::shutdown_children(state, "session_stop").await;
+                if stopped
+                    && local_stopped
+                    && let Some(completion) = &state.ctx.local_completion
+                {
+                    completion.resources_released();
+                    if let Some(root) = &state.ctx.device_root {
+                        let _ = root.cast(crate::actors::RootMsg::LocalResourcesStopped(
+                            myself.get_id(),
+                        ));
+                    }
+                }
                 myself.stop(failure);
             }
             SessionMsg::RetryListener => {
@@ -709,6 +725,7 @@ mod tests {
                 session_id: "session".into(),
             },
             device_ingress: None,
+            local_completion: None,
             device_root: None,
             started_at_instant: Instant::now(),
             started_at_system: SystemTime::now(),
