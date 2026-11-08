@@ -529,3 +529,11 @@ vi.mock("~/main/use-legacy-activity", async () => {
     useLegacyDesktopAccess: () => source(),
   };
 });
+
+vi.mock("~/session/hooks/useDeleteSession", () => ({
+  useSessionDeletionAccess: () => ({
+    available: true,
+    isAvailable: () => true,
+    shared: false,
+  }),
+}));

@@ -16,7 +16,10 @@ import {
 } from "./utils";
 
 import { useLegacySessionActivity } from "~/main/use-legacy-activity";
-import { useDeleteSession } from "~/session/hooks/useDeleteSession";
+import {
+  useDeleteSession,
+  useSessionDeletionAccess,
+} from "~/session/hooks/useDeleteSession";
 import { openStandaloneNoteWindow } from "~/session/window";
 import type { MenuItemDef } from "~/shared/hooks/useNativeContextMenu";
 import { writeSessionContextDragData } from "~/shared/session-drag";
@@ -294,6 +297,7 @@ const SessionItem = memo(
     const openCurrent = useTabs((state) => state.openCurrent);
     const selection = useTimelineSelectionStore();
     const deleteSession = useDeleteSession();
+    const deletion = useSessionDeletionAccess();
 
     const sessionId = item.id;
     const title = useSessionTitle(sessionId, item.data.title ?? undefined);
@@ -397,13 +401,14 @@ const SessionItem = memo(
           id: "delete",
           text: t`Delete Note`,
           action: handleDelete,
-          disabled: !isAvailable("legacy_desktop_session_controls"),
+          disabled: !deletion.available,
         },
       ],
       [
         handleOpenStandaloneWindow,
         handleShowInFinder,
         handleDelete,
+        deletion.available,
         t,
         isAvailable,
       ],

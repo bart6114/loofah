@@ -26,7 +26,10 @@ function useConfiguredTimeline() {
 export function usePagedTimeline() {
   const timeline = useConfiguredTimeline();
   const { owner, state, available, timezone } = timeline;
-  const pending = useScopedPendingDeletions(owner.scope.client.scope);
+  const pending = useScopedPendingDeletions(
+    owner.scope.client.scope,
+    owner.scope,
+  );
   useEffect(() => {
     if (!available || state !== owner.getSnapshot()) return;
     if (state.groupBy === "tag") owner.ensureFacets();
@@ -44,7 +47,11 @@ export function usePagedTimeline() {
     () =>
       projectTimeline(
         available ? state : { ...state, streams: new Map(), facets: null },
-        new Set(Object.keys(pending)),
+        new Set(
+          Object.keys(pending).filter(
+            (id) => pending[id].data.confirmedAbsent !== false,
+          ),
+        ),
         timezone,
       ),
     [state, available, pending, timezone],
@@ -65,7 +72,10 @@ export function usePagedTimeline() {
 
 export function useNearestTimelineBuckets() {
   const { owner, state, available, timezone } = useConfiguredTimeline();
-  const pending = useScopedPendingDeletions(owner.scope.client.scope);
+  const pending = useScopedPendingDeletions(
+    owner.scope.client.scope,
+    owner.scope,
+  );
   const stream = state.streams.get("nearest");
   const nextTime = stream?.pages[0]?.items[0]?.timestamp_ms;
   useEffect(() => {
@@ -84,7 +94,11 @@ export function useNearestTimelineBuckets() {
         timelineSessionsTable: available
           ? Object.fromEntries(
               streamItems(stream)
-                .filter((item) => !pending[item.header.id])
+                .filter(
+                  (item) =>
+                    !pending[item.header.id] ||
+                    pending[item.header.id].data.confirmedAbsent === false,
+                )
                 .map((item) => [item.header.id, headerRow(item)]),
             )
           : {},

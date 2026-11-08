@@ -50,7 +50,10 @@ import {
 
 import { useEnhancingSessionIds } from "~/ai/hooks/useEnhancingSessions";
 import { useLegacySessionActivity } from "~/main/use-legacy-activity";
-import { useDeleteSession } from "~/session/hooks/useDeleteSession";
+import {
+  useDeleteSession,
+  useSessionDeletionAccess,
+} from "~/session/hooks/useDeleteSession";
 import { setSettingValue } from "~/settings/queries";
 import { useConfigValue } from "~/shared/config";
 import { scrollElementByWheel } from "~/shared/dom/scroll-wheel";
@@ -192,6 +195,8 @@ export const TimelineView = memo(function TimelineView({
   const clearSelection = useTimelineSelection((s) => s.clear);
   const reconcileSelection = useTimelineSelection((s) => s.reconcile);
   const deleteSession = useDeleteSession();
+  const { isAvailable: deletionAvailable, available: deletionEnabled } =
+    useSessionDeletionAccess();
 
   const flatItemKeys = useMemo(() => {
     // Deduped: in tag mode a multi-tag session appears in several buckets but
@@ -625,6 +630,7 @@ export const TimelineView = memo(function TimelineView({
   });
 
   const handleDeleteSelected = useCallback(() => {
+    if (!deletionAvailable()) return;
     const sessionIds = selectedIds
       .filter((key) => key.startsWith("session-"))
       .map((key) => key.replace("session-", ""));
@@ -639,7 +645,13 @@ export const TimelineView = memo(function TimelineView({
     }
 
     clearSelection();
-  }, [selectedIds, deleteSession, clearSelection, timelineSessionsTable]);
+  }, [
+    selectedIds,
+    deleteSession,
+    clearSelection,
+    timelineSessionsTable,
+    deletionAvailable,
+  ]);
 
   const sessionCount = useMemo(
     () => selectedIds.filter((key) => key.startsWith("session-")).length,
@@ -654,11 +666,11 @@ export const TimelineView = memo(function TimelineView({
               id: "delete-selected",
               text: t`Delete Selected (${sessionCount})`,
               action: handleDeleteSelected,
-              disabled: sessionCount === 0,
+              disabled: sessionCount === 0 || !deletionEnabled,
             },
           ]
         : [],
-    [selectedIds, sessionCount, handleDeleteSelected, t],
+    [selectedIds, sessionCount, handleDeleteSelected, t, deletionEnabled],
   );
 
   const showContextMenu = useNativeContextMenu(contextMenuItems);

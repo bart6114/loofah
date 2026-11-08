@@ -42,6 +42,11 @@ import type {
   RenderedTranscriptSegment,
   Change,
   CreateSessionRequest,
+  DeleteSessionRequest,
+  DeleteSessionOutcome,
+  RestoreSessionRequest,
+  RestoreSessionOutcome,
+  SessionLifecycleSnapshot,
   DeleteEmptySessionRequest,
   DeleteEmptySessionOutcome,
   DocumentTarget,
@@ -330,6 +335,18 @@ export type VaultClient = {
     input: CreateSessionRequest,
     options?: RequestOptions,
   ) => Promise<SessionDocument>;
+  readSessionLifecycle: (
+    sessionId: string,
+    options?: RequestOptions,
+  ) => Promise<SessionLifecycleSnapshot>;
+  deleteSession: (
+    input: DeleteSessionRequest,
+    options?: RequestOptions,
+  ) => Promise<DeleteSessionOutcome>;
+  restoreSession: (
+    input: RestoreSessionRequest,
+    options?: RequestOptions,
+  ) => Promise<RestoreSessionOutcome>;
   deleteEmptySession: (
     input: DeleteEmptySessionRequest,
     options?: RequestOptions,
@@ -383,11 +400,25 @@ async function ipc<T>(
   return result;
 }
 
-export async function connectLocalVault(): Promise<VaultClient> {
+export async function connectLocalVault({
+  sessionLifecycleAvailable = false,
+}: { sessionLifecycleAvailable?: boolean } = {}): Promise<VaultClient> {
   const [scope, processingAvailable] = await Promise.all([
     commands.applicationScope().then(applicationResult),
     commands.applicationProcessingAvailable(),
   ]);
+  const requireLifecycle = (mutation: boolean) => {
+    if (!sessionLifecycleAvailable)
+      throw new ApplicationRequestError({
+        code: "incompatible_version",
+        message:
+          "Checked session controls are not available in this desktop host",
+        request_id: null,
+        retryable: false,
+        current_revision: null,
+        mutation_outcome: mutation ? "not_committed" : null,
+      });
+  };
   return {
     scope,
     networkMode: "always",
@@ -399,6 +430,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
     openAttachmentDirectory: openLocalAttachmentDirectory,
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
+      ...(sessionLifecycleAvailable ? ["session_lifecycle"] : []),
       ...(processingAvailable
         ? [
             "summary_body_jobs",
@@ -622,6 +654,31 @@ export async function connectLocalVault(): Promise<VaultClient> {
       const requestId = options?.requestId ?? crypto.randomUUID();
       return ipc(
         () => commands.applicationCreateSession(requestId, input),
+        { ...options, requestId },
+        true,
+      );
+    },
+    readSessionLifecycle: async (sessionId, options) => {
+      requireLifecycle(false);
+      return ipc(
+        () => commands.applicationSessionLifecycle(sessionId),
+        options,
+      );
+    },
+    deleteSession: async (input, options) => {
+      requireLifecycle(true);
+      const requestId = options?.requestId ?? crypto.randomUUID();
+      return ipc(
+        () => commands.applicationDeleteSession(requestId, input),
+        { ...options, requestId },
+        true,
+      );
+    },
+    restoreSession: async (input, options) => {
+      requireLifecycle(true);
+      const requestId = options?.requestId ?? crypto.randomUUID();
+      return ipc(
+        () => commands.applicationRestoreSession(requestId, input),
         { ...options, requestId },
         true,
       );
@@ -1057,6 +1114,24 @@ export function connectRemoteVault(
       connection.request(
         { kind: "create_session", vault_id: vaultId, input },
         "session",
+        options,
+      ),
+    readSessionLifecycle: (sessionId, options) =>
+      connection.request(
+        { kind: "session_lifecycle", vault_id: vaultId, session_id: sessionId },
+        "session_lifecycle",
+        options,
+      ),
+    deleteSession: (input, options) =>
+      connection.request(
+        { kind: "delete_session", vault_id: vaultId, input },
+        "session_delete",
+        options,
+      ),
+    restoreSession: (input, options) =>
+      connection.request(
+        { kind: "restore_session", vault_id: vaultId, input },
+        "session_restore",
         options,
       ),
     deleteEmptySession: (input, options) =>

@@ -26,6 +26,9 @@ const native = vi.hoisted(() => ({
     applicationSaveNote: vi.fn(),
     applicationCreateSession: vi.fn(),
     applicationDeleteEmptySession: vi.fn(),
+    applicationSessionLifecycle: vi.fn(),
+    applicationDeleteSession: vi.fn(),
+    applicationRestoreSession: vi.fn(),
     applicationSessions: vi.fn(),
     applicationSessionSummaries: vi.fn(),
     applicationTimelineHeaders: vi.fn(),
@@ -1589,4 +1592,99 @@ it("routes compound document editing through the selected adapter and strips dev
     "document_editor_save",
     options,
   );
+});
+
+it("keeps checked Local session lifecycle unavailable until the trusted Native host enables it", async () => {
+  const local = await connectLocalVault();
+  expect(local.features).not.toContain("session_lifecycle");
+  const input = { session_id: "note", expected_revision: "a".repeat(64) };
+  await expect(local.readSessionLifecycle("note")).rejects.toMatchObject({
+    detail: { code: "incompatible_version" },
+  });
+  await expect(local.deleteSession(input)).rejects.toMatchObject({
+    detail: { mutation_outcome: "not_committed" },
+  });
+  await expect(
+    local.restoreSession({
+      trash_token: "b".repeat(64),
+      expected_revision: input.expected_revision,
+    }),
+  ).rejects.toMatchObject({ detail: { mutation_outcome: "not_committed" } });
+  expect(native.commands.applicationSessionLifecycle).not.toHaveBeenCalled();
+  expect(native.commands.applicationDeleteSession).not.toHaveBeenCalled();
+  expect(native.commands.applicationRestoreSession).not.toHaveBeenCalled();
+});
+it("maps checked session lifecycle to the same typed IPC and HTTPS contracts with captured UUIDs", async () => {
+  const revision = "a".repeat(64),
+    trash_token = "b".repeat(64);
+  const snapshot = { session_id: "note", revision };
+  const deleted = { kind: "trashed", trash_token, revision };
+  const restored = { kind: "restored", session_id: "note", revision };
+  native.commands.applicationSessionLifecycle.mockResolvedValue({
+    status: "ok",
+    data: snapshot,
+  });
+  native.commands.applicationDeleteSession.mockResolvedValue({
+    status: "ok",
+    data: deleted,
+  });
+  native.commands.applicationRestoreSession.mockResolvedValue({
+    status: "ok",
+    data: restored,
+  });
+  const local = await connectLocalVault({ sessionLifecycleAvailable: true });
+  expect(local.features).toContain("session_lifecycle");
+  const input = { session_id: "note", expected_revision: revision },
+    restore = { trash_token, expected_revision: revision };
+  const options = {
+    requestId: crypto.randomUUID(),
+    signal: new AbortController().signal,
+  };
+  expect(await local.readSessionLifecycle("note")).toEqual(snapshot);
+  expect(await local.deleteSession(input, options)).toEqual(deleted);
+  expect(await local.restoreSession(restore, options)).toEqual(restored);
+  expect(native.commands.applicationDeleteSession).toHaveBeenCalledWith(
+    options.requestId,
+    input,
+  );
+  expect(native.commands.applicationRestoreSession).toHaveBeenCalledWith(
+    options.requestId,
+    restore,
+  );
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(snapshot)
+    .mockResolvedValueOnce(deleted)
+    .mockResolvedValueOnce(restored);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: { features: ["session_lifecycle"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  expect(await remote.readSessionLifecycle("note", options)).toEqual(snapshot);
+  expect(await remote.deleteSession(input, options)).toEqual(deleted);
+  expect(await remote.restoreSession(restore, options)).toEqual(restored);
+  expect(request.mock.calls).toEqual([
+    [
+      { kind: "session_lifecycle", vault_id: vault.id, session_id: "note" },
+      "session_lifecycle",
+      options,
+    ],
+    [
+      { kind: "delete_session", vault_id: vault.id, input },
+      "session_delete",
+      options,
+    ],
+    [
+      { kind: "restore_session", vault_id: vault.id, input: restore },
+      "session_restore",
+      options,
+    ],
+  ]);
 });

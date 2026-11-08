@@ -2,7 +2,7 @@ import { type CSSProperties, useCallback, useMemo } from "react";
 
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
-import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
+import { useSessionDeletionAccess } from "~/session/hooks/useDeleteSession";
 import { useMountEffect } from "~/shared/hooks/useMountEffect";
 import { useTabs } from "~/store/zustand/tabs";
 import {
@@ -20,8 +20,8 @@ type ToastGroup = {
   addedAt: number;
 };
 
-function useToastGroups(scope: string): ToastGroup[] {
-  const pendingDeletions = useScopedPendingDeletions(scope);
+function useToastGroups(scope: string, owner: object): ToastGroup[] {
+  const pendingDeletions = useScopedPendingDeletions(scope, owner);
 
   return useMemo(() => {
     const batchMap = new Map<string, string[]>();
@@ -64,11 +64,11 @@ function useToastGroups(scope: string): ToastGroup[] {
 }
 
 function useRestoreGroup() {
-  const legacy = useLegacyDesktopAccess();
-  const { isAvailable } = legacy;
-  const scope = legacy.scope.client.scope;
-  const queryClient = legacy.scope.queryClient;
-  const pendingDeletions = useScopedPendingDeletions(scope);
+  const access = useSessionDeletionAccess();
+  const { isAvailable } = access;
+  const scope = access.scope.client.scope;
+  const queryClient = access.scope.queryClient;
+  const pendingDeletions = useScopedPendingDeletions(scope, access.scope);
   const addDeletion = useUndoDelete((state) => state.addDeletion);
   const clearDeletion = useUndoDelete((state) => state.clearDeletion);
   const openCurrent = useTabs((state) => state.openCurrent);
@@ -76,16 +76,9 @@ function useRestoreGroup() {
 
   return useCallback(
     (group: ToastGroup) => {
-      if (
-        group.scope !== scope ||
-        !isAvailable("legacy_desktop_session_controls")
-      )
-        return;
+      if (group.scope !== scope || !isAvailable()) return;
       const assertCurrent = () => {
-        if (
-          !isAvailable("legacy_desktop_session_controls") ||
-          group.scope !== scope
-        )
+        if (!isAvailable() || group.scope !== scope)
           throw new Error("Session controls are unavailable.");
       };
       const currentEntries = useUndoDelete.getState().pendingDeletions;
@@ -134,11 +127,7 @@ function useRestoreGroup() {
             await pending.restore(assertOwned);
             remaining.shift();
             const sessionId = pending.data.session.id;
-            if (
-              !isAvailable("legacy_desktop_session_controls") ||
-              superseded.has(key)
-            )
-              continue;
+            if (!isAvailable() || superseded.has(key)) continue;
             for (const kind of [
               "audio_resource",
               "audio_peaks",
@@ -151,7 +140,7 @@ function useRestoreGroup() {
         } catch (error) {
           console.error("[undo-delete] failed to restore session", error);
           if (
-            isAvailable("legacy_desktop_session_controls") &&
+            isAvailable() &&
             remaining.some(
               (entry) =>
                 !superseded.has(JSON.stringify([scope, entry.data.session.id])),
@@ -172,12 +161,14 @@ function useRestoreGroup() {
               !superseded.has(JSON.stringify([scope, pending.data.session.id]))
             )
               addDeletion(scope, pending.data, {
+                owner: pending.owner,
                 restore: pending.restore,
                 onConfirm: pending.onDeleteConfirm ?? undefined,
                 batchId: pending.batchId ?? undefined,
               });
             if (
-              isAvailable("legacy_desktop_session_controls") &&
+              isAvailable() &&
+              !pending.data.receipt &&
               !superseded.has(JSON.stringify([scope, pending.data.session.id]))
             )
               invalidateResource("sessions", pending.data.session.id);
@@ -201,15 +192,15 @@ function useRestoreGroup() {
 }
 
 export function UndoDeleteToast() {
-  const legacy = useLegacyDesktopAccess();
-  const { isAvailable } = legacy;
-  if (!isAvailable("legacy_desktop_session_controls")) return null;
-  return <LegacyUndoDeleteToast />;
+  const access = useSessionDeletionAccess();
+  const { isAvailable } = access;
+  if (!isAvailable()) return null;
+  return <ScopedUndoDeleteToast />;
 }
 
-function LegacyUndoDeleteToast() {
-  const legacy = useLegacyDesktopAccess();
-  const groups = useToastGroups(legacy.scope.client.scope);
+function ScopedUndoDeleteToast() {
+  const access = useSessionDeletionAccess();
+  const groups = useToastGroups(access.scope.client.scope, access.scope);
 
   return groups.map((group) => (
     <UndoDeleteSonnerToast
@@ -221,14 +212,20 @@ function LegacyUndoDeleteToast() {
 
 function UndoDeleteSonnerToast({ group }: { group: ToastGroup }) {
   const restoreGroup = useRestoreGroup();
-  const pendingDeletions = useScopedPendingDeletions(group.scope);
+  const access = useSessionDeletionAccess();
+  const pendingDeletions = useScopedPendingDeletions(group.scope, access.scope);
   const title = group.isBatch
     ? null
     : pendingDeletions[group.sessionIds[0]]?.data.session.title || "Untitled";
   const noteLabel = group.sessionIds.length === 1 ? "note" : "notes";
-  const label = group.isBatch
-    ? `${group.sessionIds.length} ${noteLabel} deleted`
-    : `${title} deleted`;
+  const confirmed = group.sessionIds.every(
+    (id) => pendingDeletions[id]?.data.confirmedAbsent !== false,
+  );
+  const label = !confirmed
+    ? "Deletion request completed"
+    : group.isBatch
+      ? `${group.sessionIds.length} ${noteLabel} deleted`
+      : `${title} deleted`;
   const remainingDuration = Math.max(
     0,
     group.addedAt + UNDO_TIMEOUT_MS - Date.now(),

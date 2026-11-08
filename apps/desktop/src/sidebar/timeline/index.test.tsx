@@ -233,6 +233,10 @@ vi.mock("./queries", async () => {
 vi.mock("./stream-control", () => ({ TimelineStreamControl: () => null }));
 
 vi.mock("~/session/hooks/useDeleteSession", () => ({
+  useSessionDeletionAccess: () => ({
+    available: true,
+    isAvailable: () => true,
+  }),
   useDeleteSession: () => mocks.deleteSession,
 }));
 

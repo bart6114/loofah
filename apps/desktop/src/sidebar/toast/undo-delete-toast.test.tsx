@@ -31,10 +31,16 @@ const capturedScope = {
   queryClient: new QueryClient(),
 };
 
+const addDeletion = useUndoDelete.getState().addDeletion;
+
 describe("UndoDeleteToast", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    useUndoDelete.setState({ pendingDeletions: {} });
+    useUndoDelete.setState({
+      pendingDeletions: {},
+      addDeletion: (scope, data, options) =>
+        addDeletion(scope, data, { owner: capturedScope, ...options }),
+    });
     mocks.message.mockClear();
     mocks.error.mockClear();
     mocks.dismiss.mockClear();
@@ -345,3 +351,12 @@ vi.mock("~/main/use-legacy-activity", async () => {
     }),
   };
 });
+
+vi.mock("~/session/hooks/useDeleteSession", () => ({
+  useSessionDeletionAccess: () => ({
+    scope: capturedScope,
+    available: true,
+    isAvailable: () => true,
+    shared: false,
+  }),
+}));

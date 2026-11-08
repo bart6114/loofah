@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 
+import type { SessionDeletionReceipt } from "~/shared/application/session-lifecycle";
+
 type DeletedSession = {
   id: string;
   title: string;
@@ -10,6 +12,8 @@ export type DeletedSessionData = {
   session: DeletedSession;
   tombstone: string;
   deletedAt: number;
+  receipt?: SessionDeletionReceipt;
+  confirmedAbsent?: boolean;
 };
 
 export const UNDO_TIMEOUT_MS = 5000;
@@ -17,6 +21,7 @@ export const UNDO_TIMEOUT_MS = 5000;
 export type PendingDeletion = {
   token: string;
   scope: string;
+  owner?: object;
   restore: (assertCurrent: () => void) => Promise<void>;
   data: DeletedSessionData;
   timeoutId: ReturnType<typeof setTimeout> | null;
@@ -32,6 +37,7 @@ interface UndoDeleteState {
     data: DeletedSessionData,
     options: {
       restore: PendingDeletion["restore"];
+      owner?: object;
       onConfirm?: () => void | Promise<unknown>;
       batchId?: string;
     },
@@ -52,18 +58,21 @@ export function deletionKey(scope: string, sessionId: string) {
 export function pendingDeletionsForScope(
   entries: Record<string, PendingDeletion>,
   scope: string,
+  owner?: object,
 ) {
   return Object.fromEntries(
     Object.values(entries)
-      .filter((entry) => entry.scope === scope)
+      .filter(
+        (entry) => entry.scope === scope && (!owner || entry.owner === owner),
+      )
       .map((entry) => [entry.data.session.id, entry]),
   );
 }
 
-export function useScopedPendingDeletions(scope: string) {
+export function useScopedPendingDeletions(scope: string, owner?: object) {
   return useUndoDelete(
     useShallow((state) =>
-      pendingDeletionsForScope(state.pendingDeletions, scope),
+      pendingDeletionsForScope(state.pendingDeletions, scope, owner),
     ),
   );
 }
@@ -83,6 +92,7 @@ export const useUndoDelete = create<UndoDeleteState>((set, get) => ({
     const entry: PendingDeletion = {
       token: crypto.randomUUID(),
       scope,
+      owner: options.owner,
       restore: options.restore,
       data: { ...data, session: { ...data.session } },
       timeoutId: null,

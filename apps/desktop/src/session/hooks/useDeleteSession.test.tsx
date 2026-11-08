@@ -122,9 +122,9 @@ vi.mock("~/store/zustand/undo-delete", () => {
 });
 
 import {
-  useDeleteSession,
-  useRemoteSessionDeletionUndoListener,
-} from "./useDeleteSession";
+  useLegacyDeleteSession as useDeleteSession,
+  useLegacySessionDeletionUndoListener as useRemoteSessionDeletionUndoListener,
+} from "./useLegacyDeleteSession";
 
 describe("useDeleteSession", () => {
   beforeEach(() => {
@@ -208,7 +208,7 @@ describe("useDeleteSession", () => {
         tombstone: expect.any(String),
         deletedAt: expect.any(Number),
       },
-      { batchId: undefined, restore: expect.any(Function) },
+      { batchId: undefined, owner: mocks.scope, restore: expect.any(Function) },
     );
     expect(mocks.softDeleteSession).toHaveBeenCalledWith(
       "session-1",
@@ -486,7 +486,7 @@ describe("useDeleteSession", () => {
     expect(mocks.addDeletion).toHaveBeenCalledWith(
       "local:delete",
       mocks.deletedSessionData,
-      { restore: expect.any(Function) },
+      { owner: mocks.scope, restore: expect.any(Function) },
     );
     expect(mocks.invalidateResource).toHaveBeenCalledWith(
       "sessions",

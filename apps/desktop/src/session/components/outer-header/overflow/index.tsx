@@ -33,6 +33,7 @@ import {
 import { openFloatingMeetingPanel } from "~/meeting-float/host";
 import { useRegenerateTranscript } from "~/session/components/note-input/transcript/actions";
 import { useHasTranscript } from "~/session/components/shared";
+import { useSessionDeletionAccess } from "~/session/hooks/useDeleteSession";
 import { openStandaloneNoteWindow } from "~/session/window";
 import { useConfigValue } from "~/shared/config";
 import type { EditorView } from "~/store/zustand/tabs/schema";
@@ -47,8 +48,22 @@ export function OverflowButton(props: {
 }) {
   const legacy = useLegacyDesktopAccess();
   const { isAvailable } = legacy;
-  if (!isAvailable("legacy_desktop_session_controls")) return null;
-  return <LegacyOverflowButton {...props} />;
+  const deletion = useSessionDeletionAccess();
+  if (isAvailable("legacy_desktop_session_controls"))
+    return <LegacyOverflowButton {...props} />;
+  if (!deletion.shared) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Note actions">
+          <MoreHorizontalIcon />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DeleteNote sessionId={props.sessionId} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function LegacyOverflowButton({

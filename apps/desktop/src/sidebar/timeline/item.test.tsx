@@ -487,3 +487,11 @@ vi.mock("~/main/use-legacy-activity", async () => {
     useLegacyDesktopAccess: () => source(),
   };
 });
+
+vi.mock("~/session/hooks/useDeleteSession", () => ({
+  useDeleteSession: () => vi.fn(),
+  useSessionDeletionAccess: () => ({
+    available: true,
+    isAvailable: () => true,
+  }),
+}));

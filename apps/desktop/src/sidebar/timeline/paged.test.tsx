@@ -100,6 +100,10 @@ vi.mock("~/main/use-legacy-activity", () => ({
   }),
 }));
 vi.mock("~/session/hooks/useDeleteSession", () => ({
+  useSessionDeletionAccess: () => ({
+    available: true,
+    isAvailable: () => true,
+  }),
   useDeleteSession: () => vi.fn(),
 }));
 vi.mock("~/shared/hooks/useNativeContextMenu", () => ({

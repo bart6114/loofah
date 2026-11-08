@@ -139,3 +139,18 @@ it("does not rerender a scoped selector for another vault's tombstone", () => {
   act(() => useUndoDelete.getState().addDeletion("first", data(), { restore }));
   expect(Object.keys(result.current)).toEqual(["same-id"]);
 });
+
+it("isolates undo visibility by exact owner when the replacement uses the same scope string", () => {
+  const original = {},
+    replacement = {};
+  useUndoDelete
+    .getState()
+    .addDeletion("same-scope", data(), { owner: original, restore });
+  const entries = useUndoDelete.getState().pendingDeletions;
+  expect(
+    Object.keys(pendingDeletionsForScope(entries, "same-scope", original)),
+  ).toEqual(["same-id"]);
+  expect(pendingDeletionsForScope(entries, "same-scope", replacement)).toEqual(
+    {},
+  );
+});

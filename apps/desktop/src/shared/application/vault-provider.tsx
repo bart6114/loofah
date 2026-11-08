@@ -29,19 +29,19 @@ export function useVaultHost() {
 }
 
 export function LocalVaultProvider({ children }: { children: ReactNode }) {
-  const client = useQuery({
+  const connection = useQuery({
     queryKey: ["application", "local-vault"],
-    queryFn: connectLocalVault,
+    queryFn: () => connectLocalVault(),
     networkMode: "always",
     staleTime: Infinity,
     retry: 4,
   });
   return (
     <VaultClientProvider
-      client={client.data}
-      error={client.error}
+      client={connection.data}
+      error={connection.error}
       retry={() => {
-        void client.refetch();
+        void connection.refetch();
       }}
     >
       {children}
