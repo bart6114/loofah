@@ -71,6 +71,7 @@ struct Fixture {
     driver: Arc<Driver>,
     server: Arc<Server>,
     task: tokio::task::JoinHandle<()>,
+    _tls: TlsProxy,
     request: CaptureAppendRequest,
     lifetime: CancellationToken,
 }
@@ -86,7 +87,8 @@ impl Fixture {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let tls = TlsProxy::start(listener.local_addr().unwrap()).await;
+        let origin = tls.origin.clone();
         let server = Arc::new(Server {
             requests: Mutex::new(Vec::new()),
             entered: Semaphore::new(0),
@@ -108,9 +110,13 @@ impl Fixture {
         let task = tokio::spawn(async move {
             axum::serve(listener, router).await.unwrap();
         });
-        let client = RemoteClient::discover(&origin, Arc::new(Credentials), true)
-            .await
-            .unwrap();
+        let client = RemoteClient::discover_fixture(
+            &origin,
+            Arc::new(Credentials),
+            include_bytes!("../../../../../crates/loofah-client/tests/fixtures/localhost-ca.pem"),
+        )
+        .await
+        .unwrap();
         let profile = ConnectionProfiles::new(root.join("profiles"))
             .unwrap()
             .create("fixture", client.address())
@@ -160,6 +166,7 @@ impl Fixture {
             driver,
             server,
             task,
+            _tls: tls,
             request,
             lifetime: CancellationToken::new(),
         }
@@ -433,4 +440,58 @@ async fn copied_append_admission_requires_private_authority_and_exact_source_for
             .unwrap()
             .is_empty()
     );
+}
+
+struct TlsProxy {
+    origin: String,
+    task: tokio::task::JoinHandle<()>,
+}
+impl Drop for TlsProxy {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+impl TlsProxy {
+    async fn start(upstream: std::net::SocketAddr) -> Self {
+        use tokio_rustls::rustls::{
+            self,
+            pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+        };
+        let certificate = CertificateDer::from_pem_slice(include_bytes!(
+            "../../../../../crates/loofah-client/tests/fixtures/localhost.pem"
+        ))
+        .unwrap();
+        let key = PrivateKeyDer::from_pem_slice(include_bytes!(
+            "../../../../../crates/loofah-client/tests/fixtures/localhost.key"
+        ))
+        .unwrap();
+        let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(vec![certificate], key)
+        .unwrap();
+        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("https://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            let mut connections = tokio::task::JoinSet::new();
+            loop {
+                tokio::select! {
+                    stream=listener.accept()=>{
+                        let (stream,_)=stream.unwrap();let acceptor=acceptor.clone();
+                        connections.spawn(async move {
+                            let Ok(mut client)=acceptor.accept(stream).await else {return;};
+                            let Ok(mut server)=tokio::net::TcpStream::connect(upstream).await else {return;};
+                            let _=tokio::io::copy_bidirectional(&mut client,&mut server).await;
+                        });
+                    },
+                    _=connections.join_next(),if !connections.is_empty()=>{},
+                }
+            }
+        });
+        Self { origin, task }
+    }
 }

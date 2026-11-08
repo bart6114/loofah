@@ -127,7 +127,9 @@ hypr-intercept = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }
+hypr-loofah-client = { workspace = true, features = ["dev-fixtures"] }
 sha2 = { workspace = true }
 # `test` feature only unifies in for test-target builds (resolver v2), not
 # the production binary -- needed for `tauri::test::mock_builder`.
 tauri = { workspace = true, features = ["test"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
