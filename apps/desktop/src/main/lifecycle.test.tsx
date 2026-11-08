@@ -70,12 +70,43 @@ vi.mock("~/session/hooks/useDeleteSession", async () => {
   };
 });
 
-import { ClassicMainServices, useClassicMainLifecycle } from "./lifecycle";
+import { MainHostContext, type MainCaptureActivity } from "./host-context";
+import {
+  ClassicMainServices,
+  createLocalMainCaptureActivity,
+  useClassicMainLifecycle,
+} from "./lifecycle";
 
 import { NativeDraftStore } from "~/shared/application/draft-store";
+import { createListenerStore } from "~/store/zustand/listener";
+import { listenerStore } from "~/store/zustand/listener/instance";
 
 let captured: ScopedTabsStore;
-function Probe() {
+function Probe({
+  activity,
+  generic = false,
+}: {
+  activity?: MainCaptureActivity;
+  generic?: boolean;
+}) {
+  const scope = mocks.scope!;
+  return (
+    <MainHostContext.Provider
+      value={{
+        scope,
+        activity:
+          activity ??
+          (generic
+            ? undefined
+            : createLocalMainCaptureActivity(scope, listenerStore)),
+        takeInitialSession: generic ? undefined : mocks.welcome,
+      }}
+    >
+      <LifecycleProbe />
+    </MainHostContext.Provider>
+  );
+}
+function LifecycleProbe() {
   useClassicMainLifecycle();
   captured = useTabsStore();
   const current = useTabs((state) => state.currentTab);
@@ -259,4 +290,77 @@ it("does not apply delayed startup or welcome callbacks from a retired scope", a
   expect(old.getState().tabs).toEqual([]);
   expect(screen.getByRole("status").textContent).toBe("empty");
   expect(mocks.welcome).toHaveBeenCalledOnce();
+});
+
+it.each(["absent", "different-scope", "unknown"])(
+  "skips close cleanup for %s capture ownership and never consumes Local welcome",
+  async (kind) => {
+    const { scope } = scopedFixture("remote:cleanup");
+    const request = vi.fn().mockResolvedValue({ kind: "not_empty" });
+    Object.assign(scope.client, {
+      features: ["session_cleanup"],
+      networkMode: "always",
+      deleteEmptySession: request,
+    });
+    const { device } = deviceFixture();
+    mocks.scope = scope;
+    const activity =
+      kind === "absent"
+        ? undefined
+        : {
+            scope:
+              kind === "different-scope"
+                ? scopedFixture("remote:cleanup").scope
+                : scope,
+            captureState: () => (kind === "unknown" ? "unknown" : "idle"),
+            subscribeCapture: vi.fn(() => () => {}),
+          };
+    render(
+      <ScopedTabsProvider scope={scope} deviceState={device} managePins>
+        <Probe generic activity={activity} />
+      </ScopedTabsProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe("empty"),
+    );
+    act(() =>
+      captured.getState().openCurrent({ type: "sessions", id: "same-id" }),
+    );
+    act(() => captured.getState().close(captured.getState().currentTab!));
+    expect(screen.getByRole("status").textContent).toBe("empty");
+    await act(async () => {});
+    expect(request).not.toHaveBeenCalled();
+    expect(mocks.welcome).not.toHaveBeenCalled();
+  },
+);
+
+it("captures Local activity from the supplied store and treats uninitialized capture as unknown", () => {
+  const { scope } = scopedFixture("local:captured-activity");
+  const capture = createListenerStore(),
+    unrelated = createListenerStore();
+  const activity = createLocalMainCaptureActivity(scope, capture);
+  expect(activity.scope).toBe(scope);
+  capture.setState((state) => ({ live: { ...state.live, loading: true } }));
+  expect(activity.captureState("same-id")).toBe("unknown");
+  capture.setState((state) => ({
+    live: {
+      ...state.live,
+      loading: false,
+      sessionId: "same-id",
+      status: "inactive",
+    },
+  }));
+  expect(activity.captureState("same-id")).toBe("idle");
+  const changed = vi.fn();
+  const stop = activity.subscribeCapture("same-id", changed);
+  unrelated.setState((state) => ({ live: { ...state.live, loading: true } }));
+  expect(changed).not.toHaveBeenCalled();
+  capture.setState((state) => ({ live: { ...state.live, status: "active" } }));
+  expect(activity.captureState("same-id")).toBe("active");
+  expect(changed).toHaveBeenCalledOnce();
+  stop();
+  capture.setState((state) => ({
+    live: { ...state.live, status: "inactive" },
+  }));
+  expect(changed).toHaveBeenCalledOnce();
 });

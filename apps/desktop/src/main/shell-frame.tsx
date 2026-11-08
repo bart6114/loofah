@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 
 import { AboutDialog } from "./about-dialog";
 import { AudioImportDialog } from "./audio-import-dialog";
@@ -16,6 +16,25 @@ import { useTabs } from "~/store/zustand/tabs";
 import { AudioImportWorker } from "~/stt/audio-import-worker";
 
 export function ClassicMainShellFrame() {
+  return (
+    <CapturedMainShellFrame
+      auxiliary={
+        <>
+          <ToastNotifications />
+          <AboutDialog />
+          <AudioImportDialog />
+          <AudioImportWorker />
+        </>
+      }
+    />
+  );
+}
+
+export function CapturedMainShellFrame({
+  auxiliary,
+}: {
+  auxiliary?: ReactNode;
+}) {
   const { leftsidebar } = useShell();
   const currentTab = useTabs((state) => state.currentTab);
 
@@ -40,10 +59,7 @@ export function ClassicMainShellFrame() {
       mainSurfaceChrome={isOnboarding ? undefined : mainSurfaceChrome}
     >
       <ClassicMainBodyHost />
-      <ToastNotifications />
-      <AboutDialog />
-      <AudioImportDialog />
-      <AudioImportWorker />
+      {auxiliary}
     </MainShellScaffold>
   );
 }
