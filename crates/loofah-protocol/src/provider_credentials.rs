@@ -9,6 +9,7 @@ pub enum ProviderCredentialSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderCredentialStatus {
     pub provider_id: String,
     pub revision: String,
@@ -35,7 +36,12 @@ impl std::fmt::Debug for SaveProviderCredentialRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(tag = "kind", content = "status", rename_all = "snake_case")]
+#[serde(
+    tag = "kind",
+    content = "status",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
 pub enum ProviderCredentialSaveOutcome {
     Saved(ProviderCredentialStatus),
     Conflict(ProviderCredentialStatus),

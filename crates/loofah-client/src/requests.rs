@@ -11,6 +11,7 @@ use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavai
 mod capture_live;
 mod capture_processing;
 mod document_editor;
+mod provider_credentials;
 mod session_lifecycle;
 mod timeline;
 mod transcription;
@@ -83,6 +84,15 @@ pub enum RemoteOperation {
     SessionSummaries {
         vault_id: String,
         input: SessionSummaryQuery,
+    },
+    ProviderCredentialStatus {
+        vault_id: String,
+        provider_id: String,
+    },
+    SaveProviderCredential {
+        vault_id: String,
+        provider_id: String,
+        input: SaveProviderCredentialRequest,
     },
     ProcessingPolicy {
         vault_id: String,
@@ -359,6 +369,8 @@ pub enum RemoteReply {
     TimelineFacets(TimelineFacets),
     SessionCleanup(DeleteEmptySessionOutcome),
     SessionSummaries(Vec<SessionSummary>),
+    ProviderCredentialStatus(ProviderCredentialStatus),
+    ProviderCredentialSave(ProviderCredentialSaveOutcome),
     ProcessingPolicy(ProcessingPolicy),
     ProcessingSettings(ProcessingSettingsSnapshot),
     ProcessingSettingsSave(ProcessingSettingsSaveOutcome),
@@ -428,6 +440,7 @@ impl RemoteClient {
                 || capture_live::is_write(&operation)
                 || capture_processing::is_write(&operation)
                 || session_lifecycle::is_write(&operation)
+                || provider_credentials::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
@@ -442,12 +455,16 @@ impl RemoteClient {
                 || capture_live::is_write(&operation)
                 || capture_processing::is_write(&operation)
                 || session_lifecycle::is_write(&operation)
+                || provider_credentials::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
         }
         let required_feature = match &operation {
+            operation if provider_credentials::is_operation(operation) => {
+                Some("provider_credentials")
+            }
             operation if session_lifecycle::is_operation(operation) => Some("session_lifecycle"),
             operation if capture_processing::is_operation(operation) => Some("capture_processing"),
             RemoteOperation::TranscriptionPolicy { .. } => Some("transcription_policy"),
@@ -494,6 +511,9 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                ref operation if provider_credentials::is_operation(operation) => {
+                    "provider credential management"
+                }
                 ref operation if session_lifecycle::is_operation(operation) => {
                     "checked note deletion and restoration"
                 }
@@ -540,7 +560,8 @@ impl RemoteClient {
                 ),
             );
             error.request_id = Some(request_id.to_owned());
-            if session_lifecycle::is_write(&operation)
+            if provider_credentials::is_write(&operation)
+                || session_lifecycle::is_write(&operation)
                 || capture_live::is_write(&operation)
                 || capture_processing::is_write(&operation)
                 || matches!(
@@ -700,6 +721,13 @@ impl RemoteClient {
         session_lifecycle::validate_operation(&operation).map_err(|mut error| {
             error.request_id = Some(request_id.to_owned());
             if session_lifecycle::is_write(&operation) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            error
+        })?;
+        provider_credentials::validate_operation(&operation, request_id).map_err(|mut error| {
+            error.request_id = Some(request_id.to_owned());
+            if provider_credentials::is_write(&operation) {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             error
@@ -867,6 +895,38 @@ impl RemoteClient {
                 (
                     Method::POST,
                     vec!["vaults", vault_id, "session-summaries", "query"],
+                )
+            }
+            RemoteOperation::ProviderCredentialStatus {
+                vault_id,
+                provider_id,
+            } => (
+                Method::GET,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "processing",
+                    "providers",
+                    provider_id,
+                    "credential",
+                ],
+            ),
+            RemoteOperation::SaveProviderCredential {
+                vault_id,
+                provider_id,
+                input,
+            } => {
+                body = Some(value(input)?);
+                (
+                    Method::PUT,
+                    vec![
+                        "vaults",
+                        vault_id,
+                        "processing",
+                        "providers",
+                        provider_id,
+                        "credential",
+                    ],
                 )
             }
             RemoteOperation::ProcessingPolicy { vault_id } => (
@@ -1443,6 +1503,7 @@ impl RemoteClient {
                 || capture_live::is_write(&operation)
                 || capture_processing::is_write(&operation)
                 || session_lifecycle::is_write(&operation)
+                || provider_credentials::is_write(&operation)
             {
                 error.request_id.get_or_insert_with(|| request_id.into());
                 error
@@ -1528,6 +1589,9 @@ impl RemoteClient {
                     json_body(response, 16 * 1024 * 1024).await?,
                 ));
             }
+            if !status.is_success() && provider_credentials::is_operation(&operation) {
+                return Err(provider_credentials::decode_error(response).await);
+            }
             if !status.is_success() {
                 return Err(json_body::<ApplicationError>(response, 131_072)
                     .await
@@ -1536,6 +1600,10 @@ impl RemoteClient {
                     }));
             }
             let reply = match operation {
+                operation @ (RemoteOperation::ProviderCredentialStatus { .. }
+                | RemoteOperation::SaveProviderCredential { .. }) => {
+                    provider_credentials::decode(response, &operation).await?
+                }
                 operation @ (RemoteOperation::SessionLifecycle { .. }
                 | RemoteOperation::DeleteSession { .. }
                 | RemoteOperation::RestoreSession { .. }) => {

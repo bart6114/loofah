@@ -5,6 +5,7 @@ mod capture_processing;
 mod capture_upload;
 mod document_editor;
 mod downloads;
+mod provider_credentials;
 mod session_lifecycle;
 mod tag_editing;
 mod timeline;
