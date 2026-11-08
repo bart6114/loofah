@@ -114,3 +114,7 @@ fn server_start_still_requires_config_and_maintenance_rejects_mixed_startup() {
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("--secrets-output"));
 }
+
+#[cfg(unix)]
+#[path = "fixtures/maintenance_acceptance.rs"]
+mod acceptance;
