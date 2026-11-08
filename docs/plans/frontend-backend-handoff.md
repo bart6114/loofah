@@ -882,3 +882,39 @@ GET views and no longer require Local vault controls; Local onboarding keeps its
 existing gate. The 31-case home/captured-workspace/device/resource cohort and
 desktop typecheck passed. These are frontend/device changes, not new server
 GitHub credentials or a Remote-to-Local fallback.
+
+### Required-vault readiness and private operational status
+
+The server now preserves `/health` as catalog liveness and adds `/ready` for all
+active catalog vaults. Readiness is cached, generation-fenced, expires on a
+monotonic clock, and returns 503 during startup, failure, shutdown, stale sampling
+or catalog write contention. Both container health checks use `/ready`. The
+owner-only `/api/v1/vaults/{vault}/operations` endpoint exposes content-free
+counters, bounded durable backlog/job observations and filesystem pressure; it
+never scans on the request path. Disabled, unavailable and incomplete samples are
+explicit. Private media sampling reads bounded admission metadata, never PCM.
+Owned attachment workers retain the original metrics scope through completion.
+See `apps/server/README.md` for probe and counter semantics.
+
+Controlled Linux ARM64 source qualification used the isolated worker source
+through `26c5e8299`, with the final mechanical lint correction `510b02109`:
+
+- Full CPU-feature server library cohort: **153 passed, 5 configured-model tests
+  ignored**. No model inference was requested for this package.
+- New capture-store/Core operational regressions: **1 + 2 passed**, covering
+  nonblocking spool observations, bounded latency/redaction and durable media
+  admission sampling. Server tests cover current owner authorization, failed
+  runtime readiness, catalog contention, SSE reconnect/resync counters and owned
+  streaming-upload observations.
+- Strict server all-target Clippy (`--no-deps -- -D warnings`) passed after the
+  mechanical correction. The older worker graph still emits the existing Core
+  `replay_local_capture` dead-code warning; this is not a server lint failure.
+- Logs are retained in the workstation's local cache as
+  `server-operational-dfbf44371-first.log`,
+  `server-operational-26c5e8299-qualified.log` and
+  `server-operational-510b02109-clippy.log`. The middle log includes the passing
+  full cohort followed by the three lint findings fixed by the final log.
+
+The final Docker probe edit is declarative source wiring; this package did not
+rebuild or deploy an image, run Native tests, or claim large-vault performance
+qualification. Frozen capture/model/operator evidence remains intact.
