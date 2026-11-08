@@ -1367,17 +1367,13 @@ async fn fake_sender_lost_ack_disconnect_and_device_restart_replay_identical_chu
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "two-hour synthetic storage stress; run explicitly on T7"]
+#[ignore = "two-hour synthetic storage volume; choose LOOFAH_CAPTURE_STRESS_ROOT explicitly"]
 async fn two_hour_dual_channel_synthetic_spool_is_bounded_and_reopens_without_missing_frames() {
-    let temp = test_directory();
-    let root = std::env::var_os("LOOFAH_CAPTURE_STRESS_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| temp.path().to_path_buf())
-        .join(uuid::Uuid::new_v4().to_string());
-    assert!(
-        root.starts_with("/Volumes/T7"),
-        "The stress fixture must run on T7"
-    );
+    let parent = PathBuf::from(std::env::var_os("LOOFAH_CAPTURE_STRESS_ROOT")
+        .expect("Set LOOFAH_CAPTURE_STRESS_ROOT to an absolute storage directory with at least 1 GiB free"));
+    assert!(parent.is_absolute(), "The stress storage directory must be absolute");
+    std::fs::create_dir_all(&parent).unwrap();
+    let root = parent.canonicalize().unwrap().join(uuid::Uuid::new_v4().to_string());
     let started = Instant::now();
     let spool = open(&root).await;
     let writer = spool
