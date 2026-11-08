@@ -23,9 +23,11 @@ fn execution_config() -> ModelConfig {
 
 fn cpu_config() -> ModelConfig {
     execution_config().with_custom_configure(|builder| {
-        builder.with_execution_providers([hypr_onnx::ort::ep::CPU::default()
-            .build()
-            .error_on_failure()])
+        Ok(
+            builder.with_execution_providers([hypr_onnx::ort::ep::CPU::default()
+                .build()
+                .error_on_failure()])?,
+        )
     })
 }
 

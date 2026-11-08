@@ -171,3 +171,35 @@ async fn real_onnx_live_cpu_preserves_channels_and_source_through_join() {
     assert_eq!(host.resources.phase.load(Ordering::Acquire), STOPPED);
     assert_eq!(std::fs::read_dir(scratch.path()).unwrap().count(), 0);
 }
+
+#[tokio::test]
+async fn onnx_shutdown_retains_original_model_admission_until_release() {
+    let host = Arc::new(OnnxHost {
+        model: "public-alias".into(),
+        resources: Arc::new(Resources {
+            phase: AtomicU8::new(READY),
+            shutdown: CancellationToken::new(),
+            stopping: AtomicBool::new(false),
+            slot: Arc::new(Semaphore::new(1)),
+            models: Mutex::new(None),
+        }),
+    });
+    let admission = host.admit().unwrap();
+    let closing_host = host.clone();
+    let closing = tokio::spawn(async move {
+        closing_host.shutdown().await;
+    });
+    host.resources.shutdown.cancelled().await;
+    assert!(!closing.is_finished());
+    assert!(matches!(
+        host.admit(),
+        Err(TranscriptionFailure::EngineUnavailable)
+    ));
+    assert_eq!(
+        host.policy().availability,
+        TranscriptionAvailability::Stopping
+    );
+    drop(admission);
+    closing.await.unwrap();
+    assert_eq!(host.resources.phase.load(Ordering::Acquire), STOPPED);
+}

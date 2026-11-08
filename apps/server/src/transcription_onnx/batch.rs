@@ -16,11 +16,13 @@ pub(super) async fn run(
     let flag = Arc::new(AtomicBool::new(cancel.is_cancelled()));
     let bridge_flag = flag.clone();
     let bridge_cancel = cancel.clone();
+    let host_shutdown = prepared.resources.shutdown.clone();
     let done = CancellationToken::new();
     let bridge_done = done.clone();
     let bridge = tokio::spawn(async move {
         tokio::select! {
             _ = bridge_cancel.cancelled() => bridge_flag.store(true, Ordering::Release),
+            _ = host_shutdown.cancelled() => bridge_flag.store(true, Ordering::Release),
             _ = bridge_done.cancelled() => {},
         }
     });
@@ -29,10 +31,23 @@ pub(super) async fn run(
         let _permit = prepared.permit;
         let (path, _source) = input.source.into_parts();
         let stopped = || flag.load(Ordering::Acquire) || resources.stopping.load(Ordering::Acquire);
+        if stopped() {
+            return Err(TranscriptionFailure::Interrupted);
+        }
+        let audio = PreparedAudio::from_path(&path, input.metadata.audio, &flag).map_err(|_| {
+            if stopped() {
+                TranscriptionFailure::Interrupted
+            } else {
+                TranscriptionFailure::SourceUnavailable
+            }
+        })?;
+        // Agglomerative speaker clustering has quadratic scratch use. Bound the
+        // complete file before model dispatch, not after collecting embeddings.
+        if audio.pcm.frames > 16000 * 2 * 60 * 60 {
+            return Err(TranscriptionFailure::ResourceLimit);
+        }
         let operation = || -> anyhow::Result<hypr_vault_read::TranscriptWithData> {
             anyhow::ensure!(!stopped(), "Stopped");
-            let audio = PreparedAudio::from_path(&path, input.metadata.audio, &flag)
-                .map_err(anyhow::Error::msg)?;
             let mut models = resources.models.lock().unwrap_or_else(|e| e.into_inner());
             let models = models
                 .as_mut()

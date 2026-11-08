@@ -28,7 +28,7 @@ pub struct Diarizer {
     _model: Option<Arc<super::models::VerifiedModel>>,
 }
 
-fn cpu_model(path: impl AsRef<std::path::Path>) -> Result<Session> {
+fn cpu_model(path: impl AsRef<std::path::Path>) -> ort::Result<Session> {
     Ok(Session::builder()?
         .with_intra_threads(1)?
         .with_inter_threads(1)?

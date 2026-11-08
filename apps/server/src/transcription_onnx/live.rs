@@ -149,8 +149,8 @@ impl CaptureLiveEngine for OnnxHost {
             let resources = self.resources.clone();
             let shutdown = resources.shutdown.clone();
             let worker = tokio::task::spawn_blocking(move || {
-                let _source = source_owner;
                 let _permit = permit;
+                let _source = source_owner;
                 run(model, spec, worker_control, receiver, captions)
             });
             tokio::spawn(async move {

@@ -270,6 +270,46 @@ mod tests {
         }
     }
 
+    #[test]
+    fn onnx_configuration_requires_explicit_paths_and_its_bounded_native_capacity() {
+        let root = std::env::temp_dir();
+        let value = json!({ "model":"speech", "model_path":root.join("batch"), "onnx":{
+            "streaming_model_path":root.join("streaming"), "diarizer_model_path":root.join("diarizer"), "snapshot_root":root.join("snapshots")
+        }});
+        serde_json::from_value::<TranscriptionConfig>(value.clone())
+            .unwrap()
+            .validate()
+            .unwrap();
+        for (field, changed) in [
+            ("workload_groups", json!(2)),
+            ("model_size_bytes", json!(3)),
+            ("model_sha256", json!("a".repeat(64))),
+        ] {
+            let mut invalid = value.clone();
+            invalid[field] = changed;
+            assert!(
+                serde_json::from_value::<TranscriptionConfig>(invalid)
+                    .unwrap()
+                    .validate()
+                    .is_err()
+            );
+        }
+        for field in [
+            "streaming_model_path",
+            "diarizer_model_path",
+            "snapshot_root",
+        ] {
+            let mut invalid = value.clone();
+            invalid["onnx"][field] = json!("relative");
+            assert!(
+                serde_json::from_value::<TranscriptionConfig>(invalid)
+                    .unwrap()
+                    .validate()
+                    .is_err()
+            );
+        }
+    }
+
     #[cfg(not(feature = "cpu-transcription"))]
     #[test]
     fn configured_transcription_is_rejected_by_notes_only_build_instead_of_silently_ignored() {
