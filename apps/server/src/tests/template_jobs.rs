@@ -66,6 +66,7 @@ async fn template_jobs_require_editor_access_and_preserve_existing_output_metada
     let source_note =
         std::fs::read(context.store.vault_base().join("sessions/note/notes.md")).unwrap();
     let input = SummaryJobRequest {
+        only_if_empty: false,
         title_policy: Default::default(),
         session_id: "note".into(),
         expected_revision: context
@@ -171,6 +172,7 @@ async fn missing_and_legacy_template_targets_fail_before_model_calls_without_cre
             "legacy-revision".into()
         };
         let input = SummaryJobRequest {
+            only_if_empty: false,
             title_policy: Default::default(),
             session_id: "note".into(),
             target,
@@ -236,6 +238,7 @@ async fn native_template_jobs_replay_lost_replies_without_overwriting_newer_outp
         let operation = RemoteOperation::SubmitSummaryJob {
             vault_id: me.personal_vault_id.clone(),
             input: SummaryJobRequest {
+                only_if_empty: false,
                 title_policy: Default::default(),
                 session_id: "note".into(),
                 expected_revision: context

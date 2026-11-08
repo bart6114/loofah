@@ -590,6 +590,29 @@ impl RemoteClient {
             &operation,
             RemoteOperation::SubmitSummaryJob {
                 input: SummaryJobRequest {
+                    only_if_empty: true,
+                    ..
+                },
+                ..
+            }
+        ) && !self
+            .capabilities
+            .features
+            .iter()
+            .any(|feature| feature == "conditional_summary_jobs")
+        {
+            let mut error = failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support conditional summary generation. Upgrade the server, then reconnect.",
+            );
+            error.request_id = Some(request_id.to_owned());
+            error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            return Err(error);
+        }
+        if matches!(
+            &operation,
+            RemoteOperation::SubmitSummaryJob {
+                input: SummaryJobRequest {
                     target: DocumentTarget::TemplateOutput { .. },
                     ..
                 },

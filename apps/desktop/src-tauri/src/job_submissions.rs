@@ -105,7 +105,9 @@ mod tests {
                 hypr_loofah_protocol::TitlePolicy::Preserve,
                 hypr_loofah_protocol::TitlePolicy::GenerateIfEmpty,
             ] {
-                round_trip(target.clone(), policy).await;
+                for only_if_empty in [false, true] {
+                    round_trip(target.clone(), policy, only_if_empty).await;
+                }
             }
         }
     }
@@ -113,6 +115,7 @@ mod tests {
     async fn round_trip(
         target: hypr_loofah_protocol::DocumentTarget,
         title_policy: hypr_loofah_protocol::TitlePolicy,
+        only_if_empty: bool,
     ) {
         let root = tempfile::tempdir().unwrap();
         let store = JobSubmissions::new(root.path().join("requests")).unwrap();
@@ -124,6 +127,7 @@ mod tests {
             .unwrap();
         let scope = "local:fixture".to_owned();
         let input = SummaryJobRequest {
+            only_if_empty,
             title_policy,
             session_id: "note".into(),
             target,

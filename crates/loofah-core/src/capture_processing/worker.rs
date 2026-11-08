@@ -326,6 +326,7 @@ async fn step(
         record.summary_revision = Some(revision.clone());
         record.summary_source = Some(guard.binding().clone());
         record.summary_request = Some(SummaryJobRequest {
+            only_if_empty: false,
             session_id: record.target_session.clone(),
             target: summary.target,
             expected_revision: revision,

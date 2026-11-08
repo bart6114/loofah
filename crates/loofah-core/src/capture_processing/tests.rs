@@ -1055,6 +1055,7 @@ async fn disabled_coordinator_blocks_queued_pipeline_children_but_keeps_manual_s
             MEMBER.into(),
             uuid::Uuid::new_v4().to_string(),
             SummaryJobRequest {
+                only_if_empty: false,
                 session_id: manual.meta.id,
                 target: DocumentTarget::Summary,
                 expected_revision: document.revision,

@@ -173,6 +173,9 @@ async fn execute(
         Ok(snapshot) if snapshot.revision != work.request.expected_revision => {
             return Ok(JobCompletion::Conflict);
         }
+        Ok(snapshot) if conditional_target_filled(&work.request, &snapshot) => {
+            return Ok(JobCompletion::Conflict);
+        }
         Err(_) if stop.is_cancelled() => return Ok(JobCompletion::Interrupted),
         Err(_) => {
             return Ok(JobCompletion::Failed(

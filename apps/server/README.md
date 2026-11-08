@@ -2,6 +2,15 @@
 
 The server is experimental. It exposes authenticated vault, note, existing-content, search, attachment-upload, configured summary/title and batch-transcription jobs, capture staging/publication and change-stream APIs. Authenticated live captions and durable recording uploads are available experimentally; automatic repair/summary orchestration and full recording parity remain under implementation. The desktop's default local mode works without an account or server.
 
+Automatic summary requests can set `only_if_empty: true` when the server
+advertises `conditional_summary_jobs`. This policy is part of the saved request
+identity: admission and queued execution require the reviewed document revision
+and an empty body. A filled or changed target conflicts before generation, and
+canonical writes still compare the original revision. Manual requests default to
+`false`; their serialized bytes and existing journal versions remain unchanged.
+Conditional requests use journal schema 3 so older readers refuse the policy
+rather than silently dropping it.
+
 Configured batch jobs use the shared cancellable Whisper kernel without Tauri or device capture. One operator-provisioned CPU model and bounded native capacity are shared across vaults. Core owns authenticated admission, a durable job journal, immutable recording copies and revision-checked canonical transcript publication; native work retains its source/model owners through actual completion. Model paths and hashes come from operator configuration, never client requests. See [CPU deployment](#optional-cpu-transcription) for the explicit build and configuration.
 
 The internal typed live facade accepts exact f32 frames with bounded per-channel admission, explicit replay/gap handling, authoritative captions and separate bounded UI snapshots. Cancellation and finish retain native ownership through actual thread join. Authenticated capture live endpoints and SDK subscriptions use this facade; it is not a substitute for durable raw recording uploads. The existing s16 WebSocket adapter remains compatible.

@@ -203,6 +203,19 @@ impl VaultContext {
             if !exists {
                 return Err(rejected(ErrorCode::NotFound, "Session not found"));
             }
+            if input.only_if_empty {
+                let snapshot = context
+                    .read_document(&input.session_id, &input.target)
+                    .await?;
+                if snapshot.revision != input.expected_revision
+                    || conditional_target_filled(&input, &snapshot)
+                {
+                    return Err(rejected(
+                        ErrorCode::Conflict,
+                        "The document no longer matches the automatic generation request",
+                    ));
+                }
+            }
             journal
                 .submit_with_origin(namespace, request_id, input, origin)
                 .await

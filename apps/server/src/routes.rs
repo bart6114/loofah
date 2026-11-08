@@ -225,6 +225,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
     };
     if service.config.processing.is_some() {
         capabilities.features.push("summary_body_jobs".into());
+        capabilities.features.push("conditional_summary_jobs".into());
         capabilities.features.push("template_output_jobs".into());
         capabilities.features.push("generated_titles".into());
         capabilities.features.push("processing_settings".into());

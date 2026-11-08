@@ -20,6 +20,7 @@ async fn ordinary_summary_bytes_match_previous_reader_and_marked_admission_is_fa
         .await
         .unwrap();
     let request = SummaryJobRequest {
+        only_if_empty: false,
         session_id: "note".into(),
         target: DocumentTarget::Summary,
         expected_revision: "a".repeat(64),

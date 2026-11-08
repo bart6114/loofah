@@ -25,6 +25,13 @@ pub struct SummaryJobRequest {
     // Specta rc.22 requires default last to export this custom-skipped field as optional.
     #[serde(skip_serializing_if = "TitlePolicy::is_preserve", default)]
     pub title_policy: TitlePolicy,
+    #[serde(skip_serializing_if = "is_false", default)]
+    #[specta(optional)]
+    pub only_if_empty: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -148,6 +155,7 @@ mod tests {
             br#"{"session_id":"note","target":{"kind":"summary"},"expected_revision":"revision"}"#;
         let request: SummaryJobRequest = serde_json::from_slice(old).unwrap();
         assert_eq!(request.title_policy, TitlePolicy::Preserve);
+        assert!(!request.only_if_empty);
         assert_eq!(serde_json::to_vec(&request).unwrap(), old);
         let mut types = specta::TypeCollection::default();
         types.register::<SummaryJobRequest>();
@@ -155,6 +163,7 @@ mod tests {
             .export(&types)
             .unwrap();
         assert!(exported.contains("title_policy?: TitlePolicy"));
+        assert!(exported.contains("only_if_empty?: boolean"));
         let explicit = br#"{"session_id":"note","target":{"kind":"summary"},"expected_revision":"revision","title_policy":"preserve"}"#;
         let request: SummaryJobRequest = serde_json::from_slice(explicit).unwrap();
         assert_eq!(serde_json::to_vec(&request).unwrap(), old);
@@ -170,6 +179,38 @@ mod tests {
             serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["title_policy"],
             "generate_if_empty"
         );
+    }
+
+    #[test]
+    fn conditional_requests_keep_the_policy_in_their_identity() {
+        let old =
+            r#"{"session_id":"note","target":{"kind":"summary"},"expected_revision":"revision"}"#;
+        let request: SummaryJobRequest = serde_json::from_str(old).unwrap();
+        let mut conditional = request.clone();
+        conditional.only_if_empty = true;
+        assert_ne!(conditional, request);
+        let bytes = serde_json::to_vec(&conditional).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<SummaryJobRequest>(&bytes).unwrap(),
+            conditional
+        );
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["only_if_empty"],
+            true
+        );
+        let explicit = old.replace("revision\"}", "revision\",\"only_if_empty\":false}");
+        assert_eq!(
+            serde_json::to_string(&serde_json::from_str::<SummaryJobRequest>(&explicit).unwrap())
+                .unwrap(),
+            old
+        );
+        for invalid in ["null", "1", "\"true\""] {
+            let input = old.replace(
+                "revision\"}",
+                &format!("revision\",\"only_if_empty\":{invalid}}}"),
+            );
+            assert!(serde_json::from_str::<SummaryJobRequest>(&input).is_err());
+        }
     }
 
     #[test]

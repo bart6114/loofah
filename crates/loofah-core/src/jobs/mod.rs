@@ -241,7 +241,9 @@ impl JobJournal {
             }
             let timestamp = now();
             let record = Record {
-                schema_version: if request.title_policy == TitlePolicy::Preserve {
+                schema_version: if request.only_if_empty {
+                    3
+                } else if request.title_policy == TitlePolicy::Preserve {
                     1
                 } else {
                     2
@@ -557,6 +559,17 @@ fn validate_namespace(namespace: &str) -> Result<(), ApplicationError> {
     }
     Ok(())
 }
+fn conditional_target_filled(
+    request: &SummaryJobRequest,
+    snapshot: &hypr_loofah_protocol::DocumentSnapshot,
+) -> bool {
+    request.only_if_empty
+        && snapshot
+            .document
+            .as_ref()
+            .is_some_and(|document| !document.markdown.trim().is_empty())
+}
+
 fn validate_record(
     vault: &str,
     filename_key: &str,
@@ -565,10 +578,14 @@ fn validate_record(
     if let Some(origin) = &record.capture_processing {
         origin.validate_request(&record.request)?;
     }
-    if !matches!(
-        (record.schema_version, record.request.title_policy),
-        (1, TitlePolicy::Preserve) | (2, TitlePolicy::GenerateIfEmpty)
-    ) {
+    let expected_version = if record.request.only_if_empty {
+        3
+    } else if record.request.title_policy == TitlePolicy::Preserve {
+        1
+    } else {
+        2
+    };
+    if record.schema_version != expected_version {
         return Err(rejected(
             ErrorCode::IncompatibleVersion,
             "Unsupported processing job storage version",
@@ -594,7 +611,7 @@ fn validate_record(
     }
     let snapshot = &record.snapshot;
     if let Some(body) = &record.body_applied
-        && (record.schema_version != 2
+        && (record.request.title_policy != TitlePolicy::GenerateIfEmpty
             || !title_stage::valid_revision(&body.revision)
             || !matches!(
                 snapshot.state,

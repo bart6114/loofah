@@ -77,6 +77,7 @@ fn work() -> JobWork {
     JobWork {
         principal: "device".into(),
         request: SummaryJobRequest {
+            only_if_empty: false,
             title_policy: Default::default(),
             session_id: "note".into(),
             target: DocumentTarget::Summary,

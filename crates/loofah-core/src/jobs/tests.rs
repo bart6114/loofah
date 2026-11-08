@@ -2,6 +2,7 @@ use super::*;
 
 fn request() -> SummaryJobRequest {
     SummaryJobRequest {
+        only_if_empty: false,
         title_policy: Default::default(),
         session_id: "session-one".into(),
         target: DocumentTarget::Summary,

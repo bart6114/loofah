@@ -14,6 +14,7 @@ async fn submit(journal: &JobJournal, owner: &str, session: &str) -> ProcessingJ
             owner.into(),
             uuid::Uuid::new_v4().to_string(),
             SummaryJobRequest {
+                only_if_empty: false,
                 title_policy: Default::default(),
                 session_id: session.into(),
                 target: DocumentTarget::Summary,

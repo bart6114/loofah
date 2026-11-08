@@ -87,6 +87,7 @@ async fn note(context: &VaultContext) -> SummaryJobRequest {
         .unwrap();
     context.store.ensure_summary("note").await.unwrap();
     SummaryJobRequest {
+        only_if_empty: false,
         title_policy: Default::default(),
         session_id: "note".into(),
         target: DocumentTarget::Summary,

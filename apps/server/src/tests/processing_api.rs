@@ -20,6 +20,7 @@ impl Fixture {
 
 async fn input(context: &hypr_loofah_core::VaultContext) -> SummaryJobRequest {
     SummaryJobRequest {
+        only_if_empty: false,
         title_policy: Default::default(),
         session_id: "note".into(),
         target: DocumentTarget::Summary,
@@ -791,6 +792,7 @@ async fn native_sdk_rejects_an_unsupported_job_capability_before_authentication_
             RemoteOperation::SubmitSummaryJob {
                 vault_id: uuid::Uuid::new_v4().to_string(),
                 input: SummaryJobRequest {
+                    only_if_empty: false,
                     title_policy: Default::default(),
                     session_id: "note".into(),
                     target: DocumentTarget::Summary,

@@ -149,6 +149,7 @@ impl Fixture {
     async fn request(&self, target: DocumentTarget) -> SummaryJobRequest {
         let baseline = self.context.read_document("note", &target).await.unwrap();
         SummaryJobRequest {
+            only_if_empty: false,
             title_policy: Default::default(),
             session_id: "note".into(),
             target,
@@ -1047,4 +1048,82 @@ async fn damaged_tag_registry_does_not_apply_a_summary_or_discard_the_generated_
     assert_eq!(std::fs::read_to_string(registry).unwrap(), "{broken");
     assert!(f.journal.result(job.id).await.unwrap().is_some());
     worker.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn conditional_jobs_do_not_generate_over_filled_or_newly_changed_documents() {
+    for filled_before_admission in [false, true] {
+        let f = Fixture::new("Generated automatically", false).await;
+        if filled_before_admission {
+            f.save("Existing summary").await;
+        }
+        let mut request = f.request(DocumentTarget::Summary).await;
+        request.only_if_empty = true;
+        let id = uuid::Uuid::new_v4().to_string();
+        let job = f
+            .journal
+            .submit("member-one".into(), id.clone(), request.clone())
+            .await
+            .unwrap();
+        if !filled_before_admission {
+            f.save("New summary while queued").await;
+        }
+        let worker = f.worker().await;
+        assert_eq!(
+            f.terminal(&job.id).await.state,
+            ProcessingJobState::Conflict
+        );
+        assert_eq!(f.generator.calls.load(Ordering::SeqCst), 0);
+        let original = f.summary().await;
+        worker.shutdown().await.unwrap();
+        assert_eq!(
+            f.journal
+                .submit("member-one".into(), id, request)
+                .await
+                .unwrap()
+                .id,
+            job.id
+        );
+        assert_eq!(f.summary().await, original);
+    }
+}
+
+#[tokio::test]
+async fn conditional_jobs_generate_once_for_an_unchanged_empty_document_and_reopen() {
+    let f = Fixture::new("Generated automatically", false).await;
+    let mut request = f.request(DocumentTarget::Summary).await;
+    request.only_if_empty = true;
+    let id = uuid::Uuid::new_v4().to_string();
+    let job = f
+        .journal
+        .submit("member-one".into(), id.clone(), request.clone())
+        .await
+        .unwrap();
+    f.generator.release.add_permits(1);
+    let worker = f.worker().await;
+    assert_eq!(
+        f.terminal(&job.id).await.state,
+        ProcessingJobState::Succeeded
+    );
+    assert_eq!(f.generator.calls.load(Ordering::SeqCst), 1);
+    worker.shutdown().await.unwrap();
+    assert_eq!(f.summary().await, "Generated automatically");
+    let Fixture {
+        root,
+        context,
+        journal,
+        ..
+    } = f;
+    drop(journal);
+    let reopened = JobJournal::open(root.path().join("jobs"), context.events.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        reopened
+            .submit("member-one".into(), id, request)
+            .await
+            .unwrap()
+            .id,
+        job.id
+    );
 }

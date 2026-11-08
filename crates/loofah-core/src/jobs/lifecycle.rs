@@ -111,6 +111,7 @@ mod tests {
                 "alice".into(),
                 uuid::Uuid::new_v4().to_string(),
                 SummaryJobRequest {
+                    only_if_empty: false,
                     title_policy: Default::default(),
                     session_id: "note".into(),
                     target: DocumentTarget::Summary,

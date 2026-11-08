@@ -14,6 +14,7 @@ async fn setup(confirm: bool) -> (tempfile::TempDir, JobJournal, String) {
             "member".into(),
             uuid::Uuid::new_v4().to_string(),
             SummaryJobRequest {
+                only_if_empty: false,
                 session_id: "note".into(),
                 target: DocumentTarget::Summary,
                 expected_revision: "original".into(),

@@ -129,6 +129,7 @@ async fn title_crash_child() {
             "member-one".into(),
             uuid::Uuid::new_v4().to_string(),
             SummaryJobRequest {
+                only_if_empty: false,
                 session_id: "note".into(),
                 target: DocumentTarget::Summary,
                 expected_revision: baseline.revision,

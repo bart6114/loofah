@@ -133,6 +133,7 @@ async fn durable_job_authorization_uses_current_member_roles_without_retaining_a
     let mut work = JobWork {
         principal: alice.member.id.clone(),
         request: hypr_loofah_protocol::SummaryJobRequest {
+            only_if_empty: false,
             title_policy: Default::default(),
             session_id: "note".into(),
             target: hypr_loofah_protocol::DocumentTarget::Summary,
