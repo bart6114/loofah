@@ -32,6 +32,7 @@ pub mod people;
 pub mod processing_source;
 pub mod rebuild;
 pub mod recording_delete;
+pub mod recording_publish;
 mod session_cleanup;
 mod session_path;
 mod session_summaries;
