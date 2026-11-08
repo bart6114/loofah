@@ -45,10 +45,11 @@ class BackendCpuArtifactTests(unittest.TestCase):
             for name in (
                 case,
                 "transcription_cpu::tests::ownership",
+                "speech_admission::tests::fifo",
                 "config::tests::validation",
             )
         )
-        self.assertEqual(len(validate_inventory(listing, case)), 3)
+        self.assertEqual(len(validate_inventory(listing, case)), 4)
         for changed in (
             "",
             listing.replace(case, "renamed_case"),
@@ -59,7 +60,7 @@ class BackendCpuArtifactTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_inventory(f"{case}: test", case)
 
-    def test_requires_both_real_onnx_cases_and_cpu_only_static_native_graph(self):
+    def test_requires_every_real_onnx_case_and_cpu_only_static_native_graph(self):
         case = "tests::transcription_host::whisper"
         listing = "\n".join(
             f"{name}: test"
@@ -67,14 +68,18 @@ class BackendCpuArtifactTests(unittest.TestCase):
                 case,
                 *ONNX_CASES,
                 "transcription_cpu::tests::owner",
+                "speech_admission::tests::fifo",
                 "config::tests::bounds",
             )
         )
         validate_inventory(listing, case, ONNX_CASES)
-        with self.assertRaises(ValueError):
-            validate_inventory(
-                listing.replace(ONNX_CASES[0], "renamed"), case, ONNX_CASES
-            )
+        for required in ONNX_CASES:
+            for changed in (
+                listing.replace(required, "renamed"),
+                listing + f"\n{required}: test",
+            ):
+                with self.assertRaises(ValueError):
+                    validate_inventory(changed, case, ONNX_CASES)
         messages = [
             {"reason": "compiler-artifact", "target": {"name": name}, "features": []}
             for name in (

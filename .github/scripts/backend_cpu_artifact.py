@@ -9,6 +9,7 @@ from backend_onnx_models import pinned_manifest, provision
 ONNX_CASES = (
     "tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication",
     "transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join",
+    "tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive",
 )
 
 
@@ -43,6 +44,7 @@ def validate_inventory(listing, case, onnx_cases=()):
             raise ValueError("Configured service CPU case is absent or ambiguous")
     for prefix in (
         "transcription_cpu::tests::",
+        "speech_admission::tests::",
         "tests::transcription_host::",
         "config::tests::",
     ):

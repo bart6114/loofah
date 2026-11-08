@@ -41,6 +41,7 @@ jobs:
       LOOFAH_WHISPER_CPU: "1"
       GGML_NATIVE: "OFF"
       CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source
+      CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,6 +129,8 @@ jobs:
           CPU_TEST_BINARY: ${{ steps.cpu_artifact.outputs.test_binary }}
         run: |
           set -euo pipefail
+          "$CPU_TEST_BINARY" speech_admission::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-admission.log"
+          "$CPU_TEST_BINARY" transcription_host::policy_tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-admission-policy.log"
           "$CPU_TEST_BINARY" transcription_cpu::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-adapter.log"
           "$CPU_TEST_BINARY" transcription_onnx::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-onnx-adapter.log"
           "$CPU_TEST_BINARY" tests::transcription_host:: --skip "$CPU_SERVICE_CASE" --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-activation.log"
@@ -161,9 +164,14 @@ jobs:
           for runtime_case in \
             "$CPU_SERVICE_CASE" \
             tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication \
-            transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join; do
+            transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join \
+            "$CPU_RESERVED_CASE"; do
             case_log="$RUNNER_TEMP/loofah-cpu-stt/runtime-${runtime_case//:/_}.log"
-            docker run --rm --platform linux/amd64 --network none --read-only \
+            runtime_limits=()
+            if test "$runtime_case" = "$CPU_RESERVED_CASE"; then
+              runtime_limits=(--cpus 2 --memory 6g)
+            fi
+            docker run --rm --platform linux/amd64 --network none --read-only "${runtime_limits[@]}" \
               --tmpfs /tmp:rw,noexec,nosuid,size=3g \
               --tmpfs "$PWD/apps/server:rw,noexec,nosuid,size=1m" \
               --mount "type=bind,source=$PWD/crates/data,target=$PWD/crates/data,readonly" \
