@@ -73,10 +73,13 @@ impl RemoteClient {
         {
             return Err(changed());
         }
-        // Refresh first, then bind the generation before any request that could
-        // prove ownership. Interactive login invalidates this even for ABA scopes.
-        self.access_token().await?;
+        // Refresh preserves this generation; an interactive login during refresh
+        // must not silently replace the cleanup action's original authority.
         let auth_generation = self.tokens.lock().await.generation;
+        self.access_token().await?;
+        if self.tokens.lock().await.generation != auth_generation {
+            return Err(changed());
+        }
         drop(profile.guard_generation(&generation).await?);
         self.verify_retirement_member(&request, &cancel).await?;
         let response: hypr_loofah_protocol::CaptureIngestStatus = self

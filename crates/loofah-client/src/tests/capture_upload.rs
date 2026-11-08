@@ -22,6 +22,7 @@ struct Server {
     reads: AtomicUsize,
     closes: AtomicUsize,
     retirement_delay_ms: AtomicUsize,
+    retirements: AtomicUsize,
     publication: Mutex<Option<CapturePublication>>,
     canonical: Mutex<Vec<u8>>,
 }
@@ -44,6 +45,7 @@ impl Server {
             reads: AtomicUsize::new(0),
             closes: AtomicUsize::new(0),
             retirement_delay_ms: AtomicUsize::new(0),
+            retirements: AtomicUsize::new(0),
             publication: Mutex::new(None),
             canonical: Mutex::new(Vec::new()),
         })
@@ -964,6 +966,7 @@ async fn retire(
 ) -> Json<CaptureIngestStatus> {
     authenticated(&headers);
     assert_eq!(headers["x-request-id"], request.cleanup_request_id);
+    state.retirements.fetch_add(1, Ordering::SeqCst);
     tokio::time::sleep(Duration::from_millis(
         state.retirement_delay_ms.load(Ordering::SeqCst) as u64,
     ))
@@ -1227,4 +1230,58 @@ async fn cleanup_retirement_budget_outlives_ordinary_capture_timeout_without_cha
         .await
         .unwrap();
     assert_eq!(retired.retirement.unwrap().request, request);
+}
+
+#[tokio::test]
+async fn cleanup_rejects_same_member_interactive_login_queued_during_original_refresh() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let server = Server::new(&root).await;
+    let (fixture, client) = fixture(&server, None).await;
+    let (spool, profile, request) = retirement_source(&root, &client).await;
+    let original = client.access_token().await.unwrap();
+    client.expire_access(&original).await;
+    let saves = fixture.credentials.saves.load(Ordering::SeqCst);
+    fixture.credentials.save_delay.store(500, Ordering::SeqCst);
+    let verifying = tokio::spawn({
+        let client = client.clone();
+        let profile = profile.clone();
+        let request = request.clone();
+        async move {
+            client
+                .verify_capture_retirement(
+                    profile.clone(),
+                    profile.generation().await.unwrap(),
+                    request,
+                    CancellationToken::new(),
+                )
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while fixture.credentials.saves.load(Ordering::SeqCst) == saves {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    fixture.credentials.save_delay.store(0, Ordering::SeqCst);
+    fixture.login(&client).await;
+    let error = match verifying.await.unwrap() {
+        Ok(_) => panic!("cleanup adopted a replacement login"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, ErrorCode::Conflict);
+    assert_eq!(server.retirements.load(Ordering::SeqCst), 0);
+    assert!(
+        spool
+            .resume(request.identity)
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .retirement
+            .is_none()
+    );
 }
