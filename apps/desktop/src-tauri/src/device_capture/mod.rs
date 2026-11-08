@@ -1,6 +1,7 @@
 //! Device-only capture. No server admission, canonical vault writes or uploader lives here.
 
 mod manager;
+pub mod remote;
 mod runtime;
 mod sink;
 #[cfg(test)]

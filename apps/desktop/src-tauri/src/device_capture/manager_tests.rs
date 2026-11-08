@@ -22,6 +22,9 @@ use tauri_plugin_transcription::{
 use tokio::sync::{Semaphore, watch};
 use tokio_util::sync::CancellationToken;
 
+#[path = "coordinator_tests.rs"]
+mod coordinator;
+
 #[derive(Default)]
 struct Observer(Mutex<Vec<ScopedDeviceCaptureEvent>>, AtomicBool);
 impl DeviceCaptureObserver for Observer {
