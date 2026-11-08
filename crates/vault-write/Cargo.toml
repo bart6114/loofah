@@ -16,6 +16,7 @@ hypr-tiptap = { workspace = true }
 hypr-vault-read = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
+hound = { workspace = true }
 regex = { workspace = true }
 same-file = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

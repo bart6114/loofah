@@ -33,6 +33,7 @@ pub mod paths;
 pub mod people;
 pub mod processing_source;
 pub mod rebuild;
+pub mod recording_append;
 pub mod recording_delete;
 pub mod recording_publish;
 mod session_cleanup;
@@ -110,6 +111,7 @@ pub struct SessionStore {
     attachment_publications: Arc<tokio::sync::Mutex<()>>,
     deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     startup_pending: Arc<std::sync::atomic::AtomicBool>,
+    append_pending: Arc<std::sync::Mutex<HashMap<String, uuid::Uuid>>>,
     storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
 }
 
@@ -258,6 +260,7 @@ impl SessionStore {
             active_recordings: Arc::new(std::sync::Mutex::new(HashMap::new())),
             deleted_sessions: Arc::new(std::sync::Mutex::new(Default::default())),
             startup_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            append_pending: Default::default(),
             attachment_removals: Arc::new(tokio::sync::Mutex::new(())),
             attachment_stages: Arc::new(std::sync::Mutex::new(HashMap::new())),
             attachment_publications: Arc::new(tokio::sync::Mutex::new(())),
@@ -323,6 +326,18 @@ impl SessionStore {
         bytes: Vec<u8>,
     ) -> Result<(), StoreError> {
         validate_relative_path(&relative)?;
+        if let Some(id) = self.session_id_for_relative_path(&relative) {
+            match relative.file_name().and_then(|value| value.to_str()) {
+                Some("_meta.json") => {
+                    self.check_append_metadata_write(&id, &relative, &bytes)
+                        .await?
+                }
+                Some("transcript.json" | "audio.wav" | "audio.mp3" | "audio.ogg") => {
+                    self.ensure_append_ready(&id)?
+                }
+                _ => {}
+            }
+        }
         if let Some(id) = self.session_id_for_relative_path(&relative)
             && self.deleted_sessions.lock().unwrap().contains(&id)
         {

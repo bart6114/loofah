@@ -178,6 +178,21 @@ process restart. Standalone CLI owners explicitly register against their origina
 vault lease. Local UI activation is still off; this source checkpoint requires
 integrated Native and Windows validation.
 
+Store append publication now has a separate retained admission source and compound
+recording/transcript intent. Identity binds server, vault, member, capture, request
+and admission. Identical retries retain the original recording selection and raw
+transcript presence/bytes; they cannot adopt a newer canonical source. A combined
+16 kHz float WAV is checked for layout, frame count, finite samples and checksum,
+then migrated from the exact original canonical or legacy recording name. Unknown
+files and metadata are preserved. Interrupted commits fence that session's audio
+and transcript reads/writes; note and title edits remain available. Recovery uses
+retained artifacts and performs no inference. Completed receipts are historical
+and cannot recreate deleted content. Multiple simultaneous owned recording files
+require review; originals and unfinished stages remain retained for later verified
+retention. The new Store regression suite is source-only until the coordinated
+Cargo lane runs it; platform durability remains bounded by the existing filesystem
+helpers (directory synchronization is Unix-only).
+
 The server's explicit processing intent is durable and member-private. It uses
 existing live, batch and summary jobs; first admission pins the operator model.
 Existing unsealed captures can feed live processing, Pending captures wait for

@@ -10,6 +10,7 @@ impl SessionStore {
     ) -> Result<Option<TranscriptOverview>, StoreError> {
         crate::validate_session_id(session_id)?;
         self.ensure_ready()?;
+        self.ensure_append_ready(session_id)?;
         let index = self.index.read().unwrap();
         if !index.sessions.contains_key(session_id) {
             return Ok(None);

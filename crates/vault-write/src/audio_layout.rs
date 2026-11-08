@@ -7,6 +7,16 @@ impl SessionStore {
         &self,
         id: &str,
     ) -> Result<tokio::sync::OwnedMutexGuard<()>, StoreError> {
+        self.ensure_append_ready(id)?;
+        let guard = self.lock_session_audio_for_append(id).await?;
+        self.ensure_append_ready(id)?;
+        Ok(guard)
+    }
+
+    pub(crate) async fn lock_session_audio_for_append(
+        &self,
+        id: &str,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, StoreError> {
         super::validate_session_id(id)?;
         let _writes = self.lock_writes().await;
         self.ensure_ready()?;
@@ -32,6 +42,7 @@ impl SessionStore {
         guard: &WriteGuard<'_>,
         id: &str,
     ) -> Result<SessionAudio, StoreError> {
+        self.ensure_append_ready(id)?;
         let mut meta = self
             .read_meta(id)
             .await?

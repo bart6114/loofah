@@ -23,6 +23,7 @@ impl SessionStore {
         tokio::spawn(async move {
             let snapshot = store.lock_snapshot().await;
             store.ensure_ready()?;
+            store.ensure_append_ready(&id)?;
             let Some(metadata) = store
                 .metadata_snapshot_locked(&snapshot._guard, &id)
                 .await?

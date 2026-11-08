@@ -641,10 +641,14 @@ impl SessionStore {
         session_id: &str,
     ) -> Result<TranscriptJson, StoreError> {
         validate_session_id(session_id)?;
+        self.ensure_append_ready(session_id)?;
+        let append_store = self.clone();
+        let append_id = session_id.to_owned();
         let vault_base = self.vault_base.clone();
         let relative = paths::transcript_path_in(&self.session_dir(session_id).await?);
 
         self.spawn_blocking(move || -> Result<TranscriptJson, StoreError> {
+            append_store.ensure_append_ready(&append_id)?;
             let path = vault_base.join(&relative);
 
             // Attempt-then-match, not exists()-then-read: see read_meta's comment in
@@ -652,6 +656,7 @@ impl SessionStore {
             let bytes = match std::fs::read(&path) {
                 Ok(bytes) => bytes,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    append_store.ensure_append_ready(&append_id)?;
                     return Ok(TranscriptJson {
                         transcripts: Vec::new(),
                     });
@@ -664,6 +669,7 @@ impl SessionStore {
                 }
             };
 
+            append_store.ensure_append_ready(&append_id)?;
             serde_json::from_slice(&bytes).map_err(|e| {
                 StoreError::Serialize(format!("failed to deserialize transcript.json: {}", e))
             })
@@ -681,14 +687,19 @@ impl SessionStore {
         session_id: &str,
     ) -> Result<TranscriptSummary, StoreError> {
         validate_session_id(session_id)?;
+        self.ensure_append_ready(session_id)?;
+        let append_store = self.clone();
+        let append_id = session_id.to_owned();
         let vault_base = self.vault_base.clone();
         let relative = paths::transcript_path_in(&self.session_dir(session_id).await?);
 
         self.spawn_blocking(move || -> Result<TranscriptSummary, StoreError> {
+            append_store.ensure_append_ready(&append_id)?;
             let path = vault_base.join(&relative);
             let bytes = match std::fs::read(&path) {
                 Ok(bytes) => bytes,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    append_store.ensure_append_ready(&append_id)?;
                     return Ok(TranscriptSummary {
                         transcript_ids: Vec::new(),
                         has_words: false,
@@ -704,6 +715,7 @@ impl SessionStore {
                     )));
                 }
             };
+            append_store.ensure_append_ready(&append_id)?;
             summarize_transcript_bytes(&bytes)
         })
         .await
