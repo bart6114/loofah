@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn append_authority_rejects_profile_and_login_aba_disconnect_and_window_cancellation() {
     for change in ["profile", "login", "disconnect", "cancel"] {
-        let fixture = Fixture::new().await;
+        let fixture = Fixture::with_tls(Some(Duration::ZERO)).await;
         let mut client = fixture.client().await;
         Arc::get_mut(&mut client)
             .unwrap()
