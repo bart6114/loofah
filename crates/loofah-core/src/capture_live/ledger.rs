@@ -91,7 +91,7 @@ struct CaptionRecord {
 }
 
 #[derive(Clone)]
-pub(super) struct Journal(Arc<Inner>);
+pub(super) struct Journal(Arc<Inner>, bool);
 
 struct Inner {
     root: PathBuf,
@@ -101,6 +101,8 @@ struct Inner {
     _lease: File,
     _vault_lease: Arc<File>,
     failed: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
+    worker_waiting: tokio::sync::Notify,
 }
 
 impl Journal {
@@ -140,18 +142,39 @@ impl Journal {
                     persist(&root.join(&record.snapshot.generation_id), record)?;
                 }
             }
-            Ok(Self(Arc::new(Inner {
-                root,
-                vault,
-                records: Mutex::new(records),
-                io: Arc::new(Semaphore::new(2)),
-                _lease: lease,
-                _vault_lease: vault_lease,
-                failed: false.into(),
-            })))
+            Ok(Self(
+                Arc::new(Inner {
+                    root,
+                    vault,
+                    records: Mutex::new(records),
+                    io: Arc::new(Semaphore::new(2)),
+                    _lease: lease,
+                    _vault_lease: vault_lease,
+                    failed: false.into(),
+                    #[cfg(test)]
+                    worker_waiting: tokio::sync::Notify::new(),
+                }),
+                false,
+            ))
         })
         .await
         .map_err(storage)?
+    }
+
+    // Only already bounded, source-owning live workers may wait for admission.
+    // Public requests retain their fail-fast budget and never queue storage tasks.
+    pub(super) fn worker(&self) -> Self {
+        Self(self.0.clone(), true)
+    }
+
+    #[cfg(test)]
+    pub(super) async fn hold_io(&self) -> tokio::sync::OwnedSemaphorePermit {
+        self.0.io.clone().acquire_many_owned(2).await.unwrap()
+    }
+
+    #[cfg(test)]
+    pub(super) async fn wait_for_worker_admission(&self) {
+        self.0.worker_waiting.notified().await;
     }
 
     async fn run<T: Send + 'static>(
@@ -160,12 +183,19 @@ impl Journal {
         + Send
         + 'static,
     ) -> Result<T, ApplicationError> {
-        let permit = self
-            .0
-            .io
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| unavailable("Live storage busy"))?;
+        let permit = if self.1 {
+            #[cfg(test)]
+            if self.0.io.available_permits() == 0 {
+                self.0.worker_waiting.notify_one();
+            }
+            self.0.io.clone().acquire_owned().await.map_err(storage)?
+        } else {
+            self.0
+                .io
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| unavailable("Live storage busy"))?
+        };
         let owner = self.0.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;

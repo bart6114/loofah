@@ -236,6 +236,7 @@ async fn drive(
     let id = record.snapshot.generation_id.clone();
     *record = service
         .journal
+        .worker()
         .change(id.clone(), |r| r.snapshot.state = CaptureLiveState::Running)
         .await
         .map_err(|_| CaptureLiveFailure::Storage)?;
@@ -249,10 +250,7 @@ async fn drive(
     let mut source_hash = Sha256::new();
     let count = record.format.channels.len();
     let mut finished_input = false;
-    let mut source = writer
-        .snapshot()
-        .await
-        .map_err(|_| CaptureLiveFailure::Storage)?;
+    let mut source = source_snapshot(writer, service, cancel, access).await?;
     let mut newest = source.frames;
     let mut last_audio = tokio::time::Instant::now();
     let mut tick = tokio::time::interval(Duration::from_millis(20));
@@ -273,7 +271,7 @@ async fn drive(
                     captions_open = false;
                     continue;
                 };
-                *record = retry_append(&service.journal, &id, caption).await?;
+                *record = retry_append(&service.journal.worker(), &id, caption).await?;
                 changed(context, record);
             },
             receipt = session.completion.changed() => {
@@ -324,20 +322,20 @@ async fn drive(
                             pending_block = None;
                             offset = end;
                             if offset == pending.len() { chunk += 1; pending.clear(); }
-                            *record = service.journal.change(id.clone(), move |r| r.snapshot.admitted_end_frame = frame).await.map_err(|_| CaptureLiveFailure::Storage)?;
+                            *record = service.journal.worker().change(id.clone(), move |r| r.snapshot.admitted_end_frame = frame).await.map_err(|_| CaptureLiveFailure::Storage)?;
                         }
                     }
                 }
                 if chunk == source.chunk_count && source.seal.as_ref().is_some_and(|seal| seal.frames == frame) {
                     session.control.finish(frame)?;
                     finished_input = true;
-                    *record = service.journal.change(id.clone(), |r| r.snapshot.state = CaptureLiveState::Finishing).await.map_err(|_| CaptureLiveFailure::Storage)?;
+                    *record = service.journal.worker().change(id.clone(), |r| r.snapshot.state = CaptureLiveState::Finishing).await.map_err(|_| CaptureLiveFailure::Storage)?;
                 }
             }
         }
     };
     while let Some(caption) = session.captions.recv().await {
-        *record = retry_append(&service.journal, &id, caption).await?;
+        *record = retry_append(&service.journal.worker(), &id, caption).await?;
     }
     if let Some(failure) = receipt.failure {
         return Err(failure);
@@ -362,9 +360,10 @@ async fn drive(
     {
         return Err(CaptureLiveFailure::InvalidOutput);
     }
-    let transcript = materialize(&service.journal, record, frame).await?;
+    let transcript = materialize(&service.journal.worker(), record, frame).await?;
     *record = service
         .journal
+        .worker()
         .retain_result(
             id.clone(),
             transcript,
@@ -374,6 +373,7 @@ async fn drive(
         .map_err(|_| CaptureLiveFailure::Storage)?;
     *record = service
         .journal
+        .worker()
         .change(id.clone(), move |r| {
             r.snapshot.input_consumed_end_frame = frame;
             r.snapshot.completed_through_frame = Some(frame);
@@ -391,10 +391,7 @@ async fn drive(
         if access.cancelled.is_cancelled() {
             return Err(CaptureLiveFailure::AccessDenied);
         }
-        let current = writer
-            .snapshot()
-            .await
-            .map_err(|_| CaptureLiveFailure::Storage)?;
+        let current = source_snapshot(writer, service, cancel, access).await?;
         if let Some(publication) = &current.publication {
             if current.identity != record.identity
                 || current.seal != source.seal
@@ -409,6 +406,29 @@ async fn drive(
             return Err(CaptureLiveFailure::Idle);
         }
         tokio::select! { _ = service.stop.cancelled() => {}, _ = cancel.cancelled() => {}, _ = tokio::time::sleep(Duration::from_millis(100)) => {} }
+    }
+}
+
+async fn source_snapshot(
+    writer: &CaptureWriter,
+    service: &CaptureLiveService,
+    cancel: &CancellationToken,
+    access: &AccessSignals,
+) -> Result<hypr_capture_store::capture_spool::CaptureSnapshot, CaptureLiveFailure> {
+    loop {
+        match writer.snapshot().await {
+            Ok(snapshot) => return Ok(snapshot),
+            Err(cause) if cause.code == ErrorCode::Unavailable => {}
+            Err(_) => return Err(CaptureLiveFailure::Storage),
+        }
+        tokio::select! {
+            biased;
+            _ = access.cancelled.cancelled() => return Err(CaptureLiveFailure::AccessDenied),
+            _ = service.stop.cancelled() => return Err(CaptureLiveFailure::Interrupted),
+            _ = access.interrupted.cancelled() => return Err(CaptureLiveFailure::Interrupted),
+            _ = cancel.cancelled() => return Err(CaptureLiveFailure::Interrupted),
+            _ = tokio::time::sleep(Duration::from_millis(10)) => {},
+        }
     }
 }
 
@@ -544,6 +564,7 @@ async fn promote(
     }
     let result = service
         .journal
+        .worker()
         .result(
             record.identity.scope.member_id.clone(),
             record.snapshot.generation_id.clone(),
@@ -603,6 +624,7 @@ async fn promote(
         .map_err(|_| CaptureLiveFailure::Interrupted)?;
     *record = service
         .journal
+        .worker()
         .change(record.snapshot.generation_id.clone(), |r| {
             r.commit_pending = true;
             r.snapshot.state = CaptureLiveState::Publishing
@@ -634,6 +656,7 @@ async fn promote(
     };
     *record = service
         .journal
+        .worker()
         .change(record.snapshot.generation_id.clone(), move |r| {
             r.snapshot.state = state;
             r.snapshot.publication = publication;
@@ -662,6 +685,7 @@ async fn finish(
 ) {
     match service
         .journal
+        .worker()
         .change(record.snapshot.generation_id.clone(), move |r| {
             if r.commit_pending {
                 r.snapshot.state = CaptureLiveState::Uncertain;

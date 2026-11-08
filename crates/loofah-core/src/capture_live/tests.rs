@@ -1371,3 +1371,112 @@ async fn dropped_live_start_waiter_respects_exclusive_lifecycle_and_durably_admi
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn saturated_public_ledger_reads_do_not_fail_or_restart_the_owned_live_worker() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let fake = Fake::new();
+    fake.release_processing_fixture();
+    let context = context(&root, fake.clone(), Auth::new()).await;
+    let (input, request, id) = begin(&context).await;
+    context
+        .start_capture_live_authorized(
+            MEMBER.into(),
+            input.identity.capture_id.clone(),
+            id.clone(),
+            request,
+            || async { Ok(()) },
+        )
+        .await
+        .unwrap();
+    until(&context, &input.identity.capture_id, &id, |snapshot| {
+        snapshot.state == CaptureLiveState::Running
+    })
+    .await;
+    let service = context.capture_live.get().unwrap();
+    let busy = service.journal.hold_io().await;
+    append(&context, &input, 1).await;
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        service.journal.wait_for_worker_admission(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        service
+            .journal
+            .get(MEMBER.into(), id.clone())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(
+        service
+            .journal
+            .page(MEMBER.into(), id.clone(), None, 16)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    assert!(!service.failed.load(Ordering::Acquire));
+    assert!(
+        !service
+            .tasks
+            .lock()
+            .unwrap()
+            .get(&id)
+            .unwrap()
+            .handle
+            .is_finished()
+    );
+    assert_eq!(fake.calls.load(Ordering::Acquire), 1);
+    drop(busy);
+    until(&context, &input.identity.capture_id, &id, |snapshot| {
+        snapshot.next_caption_sequence == 2
+    })
+    .await;
+    let writer = context
+        .capture_writer(MEMBER.into(), input.identity.capture_id.clone())
+        .await
+        .unwrap();
+    let seal = writer.seal().await.unwrap();
+    context
+        .publish_capture_authorized(
+            MEMBER.into(),
+            input.identity.capture_id.clone(),
+            seal,
+            || async { Ok(()) },
+        )
+        .await
+        .unwrap();
+    let completed = until(&context, &input.identity.capture_id, &id, |snapshot| {
+        snapshot.state.is_terminal()
+    })
+    .await;
+    assert_eq!(
+        completed.state,
+        CaptureLiveState::Completed,
+        "{completed:?}"
+    );
+    service.shutdown().await.unwrap();
+    let (completed, drained, safe) = context
+        .capture_live_processing_outcome(MEMBER.into(), id)
+        .await
+        .unwrap();
+    assert_eq!(completed.state, CaptureLiveState::Completed);
+    assert!(drained && safe);
+    assert_eq!(fake.calls.load(Ordering::Acquire), 1);
+    assert_eq!(writer.read_chunk(0).await.unwrap().descriptor.frames, 16000);
+    assert!(
+        context
+            .store
+            .vault_base()
+            .join("sessions/session/transcript.json")
+            .exists()
+    );
+}
