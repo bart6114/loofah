@@ -746,3 +746,66 @@ OIDC/TLS, released-version compatibility, large-copy interruption, client reconn
 and uninterrupted physical recording. The server still needs content-free
 operational metrics and required-vault readiness probes. ONNX live/batch admission
 currently shares a bounded single slot and has no explicit live-priority scheduler.
+
+### Two-hour generated capture and corrected large-source qualification (2026-11-08)
+
+The controlled Linux ARM test build completed **7,200.332 seconds of paced capture**
+through the production SDK/authenticated server: 7,200 chunks, 115,200,000 stereo
+16kHz frames, and 921,600,000 PCM bytes. It survived repeated outages (including
+600.099 seconds), a server restart, lost committed chunk/publication replies, and
+fresh-process device resume. Maximum producer scheduling delay was 297ms. This
+qualifies generated PCM transport, not OS microphone/system capture or Windows.
+
+That first full run **failed final semantic acceptance** and exceeded the intended
+publication memory budget. No device raw was retired. A separate streaming C
+verifier checked every canonical frame/channel against the committed English2
+fixture and deterministic quiet markers. Its canonical SHA-256 was
+`9d6cde6f90951a0a9ba5505160633baa599bd413e45db2a657bf942d54f7c7ca`
+(921,600,068 WAV bytes), matching the publication receipt. The raw PCM SHA-256 was
+`4db95c8be36cd54e029948e6fda7883221f8f2d3ca712dfb1b4071bb0709fd06`.
+
+Two concrete defects were reproduced and corrected. The watcher journal read the
+entire canonical WAV before checking whether that path was registered; it now
+checks membership first and hashes registered files in bounded buffers with final
+file-identity checks. Peak original server RSS was 1,090,112KiB. Separately, batch
+Whisper carried previous recognized text across independent VAD ranges, biasing
+later speech toward the previous ending. Only dynamic carried text now resets on
+per-channel discontinuities; static vocabulary and contiguous context remain, and
+live inference behavior is unchanged. The identical retained 360-second prefix
+failed before that fix and passed afterward. Corrected real CPU inference over the
+entire retained recording passed all 24 speech windows in 126 seconds (observed
+peak RSS 342,240KiB).
+
+A separate, explicitly **non-paced** full-size replay on frozen root `53b8ff205`
+plus the qualified fixes then verified every canonical PCM frame, the identical
+WAV hash, all 24 recognizable speech windows, and real canonical repair. Its fresh
+server peak was 379,932KiB, below the 786,432KiB budget. This replay is not a second
+two-hour wall-clock run. Its first retirement attempt exposed the proxy's 30-second
+and SDK's 35-second request deadlines: actual owned server cleanup continued,
+leaving 1,344 of 7,200 server chunks pending when the failed harness stopped;
+all device chunks were retained. Retirement alone now has a bounded 300-second
+request budget. Ordinary capture calls retain 35 seconds. An actual 35-second
+versus 36-second HTTP regression passed in 71.26 seconds.
+
+Explicit resume preserved the same origin, issuer, member, profile, capture,
+cleanup UUID `29146854-fb28-4f8d-91e3-8abec07b2ab6`, and completed repair job
+`835629ef-fa1d-4d23-8454-f412b5bb3e06`. Fresh SDK canonical verification and both
+server/device retirement passed; both durable journals are Retired with zero raw
+chunk files. The completed processing snapshot was unchanged, proving no new
+inference dispatch. Original failed-run raw evidence remains intact.
+
+The original live path delivered sequences 0–39 exactly once, covering the eight
+speech clips through 2,100 seconds. The harness proxy caused periodic SSE
+reconnects, and cursor recovery preserved those captions. During the later
+600-second network outage, Core intentionally stopped live inference after 120
+seconds without admitted audio, marked `repair_required`/`idle`, and waited for
+sealed canonical repair. This is the bounded idle-resource policy, not VAD silence
+or silent caption loss; uninterrupted live captions across that outage were not
+qualified. The composed evidence above preserves these limits and the initial
+failures instead of relabeling the original full run as passing.
+
+Logs, immutable binary/source provenance, all-window checks, and retained test
+state are under this workstation's local `Library/Caches/loofah-separation`, with
+`capture-soak-full-7200-c9290ee7d8-run2`, `whisper-gap-*`,
+`capture-memory-replay-*`, and `capture-retirement-existing-resume-c1c0ef7cb`
+artifact names. None depend on an external drive or earlier workstation state.
