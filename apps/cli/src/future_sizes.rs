@@ -124,6 +124,14 @@ fn command_future_sizes() {
         ),
     ];
     for (name, bytes) in sizes {
-        eprintln!("CLI future {name}: {bytes} bytes");
+        let budget = match name {
+            "run" | "gateway" | "local_owner" => 4 * 1024,
+            _ => 16 * 1024,
+        };
+        eprintln!("CLI future {name}: {bytes} bytes (budget {budget})");
+        assert!(
+            bytes <= budget,
+            "CLI {name} future grew to {bytes} bytes; isolate the owning workflow before it expands every command's stack"
+        );
     }
 }
