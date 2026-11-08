@@ -48,7 +48,7 @@ impl Admission {
             .map_err(|_| conflict("Media admission requires review"))?;
         if self.model_sha256.as_ref().is_some_and(|hash| {
             !is_transcription_sha256(hash) || self.declaration.transcription.is_none()
-        }) || self.version != 1
+        }) || !matches!(self.version, 1 | 2)
             || self.vault_id != dispatcher.context.events.vault_id()
             || self.principal != dispatcher.principal
             || self.declaration.request_id != request

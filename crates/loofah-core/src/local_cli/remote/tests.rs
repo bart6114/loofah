@@ -336,7 +336,10 @@ async fn cancellation_keeps_original_blocking_writer_owned_until_its_real_exit()
     let request = input.request_id.clone();
     let receiving =
         tokio::spawn(async move { media.receive(request, admission.revision, SUBTITLE).await });
-    entry.await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(10), entry)
+        .await
+        .unwrap()
+        .unwrap();
     let media = fixture.media.clone();
     let stopping = tokio::spawn(async move { media.shutdown().await });
     tokio::task::yield_now().await;
@@ -410,7 +413,10 @@ async fn declaration_and_recovery_share_one_dispatch_and_original_task_owner() {
     *media.declaration_pause.lock().unwrap() = Some((entered, waiting));
     let declaring = media.clone();
     let declaration = tokio::spawn(async move { declaring.declare(input).await });
-    entry.await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(10), entry)
+        .await
+        .unwrap()
+        .unwrap();
     let recovering = media.clone();
     let recovered_request = request.clone();
     let recovering = tokio::spawn(async move { recovering.recover(&recovered_request).await });
