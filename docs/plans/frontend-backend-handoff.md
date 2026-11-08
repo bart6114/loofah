@@ -8,7 +8,7 @@ This checkpoint is not a release or completion claim. Verify live state first.
 
 - Integration tree: `/Volumes/T7/src/loofah-backend-separation`.
 - Branch: `refactor/frontend-backend-separation`.
-- Latest API checkpoint: `136812c9e`; interface checkpoint: `0ee7b680e`.
+- Latest source/catalog checkpoint: `cfcb0def0`; API `136812c9e`, interfaces `0ee7b680e`.
 - Last pushed head: `66b88b660e86efb53a5938e45e872769d0f74153`.
 - Draft PR: <https://github.com/bart6114/loofah/pull/123>; no merge/release.
 - Original `/Volumes/T7/src/free-meeting-transcriber` tracked files remain untouched.
@@ -62,6 +62,13 @@ Summary with the wrong logical ID and Saved with a missing document. Independent
 agent review found no further adapter/cache defect. All-target desktop/CLI and
 server/client/Core checks passed with no owned diagnostics.
 
+Main Enhanced editing is integrated as `bd5539535`: worker 299 focused cases,
+Root 116 integration cases and actual-binding typecheck passed. Catalogs were
+regenerated/strictly compiled for all 109 locales; global formatting and lint
+passed (86 baseline warnings, zero errors). `ba66d9d61` reserves a trusted local
+transcript-controls capability and strips remote advertisements; 29 adapter cases
+and typecheck passed. No remote main-shell activation is implied.
+
 ## Evidence
 
 All paths below are under `/Volumes/T7/loofah-backend-build/`.
@@ -94,19 +101,17 @@ validation windows, not just Cargo locks. macOS binary assessment may stall laun
 
 ## Active distribution
 
-- A (`frontend_distribution`): coherent main Enhanced compound editor/task migration.
-  Old frozen tree `/Volumes/T7/src/loofah-separation-document-editor`, base
-  `6fbac0fa6`. Its 34 owned files are archived/hash-verified at
-  `agents/document-editor/frontend-contract-vv14mtld/`. A is authorized to create
-  `/Volumes/T7/src/loofah-separation-document-editor-ui` from exact `0ee7b680e`,
-  restore only verified owned paths and validate actual contracts. Root owns
-  generated bindings/locales/interfaces. Review fixes include strict missing/empty
-  uncertainty confirmation, opaque task-body refusal, mounted-only draft cleanup,
-  captured attachment resources and a trusted local-only legacy generation gate.
-  Do not activate the remote main shell through remaining legacy source paths.
+- A (`frontend_distribution`): main Enhanced source integrated as `bd5539535`.
+  Active tree `/Volumes/T7/src/loofah-separation-document-editor-ui`, worker
+  `60db07f9b` plus Root capability `ba66d9d61` picked as `1dccda6f2`.
+  Next approved lane: scoped transcript/people source reads and explicit owner
+  IDs, plus trusted local-only legacy speaker/import/retranscribe/live-state
+  guards. Existing client APIs suffice; no new transport contract or broad AI/
+  capture/export migration. Preserve the old 34-file tree and verified archive.
+  Root owns interfaces, actual bindings and locale generation.
 - B (`backend_distribution`): durable batch transcription Core orchestration in
   `/Volumes/T7/src/loofah-separation-batch-transcription`, base `1f5278510`.
-  Protocol-only clean worker commit `93e5f5071` passed 20 tests; not yet integrated.
+  Protocol-only worker `93e5f5071` passed 20 tests and is integrated as `a12407b8d`.
   It injects a prepared engine and retains authenticated member/source/Context and
   actual drain through terminal publication; no inference restart after ambiguity.
   No Core Whisper/device dependency or public capability before paired CPU E2E.
@@ -117,10 +122,10 @@ validation windows, not just Cargo locks. macOS binary assessment may stall laun
   unregistered server transcription_cpu module. Root owns hound/tempfile manifest
   edges and later optional feature/config/route registration. Coordinate trait
   details with B. Use explicit Ubuntu 24.04 CPU packaging initially; current
-  bookworm default image stays unchanged. No Cargo without a reserved window.
+  bookworm default image stays unchanged. C currently owns target-tauri for frozen preparation/listener checks.
 - Root: integration, contracts, adapters, exports/locales, lifecycle/configuration,
-  deployment, remaining CLI ownership, docs and hosted acceptance. Root's native
-  Cargo and HTTP tests are finished; verify current cache reservations before builds.
+  deployment, remaining CLI ownership, docs and hosted acceptance. Root's Cargo and HTTP tests are finished. B owns target-root for Core jobs;
+  C owns target-tauri for preparation. No Root Cargo until explicit releases.
 
 ## CI and remaining gates
 

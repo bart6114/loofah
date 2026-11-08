@@ -3401,7 +3401,8 @@ and delays rereads; it does not establish hard-disconnect or full network latenc
 acceptance. Normal all-target desktop/CLI/server/client/Core checks pass.
 
 The actual main Enhanced rich-editor migration is independently reviewed and
-awaits its own final integration checks. Review caught missing-versus-empty
+integrated as `bd5539535`: worker 299 focused cases and Root 116 integration
+cases plus actual-binding typecheck pass. Review caught missing-versus-empty
 uncertainty confirmation, opaque future task bodies, retired-draft cleanup and
 legacy bare-ID AI actions. A trusted local-adapter capability guards those legacy
 actions; remote server capability strings cannot enable them. This guards the
