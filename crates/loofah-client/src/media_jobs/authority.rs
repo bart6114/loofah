@@ -175,8 +175,23 @@ impl MediaSourceExportGuard {
     }
 }
 impl MediaAuthority {
-    pub async fn guard_source_export(&self) -> Result<MediaSourceExportGuard> {
+    pub async fn guard_source_export(
+        &self,
+        submission: &MediaSubmission,
+    ) -> Result<MediaSourceExportGuard> {
         self.client.media_source_export_capability(&self.cancel)?;
+        self.validate_submission(submission)?;
+        // Status authorizes the original vault's current editor role without
+        // rehashing the source or dispatching any work.
+        let status = self.status(&submission.declaration.request_id).await?;
+        if status.declaration != submission.declaration
+            || submission.admission_revision.as_deref() != Some(status.revision.as_str())
+        {
+            return Err(failure(
+                ErrorCode::Conflict,
+                "Original media source admission changed before saving",
+            ));
+        }
         self.check_current().await?;
         Ok(MediaSourceExportGuard(self.guard().await?))
     }

@@ -35,6 +35,8 @@ async fn setup_headers(
     let revision = uuid::Uuid::new_v4().to_string();
     let response_revision = revision.clone();
     let sha = input.operation.upload().unwrap().1.sha256.clone();
+    let status_input = input.clone();
+    let status_revision = revision.clone();
     let extra = Router::new().route(
         "/api/v1/vaults/vault/media/requests/{request}/source",
         get(
@@ -85,6 +87,29 @@ async fn setup_headers(
                 }
             },
         ),
+    );
+    let extra = extra.route(
+        "/api/v1/vaults/vault/media/requests/{request}",
+        get(move || {
+            let declaration = status_input.clone();
+            let revision = status_revision.clone();
+            async move {
+                if mode == "status-denied" {
+                    return (
+                        StatusCode::FORBIDDEN,
+                        Json(failure(ErrorCode::Forbidden, "Editor access revoked")),
+                    )
+                        .into_response();
+                }
+                Json(MediaRequestStatus {
+                    declaration,
+                    revision,
+                    phase: MediaPhase::Review,
+                    media: None,
+                })
+                .into_response()
+            }
+        }),
     );
     let fixture = Fixture::with_extra_routes(Some(Duration::ZERO), extra).await;
     let mut client = fixture.client().await;
@@ -138,7 +163,7 @@ async fn original_source_export_verifies_descriptor_and_actual_bytes() {
         if mode == "valid" {
             assert_eq!(result.unwrap().0, b"original bytes");
             authority
-                .guard_source_export()
+                .guard_source_export(&submission)
                 .await
                 .unwrap()
                 .check_current()
@@ -174,7 +199,12 @@ async fn source_export_capability_precedes_credentials_and_final_fence_rejects_l
         .unwrap();
     fixture.login(&client).await;
     assert_eq!(
-        authority.guard_source_export().await.err().unwrap().code,
+        authority
+            .guard_source_export(&submission)
+            .await
+            .err()
+            .unwrap()
+            .code,
         ErrorCode::Conflict
     );
 }
@@ -192,7 +222,12 @@ async fn final_source_export_fence_rejects_profile_aba() {
     profile.save(changed).await.unwrap();
     profile.save(original).await.unwrap();
     assert_eq!(
-        authority.guard_source_export().await.err().unwrap().code,
+        authority
+            .guard_source_export(&submission)
+            .await
+            .err()
+            .unwrap()
+            .code,
         ErrorCode::Conflict
     );
 }
@@ -288,4 +323,23 @@ async fn source_header_verification_does_not_hold_profile_edit_locks() {
         .expect("server verification must not block profile edits")
         .unwrap();
     assert_eq!(result.unwrap_err().code, ErrorCode::Conflict);
+}
+
+#[tokio::test]
+async fn final_source_export_fence_requires_current_original_vault_editor_access() {
+    let (_fixture, _client, _root, authority, _profile, submission) = setup("status-denied").await;
+    let (bytes, _) = authority
+        .download_source_with_guard(&submission, Vec::new(), ())
+        .await
+        .unwrap();
+    assert_eq!(bytes, b"original bytes");
+    assert_eq!(
+        authority
+            .guard_source_export(&submission)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Forbidden
+    );
 }

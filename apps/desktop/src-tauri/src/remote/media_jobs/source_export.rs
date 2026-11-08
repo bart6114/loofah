@@ -60,7 +60,7 @@ pub async fn remote_media_export_source<R: tauri::Runtime>(
         })
         .await
         .map_err(worker_error)?;
-        let guard = authority.guard_source_export().await?;
+        let guard = authority.guard_source_export(&submission).await?;
         // Only the completed private copy enters this short registry/profile/login fence.
         tokio::task::spawn_blocking(move || {
             let _owners = (authority, receipts, _pending);
