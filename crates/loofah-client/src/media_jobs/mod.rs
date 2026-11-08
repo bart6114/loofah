@@ -193,7 +193,7 @@ impl MediaAuthority {
     pub async fn cancel(&self, request: &str) -> Result<MediaRequestStatus> {
         self.control(request, "cancel").await
     }
-    /// Explicitly revisits the original server journal; never declares a new request or uploads source.
+    /// Explicitly revisits the original journal, redeclaring only the same saved input after NotFound.
     pub async fn recover(&self, submission: &MediaSubmission) -> Result<MediaRequestStatus> {
         self.validate_submission(submission)?;
         let value = match self
@@ -292,7 +292,7 @@ impl MediaAuthority {
 }
 fn validate_status(value: &MediaRequestStatus) -> Result<()> {
     validate_media_declaration(&value.declaration).map_err(bad_reply)?;
-    if !is_transcription_sha256(&value.revision) {
+    if !valid_revision(&value.revision) {
         return Err(bad_reply("Invalid media admission revision"));
     }
     if let Some(media) = &value.media {
@@ -361,4 +361,8 @@ fn uuid(value: &str) -> Result<()> {
         .filter(|id| !id.is_nil() && id.to_string() == value)
         .map(|_| ())
         .ok_or_else(|| invalid("Canonical media request UUID required"))
+}
+
+fn valid_revision(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 512 && value.bytes().all(|byte| byte.is_ascii_graphic())
 }

@@ -219,7 +219,7 @@ fn read(path: &Path) -> Result<Option<MediaSubmission>> {
     if value
         .admission_revision
         .as_ref()
-        .is_some_and(|revision| !is_transcription_sha256(revision))
+        .is_some_and(|revision| !valid_revision(revision))
     {
         return Err(damaged());
     }

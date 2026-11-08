@@ -94,7 +94,7 @@ async fn media_receipts_are_immutable_scoped_and_read_only_until_prepare() {
     );
     let status = MediaRequestStatus {
         declaration: input.clone(),
-        revision: "a".repeat(64),
+        revision: uuid::Uuid::new_v4().to_string(),
         phase: MediaPhase::Receiving,
         media: None,
     };
@@ -204,7 +204,7 @@ async fn media_upload_uses_original_admission_and_lost_reply_never_replays() {
                 async move {
                     let status = MediaRequestStatus {
                         declaration: input.clone(),
-                        revision: "a".repeat(64),
+                        revision: uuid::Uuid::new_v4().to_string(),
                         phase: MediaPhase::Receiving,
                         media: None,
                     };
@@ -326,7 +326,7 @@ async fn cancelled_media_upload_keeps_original_profile_until_actual_source_read_
             post(|Json(input): Json<MediaDeclaration>| async move {
                 let status = MediaRequestStatus {
                     declaration: input.clone(),
-                    revision: "a".repeat(64),
+                    revision: uuid::Uuid::new_v4().to_string(),
                     phase: MediaPhase::Receiving,
                     media: None,
                 };
