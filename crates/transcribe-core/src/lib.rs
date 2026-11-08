@@ -1,5 +1,6 @@
 mod audio;
 mod batch;
+pub mod transcript;
 mod transport;
 
 pub use audio::*;

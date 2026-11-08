@@ -11,6 +11,8 @@ reservation is not live inference; typed live input and authenticated Core jobs
 remain under implementation. Model paths stay operator configuration, not client
 request fields.
 
+Canonical batch transcript conversion lives in `transcribe-core::transcript`; the existing `listener2_core::transcript` path re-exports it unchanged. Trusted hosts can reuse the same timing, spacing, IDs and speaker-hint mapping without importing listener orchestration. This extraction adds no public transcription endpoint.
+
 Capture identity, format, chunk, seal and receipt types live in the shared protocol with the unchanged version-1 fingerprint and checksum-chain functions. The neutral `capture-store` crate stores durable staging on the device and service. A first-audio producer observation upgrades a capture manifest to schema 2 without changing its audio hashes; older readers refuse that manifest. Existing untimed schema-1 captures remain readable without an invented timestamp.
 
 The experimental `capture_ingestion` capability exposes authenticated staging APIs below. Staging retains private upload chunks. Canonical publication uses the separate capability below; transcription, remote recording controls and device cleanup remain distinct operations. Local desktop capture remains login-free. The separate experimental `capture_publication` capability adds verified publication for an existing note with no recording or transcript. The SDK checks this capability before credentials; staging support alone cannot dispatch publication.
