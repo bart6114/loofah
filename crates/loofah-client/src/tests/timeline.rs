@@ -86,7 +86,7 @@ fn operations() -> Vec<RemoteOperation> {
         },
     ]
 }
-async fn execute(client: &RemoteClient, operation: RemoteOperation) -> Result<RemoteReply> {
+async fn execute(client: &Arc<RemoteClient>, operation: RemoteOperation) -> Result<RemoteReply> {
     client
         .execute(
             operation,
@@ -110,7 +110,11 @@ async fn timeline_sdk_gates_and_validates_before_loading_credentials() {
             ErrorCode::IncompatibleVersion
         );
     }
-    client.capabilities.features.push("timeline_read".into());
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("timeline_read".into());
     let mut oversized = query();
     oversized.limit = 201;
     let mut bad_revision = query();
@@ -159,7 +163,11 @@ async fn timeline_sdk_rejects_malformed_unbounded_cross_filter_and_mixed_revisio
     });
     let fixture = Fixture::with_extra_routes(None, state.routes()).await;
     let mut client = fixture.client().await;
-    client.capabilities.features.push("timeline_read".into());
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("timeline_read".into());
     fixture.login(&client).await;
     for operation in operations() {
         execute(&client, operation).await.unwrap();
@@ -213,7 +221,11 @@ async fn timeline_sdk_trusted_https_roundtrips_at_50_150_500ms_without_mutation_
         let fixture =
             Fixture::with_extra_routes(Some(Duration::from_millis(millis)), state.routes()).await;
         let mut client = fixture.client().await;
-        client.capabilities.features.push("timeline_read".into());
+        Arc::get_mut(&mut client)
+            .unwrap()
+            .capabilities
+            .features
+            .push("timeline_read".into());
         fixture.login(&client).await;
         for operation in operations() {
             execute(&client, operation).await.unwrap();
@@ -240,7 +252,11 @@ async fn lost_timeline_reply_is_a_retryable_read_without_unknown_mutation_state(
     });
     let fixture = Fixture::with_extra_routes(None, state.routes()).await;
     let mut client = fixture.client().await;
-    client.capabilities.features.push("timeline_read".into());
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("timeline_read".into());
     fixture.login(&client).await;
     let error = execute(&client, operations().remove(0)).await.unwrap_err();
     assert!(error.mutation_outcome.is_none());
