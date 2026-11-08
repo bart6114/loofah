@@ -235,3 +235,60 @@ async fn window_view_assets_streams_and_media_authorities_cannot_leave_original_
     assert!(fixture.state.event_connections.lock().await.is_empty());
     assert_eq!(fixture.state.download_opens.load(Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn parent_default_destination_changes_preserve_original_child_vault_and_frozen_authority() {
+    for retirement in ["profile", "member", "login"] {
+        let fixture = Fixture::with_tls(Some(Duration::ZERO)).await;
+        let client = fixture.client().await;
+        fixture.login(&client).await;
+        let root = tempfile::tempdir().unwrap();
+        let profile = profile(&fixture, &client, root.path()).await;
+        profile
+            .remember_destination("member".into(), "test".into())
+            .await
+            .unwrap();
+        let baseline = profile.generation().await.unwrap();
+        let view = client
+            .window_view(profile.clone(), scope(&client), CancellationToken::new())
+            .await
+            .unwrap();
+        for destination in ["other-vault", "test"] {
+            profile
+                .remember_destination("member".into(), destination.into())
+                .await
+                .unwrap();
+            assert_eq!(
+                profile.profile().await.vault_id.as_deref(),
+                Some(destination)
+            );
+            assert_eq!(baseline.profile().vault_id.as_deref(), Some("test"));
+            drop(profile.guard_generation(&baseline).await.unwrap());
+            assert!(!view.is_closed());
+            assert!(view.endpoint(&["vaults", "test", "sessions"]).is_ok());
+            assert_eq!(
+                view.endpoint(&["vaults", "other-vault", "sessions"])
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Forbidden
+            );
+            view.execute(
+                RemoteOperation::Me,
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        }
+        match retirement {
+            "profile" => profile.save(profile.profile().await).await.unwrap(),
+            "member" => profile
+                .remember_destination("other-member".into(), "test".into())
+                .await
+                .unwrap(),
+            _ => fixture.login(&client).await,
+        }
+        assert!(view.is_closed());
+        assert!(view.endpoint(&["vaults", "test", "sessions"]).is_err());
+    }
+}

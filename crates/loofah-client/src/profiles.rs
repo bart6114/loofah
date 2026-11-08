@@ -332,7 +332,7 @@ impl ProfileLease {
         .map_err(|_| worker_error())?
     }
 
-    pub async fn save(self: &Arc<Self>, mut profile: ConnectionProfile) -> Result<()> {
+    pub async fn save(self: &Arc<Self>, profile: ConnectionProfile) -> Result<()> {
         validate_profile(&profile)?;
         let mut state = self.state.clone().lock_owned().await;
         if state.removed {
@@ -341,6 +341,37 @@ impl ProfileLease {
         state.generation = state.generation.checked_add(1).ok_or_else(changed)?;
         state.retired.cancel();
         state.retired = tokio_util::sync::CancellationToken::new();
+        self.persist_profile(state, profile).await
+    }
+
+    /// Changing only the same member's default destination does not retarget or
+    /// retire already-bound work. Each authority retains its original snapshot.
+    pub async fn remember_destination(
+        self: &Arc<Self>,
+        member_id: String,
+        vault_id: String,
+    ) -> Result<()> {
+        let mut state = self.state.clone().lock_owned().await;
+        if state.removed {
+            return Err(changed());
+        }
+        let mut profile = state.stored.profile.clone();
+        profile.member_id = Some(member_id);
+        profile.vault_id = Some(vault_id);
+        validate_profile(&profile)?;
+        if profile.member_id != state.stored.profile.member_id {
+            state.generation = state.generation.checked_add(1).ok_or_else(changed)?;
+            state.retired.cancel();
+            state.retired = tokio_util::sync::CancellationToken::new();
+        }
+        self.persist_profile(state, profile).await
+    }
+
+    async fn persist_profile(
+        self: &Arc<Self>,
+        mut state: tokio::sync::OwnedMutexGuard<LoadedProfile>,
+        mut profile: ConnectionProfile,
+    ) -> Result<()> {
         let lease = self.clone();
         tokio::task::spawn_blocking(move || {
             let previous = &state.stored.profile;
@@ -909,6 +940,53 @@ mod process_tests {
 #[cfg(test)]
 mod generation_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn remembered_destination_is_durable_and_refuses_external_profile_replacement() {
+        let root = tempfile::tempdir().unwrap();
+        let store = ConnectionProfiles::new(root.path().join("profiles")).unwrap();
+        let lease = store
+            .create("work", "https://company.example")
+            .await
+            .unwrap();
+        lease
+            .remember_destination("member".into(), "vault-a".into())
+            .await
+            .unwrap();
+        let baseline = lease.generation().await.unwrap();
+        lease
+            .remember_destination("member".into(), "vault-b".into())
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .read("work")
+                .unwrap()
+                .unwrap()
+                .stored
+                .profile
+                .vault_id
+                .as_deref(),
+            Some("vault-b")
+        );
+        assert_eq!(baseline.profile().vault_id.as_deref(), Some("vault-a"));
+        drop(lease.guard_generation(&baseline).await.unwrap());
+        let path = store.path("work");
+        let mut replacement: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        replacement["profile"]["vault_id"] = serde_json::json!("external-vault");
+        let bytes = serde_json::to_vec_pretty(&replacement).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(
+            lease
+                .remember_destination("member".into(), "vault-c".into())
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+        assert_eq!(lease.profile().await.vault_id.as_deref(), Some("vault-b"));
+        assert!(lease.guard_generation(&baseline).await.is_err());
+    }
 
     #[tokio::test]
     async fn snapshot_allows_edits_but_aba_and_failed_edits_invalidate_commit_admission() {

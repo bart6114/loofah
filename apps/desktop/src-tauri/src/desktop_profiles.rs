@@ -145,21 +145,14 @@ pub async fn application_remember_desktop_destination<R: tauri::Runtime>(
         window.label(),
         &profile_id,
     )?;
-    let mut profile = lease.profile().await;
+    let profile = lease.profile().await;
     if profile.id != profile_id {
         return Err(hypr_loofah_client::failure(
             ErrorCode::Conflict,
             "The saved server connection changed; reload it before continuing",
         ));
     }
-    if profile.member_id.as_ref() == Some(&member_id)
-        && profile.vault_id.as_ref() == Some(&vault_id)
-    {
-        return Ok(());
-    }
-    profile.member_id = Some(member_id);
-    profile.vault_id = Some(vault_id);
-    lease.save(profile).await
+    lease.remember_destination(member_id, vault_id).await
 }
 
 #[cfg(test)]
