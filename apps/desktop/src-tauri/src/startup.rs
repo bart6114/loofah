@@ -67,6 +67,23 @@ pub fn spawn(app: AppHandle, store: Arc<SessionStore>) {
             tracing::error!(%error, "local processing startup failed; vault notes remain available");
         }
         state.set_phase(StartupPhase::Ready);
+        if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>() {
+            let lease = app
+                .state::<tauri_plugin_settings::LocalVaultLease>()
+                .0
+                .clone();
+            let result = match hypr_loofah_local_owner::EndpointRoot::system() {
+                Ok(endpoints) => {
+                    app.state::<crate::local_owner::LocalOwnerState>()
+                        .start(context.inner().clone(), lease, endpoints)
+                        .await
+                }
+                Err(error) => Err(error.to_string()),
+            };
+            if let Err(error) = result {
+                tracing::error!(%error, "local CLI endpoint startup failed; vault notes remain available");
+            }
+        }
         tokio::task::spawn_blocking(move || {
             if let Err(error) = app.notify().start() {
                 tracing::error!(%error, "failed to start vault watcher");

@@ -54,6 +54,16 @@ export type CaptureLiveState = "starting" | "running" | "finishing" | "cancellin
 
 export type CapturePrefixReceipt = { capture_fingerprint: string; chunk_count: number; frames: number; pcm_bytes: number; chain_digest: string }
 
+export type CaptureProcessingFailure = "access_denied" | "model_unavailable" | "model_changed" | "source_changed" | "source_unavailable" | "child_failed" | "storage" | "interrupted"
+
+export type CaptureProcessingRequest = { capture_fingerprint: string; model?: string | null; languages?: string[]; keywords?: string[]; summary?: CaptureProcessingSummary | null }
+
+export type CaptureProcessingSnapshot = { capture_id: string; capture_fingerprint: string; intent_id: string; session_id: string | null; model: string; request: CaptureProcessingRequest; state: CaptureProcessingState; live_generation_id: string | null; repair_job_id: string | null; summary_job_id: string | null; transcript_publication: TranscriptionPublication | null; failure: CaptureProcessingFailure | null; created_at: string; updated_at: string }
+
+export type CaptureProcessingState = "waiting" | "live" | "waiting_for_publication" | "repairing" | "summarizing" | "succeeded" | "empty" | "cancelled" | "conflict" | "interrupted" | "uncertain" | "failed"
+
+export type CaptureProcessingSummary = { target: DocumentTarget; title_policy?: TitlePolicy }
+
 /**
  * An authenticated verifier must compare the finalized service receipt with an
  * independent canonical artifact read before supplying this observation.
@@ -220,6 +230,12 @@ export type ProcessingTitleResult = { status: ProcessingTitleStatus; candidate?:
 
 export type ProcessingTitleStatus = "generating" | "applying" | "applied" | "empty" | "already_named" | "unsupported" | "failed" | "cancelled" | "conflict" | "interrupted" | "unconfirmed"
 
+export type ProviderCredentialSaveOutcome = { kind: "saved"; status: ProviderCredentialStatus } | { kind: "conflict"; status: ProviderCredentialStatus }
+
+export type ProviderCredentialSource = "vault" | "operator" | "missing"
+
+export type ProviderCredentialStatus = { provider_id: string; revision: string; source: ProviderCredentialSource; endpoint_matches: boolean }
+
 export type RecordingLease = { id: string; vault_id: string; session_id: string; metadata: FileMetadata; idle_timeout_secs: number }
 
 export type RecordingWaveform = { recording_sha256: string; peaks: AudioPeaks }
@@ -249,6 +265,8 @@ export type SaveNoteEditorRequest = { markdown: string; title: string | null; ex
 export type SaveNoteRequest = { markdown: string; title: string | null; expected_revision: string }
 
 export type SaveProcessingSettingsRequest = { settings: ProcessingSettings; expected_revision: string }
+
+export type SaveProviderCredentialRequest = { expected_revision: string; api_key: string | null }
 
 export type SearchMeetingsInput = { query: string; limit: number | null; offset: number | null }
 

@@ -307,6 +307,7 @@ msgstr "Cancel"
 msgid "Cancel date edit"
 msgstr "Cancel date edit"
 
+#: src/shared/application/device-recording-queue.tsx
 #: src/shared/application/vault-processing.tsx
 msgid "Cancel processing"
 msgstr "Cancel processing"
@@ -445,6 +446,10 @@ msgstr "Clear"
 msgid "Clear unsupported template"
 msgstr "Clear unsupported template"
 
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "Clear vault key"
+msgstr "Clear vault key"
+
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/search/bar.tsx
@@ -488,6 +493,10 @@ msgstr "Company member"
 #: src/shared/application/server-preview.tsx
 msgid "Company sign-in"
 msgstr "Company sign-in"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Completing the transcript from saved audio."
+msgstr "Completing the transcript from saved audio."
 
 #: src/onboarding/folder-location.tsx
 msgid "Confirm"
@@ -718,6 +727,14 @@ msgstr "Created"
 #: src/shared/useNewNote.ts
 msgid "Creating note..."
 msgstr "Creating note..."
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Creating the summary."
+msgstr "Creating the summary."
+
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "Credential update confirmed."
+msgstr "Credential update confirmed."
 
 #: src/settings/ai/llm/select.tsx
 msgid "Current connection"
@@ -1142,6 +1159,10 @@ msgstr "Keep Loofah available from the notification area."
 msgid "Keep request"
 msgstr "Keep request"
 
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "Keys are stored on the server for this vault and are never shown again. Clearing a vault key restores the server's configured key, when available."
+msgstr "Keys are stored on the server for this vault and are never shown again. Clearing a vault key restores the server's configured key, when available."
+
 #: src/settings/general/main-language.tsx
 msgid "Language for summaries and generated titles"
 msgstr "Language for summaries and generated titles"
@@ -1157,6 +1178,10 @@ msgstr "Light"
 #: src/settings/ai/stt/select.tsx
 msgid "Live"
 msgstr "Live"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Live captions are interrupted. Recording continues on this device."
+msgstr "Live captions are interrupted. Recording continues on this device."
 
 #. placeholder {0}: formatLanguageList(unsupportedLanguages)
 #: src/settings/ai/stt/select.tsx
@@ -1387,6 +1412,10 @@ msgstr "MP3 audio"
 msgid "Name"
 msgstr "Name"
 
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "New API key"
+msgstr "New API key"
+
 #: src/shared/application/notes-workspace.tsx
 msgid "New note"
 msgstr "New note"
@@ -1457,6 +1486,10 @@ msgstr "No models ready to use."
 msgid "No notes found."
 msgstr "No notes found."
 
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "No provider key is configured."
+msgstr "No provider key is configured."
+
 #: src/settings/ai/shared/model-combobox.tsx
 #: src/settings/general/searchable-select.tsx
 msgid "No results found."
@@ -1469,6 +1502,10 @@ msgstr "No saved recovery drafts."
 #: src/shared/application/vault-processing.tsx
 msgid "No saved summary requests."
 msgstr "No saved summary requests."
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "No speech was found."
+msgstr "No speech was found."
 
 #: src/shared/application/vault-processing-settings.tsx
 msgid "No summary model"
@@ -1672,6 +1709,10 @@ msgstr "Preview unavailable. You can open or save the original file."
 msgid "Previous match"
 msgstr "Previous match"
 
+#: src/shared/application/device-recording-queue.tsx
+msgid "Processing cancellation is saved. Audio capture and upload continue."
+msgstr "Processing cancellation is saved. Audio capture and upload continue."
+
 #: src/shared/application/vault-processing.tsx
 msgid "Processing may already have started. Resume uses the original request."
 msgstr "Processing may already have started. Resume uses the original request."
@@ -1687,6 +1728,14 @@ msgstr "Processing settings"
 #: src/shared/application/vault-processing.tsx
 msgid "Processing stopped before completion."
 msgstr "Processing stopped before completion."
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Processing was requested and will start after the server receives audio."
+msgstr "Processing was requested and will start after the server receives audio."
+
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "Provider credentials"
+msgstr "Provider credentials"
 
 #: src/shared/application/vault-processing-settings.tsx
 msgid "Provider endpoint"
@@ -1815,6 +1864,10 @@ msgstr "Refine your search to see more results."
 #: src/shared/application/device-recording-queue.tsx
 msgid "Refresh"
 msgstr "Refresh"
+
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "Refresh credential status"
+msgstr "Refresh credential status"
 
 #: src/settings/general/storage/rebuild-index.tsx
 msgid "Refresh notes from disk"
@@ -2066,6 +2119,10 @@ msgstr "Save startup choice"
 msgid "Save title"
 msgstr "Save title"
 
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "Save vault key"
+msgstr "Save vault key"
+
 #: src/settings/ai/shared/index.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
@@ -2196,6 +2253,18 @@ msgstr "Server address"
 #: src/shared/application/server-preview.tsx
 msgid "Server notes preview"
 msgstr "Server notes preview"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Server processing finished."
+msgstr "Server processing finished."
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Server processing needs review. The device recording is retained."
+msgstr "Server processing needs review. The device recording is retained."
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Server processing was cancelled."
+msgstr "Server processing was cancelled."
 
 #: src/session/components/note-input/header.tsx
 msgid "Session note views"
@@ -2462,6 +2531,10 @@ msgstr "Summaries not enabled"
 msgid "Summarize saved notes"
 msgstr "Summarize saved notes"
 
+#: src/shared/application/device-processing-options.tsx
+msgid "Summarize when transcription finishes"
+msgstr "Summarize when transcription finishes"
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/shared/application/notes-workspace.tsx
 msgid "Summary"
@@ -2605,6 +2678,10 @@ msgstr "The attachment changed. Close this dialog and review it again."
 msgid "The attachment was not removed. Close this dialog and review it again."
 msgstr "The attachment was not removed. Close this dialog and review it again."
 
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "The credential changed. Review its status before saving another key."
+msgstr "The credential changed. Review its status before saving another key."
+
 #: src/session/components/session-date.tsx
 msgid "The date was saved, but its current value could not be confirmed."
 msgstr "The date was saved, but its current value could not be confirmed."
@@ -2628,6 +2705,10 @@ msgstr "The preview is shortened. Copy to recover the complete text."
 #: src/sidebar/timeline/index.tsx
 msgid "The previous note is outside the refreshed window. Scroll position was reset."
 msgstr "The previous note is outside the refreshed window. Scroll position was reset."
+
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "The provider endpoint changed. Its previous vault key is inactive."
+msgstr "The provider endpoint changed. Its previous vault key is inactive."
 
 #: src/shared/application/vault-processing.tsx
 msgid "The provider returned an unusable summary."
@@ -2760,6 +2841,10 @@ msgstr "Title saved"
 msgid "Total file sizes, including attachments and hidden files. Space used on this Mac may differ for cloud files."
 msgstr "Total file sizes, including attachments and hidden files. Space used on this Mac may differ for cloud files."
 
+#: src/shared/application/device-processing-options.tsx
+msgid "Transcribe on the server"
+msgstr "Transcribe on the server"
+
 #: src/settings/ai/stt/timing.tsx
 msgid "Transcribe when the recording ends."
 msgstr "Transcribe when the recording ends."
@@ -2768,6 +2853,10 @@ msgstr "Transcribe when the recording ends."
 #: src/session/components/outer-header/index.tsx
 msgid "Transcribing"
 msgstr "Transcribing"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Transcribing on the server."
+msgstr "Transcribing on the server."
 
 #: src/session/components/note-input/header.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -2930,6 +3019,14 @@ msgstr "Use your microphone to capture your voice"
 msgid "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
 msgstr "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
 
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "Using a vault key."
+msgstr "Using a vault key."
+
+#: src/shared/application/vault-provider-credentials.tsx
+msgid "Using the server's configured key."
+msgstr "Using the server's configured key."
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Variables"
 msgstr "Variables"
@@ -2975,6 +3072,10 @@ msgstr "Version {0}"
 #: src/shared/application/notes-workspace.tsx
 msgid "View"
 msgstr "View"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Waiting for the complete recording to finish processing."
+msgstr "Waiting for the complete recording to finish processing."
 
 #: src/main/about-storage.tsx
 msgid "WAV audio"

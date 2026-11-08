@@ -747,6 +747,9 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         return;
     }
     state.request_shutdown();
+    if let Some(owner) = app.try_state::<crate::local_owner::LocalOwnerState>() {
+        owner.request_shutdown();
+    }
     if let Some(processing) = app.try_state::<crate::processing::ProcessingState>() {
         processing.request_shutdown();
     }
@@ -758,6 +761,12 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         {
             let _ = tauri::Emitter::emit(&app, "device-recording-exit-pending", ());
             tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        if let Some(owner) = app.try_state::<crate::local_owner::LocalOwnerState>() {
+            while !owner.drain(Duration::from_secs(5)).await {
+                let _ = tauri::Emitter::emit(&app, "device-recording-exit-pending", ());
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
         }
         if let Some(store) = app.try_state::<Arc<crate::session_store::SessionStore>>()
             && let Err(error) = store.flush_all().await

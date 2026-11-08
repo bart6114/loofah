@@ -92,6 +92,9 @@ import type {
   ProcessingSettingsSnapshot,
   ProcessingSettingsSaveOutcome,
   SaveProcessingSettingsRequest,
+  ProviderCredentialStatus,
+  ProviderCredentialSaveOutcome,
+  SaveProviderCredentialRequest,
 } from "./protocol.gen";
 import type { NativeRemoteConnection } from "./remote";
 
@@ -122,6 +125,17 @@ export type VaultClient = {
     options?: RequestOptions,
   ) => Promise<void>;
   readonly features: readonly string[];
+  providerCredentials?: {
+    status: (
+      providerId: string,
+      options?: RequestOptions,
+    ) => Promise<ProviderCredentialStatus>;
+    save: (
+      providerId: string,
+      input: SaveProviderCredentialRequest,
+      options: RequestOptions & { requestId: string },
+    ) => Promise<ProviderCredentialSaveOutcome>;
+  };
   processingPolicy: (options?: RequestOptions) => Promise<ProcessingPolicy>;
   processingSettings: (
     options?: RequestOptions,
@@ -737,6 +751,33 @@ export function connectRemoteVault(
     scope: remoteVaultScope(connection.info.server, memberId, vaultId),
     networkMode: "online",
     canEdit: vault.role !== "reader",
+    providerCredentials:
+      vault.role === "owner" &&
+      connection.info.capabilities.features.includes("provider_credentials")
+        ? {
+            status: (providerId, options) =>
+              connection.request(
+                {
+                  kind: "provider_credential_status",
+                  vault_id: vaultId,
+                  provider_id: providerId,
+                },
+                "provider_credential_status",
+                options,
+              ),
+            save: (providerId, input, options) =>
+              connection.request(
+                {
+                  kind: "save_provider_credential",
+                  vault_id: vaultId,
+                  provider_id: providerId,
+                  input,
+                },
+                "provider_credential_save",
+                options,
+              ),
+          }
+        : undefined,
     attachmentPresentation: scopedAttachmentPresentation,
     attachments: (sessionId, limit, after, options) =>
       connection.request(

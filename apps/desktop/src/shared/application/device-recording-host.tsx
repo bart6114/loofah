@@ -11,6 +11,11 @@ import {
 
 import { Button } from "@hypr/ui/components/ui/button";
 
+import {
+  captureProcessingOptions,
+  DeviceProcessingOptions,
+  useDeviceProcessingOptions,
+} from "./device-processing-options";
 import { DeviceRecordingQueue } from "./device-recording-queue";
 import {
   createDeviceRecordingClient,
@@ -79,6 +84,7 @@ export function DeviceRecordingHost({
         <DeviceRecordingQueue
           profileId={profileId}
           client={monitor.client}
+          selectedScope={destination?.scope ?? null}
           resumeUpload={
             current?.destination.connectionId
               ? current.client.resumeUpload
@@ -99,6 +105,7 @@ function PendingRecordButton({
   recording: DeviceRecordingOwner;
 }) {
   const cache = useQueryClient();
+  const processing = useDeviceProcessingOptions();
   const queryKey = ["device", "recordings", profileId];
   const inventory = useQuery({
     queryKey,
@@ -123,6 +130,7 @@ function PendingRecordButton({
           sample_rate: 16000,
           channels: ["microphone", "system_audio"],
         },
+        processing: captureProcessingOptions(processing.state.values),
       });
       return recording.client.start(request);
     },
@@ -152,6 +160,10 @@ function PendingRecordButton({
   );
   return (
     <div className="flex flex-col items-start gap-1">
+      <DeviceProcessingOptions
+        form={processing}
+        disabled={start.isPending || (!!intent.current && !start.isSuccess)}
+      />
       <Button
         size="sm"
         variant="outline"
@@ -204,6 +216,7 @@ function AdmittedRecordButton({
   recording: DeviceRecordingOwner;
 }) {
   const owner = useVaultReadScope();
+  const processing = useDeviceProcessingOptions();
   const cache = useQueryClient();
   const { scope } = owner;
   const connected = owner.current() && owner.connection.state === "connected";
@@ -249,6 +262,7 @@ function AdmittedRecordButton({
           sample_rate: 16000,
           channels: ["microphone", "system_audio"],
         },
+        processing: captureProcessingOptions(processing.state.values),
       });
       try {
         return await recording.client.start(request);
@@ -265,6 +279,10 @@ function AdmittedRecordButton({
     !transcript.data.has_words;
   return (
     <div className="flex flex-col items-start gap-1">
+      <DeviceProcessingOptions
+        form={processing}
+        disabled={start.isPending || !!intent.current}
+      />
       <Button
         size="sm"
         variant="outline"

@@ -183,7 +183,13 @@ fn transfer(source: &Path, mut target: Option<&mut File>) -> Result<(u64, String
         bytes += count as u64;
         hash.update(&buffer[..count]);
     }
-    Ok((bytes, format!("{:x}", hash.finalize())))
+    Ok((
+        bytes,
+        hash.finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    ))
 }
 
 pub(super) fn inventory(root: &Path) -> Result<Inventory> {

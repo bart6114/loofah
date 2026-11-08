@@ -27,7 +27,8 @@ pub use events::{
 pub use os_credentials::OsCredentials;
 pub use profiles::{
     ConnectionProfile, ConnectionProfiles, DesktopStartupSaveOutcome, DesktopStartupSelection,
-    DesktopStartupSnapshot, ProfileLease, SaveDesktopStartupRequest,
+    DesktopStartupSnapshot, ProfileCommitGuard, ProfileGeneration, ProfileLease,
+    SaveDesktopStartupRequest,
 };
 pub use requests::{RemoteOperation, RemoteReply};
 pub use submissions::{JobSubmissionReceipt, JobSubmissions};

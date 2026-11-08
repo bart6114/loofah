@@ -8,6 +8,7 @@ import type { createDeviceRecordingMonitor } from "./device-recordings";
 
 import type {
   CaptureIdentity,
+  CaptureScope,
   CaptureUploadProgress,
   DeviceRecordingInfo,
 } from "~/types/tauri.gen";
@@ -16,10 +17,12 @@ export function DeviceRecordingQueue({
   profileId,
   client,
   resumeUpload,
+  selectedScope,
 }: {
   profileId: string;
   client: ReturnType<typeof createDeviceRecordingMonitor>;
   resumeUpload?: (identity: CaptureIdentity) => Promise<CaptureUploadProgress>;
+  selectedScope?: CaptureScope | null;
 }) {
   const cache = useQueryClient();
   const queryKey = useMemo(
@@ -105,6 +108,12 @@ export function DeviceRecordingQueue({
           recording={recording}
           client={client}
           resumeUpload={resumeUpload}
+          processingVisible={
+            !!selectedScope &&
+            selectedScope.server === recording.identity.scope.server &&
+            selectedScope.member_id === recording.identity.scope.member_id &&
+            selectedScope.vault_id === recording.identity.scope.vault_id
+          }
         />
       ))}
     </section>
@@ -115,10 +124,12 @@ function DeviceRecordingRow({
   recording,
   client,
   resumeUpload,
+  processingVisible,
 }: {
   recording: DeviceRecordingInfo;
   client: ReturnType<typeof createDeviceRecordingMonitor>;
   resumeUpload?: (identity: CaptureIdentity) => Promise<CaptureUploadProgress>;
+  processingVisible: boolean;
 }) {
   const cache = useQueryClient();
   const stop = useMutation({
@@ -241,6 +252,9 @@ function DeviceRecordingRow({
           <Trans>Recording did not start.</Trans>
         )}
       </p>
+      {processingVisible && recording.processing && (
+        <DeviceProcessingDetails recording={recording} client={client} />
+      )}
       {(recording.failure ||
         recording.upload?.error ||
         stop.error ||
@@ -257,5 +271,106 @@ function DeviceRecordingRow({
         </p>
       )}
     </div>
+  );
+}
+
+function DeviceProcessingDetails({
+  recording,
+  client,
+}: {
+  recording: DeviceRecordingInfo;
+  client: ReturnType<typeof createDeviceRecordingMonitor>;
+}) {
+  const cache = useQueryClient();
+  const cancel = useMutation({
+    mutationFn: () => client.cancelProcessing(recording.identity),
+    onSettled: () =>
+      cache.invalidateQueries({ queryKey: ["device", "recordings"] }),
+    networkMode: "always",
+    retry: false,
+  });
+  const processing = recording.processing!;
+  const status = processing.status;
+  const captions = processing.captions;
+  const visibleCaptions =
+    captions && ["connected", "reconnecting"].includes(captions.connection);
+  const terminal =
+    status &&
+    [
+      "succeeded",
+      "empty",
+      "cancelled",
+      "conflict",
+      "interrupted",
+      "uncertain",
+      "failed",
+    ].includes(status.state);
+  return (
+    <section
+      aria-label="Recording processing"
+      className="flex flex-col gap-2 rounded border p-2"
+    >
+      <p role="status">
+        {processing.declaration.cancel_requested ? (
+          <Trans>
+            Processing cancellation is saved. Audio capture and upload continue.
+          </Trans>
+        ) : status?.state === "succeeded" ? (
+          <Trans>Server processing finished.</Trans>
+        ) : status?.state === "empty" ? (
+          <Trans>No speech was found.</Trans>
+        ) : status?.state === "cancelled" ? (
+          <Trans>Server processing was cancelled.</Trans>
+        ) : status?.state === "live" ? (
+          <Trans>Transcribing on the server.</Trans>
+        ) : status?.state === "repairing" ? (
+          <Trans>Completing the transcript from saved audio.</Trans>
+        ) : status?.state === "summarizing" ? (
+          <Trans>Creating the summary.</Trans>
+        ) : status?.state === "waiting_for_publication" ? (
+          <Trans>
+            Waiting for the complete recording to finish processing.
+          </Trans>
+        ) : terminal ? (
+          <Trans>
+            Server processing needs review. The device recording is retained.
+          </Trans>
+        ) : (
+          <Trans>
+            Processing was requested and will start after the server receives
+            audio.
+          </Trans>
+        )}
+      </p>
+      {visibleCaptions && (
+        <div aria-label="Recent live captions">
+          <p>{captions.words.map((word) => word.text).join(" ")}</p>
+          <p className="text-muted-foreground">
+            {captions.partials.map((word) => word.text).join(" ")}
+          </p>
+          {captions.connection === "reconnecting" && (
+            <p role="status">
+              <Trans>
+                Live captions are interrupted. Recording continues on this
+                device.
+              </Trans>
+            </p>
+          )}
+        </div>
+      )}
+      {!terminal && !processing.declaration.cancel_requested && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={cancel.isPending}
+          onClick={() => cancel.mutate()}
+        >
+          <Trans>Cancel processing</Trans>
+        </Button>
+      )}
+      {(processing.error || cancel.error) && (
+        <p role="alert">{cancel.error?.message ?? processing.error?.message}</p>
+      )}
+    </section>
   );
 }

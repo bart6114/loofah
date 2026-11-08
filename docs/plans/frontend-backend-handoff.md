@@ -1,6 +1,45 @@
 # Frontend/backend separation handoff
 
-## Status: paused for transfer to another workstation
+## Status: resumed; implementation and integrated validation continue
+
+The implementation resumed on Apple Silicon macOS in an isolated
+`/Users/bartsmeets/src/loofah-backend-separation` worktree. The user's workstation
+override replaces every historical T7 storage requirement for this run. Checkout,
+Cargo targets and intermediates, downloaded dependencies, module caches, models
+and logs use local storage. The local environment is recorded outside Git at
+`/Users/bartsmeets/Library/Caches/loofah-separation/env.sh`; short Unix socket test
+paths use `/private/tmp/loofah-owner-validation`. Both target symlinks resolve to
+the local cache. Override both `CARGO_BUILD_TARGET_DIR` and
+`CARGO_BUILD_BUILD_DIR`: the ancestor user Cargo configuration otherwise selects
+the former external drive even with a different `CARGO_HOME`.
+
+New integrated source includes durable explicit device processing declarations,
+offline cancellation and bounded scoped caption observation; checked Local CLI
+MP3 publication and transcript replacement through an injected portable host;
+and owner-only provider credential storage with opaque revisions, endpoint
+binding and per-admission key resolution. The Native owner endpoint composes the
+existing managed Context and original lease. Its shutdown joins admitted owner
+work before the final Store flush. Generated contracts and full Native/platform
+validation remain integration gates; source checkpoints alone do not prove them.
+
+Completed continuation checks so far:
+
+- Original-head frontend baseline: 2,563 tests in 279 files.
+- All four pending processing SDK TLS regressions.
+- First combined scoped Rust cohort: 27 passing cases across six packages,
+  including credentials, owner progress, device declarations and SDK transport.
+- Integrated provider/device frontend cohort: 75 tests across five files.
+- The following shared media cohort passed 81 cases and exposed one MP3 recovery
+  failure. The capture-only transcript guards responsible have been corrected;
+  the combined Native/library rerun is the next authoritative result.
+
+Local shared lifecycle activation remains default OFF. Main Remote activation,
+complete CLI recovery/output parity, recording append, verified retention,
+backup/restore/upgrades, realistic production UX, sustained recording/network
+acceptance and final macOS/Windows/Linux qualification remain required. Local
+stays standalone, offline and login-free. Do not merge, release or bump versions.
+
+## Transfer checkpoint (historical)
 
 The user explicitly requested that this workstation pause after saving all current
 progress to draft PR [123](https://github.com/bart6114/loofah/pull/123). All three

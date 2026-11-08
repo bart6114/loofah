@@ -18,6 +18,7 @@ import type {
   ProcessingSettingsSnapshot,
   SaveProcessingSettingsRequest,
 } from "./protocol.gen";
+import { VaultProviderCredentials } from "./vault-provider-credentials";
 import type { VaultScope } from "./vault-scope";
 
 export function VaultProcessingSettings({ scope }: { scope: VaultScope }) {
@@ -111,6 +112,11 @@ function SettingsLoader({
         connected={connected}
         policy={policy.data}
         current={current.data}
+      />
+      <VaultProviderCredentials
+        scope={scope}
+        policy={policy.data}
+        connected={connected}
       />
     </>
   );

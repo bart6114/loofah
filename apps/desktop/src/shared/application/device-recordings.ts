@@ -95,6 +95,12 @@ function createMonitor() {
     async stop(identity: CaptureIdentity) {
       return applicationResult(await commands.deviceRecordingStop(identity));
     },
+    async cancelProcessing(identity: CaptureIdentity) {
+      assertOpen();
+      return applicationResult(
+        await commands.deviceRecordingCancelProcessing(identity),
+      );
+    },
     async finishRecovery(identity: CaptureIdentity) {
       assertOpen();
       return applicationResult(

@@ -60,7 +60,9 @@ pub fn show_devtool<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
 pub async fn complete_app_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     let device = app.state::<crate::device_recordings::DeviceRecordingState>();
     device.request_shutdown();
-    if device.initialized() {
+    let owner = app.state::<crate::local_owner::LocalOwnerState>();
+    owner.request_shutdown();
+    if device.initialized() || owner.initialized() {
         crate::device_recordings::begin_exit(app);
         return;
     }

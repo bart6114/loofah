@@ -15,6 +15,7 @@ mod identifier_migration;
 mod job_submissions;
 mod legacy_db;
 mod legacy_llm;
+mod local_owner;
 mod processing;
 mod recording_meta;
 mod remote;
@@ -224,6 +225,7 @@ pub async fn main() {
         .manage(audio)
         .manage(chatgpt::ChatgptState::default())
         .manage(processing::ProcessingState::default())
+        .manage(local_owner::LocalOwnerState::default())
         .manage(job_submissions::JobSubmissionState::default())
         .manage(device_vault_state::DeviceVaultState::default())
         .manage(remote::RemoteState::default())
@@ -516,10 +518,13 @@ pub async fn main() {
 
             let device = app.state::<device_recordings::DeviceRecordingState>();
             device.request_shutdown();
-            if device.initialized() {
+            let owner = app.state::<local_owner::LocalOwnerState>();
+            owner.request_shutdown();
+            if device.initialized() || owner.initialized() {
                 api.prevent_exit();
                 let _ = app.emit("device-recording-exit-pending", ());
-                if app.emit_to("main", APP_EXIT_REQUESTED_EVENT, ()).is_err() {
+                if should_force_quit() || app.emit_to("main", APP_EXIT_REQUESTED_EVENT, ()).is_err()
+                {
                     device_recordings::begin_exit(app.clone());
                 } else {
                     device_recordings::allow_frontend_exit_flush(app);
@@ -552,6 +557,8 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            app.state::<local_owner::LocalOwnerState>()
+                .request_shutdown();
             app.state::<device_recordings::DeviceRecordingState>()
                 .request_shutdown();
             app.state::<processing::ProcessingState>()
@@ -757,6 +764,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::set_dismissed_toasts::<tauri::Wry>,
             commands::show_devtool::<tauri::Wry>,
             device_recordings::device_recording_start::<tauri::Wry>,
+            device_recordings::device_recording_cancel_processing::<tauri::Wry>,
             device_recordings::device_recording_inventory::<tauri::Wry>,
             device_recordings::device_recording_recovery_inventory::<tauri::Wry>,
             device_recordings::device_recording_finish_recovery::<tauri::Wry>,

@@ -20,6 +20,7 @@ const native = vi.hoisted(() => ({
   resume: vi.fn(),
   finish: vi.fn(),
   exportAudio: vi.fn(),
+  cancelProcessing: vi.fn(),
   updates: new Set<() => void>(),
   destinations: [] as unknown[],
 }));
@@ -36,6 +37,7 @@ vi.mock("./device-recordings", () => ({
       stop: vi.fn(async () => true),
       finishRecovery: native.finish,
       exportAudio: native.exportAudio,
+      cancelProcessing: native.cancelProcessing,
       dispose: vi.fn(),
     };
     native.monitors.push(monitor);
@@ -90,6 +92,7 @@ const record = (): import("~/types/tauri.gen").DeviceRecordingInfo => ({
   sealed: false,
   publication: null,
   upload: null,
+  processing: null,
   failure: null,
 });
 const scopes: VaultScope[] = [];
@@ -99,6 +102,7 @@ beforeEach(() => {
   native.start.mockReset().mockResolvedValue(record());
   native.finish.mockReset();
   native.exportAudio.mockReset();
+  native.cancelProcessing.mockReset().mockResolvedValue(true);
   native.records = [];
   native.monitors.length = 0;
   native.updates.clear();
@@ -300,6 +304,141 @@ it("retains both pending request identities when the start reply is unknown", as
   await waitFor(() => expect(native.start).toHaveBeenCalledTimes(2));
   expect(native.start.mock.calls[1][0]).toEqual(native.start.mock.calls[0][0]);
   expect(native.start.mock.calls[0][0].target.kind).toBe("pending_session");
+});
+
+it("captures explicit processing options before an offline pending start and preserves them after an unknown reply", async () => {
+  native.start.mockRejectedValue(new Error("Unknown recording outcome"));
+  await mount();
+  const button = await screen.findByRole("button", {
+    name: "Record a new note",
+  });
+  await waitFor(() =>
+    expect((button as HTMLButtonElement).disabled).toBe(false),
+  );
+  const transcribe = screen.getAllByRole("checkbox", {
+    name: "Transcribe on the server",
+  })[0];
+  const summarize = screen.getAllByRole("checkbox", {
+    name: "Summarize when transcription finishes",
+  })[0];
+  expect(summarize.matches(":disabled")).toBe(true);
+  fireEvent.click(transcribe);
+  fireEvent.click(summarize);
+  fireEvent.click(button);
+  await screen.findByText("Unknown recording outcome");
+  expect(transcribe.matches(":disabled")).toBe(true);
+  expect(summarize.matches(":disabled")).toBe(true);
+  fireEvent.click(button);
+  await waitFor(() => expect(native.start).toHaveBeenCalledTimes(2));
+  const first = native.start.mock.calls[0][0];
+  expect(first.processing).toEqual({
+    model: null,
+    languages: [],
+    keywords: [],
+    summary: {
+      target: { kind: "summary" },
+      title_policy: "generate_if_empty",
+    },
+  });
+  expect(native.start.mock.calls[1][0]).toEqual(first);
+  expect(first.target.kind).toBe("pending_session");
+});
+
+it("starts raw audio without declaring optional processing when it was not selected", async () => {
+  await mount();
+  const button = await screen.findByRole("button", { name: "Record audio" });
+  await waitFor(() =>
+    expect((button as HTMLButtonElement).disabled).toBe(false),
+  );
+  fireEvent.click(button);
+  await waitFor(() => expect(native.start).toHaveBeenCalledOnce());
+  expect(native.start.mock.calls[0][0].processing).toBeNull();
+});
+
+function processingRecord(): import("~/types/tauri.gen").DeviceRecordingInfo {
+  const value = record();
+  const format = {
+    encoding: "pcm_f32_le" as const,
+    sample_rate: 16000,
+    channels: ["microphone" as const, "system_audio" as const],
+  };
+  return {
+    ...value,
+    processing: {
+      format,
+      declaration: {
+        request: {
+          capture_fingerprint: "a".repeat(64),
+          model: null,
+          languages: [],
+          keywords: [],
+          summary: null,
+        },
+        cancel_requested: false,
+      },
+      status: null,
+      error: null,
+      captions: {
+        binding: {
+          capture_id: value.identity.capture_id,
+          generation_id: "generation",
+          capture_fingerprint: "a".repeat(64),
+          session_id: "note",
+          format,
+        },
+        connection: "reconnecting",
+        error: null,
+        next_sequence: 1,
+        words: [
+          {
+            id: "word",
+            text: "Saved caption",
+            start_ms: 0,
+            end_ms: 100,
+            channel: 0,
+            role: "microphone",
+          },
+        ],
+        partials: [],
+      },
+    },
+  };
+}
+
+it("shows interrupted caption delivery and cancels processing without stopping or retargeting raw audio", async () => {
+  native.records = [processingRecord()];
+  await mount();
+  await screen.findByText("Saved caption");
+  await screen.findByText(
+    "Live captions are interrupted. Recording continues on this device.",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Cancel processing" }));
+  await waitFor(() =>
+    expect(native.cancelProcessing).toHaveBeenCalledExactlyOnceWith(
+      native.records[0].identity,
+    ),
+  );
+  expect(
+    native.monitors.every((monitor) => !monitor.stop.mock.calls.length),
+  ).toBe(true);
+  expect(native.resume).not.toHaveBeenCalled();
+  expect(native.start).not.toHaveBeenCalled();
+});
+
+it("keeps another member's caption text private while retaining device audio recovery", async () => {
+  const value = processingRecord();
+  value.identity = {
+    ...value.identity,
+    scope: { ...value.identity.scope, member_id: "previous-member" },
+  };
+  native.records = [value];
+  await mount();
+  await screen.findByRole("button", { name: "Stop recording" });
+  expect(screen.queryByText("Saved caption")).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Cancel processing" }),
+  ).toBeNull();
+  expect(native.cancelProcessing).not.toHaveBeenCalled();
 });
 
 it("keeps pending capture disabled while this profile still owns an active recording", async () => {

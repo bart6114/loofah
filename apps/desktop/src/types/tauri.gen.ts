@@ -1603,6 +1603,21 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async deviceRecordingCancelProcessing(
+    identity: CaptureIdentity,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_cancel_processing", {
+          identity,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async deviceRecordingInventory(): Promise<
     Result<DeviceRecordingInventory, ApplicationError>
   > {
@@ -2691,6 +2706,65 @@ export type CaptureLiveState =
   | "repair_required"
   | "conflict"
   | "uncertain";
+export type CaptureProcessingDeclaration = {
+  request: CaptureProcessingRequest;
+  cancel_requested: boolean;
+};
+export type CaptureProcessingFailure =
+  | "access_denied"
+  | "model_unavailable"
+  | "model_changed"
+  | "source_changed"
+  | "source_unavailable"
+  | "child_failed"
+  | "storage"
+  | "interrupted";
+export type CaptureProcessingOptions = {
+  model?: string | null;
+  languages?: string[];
+  keywords?: string[];
+  summary?: CaptureProcessingSummary | null;
+};
+export type CaptureProcessingRequest = {
+  capture_fingerprint: string;
+  model?: string | null;
+  languages?: string[];
+  keywords?: string[];
+  summary?: CaptureProcessingSummary | null;
+};
+export type CaptureProcessingSnapshot = {
+  capture_id: string;
+  capture_fingerprint: string;
+  intent_id: string;
+  session_id: string | null;
+  model: string;
+  request: CaptureProcessingRequest;
+  state: CaptureProcessingState;
+  live_generation_id: string | null;
+  repair_job_id: string | null;
+  summary_job_id: string | null;
+  transcript_publication: TranscriptionPublication | null;
+  failure: CaptureProcessingFailure | null;
+  created_at: string;
+  updated_at: string;
+};
+export type CaptureProcessingState =
+  | "waiting"
+  | "live"
+  | "waiting_for_publication"
+  | "repairing"
+  | "summarizing"
+  | "succeeded"
+  | "empty"
+  | "cancelled"
+  | "conflict"
+  | "interrupted"
+  | "uncertain"
+  | "failed";
+export type CaptureProcessingSummary = {
+  target: DocumentTarget;
+  title_policy?: TitlePolicy;
+};
 /**
  * An authenticated verifier must compare the finalized service receipt with an
  * independent canonical artifact read before supplying this observation.
@@ -2837,11 +2911,28 @@ export type DesktopStartupSnapshot = {
 export type DeviceAttachmentSource =
   | { kind: "path"; path: string }
   | { kind: "staged"; id: string };
+export type DeviceCaptionPreview = {
+  binding: CaptureLiveBinding;
+  connection: ConnectionState;
+  error: ApplicationError | null;
+  next_sequence: number;
+  words: DeviceCaptionWord[];
+  partials: DeviceCaptionWord[];
+};
+export type DeviceCaptionWord = {
+  id: string | null;
+  text: string;
+  start_ms: number;
+  end_ms: number;
+  channel: number;
+  role: CaptureChannel;
+};
 export type DeviceCaptureStartRequest = {
   request_id: string;
   scope: CaptureScope;
   target: CaptureTarget;
   format: CaptureFormat;
+  processing?: CaptureProcessingOptions | null;
 };
 export type DeviceHostPhase =
   | "preparing"
@@ -2852,6 +2943,13 @@ export type DeviceHostPhase =
   | "finished"
   | "failed"
   | "never_started";
+export type DeviceProcessingProgress = {
+  format: CaptureFormat;
+  captions: DeviceCaptionPreview | null;
+  declaration: CaptureProcessingDeclaration;
+  status: CaptureProcessingSnapshot | null;
+  error: ApplicationError | null;
+};
 export type DeviceRecordingInfo = {
   profile_id: string;
   identity: CaptureIdentity;
@@ -2863,6 +2961,7 @@ export type DeviceRecordingInfo = {
   sealed: boolean;
   publication: CapturePublication | null;
   upload: CaptureUploadProgress | null;
+  processing: DeviceProcessingProgress | null;
   failure: string | null;
 };
 export type DeviceRecordingInventory = {
@@ -3235,6 +3334,16 @@ export type ProcessingTitleStatus =
   | "conflict"
   | "interrupted"
   | "unconfirmed";
+export type ProviderCredentialSaveOutcome =
+  | { kind: "saved"; status: ProviderCredentialStatus }
+  | { kind: "conflict"; status: ProviderCredentialStatus };
+export type ProviderCredentialSource = "vault" | "operator" | "missing";
+export type ProviderCredentialStatus = {
+  provider_id: string;
+  revision: string;
+  source: ProviderCredentialSource;
+  endpoint_matches: boolean;
+};
 /**
  * Summary of a `rebuild_index`/`refresh_session` pass. Counts reflect entries *derived
  * from files* this pass, not the resulting index size. `errors` never aborts the scan --
@@ -3280,6 +3389,21 @@ export type RemoteOperation =
   | { kind: "session_lifecycle"; vault_id: string; session_id: string }
   | { kind: "delete_session"; vault_id: string; input: DeleteSessionRequest }
   | { kind: "restore_session"; vault_id: string; input: RestoreSessionRequest }
+  | {
+      kind: "declare_capture_processing";
+      identity: CaptureIdentity;
+      input: CaptureProcessingRequest;
+    }
+  | {
+      kind: "capture_processing_status";
+      identity: CaptureIdentity;
+      input: CaptureProcessingRequest;
+    }
+  | {
+      kind: "cancel_capture_processing";
+      identity: CaptureIdentity;
+      input: CaptureProcessingRequest;
+    }
   | { kind: "transcription_policy"; vault_id: string }
   | {
       kind: "start_capture_live";
@@ -3317,6 +3441,17 @@ export type RemoteOperation =
       input: DeleteEmptySessionRequest;
     }
   | { kind: "session_summaries"; vault_id: string; input: SessionSummaryQuery }
+  | {
+      kind: "provider_credential_status";
+      vault_id: string;
+      provider_id: string;
+    }
+  | {
+      kind: "save_provider_credential";
+      vault_id: string;
+      provider_id: string;
+      input: SaveProviderCredentialRequest;
+    }
   | { kind: "processing_policy"; vault_id: string }
   | { kind: "processing_settings"; vault_id: string }
   | {
@@ -3491,6 +3626,7 @@ export type RemoteReply =
   | { kind: "session_delete"; value: DeleteSessionOutcome }
   | { kind: "session_restore"; value: RestoreSessionOutcome }
   | { kind: "transcription_policy"; value: TranscriptionPolicy }
+  | { kind: "capture_processing"; value: CaptureProcessingSnapshot }
   | { kind: "capture_live_snapshot"; value: CaptureLiveSnapshot }
   | { kind: "capture_live_captions"; value: CaptureLiveCaptionPage }
   | { kind: "capture_live_result"; value: TranscriptionJobResult | null }
@@ -3498,6 +3634,8 @@ export type RemoteReply =
   | { kind: "timeline_facets"; value: TimelineFacets }
   | { kind: "session_cleanup"; value: DeleteEmptySessionOutcome }
   | { kind: "session_summaries"; value: SessionSummary[] }
+  | { kind: "provider_credential_status"; value: ProviderCredentialStatus }
+  | { kind: "provider_credential_save"; value: ProviderCredentialSaveOutcome }
   | { kind: "processing_policy"; value: ProcessingPolicy }
   | { kind: "processing_settings"; value: ProcessingSettingsSnapshot }
   | { kind: "processing_settings_save"; value: ProcessingSettingsSaveOutcome }
@@ -3615,6 +3753,10 @@ export type SaveNoteRequest = {
 export type SaveProcessingSettingsRequest = {
   settings: ProcessingSettings;
   expected_revision: string;
+};
+export type SaveProviderCredentialRequest = {
+  expected_revision: string;
+  api_key: string | null;
 };
 export type ScoredTagSuggestion = { name: string; confidence: number };
 export type SearchDocument = {

@@ -786,7 +786,15 @@ async fn existing_capture_delivers_captions_before_seal_then_uses_live_publicati
         .await
         .unwrap();
     let done = terminal(&runtime.context, &source).await;
-    assert_eq!(done.state, CaptureProcessingState::Succeeded, "{done:?}");
+    let live = runtime
+        .context
+        .capture_live_processing_outcome(MEMBER.into(), source.identity.request_id.clone())
+        .await;
+    assert_eq!(
+        done.state,
+        CaptureProcessingState::Succeeded,
+        "{done:?}; live={live:?}"
+    );
     assert!(done.live_generation_id.is_some());
     assert!(done.repair_job_id.is_none());
     assert_eq!(batch.calls.load(Ordering::Acquire), 0);

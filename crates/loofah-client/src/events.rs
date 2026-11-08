@@ -57,6 +57,7 @@ impl Subscription {
             .is_err()
         {
             self.task.abort();
+            let _ = (&mut self.task).await;
         }
     }
 }

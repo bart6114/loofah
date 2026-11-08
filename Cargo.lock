@@ -3453,6 +3453,8 @@ dependencies = [
  "intercept",
  "loofah-client",
  "loofah-core",
+ "loofah-local-media",
+ "loofah-local-owner",
  "loofah-protocol",
  "pico-args",
  "ractor",
@@ -7647,6 +7649,7 @@ dependencies = [
  "listener2-core",
  "loofah-client",
  "loofah-core",
+ "loofah-local-media",
  "loofah-local-owner",
  "loofah-protocol",
  "open",
@@ -7733,6 +7736,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "loofah-local-media"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fs-sync-core",
+ "listener2-core",
+ "loofah-core",
+ "loofah-protocol",
+ "owhisper-interface",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "transcribe-soniqo",
+ "uuid",
+ "vault-read",
+]
+
+[[package]]
 name = "loofah-local-owner"
 version = "0.1.0"
 dependencies = [
@@ -7748,6 +7769,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uuid",
+ "vault-read",
  "windows 0.62.2",
 ]
 

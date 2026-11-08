@@ -74,6 +74,8 @@ hypr-fs-format = { workspace = true }
 hypr-host = { workspace = true }
 hypr-loofah-client = { workspace = true, features = ["os-credentials"] }
 hypr-loofah-core = { workspace = true }
+hypr-loofah-local-media = { workspace = true }
+hypr-loofah-local-owner = { workspace = true, features = ["core"] }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }
