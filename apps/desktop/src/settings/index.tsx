@@ -45,6 +45,12 @@ export function TabContentSettings({
   const access = useLegacyDesktopAccess();
   const requested = tab.state.tab as string | undefined;
   const active = requested === "data" ? "storage" : (requested ?? "app");
+  if (active === "permissions")
+    return (
+      <StandardContentWrapper>
+        <SettingsView tab={tab} preloadLegacy={false} />
+      </StandardContentWrapper>
+    );
   const feature =
     active === "intelligence" || active === "summary-prompt"
       ? "legacy_desktop_enhance"

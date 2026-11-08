@@ -653,3 +653,9 @@ publication lock; mutations retain the original lifecycle/physical-work admissio
 through actual Store work. The Local renderer retains its existing qualification
 flag and does not enable this new path yet. Focused frontend verification passed 136 tests including the snapshot-binding regression. Rust/Native/platform qualification for
 this source checkpoint remains on the sole integration build path.
+
+Native microphone/system-audio Permissions settings are available in Remote
+workspaces without hydrating vault configuration or preloading Local processors.
+Recording reminder/floating settings remain gated until their events target the
+scoped device capture owner; the legacy notification listener must never be
+mounted in a Remote workspace because it creates Local sessions.
