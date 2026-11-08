@@ -1127,3 +1127,93 @@ async fn conditional_jobs_generate_once_for_an_unchanged_empty_document_and_reop
         job.id
     );
 }
+
+#[tokio::test]
+async fn preview_cancellation_keeps_original_worker_until_actual_drain_and_flushes_late_partial() {
+    struct PreviewGenerator(Arc<Generator>);
+    impl JobGenerator for PreviewGenerator {
+        fn generate(
+            &self,
+            work: JobWork,
+            cancel: CancellationToken,
+        ) -> JobFuture<'_, Result<GeneratedDocument, ProcessingJobFailure>> {
+            self.0.generate(work, cancel)
+        }
+        fn generate_with_preview(
+            &self,
+            work: JobWork,
+            cancel: CancellationToken,
+            preview: GenerationPreview,
+            _: bool,
+        ) -> JobFuture<'_, Result<PreparedGeneration, ProcessingJobFailure>> {
+            Box::pin(async move {
+                preview.reset();
+                preview.update("# Initial partial", true);
+                let document = self.0.generate(work, cancel).await?;
+                preview.update(&document.markdown, true);
+                Ok(PreparedGeneration {
+                    document,
+                    title: None,
+                })
+            })
+        }
+    }
+    let f = Fixture::new("# Late partial after actual drain", true).await;
+    let job = f.submit().await;
+    let worker = JobWorker::start(
+        f.context.clone(),
+        f.journal.clone(),
+        Arc::new(PreviewGenerator(f.generator.clone())),
+        f.authorizer.clone(),
+    )
+    .await
+    .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let value = f
+                .journal
+                .owned_preview("member-one".into(), job.id.clone())
+                .await
+                .unwrap();
+            if value
+                .preview
+                .is_some_and(|value| value.markdown == "# Initial partial")
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    f.journal.cancel(job.id.clone()).await.unwrap();
+    until(|| f.generator.cancelled.load(Ordering::SeqCst)).await;
+    let shutdown = tokio::spawn(worker.shutdown());
+    tokio::task::yield_now().await;
+    assert!(!shutdown.is_finished());
+    assert_eq!(f.summary().await, "");
+    assert!(f.journal.result(job.id.clone()).await.unwrap().is_none());
+    assert_eq!(
+        f.journal
+            .owned_preview("member-one".into(), job.id.clone())
+            .await
+            .unwrap()
+            .job
+            .state,
+        ProcessingJobState::Cancelling
+    );
+    f.generator.drain.add_permits(1);
+    shutdown.await.unwrap().unwrap();
+    let retained = f
+        .journal
+        .owned_preview("member-one".into(), job.id.clone())
+        .await
+        .unwrap();
+    assert_eq!(retained.job.state, ProcessingJobState::Cancelled);
+    assert_eq!(
+        retained.preview.unwrap().markdown,
+        "# Late partial after actual drain"
+    );
+    assert_eq!(f.summary().await, "");
+    assert_eq!(f.generator.calls.load(Ordering::SeqCst), 1);
+}

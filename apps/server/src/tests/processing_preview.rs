@@ -148,3 +148,65 @@ async fn processing_preview_http_is_private_partial_and_cursor_independent_until
     fixture.service.shutdown().await.unwrap();
     provider.close().await;
 }
+
+#[tokio::test]
+async fn processing_preview_stream_revocation_closes_original_member_without_delivering_later_hints()
+ {
+    let fixture = Fixture::new().await;
+    let (vault, bob) = shared(&fixture).await;
+    let context = fixture.service.vault(&vault.id).await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!(
+        "http://{}/api/v1/vaults/{}/events",
+        listener.local_addr().unwrap(),
+        vault.id
+    );
+    let app = fixture.app.clone();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let mut response = reqwest::Client::new()
+        .get(url)
+        .bearer_auth(fixture.token("bob"))
+        .header("x-loofah-api-major", "1")
+        .header("x-loofah-job-previews", "1")
+        .send()
+        .await
+        .unwrap();
+    context
+        .events
+        .publish_preview_for(&bob.member.id, uuid::Uuid::new_v4().to_string());
+    read_until(&mut response, "event: processing_preview").await;
+    let identity = crate::auth::Identity {
+        issuer: fixture.issuer.clone(),
+        subject: "alice".into(),
+        name: "Alice".into(),
+        expires_at: now() + 3600,
+    };
+    let revision = fixture
+        .service
+        .catalog
+        .access(&identity, &vault.id, false)
+        .await
+        .unwrap()
+        .info
+        .revision;
+    fixture
+        .service
+        .catalog
+        .set_membership(&identity, &vault.id, &bob.member.id, None, &revision)
+        .await
+        .unwrap();
+    let later = uuid::Uuid::new_v4().to_string();
+    context
+        .events
+        .publish_preview_for(&bob.member.id, later.clone());
+    let remainder = tokio::time::timeout(Duration::from_secs(5), response.text())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!remainder.contains(&later));
+    server.abort();
+    let _ = server.await;
+    fixture.service.shutdown().await.unwrap();
+}
