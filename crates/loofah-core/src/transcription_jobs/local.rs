@@ -12,8 +12,8 @@ pub(crate) struct LocalInferenceInput {
     pub owner: Box<dyn Send>,
 }
 pub(crate) struct PreparedLocalInference {
-    prepared: Box<dyn PreparedTranscription>,
-    request: TranscriptionJobRequest,
+    pub(super) prepared: Box<dyn PreparedTranscription>,
+    pub(super) request: TranscriptionJobRequest,
 }
 struct Released(tokio::sync::watch::Sender<bool>);
 impl Drop for Released {

@@ -13,6 +13,7 @@ use crate::vault::{error, storage_error};
 
 mod journal;
 mod recovery;
+mod status;
 
 pub type LocalMediaFuture<T> =
     Pin<Box<dyn Future<Output = Result<T, ApplicationError>> + Send + 'static>>;
@@ -88,6 +89,12 @@ impl LocalCli {
             &request_id,
             fingerprint,
             operation.clone(),
+            self.context.settings.read_current().await.map_err(|_| {
+                error(
+                    ErrorCode::Unavailable,
+                    "Cannot freeze Local transcription settings",
+                )
+            })?,
         )
         .await?;
         if let Some(result) = claim.result() {
@@ -121,7 +128,34 @@ impl LocalCli {
                 .await
             }
             LocalCliOperation::Transcribe { session_id } => self
-                .transcribe(&request_id, &mut claim, host, &root, &session_id, progress)
+                .transcribe(
+                    &request_id,
+                    &mut claim,
+                    host,
+                    &root,
+                    &session_id,
+                    None,
+                    progress,
+                )
+                .await
+                .map(|outcome| LocalCliReply::Transcribed {
+                    session_id,
+                    transcript_id: outcome.transcript_id,
+                    word_count: outcome.words,
+                }),
+            LocalCliOperation::TranscribeChecked {
+                session_id,
+                expected,
+            } => self
+                .transcribe(
+                    &request_id,
+                    &mut claim,
+                    host,
+                    &root,
+                    &session_id,
+                    Some(expected),
+                    progress,
+                )
                 .await
                 .map(|outcome| LocalCliReply::Transcribed {
                     session_id,
@@ -326,7 +360,7 @@ impl LocalCli {
             .join("audio.mp3");
         let transcription = if transcribe {
             Some(
-                self.transcribe(request_id, claim, host, root, &session_id, progress)
+                self.transcribe(request_id, claim, host, root, &session_id, None, progress)
                     .await,
             )
         } else {
@@ -347,12 +381,13 @@ impl LocalCli {
         host: &Arc<dyn LocalMediaHost>,
         root: &std::path::Path,
         session_id: &str,
+        expected: Option<LocalMediaSourceSnapshot>,
         progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
     ) -> Result<LocalTranscriptionOutcome, ApplicationError> {
         let _admission = self.context.admit_session_work(session_id).await?;
         self.context
             .ensure_recording_publication_ready(session_id)?;
-        self.context.read_metadata(session_id).await?;
+        let metadata = self.context.read_metadata(session_id).await?;
         let source = match self
             .context
             .store
@@ -372,12 +407,17 @@ impl LocalCli {
             }
             _ => return Err(error(ErrorCode::Conflict, "Recording source changed")),
         };
-        let config = self.context.settings.read_current().await.map_err(|_| {
-            error(
-                ErrorCode::Unavailable,
-                "Cannot read transcription configuration",
-            )
-        })?;
+        let actual = source_snapshot(session_id, &metadata.meta.created_at, &source);
+        if expected
+            .as_ref()
+            .is_some_and(|expected| expected != &actual)
+        {
+            return Err(error(
+                ErrorCode::Conflict,
+                "Recording or transcript changed before manual transcription",
+            ));
+        }
+        let config = claim.config()?;
         let baseline = source.baseline();
         let audio = source.audio();
         let filename = std::path::Path::new(source.recording_selection())
@@ -428,6 +468,19 @@ impl LocalCli {
             )
             .await
             .map_err(|cause| storage_error(cause, true))?;
+        if self
+            .context
+            .read_metadata(session_id)
+            .await?
+            .meta
+            .created_at
+            != actual.session_created_at
+        {
+            return Err(error(
+                ErrorCode::Conflict,
+                "Original session was replaced; generated transcript is retained",
+            ));
+        }
         match plan
             .recheck()
             .await
@@ -461,4 +514,48 @@ fn unknown(message: &str) -> ApplicationError {
     let mut cause = error(ErrorCode::Conflict, message);
     cause.mutation_outcome = Some(MutationOutcome::Unknown);
     cause
+}
+
+fn source_snapshot(
+    session: &str,
+    created: &str,
+    source: &hypr_vault_write::transcript_publication::TranscriptSourceSnapshot,
+) -> LocalMediaSourceSnapshot {
+    LocalMediaSourceSnapshot {
+        session_id: session.into(),
+        session_created_at: created.into(),
+        recording_selection: source.recording_selection().into(),
+        recording_sha256: source.recording_sha256().into(),
+        transcript_revision: source.transcript_revision().into(),
+        transcript_present: source.transcript_present(),
+        audio: source.audio(),
+    }
+}
+impl LocalCli {
+    pub async fn media_source(
+        &self,
+        session: &str,
+    ) -> Result<LocalMediaSourceSnapshot, ApplicationError> {
+        let _admission = self.context.admit_session_work(session).await?;
+        self.context.ensure_recording_publication_ready(session)?;
+        let metadata = self.context.read_metadata(session).await?;
+        match self
+            .context
+            .store
+            .prepare_transcript_replacement_source(session)
+            .await
+            .map_err(|cause| storage_error(cause, false))?
+        {
+            Some(TranscriptSourcePreparation::Ready(source)) => {
+                Ok(source_snapshot(session, &metadata.meta.created_at, &source))
+            }
+            Some(TranscriptSourcePreparation::NoRecording) => {
+                Err(error(ErrorCode::NotFound, "Recording not found"))
+            }
+            _ => Err(error(
+                ErrorCode::Conflict,
+                "Recording source is busy or changed",
+            )),
+        }
+    }
 }

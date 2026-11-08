@@ -141,6 +141,7 @@ impl LocalCli {
             &operation,
             LocalCliOperation::Import { .. }
                 | LocalCliOperation::Transcribe { .. }
+                | LocalCliOperation::TranscribeChecked { .. }
                 | LocalCliOperation::RecoverMedia { .. }
         );
         let result =
@@ -474,7 +475,8 @@ impl LocalCli {
             LocalCliOperation::Initialize {} => return self.initialize(progress).await,
             LocalCliOperation::Doctor {} => return self.doctor().await,
             operation @ (LocalCliOperation::Import { .. }
-            | LocalCliOperation::Transcribe { .. }) => {
+            | LocalCliOperation::Transcribe { .. }
+            | LocalCliOperation::TranscribeChecked { .. }) => {
                 return self
                     .execute_media(request_id, operation, artifact, progress)
                     .await;

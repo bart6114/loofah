@@ -1036,3 +1036,80 @@ async fn explicit_media_recovery_cannot_race_the_original_admitted_request() {
     drop(guard);
     fixture.stop().await;
 }
+
+#[tokio::test]
+async fn checked_manual_transcription_rejects_changed_raw_source_before_model_admission() {
+    let mut fixture = Fixture::new().await;
+    let session = fixture.create().await;
+    let directory = fixture
+        .cli
+        .context
+        .store
+        .vault_base()
+        .join("sessions")
+        .join(&session);
+    std::fs::write(directory.join("audio.mp3"), b"original recording").unwrap();
+    std::fs::write(
+        directory.join("transcript.json"),
+        br#"{"transcripts":[],"unknown":"original"}"#,
+    )
+    .unwrap();
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    fixture.cli = Arc::new(
+        LocalCli::new(fixture.cli.context.clone())
+            .unwrap()
+            .with_media_host(Arc::new(TestMedia {
+                normalizations: Default::default(),
+                transcriptions: calls.clone(),
+                edit: None,
+            })),
+    );
+    let expected = fixture.cli.media_source(&session).await.unwrap();
+    assert!(expected.transcript_present);
+    std::fs::write(
+        directory.join("transcript.json"),
+        br#"{"transcripts":[],"unknown":"edited"}"#,
+    )
+    .unwrap();
+    let request = uuid::Uuid::new_v4().to_string();
+    let result = fixture
+        .cli
+        .execute(
+            request.clone(),
+            LocalCliOperation::TranscribeChecked {
+                session_id: session.clone(),
+                expected,
+            },
+            None,
+            Arc::new(|_| {}),
+        )
+        .await;
+    assert_eq!(result.err().unwrap().code, ErrorCode::Conflict);
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let status = fixture.cli.media_status(&request).await.unwrap();
+    assert_eq!(status.request_id, request);
+    assert_eq!(status.state, LocalMediaState::Failed);
+    assert_eq!(status.kind, LocalMediaKind::Transcribe);
+    assert_eq!(
+        fixture
+            .cli
+            .media_statuses(Some(&session))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        fixture
+            .cli
+            .media_statuses(Some("other"))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        std::fs::read(directory.join("transcript.json")).unwrap(),
+        br#"{"transcripts":[],"unknown":"edited"}"#
+    );
+    fixture.stop().await;
+}

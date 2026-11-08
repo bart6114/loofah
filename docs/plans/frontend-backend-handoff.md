@@ -465,3 +465,13 @@ The request identity is retained; application/protocol errors and every uncertai
 mutation remain non-replayed. Deterministic shutdown tests cover the read fallback,
 unknown-write preservation and the handshake/lease-release boundary; both Windows
 architectures still require their native CI rerun.
+The checked Local media adapter reuses the existing CLI media journal and Store
+publication transactions. Manual retranscription can bind the exact recording,
+raw transcript presence/revision, channel layout and session creation identity
+before confirmation; changed input is rejected before model admission. Media
+receipts freeze only transcription model preferences, excluding unrelated settings
+and credentials. Read-only media inventory does not resume work. A Core bridge
+uses the configured owned Native transcription engine without submitting an
+absent-only job or granting it replacement authority. Native/UI migration and
+manual automatic-summary integration remain in progress; these source changes do
+not yet remove the remaining legacy manual import path.

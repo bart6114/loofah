@@ -92,6 +92,9 @@ impl TranscriptSourceSnapshot {
     pub fn transcript_revision(&self) -> &str {
         &self.baseline.0.binding.transcript_revision
     }
+    pub fn transcript_present(&self) -> bool {
+        self.baseline.0.binding.transcript_present
+    }
     pub fn recording_selection(&self) -> &str {
         &self.baseline.0.binding.recording_selection
     }

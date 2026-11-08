@@ -15,6 +15,7 @@ use crate::{VaultContext, VaultRuntime, vault::error};
 
 mod append;
 mod local;
+mod local_media;
 pub(crate) use append::CaptureSuffixInput;
 pub(crate) use local::LocalInferenceInput;
 pub(crate) mod ledger;

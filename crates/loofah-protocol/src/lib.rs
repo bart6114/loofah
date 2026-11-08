@@ -8,6 +8,9 @@ pub use document_editor::{
 
 use serde::{Deserialize, Serialize};
 
+mod local_media;
+pub use local_media::*;
+
 mod local_cli;
 pub use local_cli::*;
 

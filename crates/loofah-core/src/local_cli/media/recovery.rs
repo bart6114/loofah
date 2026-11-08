@@ -71,7 +71,10 @@ impl LocalCli {
             }
         }
         let result = match claim.operation() {
-            Some(LocalCliOperation::Transcribe { session_id }) => {
+            Some(
+                LocalCliOperation::Transcribe { session_id }
+                | LocalCliOperation::TranscribeChecked { session_id, .. },
+            ) => {
                 let _admission = self.context.admit_session_work(&session_id).await?;
                 let outcome = self
                     .recover_transcription(request_id, root, &session_id, &claim)

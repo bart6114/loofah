@@ -134,6 +134,10 @@ pub enum LocalCliOperation {
     Transcribe {
         session_id: String,
     },
+    TranscribeChecked {
+        session_id: String,
+        expected: crate::LocalMediaSourceSnapshot,
+    },
     RecoverMedia {
         request_id: String,
     },
@@ -165,7 +169,9 @@ impl LocalCliOperation {
             Self::Attachment { .. } => LocalCliOperationKind::Attachment,
             Self::AttachmentPage { .. } => LocalCliOperationKind::AttachmentPage,
             Self::Import { .. } => LocalCliOperationKind::Import,
-            Self::Transcribe { .. } => LocalCliOperationKind::Transcribe,
+            Self::Transcribe { .. } | Self::TranscribeChecked { .. } => {
+                LocalCliOperationKind::Transcribe
+            }
             Self::RecoverMedia { .. } => LocalCliOperationKind::RecoverMedia,
             Self::Doctor {} => LocalCliOperationKind::Doctor,
             Self::Initialize {} => LocalCliOperationKind::Initialize,
@@ -188,6 +194,7 @@ impl LocalCliOperation {
                 | Self::Attach { .. }
                 | Self::Import { .. }
                 | Self::Transcribe { .. }
+                | Self::TranscribeChecked { .. }
                 | Self::RecoverMedia { .. }
                 | Self::Doctor {}
         )

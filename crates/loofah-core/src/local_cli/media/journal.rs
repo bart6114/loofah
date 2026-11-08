@@ -20,10 +20,29 @@ struct Record {
     #[serde(default)]
     operation: Option<LocalCliOperation>,
     #[serde(default)]
+    config: Option<FrozenTranscriptionConfig>,
+    #[serde(default)]
     import: Option<ImportRecovery>,
     #[serde(default)]
     transcription: Option<LocalTranscriptionOutcome>,
     result: Option<Result<LocalCliReply, ApplicationError>>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FrozenTranscriptionConfig {
+    provider: Option<String>,
+    model: Option<String>,
+    languages: Option<Vec<String>>,
+}
+impl From<crate::settings::AppConfig> for FrozenTranscriptionConfig {
+    fn from(config: crate::settings::AppConfig) -> Self {
+        Self {
+            provider: config.current_stt_provider,
+            model: config.current_stt_model,
+            languages: config.meeting_languages,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -45,6 +64,7 @@ impl Claim {
         request: &str,
         fingerprint: String,
         operation: LocalCliOperation,
+        config: crate::settings::AppConfig,
     ) -> Result<Self, ApplicationError> {
         let request = request.to_owned();
         tokio::task::spawn_blocking(move || {
@@ -55,6 +75,7 @@ impl Claim {
                 version: 1,
                 fingerprint,
                 operation: Some(operation),
+                config: Some(config.into()),
                 import: None,
                 transcription: None,
                 result: None,
@@ -120,6 +141,19 @@ impl Claim {
     pub fn operation(&self) -> Option<LocalCliOperation> {
         self.record.operation.clone()
     }
+    pub fn config(&self) -> Result<crate::settings::AppConfig, ApplicationError> {
+        let config =
+            self.record.config.as_ref().ok_or_else(|| {
+                super::unknown("Original transcription settings were not retained")
+            })?;
+        Ok(crate::settings::AppConfig {
+            current_stt_provider: config.provider.clone(),
+            current_stt_model: config.model.clone(),
+            meeting_languages: config.languages.clone(),
+            ..Default::default()
+        })
+    }
+
     pub fn import(&self) -> Option<ImportRecovery> {
         self.record.import.clone()
     }
@@ -169,7 +203,8 @@ fn read(path: &Path) -> Result<Record, ApplicationError> {
             io_error(cause)
         }
     })?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() {
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 4 * 1024 * 1024
+    {
         return Err(super::unknown("Local media receipt requires review"));
     }
     let mut bytes = Vec::new();
@@ -226,4 +261,25 @@ fn io_error(cause: impl std::fmt::Display) -> ApplicationError {
         ErrorCode::Internal,
         &format!("Local media state could not be retained: {cause}"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn frozen_transcription_projection_contains_only_model_preferences() {
+        let config = crate::settings::AppConfig {
+            current_stt_provider: Some("fmtr".into()),
+            current_stt_model: Some("QuantizedBase".into()),
+            meeting_languages: Some(vec!["en".into()]),
+            current_llm_model: Some("must-not-enter-media-receipt".into()),
+            ..Default::default()
+        };
+        let frozen = FrozenTranscriptionConfig::from(config);
+        let encoded = serde_json::to_value(frozen).unwrap();
+        assert_eq!(
+            encoded,
+            serde_json::json!({"provider":"fmtr","model":"QuantizedBase","languages":["en"]})
+        );
+    }
 }
