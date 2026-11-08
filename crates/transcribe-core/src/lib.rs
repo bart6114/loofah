@@ -7,3 +7,4 @@ mod transport;
 pub use audio::*;
 pub use batch::*;
 pub use transport::*;
+pub mod live_transcript;

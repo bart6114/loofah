@@ -15078,6 +15078,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "transcript",
 ]
 
 [[package]]

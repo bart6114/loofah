@@ -1,6 +1,45 @@
 use super::*;
 use std::sync::Condvar;
 
+#[tokio::test]
+async fn cloned_controller_does_not_release_owner_or_override_owned_drop_cancellation() {
+    let exit = Arc::new(Gate::default());
+    let host = host(
+        Plan {
+            exit: Some(exit.clone()),
+            ..Default::default()
+        },
+        1,
+    )
+    .await;
+    let live = host
+        .start_live(
+            host.try_live(2).unwrap(),
+            spec(LiveChannels::MicSystem, 91),
+            (),
+        )
+        .unwrap();
+    open(&live).await;
+    let controller = live.controller();
+    let retained = controller.clone();
+    drop(controller);
+    assert!(matches!(host.try_batch(), Err(ResourceError::Busy)));
+    let mut completed = live.completion();
+    drop(live);
+    exit.entered().await;
+    assert!(matches!(completed.snapshot(), LiveCompletion::Pending));
+    assert!(matches!(host.try_batch(), Err(ResourceError::Busy)));
+    assert!(matches!(
+        retained.try_accept_frame(0, &vec![0.0_f32; 320].into()),
+        Err(LiveIngressError::Closed)
+    ));
+    exit.release();
+    let end = receipt(&mut completed).await;
+    assert_eq!(end.native, NativeDisposition::Joined);
+    assert!(end.owners_released);
+    assert!(host.try_batch().is_ok());
+}
+
 #[derive(Default)]
 struct Gate {
     entered: AtomicBool,

@@ -723,7 +723,7 @@ fn read_result(root: &Path, r: &Record) -> Result<Option<TranscriptWithData>, Ap
     }
     Ok(Some(transcript))
 }
-pub(super) fn encode_result(transcript: &TranscriptWithData) -> Result<Vec<u8>, ApplicationError> {
+pub(crate) fn encode_result(transcript: &TranscriptWithData) -> Result<Vec<u8>, ApplicationError> {
     if transcript.words.len() > 250_000
         || transcript.speaker_hints.len() > 500_000
         || !transcript.started_at.is_finite()
@@ -762,13 +762,13 @@ pub(super) fn encode_result(transcript: &TranscriptWithData) -> Result<Vec<u8>, 
     .map_err(|_| capacity())?;
     Ok(buffer.0)
 }
-pub(super) fn hash(bytes: &[u8]) -> String {
+pub(crate) fn hash(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
-pub(super) fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
-pub(super) fn check_file(path: &Path) -> Result<bool, ApplicationError> {
+pub(crate) fn check_file(path: &Path) -> Result<bool, ApplicationError> {
     match std::fs::symlink_metadata(path) {
         Ok(meta) if meta.is_file() && !meta.file_type().is_symlink() => Ok(true),
         Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -776,7 +776,7 @@ pub(super) fn check_file(path: &Path) -> Result<bool, ApplicationError> {
         _ => Err(storage("private transcription path is not a regular file")),
     }
 }
-pub(super) fn read(path: &Path, limit: u64) -> Result<Vec<u8>, ApplicationError> {
+pub(crate) fn read(path: &Path, limit: u64) -> Result<Vec<u8>, ApplicationError> {
     if !check_file(path)? {
         return Err(storage("missing transcription file"));
     }
@@ -793,7 +793,7 @@ pub(super) fn read(path: &Path, limit: u64) -> Result<Vec<u8>, ApplicationError>
     }
     Ok(bytes)
 }
-pub(super) fn ensure_directory(path: &Path) -> Result<(), ApplicationError> {
+pub(crate) fn ensure_directory(path: &Path) -> Result<(), ApplicationError> {
     if !path.is_absolute() {
         return Err(storage("transcription operation path is not absolute"));
     }
@@ -831,7 +831,7 @@ pub(super) fn ensure_directory(path: &Path) -> Result<(), ApplicationError> {
     }
     Ok(())
 }
-pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), ApplicationError> {
+pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), ApplicationError> {
     let parent = path.parent().ok_or_else(unavailable)?;
     ensure_directory(parent)?;
     let temporary = parent.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
@@ -847,7 +847,7 @@ pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), ApplicationErro
     hypr_storage::fs::rename_no_replace(&temporary, path).map_err(storage)?;
     sync_parent(path)
 }
-pub(super) fn sync_parent(path: &Path) -> Result<(), ApplicationError> {
+pub(crate) fn sync_parent(path: &Path) -> Result<(), ApplicationError> {
     #[cfg(unix)]
     {
         File::open(path.parent().ok_or_else(unavailable)?)

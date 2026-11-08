@@ -26,6 +26,7 @@ use hypr_vault_read::TranscriptWithData;
 use owhisper_interface::{ListenParams, batch};
 use tokio_util::sync::CancellationToken;
 
+mod live;
 #[cfg(test)]
 mod tests;
 
@@ -110,16 +111,24 @@ fn parameters(
 ) -> Result<ListenParams, TranscriptionFailure> {
     hypr_loofah_protocol::validate_transcription_job_request(request)
         .map_err(|_| TranscriptionFailure::EngineUnavailable)?;
-    if request.model != model {
+    parameters_for_options(model, &request.model, &request.languages, &request.keywords)
+}
+
+fn parameters_for_options(
+    model: &str,
+    requested_model: &str,
+    languages: &[String],
+    keywords: &[String],
+) -> Result<ListenParams, TranscriptionFailure> {
+    if requested_model != model {
         return Err(TranscriptionFailure::EngineUnavailable);
     }
     let mut params = ListenParams {
         model: Some(model.to_owned()),
-        keywords: request.keywords.clone(),
+        keywords: keywords.to_vec(),
         ..Default::default()
     };
-    params.languages = request
-        .languages
+    params.languages = languages
         .iter()
         .map(|language| language.parse())
         .collect::<Result<Vec<_>, _>>()

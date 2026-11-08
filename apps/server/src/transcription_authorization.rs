@@ -36,14 +36,14 @@ impl Drop for MembershipWatch {
     }
 }
 
-impl TranscriptionAuthorizer for CatalogTranscriptionAuthorizer {
-    fn observe<'a>(
+impl CatalogTranscriptionAuthorizer {
+    fn observe_member<'a>(
         &'a self,
-        work: &'a TranscriptionWork,
+        member: &'a str,
     ) -> TranscriptionFuture<'a, Result<TranscriptionAccess, TranscriptionFailure>> {
         Box::pin(async move {
             let mut changes = self.catalog.subscribe();
-            drop(self.authorize(work).await?);
+            drop(self.authorize_member(member).await?);
             let cancelled = CancellationToken::new();
             let revoked = cancelled.clone();
             let interrupted = CancellationToken::new();
@@ -53,7 +53,7 @@ impl TranscriptionAuthorizer for CatalogTranscriptionAuthorizer {
             let host_stop = self.stop.clone();
             let catalog = self.catalog.clone();
             let vault = self.vault_id.clone();
-            let member = work.principal.clone();
+            let member = member.to_owned();
             let task = tokio::spawn(async move {
                 loop {
                     tokio::select! {
@@ -94,9 +94,9 @@ impl TranscriptionAuthorizer for CatalogTranscriptionAuthorizer {
         })
     }
 
-    fn authorize<'a>(
+    fn authorize_member<'a>(
         &'a self,
-        work: &'a TranscriptionWork,
+        member: &'a str,
     ) -> TranscriptionFuture<'a, Result<Box<dyn Send>, TranscriptionFailure>> {
         Box::pin(async move {
             if self.stop.is_cancelled() {
@@ -104,7 +104,7 @@ impl TranscriptionAuthorizer for CatalogTranscriptionAuthorizer {
             }
             let grant = self
                 .catalog
-                .access_member(&work.principal, &self.vault_id, true)
+                .access_member(member, &self.vault_id, true)
                 .await
                 .map_err(member_failure)?;
             if self.stop.is_cancelled() {
@@ -112,6 +112,35 @@ impl TranscriptionAuthorizer for CatalogTranscriptionAuthorizer {
             }
             Ok(Box::new(grant) as Box<dyn Send>)
         })
+    }
+}
+
+impl TranscriptionAuthorizer for CatalogTranscriptionAuthorizer {
+    fn observe<'a>(
+        &'a self,
+        work: &'a TranscriptionWork,
+    ) -> TranscriptionFuture<'a, Result<TranscriptionAccess, TranscriptionFailure>> {
+        self.observe_member(&work.principal)
+    }
+    fn authorize<'a>(
+        &'a self,
+        work: &'a TranscriptionWork,
+    ) -> TranscriptionFuture<'a, Result<Box<dyn Send>, TranscriptionFailure>> {
+        self.authorize_member(&work.principal)
+    }
+}
+impl hypr_loofah_core::capture_live::CaptureLiveAuthorizer for CatalogTranscriptionAuthorizer {
+    fn observe<'a>(
+        &'a self,
+        work: &'a hypr_loofah_core::capture_live::CaptureLiveWork,
+    ) -> TranscriptionFuture<'a, Result<TranscriptionAccess, TranscriptionFailure>> {
+        self.observe_member(&work.principal)
+    }
+    fn authorize<'a>(
+        &'a self,
+        work: &'a hypr_loofah_core::capture_live::CaptureLiveWork,
+    ) -> TranscriptionFuture<'a, Result<Box<dyn Send>, TranscriptionFailure>> {
+        self.authorize_member(&work.principal)
     }
 }
 

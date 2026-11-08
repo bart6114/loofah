@@ -67,7 +67,7 @@ impl Ingress {
     }
 }
 
-impl OwnedLive {
+impl LiveController {
     /// Bounded CPU validation/hash only: no waiting, filesystem or network work.
     /// The caller retains its Arc on every outcome, including Busy.
     pub fn try_accept_frame(
@@ -192,6 +192,20 @@ impl OwnedLive {
         self.shared.publish(&state);
         self.shared.control.notify_one();
         Ok(())
+    }
+}
+
+impl OwnedLive {
+    pub fn try_accept_frame(
+        &self,
+        first_frame: u64,
+        samples: &Arc<[f32]>,
+    ) -> Result<FrameReceipt, LiveIngressError> {
+        self.controller().try_accept_frame(first_frame, samples)
+    }
+
+    pub fn finish(&self, expected_end_frame: u64) -> Result<(), LiveIngressError> {
+        self.controller().finish(expected_end_frame)
     }
 }
 

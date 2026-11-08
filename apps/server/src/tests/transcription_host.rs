@@ -11,6 +11,7 @@ use std::{
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
+mod capture_live;
 
 fn digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes)

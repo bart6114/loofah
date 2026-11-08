@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{VaultContext, VaultRuntime, vault::error};
 
-mod ledger;
+pub(crate) mod ledger;
 mod source;
 #[cfg(test)]
 mod tests;

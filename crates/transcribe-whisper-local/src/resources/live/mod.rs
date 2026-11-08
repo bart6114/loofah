@@ -123,6 +123,18 @@ pub struct OwnedLive {
     completion: LiveCompletionObserver,
 }
 
+#[derive(Clone)]
+pub struct LiveController {
+    frames: mpsc::Sender<Frame>,
+    shared: Arc<Shared>,
+}
+
+impl LiveController {
+    pub fn cancel(&self) {
+        self.shared.fail(LiveFailure::Cancelled);
+    }
+}
+
 struct Shared {
     spec: LiveSpec,
     state: Mutex<Ingress>,
@@ -135,6 +147,12 @@ struct Shared {
 }
 
 impl OwnedLive {
+    pub fn controller(&self) -> LiveController {
+        LiveController {
+            frames: self.frames.clone(),
+            shared: self.shared.clone(),
+        }
+    }
     pub fn observer(&self) -> LiveObserver {
         LiveObserver(self.shared.status.subscribe())
     }

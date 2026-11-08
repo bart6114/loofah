@@ -22,6 +22,9 @@ pub struct Service {
     pub(crate) transcription_test_engine:
         std::sync::OnceLock<Arc<dyn hypr_loofah_core::transcription_jobs::TranscriptionEngine>>,
     #[cfg(test)]
+    pub(crate) capture_live_test_engine:
+        std::sync::OnceLock<Arc<dyn hypr_loofah_core::capture_live::CaptureLiveEngine>>,
+    #[cfg(test)]
     pub(crate) injected_changes: std::sync::atomic::AtomicBool,
     #[cfg(test)]
     pub(crate) startup_pause:
@@ -75,6 +78,8 @@ impl Service {
         let service = Arc::new(Self {
             #[cfg(test)]
             transcription_test_engine: Default::default(),
+            #[cfg(test)]
+            capture_live_test_engine: Default::default(),
             #[cfg(test)]
             injected_changes: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
@@ -175,6 +180,8 @@ impl Service {
         #[cfg(any(test, feature = "cpu-transcription"))]
         let transcription = self.transcription_engine();
         #[cfg(any(test, feature = "cpu-transcription"))]
+        let capture_live = self.capture_live_engine();
+        #[cfg(any(test, feature = "cpu-transcription"))]
         let transcription_stop = self.stop.clone();
         let capture_origin = format!("{}/", self.config.public_url.origin().ascii_serialization());
         #[cfg(test)]
@@ -229,11 +236,20 @@ impl Service {
                                     Arc::new(crate::transcription_authorization::CatalogTranscriptionAuthorizer::new(
                                         catalog.clone(),
                                         opened.context.events.vault_id(),
-                                        transcription_stop,
+                                        transcription_stop.clone(),
                                     )),
                                     limits,
                                 )
                                 .await?;
+                        }
+                        #[cfg(any(test, feature = "cpu-transcription"))]
+                        if let Some(engine) = capture_live {
+                            opened.enable_capture_live(
+                                engine,
+                                Arc::new(crate::transcription_authorization::CatalogTranscriptionAuthorizer::new(
+                                    catalog.clone(), opened.context.events.vault_id(), transcription_stop,
+                                )),
+                            ).await?;
                         }
                         if let Some(processing) = processing {
                             processing.attach(&mut opened, catalog.clone()).await?;
@@ -279,6 +295,24 @@ impl Service {
         #[cfg(feature = "cpu-transcription")]
         {
             self.transcription.as_ref().map(|host| host.engine())
+        }
+        #[cfg(not(feature = "cpu-transcription"))]
+        {
+            None
+        }
+    }
+
+    #[cfg(any(test, feature = "cpu-transcription"))]
+    fn capture_live_engine(
+        &self,
+    ) -> Option<Arc<dyn hypr_loofah_core::capture_live::CaptureLiveEngine>> {
+        #[cfg(test)]
+        if let Some(engine) = self.capture_live_test_engine.get() {
+            return Some(engine.clone());
+        }
+        #[cfg(feature = "cpu-transcription")]
+        {
+            self.transcription.as_ref().map(|host| host.live_engine())
         }
         #[cfg(not(feature = "cpu-transcription"))]
         {

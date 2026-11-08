@@ -95,6 +95,9 @@ impl SummarySource for VaultSummarySource {
                     .validate(&id)
                     .map_err(|_| ProcessingJobFailure::SourceUnavailable)?;
                 context
+                    .ensure_capture_processing_ready(&id)
+                    .map_err(|_| ProcessingJobFailure::SourceUnavailable)?;
+                context
                     .store
                     .flush_transcript(&id)
                     .await

@@ -271,6 +271,13 @@ impl VaultRuntime {
                 }
             }
             let mut failure = None;
+            if let Some(service) = context.capture_live.get() {
+                phase.send_replace("live capture processing exceeded shutdown deadline");
+                if let Err(cause) = service.shutdown().await {
+                    tracing::error!(%cause,"live capture output needs review after native drain");
+                    failure = Some(StoreError::Io("live capture output needs review".into()));
+                }
+            }
             if let Some(worker) = transcription {
                 phase.send_replace("transcription worker exceeded shutdown deadline");
                 if let Err(cause) = worker.shutdown().await {
@@ -306,6 +313,9 @@ impl VaultRuntime {
             self.context.startup.set_phase(StartupPhase::Stopping);
         }
         self.stop.cancel();
+        if let Some(service) = self.context.capture_live.get() {
+            service.request_shutdown();
+        }
         if let Some(worker) = &self.processing {
             worker.request_shutdown();
         }

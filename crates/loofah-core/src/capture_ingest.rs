@@ -20,9 +20,53 @@ pub(super) struct CaptureIngestion {
     limits: CaptureSpoolLimits,
     spool: OnceCell<Arc<CaptureSpool>>,
     operations: Arc<Semaphore>,
+    changed: Arc<tokio::sync::Notify>,
 }
 
 impl VaultContext {
+    pub(crate) fn capture_changes(&self) -> Option<Arc<tokio::sync::Notify>> {
+        self.capture_ingestion
+            .get()
+            .map(|settings| settings.changed.clone())
+    }
+    pub(crate) async fn capture_writer(
+        self: &Arc<Self>,
+        member_id: String,
+        capture_id: String,
+    ) -> Result<CaptureWriter, ApplicationError> {
+        self.store
+            .ensure_ready()
+            .map_err(|cause| crate::vault::storage_error(cause, false))?;
+        validate_id(&capture_id)?;
+        let settings = self.capture_ingestion.get().ok_or_else(|| {
+            rejected(
+                ErrorCode::Unavailable,
+                "Capture ingestion is not configured",
+            )
+        })?;
+        let root = self
+            .operations
+            .as_ref()
+            .ok_or_else(|| rejected(ErrorCode::Unavailable, "Operation storage required"))?
+            .root
+            .join("captures");
+        let spool = settings
+            .spool
+            .get_or_try_init(|| CaptureSpool::open(root, settings.limits.clone()))
+            .await?
+            .clone();
+        find(
+            &spool,
+            CaptureScope {
+                server: settings.server.clone(),
+                member_id,
+                vault_id: self.events.vault_id(),
+            },
+            &capture_id,
+        )
+        .await
+    }
+
     pub fn enable_capture_ingestion(
         &self,
         server: String,
@@ -44,6 +88,7 @@ impl VaultContext {
                 limits,
                 spool: OnceCell::new(),
                 operations: Arc::new(Semaphore::new(2)),
+                changed: Arc::new(tokio::sync::Notify::new()),
             })
             .map_err(|_| {
                 rejected(
@@ -272,7 +317,11 @@ impl VaultContext {
                 .await?
                 .clone();
             let _grant = authorize().await.map_err(not_committed)?;
-            action(spool, scope).await
+            let result = action(spool, scope).await;
+            if result.is_ok() {
+                settings.changed.notify_waiters();
+            }
+            result
         })
         .await
         .map_err(|cause| {

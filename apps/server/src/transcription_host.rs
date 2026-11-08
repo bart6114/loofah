@@ -70,6 +70,10 @@ impl TranscriptionHost {
         (self.engine.clone(), self.limits)
     }
 
+    pub(crate) fn live_engine(&self) -> Arc<dyn hypr_loofah_core::capture_live::CaptureLiveEngine> {
+        self.engine.clone()
+    }
+
     pub(crate) fn stop_admission(&self) {
         self.engine.stop_admission();
     }
