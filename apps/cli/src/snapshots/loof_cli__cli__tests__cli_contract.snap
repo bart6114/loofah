@@ -1,6 +1,6 @@
 ---
 source: apps/cli/src/cli.rs
-assertion_line: 950
+assertion_line: 952
 expression: canonicalize_json(contract)
 ---
 {
@@ -529,6 +529,25 @@ expression: canonicalize_json(contract)
             }
           ],
           "synopsis": "loof sessions delete [-h] <id>"
+        },
+        {
+          "about": "Inspect or finish retained local media publication without repeating transcription",
+          "arguments": [
+            {
+              "name": "REQUEST_ID",
+              "required": true
+            }
+          ],
+          "name": "loof sessions recover",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sessions recover [-h] <request_id>"
         },
         {
           "about": "Store a file as a note attachment of a meeting and print its attachment id",
