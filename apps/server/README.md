@@ -74,6 +74,9 @@ sets the note's creation time even if uploading happens later. The separate
 one-time session binding survives retry and restart without rewriting raw capture
 identity or audio. A lost publication response resumes through the same binding;
 the SDK verifies canonical bytes independently before confirming publication.
+Pending uploads require the distinct `capture_pending_publication` capability
+before credentials or chunks are sent; older existing-note-only servers leave
+them queued with an upgrade-needed error and preserve all device audio.
 This raw recording queue does not permit offline remote-note editing. Pending
 live transcription and automatic summaries remain separate work; explicit batch
 transcription can process published audio. Append/replacement and any existing

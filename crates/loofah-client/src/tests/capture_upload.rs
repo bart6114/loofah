@@ -368,6 +368,7 @@ async fn fixture(state: &Arc<Server>, rtt: Option<Duration>) -> (Fixture, Arc<Re
     Arc::get_mut(&mut client).unwrap().capabilities.features = vec![
         "capture_ingestion".into(),
         "capture_publication".into(),
+        "capture_pending_publication".into(),
         "recording_leases".into(),
     ];
     fixture.login(&client).await;
@@ -544,6 +545,51 @@ async fn pending_remote_binding_never_retargets_a_previously_bound_device_captur
 }
 
 #[tokio::test]
+async fn older_existing_note_publication_servers_leave_pending_audio_queued_before_credentials_or_upload()
+ {
+    let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let state = Server::new(root.path()).await;
+    let (fixture, mut client) = fixture(&state, None).await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .retain(|feature| feature != "capture_pending_publication");
+    let (_spool, writer) = source_for_target(
+        root.path(),
+        &client,
+        CaptureTarget::PendingSession {
+            create_request_id: uuid::Uuid::new_v4().to_string(),
+        },
+    )
+    .await;
+    append_source(&writer, 0).await;
+    writer.seal().await.unwrap();
+    let original = writer.snapshot().await.unwrap();
+    let loads = fixture.credentials.loads.load(Ordering::SeqCst);
+    let uploader = CaptureUploader::new(1).unwrap();
+    let ticket = uploader
+        .start(
+            client.clone(),
+            writer.clone(),
+            binding(&client, &writer),
+            Box::new(()),
+        )
+        .unwrap();
+    ticket.source_finished();
+    let progress = done(&ticket).await;
+    assert_eq!(progress.phase, CaptureUploadPhase::PendingSession);
+    assert_eq!(progress.error.unwrap().code, ErrorCode::IncompatibleVersion);
+    assert_eq!(fixture.credentials.loads.load(Ordering::SeqCst), loads);
+    assert_eq!(state.begins.load(Ordering::SeqCst), 0);
+    assert_eq!(state.creates.load(Ordering::SeqCst), 0);
+    assert_eq!(state.publishes.load(Ordering::SeqCst), 0);
+    assert_eq!(writer.snapshot().await.unwrap(), original);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, vec![0; 128]);
+    uploader.wait_shutdown().await;
+}
+
+#[tokio::test]
 async fn lost_ack_and_offline_capture_reopen_resume_exact_identity_and_hash_independent_canonical_bytes()
  {
     let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
@@ -593,6 +639,7 @@ async fn lost_ack_and_offline_capture_reopen_resume_exact_identity_and_hash_inde
     Arc::get_mut(&mut client).unwrap().capabilities.features = vec![
         "capture_ingestion".into(),
         "capture_publication".into(),
+        "capture_pending_publication".into(),
         "recording_leases".into(),
     ];
     _fixture.login(&client).await;

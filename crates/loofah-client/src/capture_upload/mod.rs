@@ -285,15 +285,32 @@ async fn run(
     ended: &CancellationToken,
     progress: &watch::Sender<CaptureUploadProgress>,
 ) -> Result<()> {
-    match &writer.identity().target {
-        CaptureTarget::ExistingSession {
-            expected_audio_sha256: Some(_),
-            ..
-        } => {
-            set(progress, CaptureUploadPhase::AppendUnsupported, None);
-            return Ok(());
-        }
-        _ => {}
+    if let CaptureTarget::ExistingSession {
+        expected_audio_sha256: Some(_),
+        ..
+    } = &writer.identity().target
+    {
+        set(progress, CaptureUploadPhase::AppendUnsupported, None);
+        return Ok(());
+    }
+    if matches!(
+        &writer.identity().target,
+        CaptureTarget::PendingSession { .. }
+    ) && !client
+        .capabilities()
+        .features
+        .iter()
+        .any(|feature| feature == "capture_pending_publication")
+    {
+        set(
+            progress,
+            CaptureUploadPhase::PendingSession,
+            Some(failure(
+                ErrorCode::IncompatibleVersion,
+                "Upgrade this server to publish pending captures; device audio was retained",
+            )),
+        );
+        return Ok(());
     }
     for feature in [
         "capture_ingestion",
