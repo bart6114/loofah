@@ -44,8 +44,11 @@ impl RemoteClient {
         {
             return Err(changed());
         }
-        self.access_token().await?;
         let auth_generation = self.tokens.lock().await.generation;
+        self.access_token().await?;
+        if self.tokens.lock().await.generation != auth_generation {
+            return Err(changed());
+        }
         let authority = Arc::new(CaptureAppendAuthority {
             client: self.clone(),
             profile,
