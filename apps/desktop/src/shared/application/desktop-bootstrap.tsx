@@ -57,7 +57,22 @@ function RemoteDesktop({
   connection: DesktopConnectionProfile;
 }) {
   const [destination, setDestination] =
-    useState<DeviceRecordingDestination | null>(null);
+    useState<DeviceRecordingDestination | null>(() =>
+      connection.member_id && connection.vault_id
+        ? {
+            scopeKey: remoteVaultScope(
+              connection.server,
+              connection.member_id,
+              connection.vault_id,
+            ),
+            scope: {
+              server: connection.server,
+              member_id: connection.member_id,
+              vault_id: connection.vault_id,
+            },
+          }
+        : null,
+    );
   const remember = useMutation({
     scope: { id: `desktop-destination:${connection.id}` },
     mutationFn: async ({

@@ -44,6 +44,41 @@ fn default_local_keeps_the_existing_vault_config_location_without_profile_provis
     assert!(!root.path().join("device-preferences").exists());
 }
 
+#[test]
+fn local_owner_is_acquired_before_any_config_migration_and_shared_with_settings() {
+    use hypr_storage::vault::{LeaseAttempt, VaultLease};
+
+    let root = root();
+    let vault = root.path().join("vault");
+    let lease = acquire_local_vault(&vault).unwrap();
+    let path = hypr_storage::vault::compute_config_path(&vault);
+    let original = r#"{"current_stt_provider":"am","theme":"dark"}"#;
+    std::fs::write(&path, original).unwrap();
+    assert!(acquire_local_vault(&vault).is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+
+    let snapshot = crate::StartupSnapshot::new(vault.clone())
+        .with_vault_lease(&lease)
+        .unwrap();
+    let config = crate::ConfigState::load_with_vault_lease(&lease);
+    assert_eq!(config.snapshot().theme, "dark");
+    drop(lease);
+    assert!(matches!(
+        VaultLease::try_acquire_existing(&vault).unwrap(),
+        LeaseAttempt::Busy
+    ));
+    drop(snapshot);
+    assert!(matches!(
+        VaultLease::try_acquire_existing(&vault).unwrap(),
+        LeaseAttempt::Busy
+    ));
+    drop(config);
+    assert!(matches!(
+        VaultLease::try_acquire_existing(&vault).unwrap(),
+        LeaseAttempt::Acquired(_)
+    ));
+}
+
 #[tokio::test]
 async fn remote_preferences_never_resolve_or_read_a_local_vault_or_legacy_settings() {
     use crate::SettingsPluginExt;

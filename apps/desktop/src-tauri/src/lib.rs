@@ -418,7 +418,13 @@ pub async fn main() {
                                     .service
                                     .clone(),
                             )
-                            .with_operation_storage(operation_root),
+                            .with_operation_storage(operation_root)
+                            .with_vault_lease(
+                                app_handle
+                                    .state::<tauri_plugin_settings::LocalVaultLease>()
+                                    .0
+                                    .clone(),
+                            )?,
                         );
                         application::forward_changes(&app_handle, &context);
                         app_handle.manage(context);

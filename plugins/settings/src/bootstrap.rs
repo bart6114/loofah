@@ -10,6 +10,17 @@ pub struct DesktopBootstrap {
     device_base: PathBuf,
 }
 
+pub(crate) fn acquire_local_vault(base: &Path) -> crate::Result<hypr_storage::vault::VaultLease> {
+    std::fs::create_dir_all(base)?;
+    match hypr_storage::vault::VaultLease::try_acquire_existing(base)? {
+        hypr_storage::vault::LeaseAttempt::Acquired(lease) => Ok(lease),
+        hypr_storage::vault::LeaseAttempt::Busy => Err(std::io::Error::new(
+            std::io::ErrorKind::WouldBlock,
+            "This vault is already open in another process. Close its current owner before opening Loofah.",
+        ).into()),
+    }
+}
+
 impl DesktopBootstrap {
     pub fn load(global_base: &Path) -> crate::Result<Self> {
         let profiles = ConnectionProfiles::new(global_base.join("connections"))

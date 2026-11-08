@@ -8,6 +8,7 @@ pub struct StartupSnapshot {
     local_vault: bool,
     io_lock: Arc<Mutex<()>>,
     admission: Arc<tokio::sync::Semaphore>,
+    vault_lease: Option<Arc<std::fs::File>>,
 }
 
 impl StartupSnapshot {
@@ -17,6 +18,7 @@ impl StartupSnapshot {
             local_vault: true,
             io_lock: Arc::new(Mutex::new(())),
             admission: Arc::new(tokio::sync::Semaphore::new(1)),
+            vault_lease: None,
         }
     }
 
@@ -30,11 +32,25 @@ impl StartupSnapshot {
             local_vault: false,
             io_lock: Arc::new(Mutex::new(())),
             admission: Arc::new(tokio::sync::Semaphore::new(1)),
+            vault_lease: None,
         }
     }
 
     pub fn startup_vault_base(&self) -> Option<&PathBuf> {
         self.local_vault.then_some(&self.startup_vault_base)
+    }
+
+    pub(crate) fn with_vault_lease(
+        mut self,
+        lease: &hypr_storage::vault::VaultLease,
+    ) -> crate::Result<Self> {
+        if !self.local_vault || self.startup_vault_base.canonicalize()? != lease.canonical_vault() {
+            return Err(
+                std::io::Error::other("Settings lease belongs to a different vault").into(),
+            );
+        }
+        self.vault_lease = Some(lease.pin());
+        Ok(self)
     }
 
     fn read_at(path: &Path) -> crate::Result<Option<serde_json::Value>> {
@@ -61,7 +77,9 @@ impl StartupSnapshot {
             .await
             .map_err(|_| std::io::Error::other("Settings I/O admission closed"))?;
         let lock = self.io_lock.clone();
+        let lease = self.vault_lease.clone();
         tokio::task::spawn_blocking(move || {
+            let _lease = lease;
             let _permit = permit;
             let _guard = lock
                 .lock()

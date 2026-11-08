@@ -1,17 +1,19 @@
 # Run the Loofah server
 
-The server is experimental. It exposes authenticated vault, note, existing-content, search, attachment-upload, configured summary/title and batch-transcription jobs, capture staging/publication and change-stream APIs. Resilient remote recording and live caption delivery remain under implementation. The desktop's default local mode works without an account or server.
+The server is experimental. It exposes authenticated vault, note, existing-content, search, attachment-upload, configured summary/title and batch-transcription jobs, capture staging/publication and change-stream APIs. Authenticated live captions and durable recording uploads are available experimentally; automatic repair/summary orchestration and full recording parity remain under implementation. The desktop's default local mode works without an account or server.
 
 Configured batch jobs use the shared cancellable Whisper kernel without Tauri or device capture. One operator-provisioned CPU model and bounded native capacity are shared across vaults. Core owns authenticated admission, a durable job journal, immutable recording copies and revision-checked canonical transcript publication; native work retains its source/model owners through actual completion. Model paths and hashes come from operator configuration, never client requests. See [CPU deployment](#optional-cpu-transcription) for the explicit build and configuration.
 
-The internal typed live facade accepts exact f32 frames with bounded per-channel admission, explicit replay/gap handling, authoritative captions and separate bounded UI snapshots. Cancellation and finish retain native ownership through actual thread join. This facade is not yet an authenticated server live-caption endpoint or a substitute for resilient remote recording. The existing s16 WebSocket adapter remains compatible.
+The internal typed live facade accepts exact f32 frames with bounded per-channel admission, explicit replay/gap handling, authoritative captions and separate bounded UI snapshots. Cancellation and finish retain native ownership through actual thread join. Authenticated capture live endpoints and SDK subscriptions use this facade; it is not a substitute for durable raw recording uploads. The existing s16 WebSocket adapter remains compatible.
 
-An internal Core worker now tails the existing durable capture chunks through the configured CPU host shared with batch jobs. Provisional finalized segments and their bounded partial snapshots have a private journal outside canonical sessions; replay does not restart inference, and service restart interrupts unfinished generations. Complete coverage requires persisted captions, actual native/source drain and the matching full raw-source seal. Canonical promotion additionally requires the matching published recording and fresh membership authorization. The initial limits are 64 generations per vault, 65,536 captions and 64 MiB of captions per generation. Processing interrupts when durable audio is more than 60 seconds ahead of native admission, or after 120 seconds waiting for input/publication. Errors retain raw capture data. These internals have no public live route, SDK subscription, capability or automatic summary trigger yet.
+An internal Core worker now tails the existing durable capture chunks through the configured CPU host shared with batch jobs. Provisional finalized segments and their bounded partial snapshots have a private journal outside canonical sessions; replay does not restart inference, and service restart interrupts unfinished generations. Complete coverage requires persisted captions, actual native/source drain and the matching full raw-source seal. Canonical promotion additionally requires the matching published recording and fresh membership authorization. The initial limits are 64 generations per vault, 65,536 captions and 64 MiB of captions per generation. Processing interrupts when durable audio is more than 60 seconds ahead of native admission, or after 120 seconds waiting for input/publication. Errors retain raw capture data. Configured transcription hosts advertise `capture_live_transcription`. Authenticated `/captures/{capture}/live` starts a generation; its `/{generation}` status, `/captions`, `/result`, `/cancel` and `/events` routes recover results and deliver bounded SSE pages. Generations and captions stay private to their submitting member. Reconnect uses the original generation and last admitted sequence; it does not restart inference. `GET /vaults/{vault}/transcription/policy` reports only the public model alias and current availability without opening a cold vault. Notes-only hosts return disabled policy and omit the live capability. Automatic summary triggering and batch repair remain separate work.
 
 Canonical batch conversion lives in `transcribe-core::transcript`; the existing `listener2_core::transcript` path re-exports it unchanged. The configured server uses the same timing, spacing, IDs, channel preparation and speaker-hint mapping without importing listener orchestration.
 
 The experimental saved-server desktop workspace can record audio for an existing
-note that has no recording. Capture stays on the device, uses durable private
+note that has no recording, or start a pending recording using its saved destination
+before signing in. A pending recording creates a note only after a verified upload
+and current server authorization; it does not create an editable offline note. Capture stays on the device, uses durable private
 chunks, and uploads independently of editing or server connectivity. The device
 recording queue stays outside the signed-in vault view, so Stop and retained
 capture discovery do not require a live server session. A lost start reply keeps
@@ -20,7 +22,7 @@ original account/vault to resume a retained upload. Device audio is retained aft
 independent canonical hash verification; automatic deletion is not enabled.
 
 This is not complete recording parity: automated live transcription/repair and
-summaries, offline pending-note controls, append, local audio export/recovery and
+summaries, append, local audio export/recovery and
 long-duration/platform acceptance remain release gates. The shared main workspace
 adapter is implemented and tested but is not yet the selected remote startup UI.
 
@@ -28,7 +30,11 @@ adapter is implemented and tested but is not yet the selected remote startup UI.
 
 Existing installations start in standalone mode: the existing local vault opens,
 works offline and requires no Loofah login. Startup does not contact an identity
-provider or provision a server profile.
+provider or provision a server profile. Before loading or migrating vault settings,
+the desktop acquires the canonical vault ownership lease. Settings writes, shared
+Store operations and the application context retain the same original lease through
+actual filesystem completion. A second independent owner is refused. Local CLI
+forwarding through the desktop owner is still being implemented.
 
 Use **Startup options** in the server workspace settings to add an HTTPS origin
 and choose a saved server connection for the next app start. The same control is

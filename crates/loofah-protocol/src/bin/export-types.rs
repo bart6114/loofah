@@ -33,6 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<ProcessingJobPage>()
         .register::<ProcessingJobResult>()
         .register::<TranscriptionJobRequest>()
+        .register::<TranscriptionPolicy>()
         .register::<TranscriptionJobSnapshot>()
         .register::<ListTranscriptionJobsInput>()
         .register::<TranscriptionJobPage>()

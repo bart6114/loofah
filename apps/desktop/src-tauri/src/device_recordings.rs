@@ -281,13 +281,16 @@ pub async fn device_recording_start<R: tauri::Runtime>(
 ) -> Result<DeviceRecordingInfo, ApplicationError> {
     let profile = profile(&app).await?;
     let profile_id = profile.profile().await.id;
+    // A retired connection must not prevent device capture. Only an existing,
+    // window-owned client for this destination may attach an uploader.
     let client = connection_id
-        .map(|id| {
+        .and_then(|id| {
             app.state::<crate::remote::RemoteState>()
                 .profile(&id, window.label(), &profile_id)
+                .ok()
                 .map(|(client, _)| client)
         })
-        .transpose()?;
+        .filter(|client| client.address() == input.scope.server);
     let state = app.state::<DeviceRecordingState>();
     state.bind_profile(&profile_id)?;
     // A later start can retire an in-memory ticket. Reconcile all persisted

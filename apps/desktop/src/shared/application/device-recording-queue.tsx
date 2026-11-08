@@ -177,6 +177,9 @@ function DeviceRecordingRow({
           </Button>
         ) : null}
       </div>
+      <p className="text-muted-foreground break-all">
+        {recording.identity.scope.server} · {recording.identity.scope.vault_id}
+      </p>
       <p role="status">
         {verified && !active ? (
           <Trans>Verified on the server. The device copy is retained.</Trans>

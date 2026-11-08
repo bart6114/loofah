@@ -477,7 +477,14 @@ pub(super) fn hash(bytes: impl AsRef<[u8]>) -> String {
 #[tokio::test]
 async fn native_publication_recovers_lost_replies_and_verifies_canonical_audio_at_realistic_latency()
  {
-    for rtt in [50, 150, 500] {
+    for (rtt, pending_note) in [
+        (50, false),
+        (150, false),
+        (500, false),
+        (50, true),
+        (150, true),
+        (500, true),
+    ] {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let fixture = Fixture::with_options(None, Some(origin.parse().unwrap())).await;
@@ -517,6 +524,13 @@ async fn native_publication_recovers_lost_replies_and_verifies_canonical_audio_a
                 .iter()
                 .any(|feature| feature == "capture_publication")
         );
+        assert!(
+            client
+                .capabilities()
+                .features
+                .iter()
+                .any(|feature| feature == "capture_pending_publication")
+        );
         let login = client.begin_login().await.unwrap();
         let url = login.authorization_url().to_string();
         let complete = tokio::spawn(login.complete());
@@ -533,28 +547,35 @@ async fn native_publication_recovers_lost_replies_and_verifies_canonical_audio_a
         else {
             panic!("provision reply")
         };
-        let RemoteReply::Session(note) = client
-            .execute(
-                RemoteOperation::CreateSession {
-                    vault_id: me.personal_vault_id.clone(),
-                    input: CreateSessionRequest {
-                        title: "Capture destination".into(),
-                        markdown: "Keep this note and its attachments.".into(),
+        let note = if pending_note {
+            None
+        } else {
+            let RemoteReply::Session(note) = client
+                .execute(
+                    RemoteOperation::CreateSession {
+                        vault_id: me.personal_vault_id.clone(),
+                        input: CreateSessionRequest {
+                            title: "Capture destination".into(),
+                            markdown: "Keep this note and its attachments.".into(),
+                        },
                     },
-                },
-                &uuid::Uuid::new_v4().to_string(),
-                CancellationToken::new(),
-            )
-            .await
-            .unwrap()
-        else {
-            panic!("created note")
+                    &uuid::Uuid::new_v4().to_string(),
+                    CancellationToken::new(),
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("created note")
+            };
+            Some(note)
         };
         let mut input = input(&fixture, &me);
-        input.identity.target = CaptureTarget::ExistingSession {
-            session_id: note.meta.id.clone(),
-            expected_audio_sha256: None,
-        };
+        if let Some(note) = &note {
+            input.identity.target = CaptureTarget::ExistingSession {
+                session_id: note.meta.id.clone(),
+                expected_audio_sha256: None,
+            };
+        }
         client
             .begin_capture(&input, CancellationToken::new())
             .await
@@ -633,7 +654,13 @@ async fn native_publication_recovers_lost_replies_and_verifies_canonical_audio_a
         );
         let publication = status.publication.unwrap();
         assert_eq!(publication.source, seal);
-        assert_eq!(publication.session_id, note.meta.id);
+        assert_eq!(
+            status.session_id.as_deref(),
+            Some(publication.session_id.as_str())
+        );
+        if let Some(note) = &note {
+            assert_eq!(publication.session_id, note.meta.id);
+        }
         for _ in 0..2 {
             let replay = client
                 .publish_capture(
@@ -651,7 +678,7 @@ async fn native_publication_recovers_lost_replies_and_verifies_canonical_audio_a
         let lease = client
             .open_recording(
                 &me.personal_vault_id,
-                &note.meta.id,
+                &publication.session_id,
                 &uuid::Uuid::new_v4().to_string(),
                 CancellationToken::new(),
             )
@@ -678,9 +705,15 @@ async fn native_publication_recovers_lost_replies_and_verifies_canonical_audio_a
             .await
             .unwrap();
         let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
-        let current = context.read_note(&note.meta.id).await.unwrap();
-        assert_eq!(current, note.note);
-        let metadata = context.read_metadata(&note.meta.id).await.unwrap();
+        assert_eq!(context.store.session_list().len(), 1);
+        if let Some(note) = &note {
+            let current = context.read_note(&note.meta.id).await.unwrap();
+            assert_eq!(current, note.note);
+        }
+        let metadata = context
+            .read_metadata(&publication.session_id)
+            .await
+            .unwrap();
         assert_eq!(
             metadata.meta.started_at.as_deref(),
             Some("2026-11-08T00:00:01.123Z")
@@ -692,7 +725,7 @@ async fn native_publication_recovers_lost_replies_and_verifies_canonical_audio_a
 }
 
 #[tokio::test]
-async fn publication_refuses_pending_destinations_and_requires_current_vault_access() {
+async fn pending_publication_creates_one_bound_note_and_requires_current_vault_access() {
     let fixture = Fixture::new().await;
     let alice = fixture.login("alice").await;
     fixture.login("bob").await;
@@ -728,24 +761,39 @@ async fn publication_refuses_pending_destinations_and_requires_current_vault_acc
     );
     let path = format!("{base}/publish");
     let body = Some(serde_json::to_value(&seal).unwrap());
-    let (status, cause) = fixture.call("alice", "POST", &path, body.clone()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(cause["mutation_outcome"], "not_committed");
     assert_eq!(
-        fixture.call("bob", "POST", &path, body).await.0,
+        fixture.call("bob", "POST", &path, body.clone()).await.0,
         StatusCode::NOT_FOUND
     );
-    let (status, retained) = fixture.call("alice", "GET", &base, None).await;
-    assert_eq!(status, StatusCode::OK);
-    let retained: CaptureIngestStatus = serde_json::from_value(retained).unwrap();
-    assert_eq!(retained.identity, input.identity);
-    assert_eq!(retained.seal.as_ref(), Some(&seal));
-    assert!(retained.publication.is_none());
     let context = fixture
         .service
         .vault(&alice.personal_vault_id)
         .await
         .unwrap();
     assert!(context.store.session_list().is_empty());
+    let (status, published) = fixture.call("alice", "POST", &path, body.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{published}");
+    let published: CaptureIngestStatus = serde_json::from_value(published).unwrap();
+    let publication = published.publication.as_ref().unwrap();
+    let session = published.session_id.as_deref().unwrap();
+    assert_eq!(publication.session_id, session);
+    assert_eq!(context.store.session_list().len(), 1);
+    let metadata = context.read_metadata(session).await.unwrap();
+    assert_eq!(
+        metadata.meta.started_at.as_deref(),
+        Some("2026-11-08T00:00:01.123Z")
+    );
+    let (status, replay) = fixture.call("alice", "POST", &path, body).await;
+    assert_eq!(status, StatusCode::OK, "{replay}");
+    let replay: CaptureIngestStatus = serde_json::from_value(replay).unwrap();
+    assert_eq!(replay, published);
+    assert_eq!(context.store.session_list().len(), 1);
+    let (status, retained) = fixture.call("alice", "GET", &base, None).await;
+    assert_eq!(status, StatusCode::OK);
+    let retained: CaptureIngestStatus = serde_json::from_value(retained).unwrap();
+    assert_eq!(retained.identity, input.identity);
+    assert_eq!(retained.seal.as_ref(), Some(&seal));
+    assert_eq!(retained.publication, published.publication);
+    assert_eq!(retained.session_id, published.session_id);
     fixture.service.shutdown().await.unwrap();
 }

@@ -26,7 +26,7 @@ import type {
 export type DeviceRecordingDestination = {
   scopeKey: string;
   scope: CaptureScope;
-  connectionId: string;
+  connectionId?: string;
 };
 
 type DeviceRecordingOwner = {
@@ -68,15 +68,117 @@ export function DeviceRecordingHost({
   const current = destination === owner?.destination ? owner : null;
   return (
     <RecordingContext.Provider value={current}>
+      {current && (
+        <PendingRecordButton
+          key={current.scopeKey}
+          profileId={profileId}
+          recording={current}
+        />
+      )}
       {monitor?.profileId === profileId && (
         <DeviceRecordingQueue
           profileId={profileId}
           client={monitor.client}
-          resumeUpload={current?.client.resumeUpload}
+          resumeUpload={
+            current?.destination.connectionId
+              ? current.client.resumeUpload
+              : undefined
+          }
         />
       )}
       {children}
     </RecordingContext.Provider>
+  );
+}
+
+function PendingRecordButton({
+  profileId,
+  recording,
+}: {
+  profileId: string;
+  recording: DeviceRecordingOwner;
+}) {
+  const cache = useQueryClient();
+  const queryKey = ["device", "recordings", profileId];
+  const inventory = useQuery({
+    queryKey,
+    queryFn: () => recording.client.recoveryInventory(),
+    networkMode: "always",
+    staleTime: Infinity,
+    retry: false,
+  });
+  const intent = useRef<Omit<DeviceCaptureStartRequest, "scope"> | null>(null);
+  const start = useMutation({
+    networkMode: "always",
+    retry: false,
+    mutationFn: () => {
+      const request = (intent.current ??= {
+        request_id: crypto.randomUUID(),
+        target: {
+          kind: "pending_session",
+          create_request_id: crypto.randomUUID(),
+        },
+        format: {
+          encoding: "pcm_f32_le",
+          sample_rate: 16000,
+          channels: ["microphone", "system_audio"],
+        },
+      });
+      return recording.client.start(request);
+    },
+    onSuccess: (recording) => {
+      cache.setQueryData<import("~/types/tauri.gen").DeviceRecordingInfo[]>(
+        queryKey,
+        (items = []) => [
+          ...items.filter(
+            (item) =>
+              JSON.stringify(item.identity) !==
+              JSON.stringify(recording.identity),
+          ),
+          recording,
+        ],
+      );
+    },
+    onSettled: () => {
+      void cache.invalidateQueries({ queryKey });
+    },
+  });
+  const active = inventory.data?.some(
+    (item) =>
+      item.profile_id === profileId &&
+      ["preparing", "starting", "capturing", "stopping", "pending"].includes(
+        item.phase ?? "",
+      ),
+  );
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={start.isPending || !!active || !inventory.isSuccess}
+        onClick={() => {
+          if (start.isSuccess) intent.current = null;
+          start.mutate();
+        }}
+      >
+        {start.isPending ? (
+          <Trans>Starting recording…</Trans>
+        ) : (
+          <Trans>Record a new note</Trans>
+        )}
+      </Button>
+      <p className="text-muted-foreground text-xs">
+        <Trans>
+          Audio is saved on this device. A note is created after upload to the
+          selected vault.
+        </Trans>
+      </p>
+      {(start.error || inventory.error) && (
+        <p role="alert" className="text-destructive text-xs">
+          {(start.error ?? inventory.error)?.message}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -147,7 +147,7 @@ impl VaultRuntime {
             id,
             store.clone(),
             startup.clone(),
-            Arc::new(ConfigState::load_or_default(&vault)),
+            Arc::new(ConfigState::load_with_vault_lease(&lease)),
             Arc::new(SearchService::default()),
         )
         .with_operation_storage(operation_root.to_path_buf());

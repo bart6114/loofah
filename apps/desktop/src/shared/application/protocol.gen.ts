@@ -399,6 +399,8 @@ export type TranscriptWithData = { id: string; user_id?: string; created_at?: st
 
 export type TranscriptWord = { id?: string | null; text: string; start_ms: number; end_ms: number; channel: number; speaker?: string | null; metadata?: Partial<{ [key in string]: JsonValue }> | null }
 
+export type TranscriptionAvailability = "disabled" | "loading" | "ready" | "in_use" | "unavailable" | "stopping"
+
 export type TranscriptionFailure = "access_denied" | "source_unavailable" | "resource_limit" | "engine_unavailable" | "engine_failed" | "invalid_output" | "storage" | "interrupted"
 
 export type TranscriptionJobPage = { jobs: TranscriptionJobSnapshot[]; next_cursor: string | null }
@@ -412,6 +414,16 @@ export type TranscriptionJobSnapshot = { id: string; session_id: string; state: 
 export type TranscriptionJobState = "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "interrupted" | "conflict" | "empty" | "uncertain"
 
 export type TranscriptionPhase = "preparing" | "transcribing" | "publishing"
+
+export type TranscriptionPolicy = {
+/**
+ * Operator-facing public model alias, never a model file path.
+ */
+model: string | null;
+/**
+ * Advisory model state; operation admission remains authoritative.
+ */
+availability: TranscriptionAvailability; batch_enabled: boolean; live_enabled: boolean }
 
 /**
  * A durable historical decision, not confirmation that these bytes are still current.

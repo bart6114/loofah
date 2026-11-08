@@ -3175,6 +3175,7 @@ export type RemoteEvent =
     }
   | { kind: "change"; event: ChangeEvent };
 export type RemoteOperation =
+  | { kind: "transcription_policy"; vault_id: string }
   | {
       kind: "start_capture_live";
       vault_id: string;
@@ -3381,6 +3382,7 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "transcription_policy"; value: TranscriptionPolicy }
   | { kind: "capture_live_snapshot"; value: CaptureLiveSnapshot }
   | { kind: "capture_live_captions"; value: CaptureLiveCaptionPage }
   | { kind: "capture_live_result"; value: TranscriptionJobResult | null }
@@ -3851,6 +3853,13 @@ export type TranscriptWord = {
   speaker?: string | null;
   metadata?: Partial<{ [key in string]: JsonValue }> | null;
 };
+export type TranscriptionAvailability =
+  | "disabled"
+  | "loading"
+  | "ready"
+  | "in_use"
+  | "unavailable"
+  | "stopping";
 export type TranscriptionFailure =
   | "access_denied"
   | "source_unavailable"
@@ -3900,6 +3909,18 @@ export type TranscriptionJobState =
   | "empty"
   | "uncertain";
 export type TranscriptionPhase = "preparing" | "transcribing" | "publishing";
+export type TranscriptionPolicy = {
+  /**
+   * Operator-facing public model alias, never a model file path.
+   */
+  model: string | null;
+  /**
+   * Advisory model state; operation admission remains authoritative.
+   */
+  availability: TranscriptionAvailability;
+  batch_enabled: boolean;
+  live_enabled: boolean;
+};
 /**
  * A durable historical decision, not confirmation that these bytes are still current.
  */

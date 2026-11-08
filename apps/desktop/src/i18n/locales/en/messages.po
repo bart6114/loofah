@@ -250,6 +250,10 @@ msgstr "Audio"
 msgid "Audio is saved on this device and awaiting upload."
 msgstr "Audio is saved on this device and awaiting upload."
 
+#: src/shared/application/device-recording-host.tsx
+msgid "Audio is saved on this device. A note is created after upload to the selected vault."
+msgstr "Audio is saved on this device. A note is created after upload to the selected vault."
+
 #: src/settings/ai/llm/tags.tsx
 msgid "Auto-apply tags with high confidence"
 msgstr "Auto-apply tags with high confidence"
@@ -1720,6 +1724,10 @@ msgstr "Reconnecting… Loaded notes remain available."
 #: src/session/components/outer-header/index.tsx
 msgid "Record"
 msgstr "Record"
+
+#: src/shared/application/device-recording-host.tsx
+msgid "Record a new note"
+msgstr "Record a new note"
 
 #: src/shared/application/device-recording-host.tsx
 msgid "Record audio"

@@ -19,6 +19,7 @@ const native = vi.hoisted(() => ({
   start: vi.fn(),
   resume: vi.fn(),
   updates: new Set<() => void>(),
+  destinations: [] as unknown[],
 }));
 vi.mock("./device-recordings", () => ({
   createDeviceRecordingMonitor: () => {
@@ -36,11 +37,15 @@ vi.mock("./device-recordings", () => ({
     native.monitors.push(monitor);
     return monitor;
   },
-  createDeviceRecordingClient: () => ({
-    start: native.start,
-    resumeUpload: native.resume,
-    dispose: vi.fn(),
-  }),
+  createDeviceRecordingClient: (destination: unknown) => {
+    native.destinations.push(destination);
+    return {
+      start: native.start,
+      recoveryInventory: vi.fn(async () => native.records),
+      resumeUpload: native.resume,
+      dispose: vi.fn(),
+    };
+  },
 }));
 
 import {
@@ -87,9 +92,11 @@ const scopes: VaultScope[] = [];
 const caches: QueryClient[] = [];
 beforeEach(() => {
   vi.clearAllMocks();
+  native.start.mockReset().mockResolvedValue(record());
   native.records = [];
   native.monitors.length = 0;
   native.updates.clear();
+  native.destinations.length = 0;
 });
 afterEach(() => {
   cleanup();
@@ -234,4 +241,67 @@ it("updates retained audio status after Stop without requiring a server connecti
   expect((resume as HTMLButtonElement).disabled).toBe(true);
   expect(screen.queryByRole("button", { name: "Stop recording" })).toBeNull();
   expect(native.resume).not.toHaveBeenCalled();
+});
+
+it("starts a pending capture before server sign-in using only the saved destination", async () => {
+  const cache = new QueryClient();
+  caches.push(cache);
+  render(
+    <QueryClientProvider client={cache}>
+      <DeviceRecordingHost
+        profileId="profile"
+        destination={{
+          scopeKey: destination.scopeKey,
+          scope: destination.scope,
+        }}
+      >
+        <div>Server sign-in</div>
+      </DeviceRecordingHost>
+    </QueryClientProvider>,
+  );
+  const button = await screen.findByRole("button", {
+    name: "Record a new note",
+  });
+  await waitFor(() =>
+    expect((button as HTMLButtonElement).disabled).toBe(false),
+  );
+  fireEvent.click(button);
+  await waitFor(() => expect(native.start).toHaveBeenCalledOnce());
+  const request = native.start.mock.calls[0][0];
+  expect(request.target).toEqual({
+    kind: "pending_session",
+    create_request_id: expect.any(String),
+  });
+  expect(request.request_id).not.toBe(request.target.create_request_id);
+  expect(native.destinations).toEqual([
+    { scopeKey: destination.scopeKey, scope: destination.scope },
+  ]);
+  expect(native.resume).not.toHaveBeenCalled();
+});
+
+it("retains both pending request identities when the start reply is unknown", async () => {
+  native.start.mockRejectedValue(new Error("Unknown recording outcome"));
+  await mount();
+  const button = await screen.findByRole("button", {
+    name: "Record a new note",
+  });
+  await waitFor(() =>
+    expect((button as HTMLButtonElement).disabled).toBe(false),
+  );
+  fireEvent.click(button);
+  await screen.findByText("Unknown recording outcome");
+  fireEvent.click(button);
+  await waitFor(() => expect(native.start).toHaveBeenCalledTimes(2));
+  expect(native.start.mock.calls[1][0]).toEqual(native.start.mock.calls[0][0]);
+  expect(native.start.mock.calls[0][0].target.kind).toBe("pending_session");
+});
+
+it("keeps pending capture disabled while this profile still owns an active recording", async () => {
+  await mount({ active: true });
+  const button = await screen.findByRole("button", {
+    name: "Record a new note",
+  });
+  expect((button as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(button);
+  expect(native.start).not.toHaveBeenCalled();
 });

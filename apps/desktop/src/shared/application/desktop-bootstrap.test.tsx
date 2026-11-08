@@ -2,7 +2,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ bootstrap: vi.fn(), remote: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  bootstrap: vi.fn(),
+  remote: vi.fn(),
+  recordings: vi.fn(),
+}));
 vi.mock("~/types/tauri.gen", () => ({
   commands: { applicationDesktopBootstrap: mocks.bootstrap },
 }));
@@ -22,9 +26,13 @@ vi.mock("./device-recovery", () => ({
 vi.mock("./device-recording-host", () => ({
   DeviceRecordingHost: ({
     children,
+    ...props
   }: {
     children: import("react").ReactNode;
-  }) => <>{children}</>,
+  }) => {
+    mocks.recordings(props);
+    return <>{children}</>;
+  },
 }));
 
 import {
@@ -95,6 +103,17 @@ it("opens only the saved remote workspace and pins its destination", async () =>
     preferredMemberId: "alice",
     preferredVaultId: "private",
     connectToServer: expect.any(Function),
+  });
+  expect(mocks.recordings.mock.lastCall?.[0]).toEqual({
+    profileId: "profile",
+    destination: {
+      scopeKey: expect.any(String),
+      scope: {
+        server: "https://company.example/",
+        member_id: "alice",
+        vault_id: "private",
+      },
+    },
   });
 });
 

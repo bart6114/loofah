@@ -170,6 +170,7 @@ pub struct ConfigState {
 }
 
 struct ConfigInner {
+    _vault_lease: Option<Arc<std::fs::File>>,
     config: RwLock<AppConfig>,
     write_lock: Mutex<()>,
     changes: tokio::sync::watch::Sender<u64>,
@@ -178,18 +179,27 @@ struct ConfigInner {
 
 impl ConfigState {
     pub fn load_or_default(vault_base: &Path) -> Self {
+        Self::load(vault_base, None)
+    }
+
+    pub fn load_with_vault_lease(lease: &hypr_storage::vault::VaultLease) -> Self {
+        Self::load(lease.canonical_vault(), Some(lease.pin()))
+    }
+
+    fn load(vault_base: &Path, lease: Option<Arc<std::fs::File>>) -> Self {
         let path = hypr_storage::vault::compute_config_path(vault_base);
         let config = load_config(&path, |content| {
             hypr_storage::fs::atomic_write(&path, content)
         });
 
-        Self::from_config(path, config)
+        Self::from_config(path, config, lease)
     }
 
-    fn from_config(path: PathBuf, config: AppConfig) -> Self {
+    fn from_config(path: PathBuf, config: AppConfig, lease: Option<Arc<std::fs::File>>) -> Self {
         Self {
             path,
             inner: Arc::new(ConfigInner {
+                _vault_lease: lease,
                 config: RwLock::new(config),
                 write_lock: Mutex::new(()),
                 changes: tokio::sync::watch::channel(0).0,
@@ -324,6 +334,61 @@ fn read_config(path: &Path) -> Result<AppConfig, ConfigError> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn owned_settings_keep_the_original_lease_after_caller_cancellation() {
+        use hypr_storage::vault::{LeaseAttempt, VaultLease};
+
+        let root = tempfile::tempdir().unwrap();
+        let LeaseAttempt::Acquired(lease) = VaultLease::try_acquire_existing(root.path()).unwrap()
+        else {
+            panic!("unexpected owner");
+        };
+        let original = std::sync::Arc::downgrade(&lease.pin());
+        let state = super::ConfigState::load_with_vault_lease(&lease);
+        let (entered, ready) = tokio::sync::oneshot::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let operation = tokio::spawn(async move {
+            state
+                .edit(move |config| {
+                    let _ = entered.send(());
+                    let _ = wait.recv();
+                    config.theme = "dark".into();
+                    Ok(((), true))
+                })
+                .await
+        });
+        ready.await.unwrap();
+        operation.abort();
+        let _ = operation.await;
+        drop(lease);
+        let retained = original.upgrade().is_some();
+        let locked = matches!(
+            VaultLease::try_acquire_existing(root.path()).unwrap(),
+            LeaseAttempt::Busy
+        );
+        // Releasing before assertions also lets actual blocking I/O finish on failure.
+        release.send(()).unwrap();
+        assert!(retained);
+        assert!(locked);
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while original.upgrade().is_some() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            super::ConfigState::load_or_default(root.path())
+                .snapshot()
+                .theme,
+            "dark"
+        );
+        assert!(matches!(
+            VaultLease::try_acquire_existing(root.path()).unwrap(),
+            LeaseAttempt::Acquired(_)
+        ));
+    }
+
     use super::*;
     use serde_json::json;
     use tempfile::tempdir;
@@ -686,7 +751,7 @@ mod tests {
             Some("soniqo-parakeet-batch")
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
-        let state = ConfigState::from_config(path.clone(), config);
+        let state = ConfigState::from_config(path.clone(), config, None);
         state
             .set_values(values(&[("theme", json!("dark"))]))
             .await

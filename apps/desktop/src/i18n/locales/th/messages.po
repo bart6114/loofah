@@ -250,6 +250,10 @@ msgstr ""
 msgid "Audio is saved on this device and awaiting upload."
 msgstr ""
 
+#: src/shared/application/device-recording-host.tsx
+msgid "Audio is saved on this device. A note is created after upload to the selected vault."
+msgstr ""
+
 #: src/settings/ai/llm/tags.tsx
 msgid "Auto-apply tags with high confidence"
 msgstr ""
@@ -1719,6 +1723,10 @@ msgstr ""
 
 #: src/session/components/outer-header/index.tsx
 msgid "Record"
+msgstr ""
+
+#: src/shared/application/device-recording-host.tsx
+msgid "Record a new note"
 msgstr ""
 
 #: src/shared/application/device-recording-host.tsx

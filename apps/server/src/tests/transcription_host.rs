@@ -320,6 +320,12 @@ async fn failed_configured_model_keeps_notes_and_reports_engine_unavailable_with
             .unwrap()
             .contains(&json!("batch_transcription_jobs"))
     );
+    assert!(
+        capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("capture_live_transcription"))
+    );
     tokio::time::timeout(Duration::from_secs(15), async {
         while !matches!(
             resources.snapshot().phase,
