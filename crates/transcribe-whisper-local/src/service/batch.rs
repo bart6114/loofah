@@ -257,6 +257,12 @@ fn check_cancelled(cancelled: &AtomicBool) -> Result<(), crate::Error> {
     }
 }
 
+fn advance_context(previous_end: &mut Option<usize>, range: std::ops::Range<usize>) -> bool {
+    let reset = previous_end.is_some_and(|end| end != range.start);
+    *previous_end = Some(range.end);
+    reset
+}
+
 pub(super) fn transcribe_source(
     audio_path: &Path,
     params: &ListenParams,
@@ -353,12 +359,21 @@ pub(super) fn transcribe_source(
     jobs.sort_by_key(|(channel, _, chunk)| (chunk.sample_start, *channel));
     let mut reader = pcm.reader()?;
     let mut first_text = true;
+    let mut previous_ends = vec![None; channel_count];
     for (channel, index, chunk) in jobs {
         check_cancelled(&cancelled)?;
         language.advance(chunk.sample_start, &mut models[0])?;
         check_cancelled(&cancelled)?;
         for model in &mut models {
             model.select_language(language.resolver.selected());
+        }
+        if advance_context(
+            &mut previous_ends[channel],
+            chunk.sample_start..chunk.sample_end,
+        ) {
+            // Packed ranges can omit minutes of silence. Text from a disconnected
+            // range must not condition this range; explicit vocabulary stays intact.
+            models[channel].reset_dynamic_prompt();
         }
         let samples = reader.channel(channel, chunk.sample_start..chunk.sample_end)?;
         let segments = transcribe_chunk(
@@ -477,6 +492,17 @@ fn join_transcript(segments: &[crate::service::Segment]) -> String {
 
 #[cfg(test)]
 mod performance_tests {
+    #[test]
+    fn discontinuous_ranges_reset_only_their_own_channel_context() {
+        let mut ends = [None, None];
+        assert!(!super::advance_context(&mut ends[0], 0..400_000));
+        assert!(!super::advance_context(&mut ends[1], 8_000..15_000));
+        assert!(!super::advance_context(&mut ends[0], 400_000..800_000));
+        assert!(super::advance_context(&mut ends[1], 16_000..30_000));
+        assert!(super::advance_context(&mut ends[0], 4_800_000..5_200_000));
+        assert!(!super::advance_context(&mut ends[1], 30_000..40_000));
+        assert!(super::advance_context(&mut ends[0], 5_000_000..5_400_000));
+    }
     use super::*;
     #[test]
     #[ignore = "requires LOOFAH_WHISPER_MODEL; run in release mode"]

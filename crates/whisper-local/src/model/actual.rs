@@ -216,6 +216,10 @@ impl Whisper {
         }
     }
 
+    pub fn reset_dynamic_prompt(&mut self) {
+        self.dynamic_prompt.clear();
+    }
+
     pub fn set_cancellation(&mut self, cancelled: Arc<AtomicBool>) {
         self.cancelled = cancelled;
     }
@@ -525,6 +529,11 @@ mod tests {
         model.dynamic_prompt = "previous English context".into();
         model.select_language(Some("en"));
         assert!(!model.dynamic_prompt.is_empty());
+        model.reset_dynamic_prompt();
+        assert!(model.dynamic_prompt.is_empty());
+        assert_eq!(model.initial_prompt, "Kubernetes, Loofah");
+        assert_eq!(model.selected_language.as_deref(), Some("en"));
+        model.dynamic_prompt = "new English context".into();
         model.select_language(Some("nl"));
         assert!(model.dynamic_prompt.is_empty());
         assert_eq!(model.initial_prompt, "Kubernetes, Loofah");
