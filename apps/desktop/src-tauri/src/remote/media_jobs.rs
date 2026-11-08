@@ -5,7 +5,7 @@ use hypr_loofah_client::media_jobs::{
     MediaAuthority, MediaScope, MediaSubmission, MediaSubmissions,
 };
 use hypr_loofah_protocol::*;
-pub use source_export::remote_media_export_source;
+pub use source_export::*;
 use std::sync::Weak;
 
 #[derive(Default)]
