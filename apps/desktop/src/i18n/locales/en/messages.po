@@ -321,6 +321,7 @@ msgstr "Cancel date edit"
 
 #: src/session/components/note-input/header.tsx
 #: src/shared/application/device-recording-queue.tsx
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 #: src/shared/application/vault-processing.tsx
 msgid "Cancel processing"
@@ -391,6 +392,10 @@ msgstr "Checking attachment…"
 msgid "Checking connection…"
 msgstr "Checking connection…"
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Checking the saved request…"
+msgstr "Checking the saved request…"
+
 #: src/onboarding/setup-status.tsx
 msgid "Checking transcription download…"
 msgstr "Checking transcription download…"
@@ -444,6 +449,7 @@ msgstr "Choose how Loofah writes your summaries."
 msgid "Choose light, dark, or match your system setting."
 msgstr "Choose light, dark, or match your system setting."
 
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 msgid "Choose original file to resume upload"
 msgstr "Choose original file to resume upload"
@@ -1317,6 +1323,10 @@ msgstr "Loading notes…"
 msgid "Loading preview…"
 msgstr "Loading preview…"
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Loading saved requests…"
+msgstr "Loading saved requests…"
+
 #: src/shared/application/desktop-startup-preferences.tsx
 msgid "Loading startup preferences…"
 msgstr "Loading startup preferences…"
@@ -1404,22 +1414,31 @@ msgstr "Measurement stopped before all files could be counted. Shares show measu
 msgid "Media processing"
 msgstr "Media processing"
 
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 msgid "Media processing cancelled"
 msgstr "Media processing cancelled"
 
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 msgid "Media processing failed"
 msgstr "Media processing failed"
 
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 msgid "Media processing needs review"
 msgstr "Media processing needs review"
 
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 msgid "Media queued"
 msgstr "Media queued"
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Media recovery"
+msgstr "Media recovery"
+
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 msgid "Media saved"
 msgstr "Media saved"
@@ -1497,6 +1516,10 @@ msgstr "New note"
 msgid "New Note"
 msgstr "New Note"
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Next"
+msgstr "Next"
+
 #: src/session/components/note-input/search/bar.tsx
 msgid "Next match"
 msgstr "Next match"
@@ -1555,6 +1578,10 @@ msgstr "No models available."
 msgid "No models ready to use."
 msgstr "No models ready to use."
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "No note is linked to this saved request yet."
+msgstr "No note is linked to this saved request yet."
+
 #: src/shared/open-note-dialog.tsx
 msgid "No notes found."
 msgstr "No notes found."
@@ -1571,6 +1598,10 @@ msgstr "No results found."
 #: src/shared/application/vault-media-processing.tsx
 msgid "No retained transcript is available for this request."
 msgstr "No retained transcript is available for this request."
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "No saved media requests."
+msgstr "No saved media requests."
 
 #: src/shared/application/device-recovery.tsx
 msgid "No saved recovery drafts."
@@ -1782,6 +1813,10 @@ msgstr "Preview the settings and diagnostics to include in a bug report. API key
 msgid "Preview unavailable. You can open or save the original file."
 msgstr "Preview unavailable. You can open or save the original file."
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Previous"
+msgstr "Previous"
+
 #: src/session/components/note-input/search/bar.tsx
 msgid "Previous match"
 msgstr "Previous match"
@@ -1794,6 +1829,7 @@ msgstr "Processing cancellation is saved. Audio capture and upload continue."
 msgid "Processing may already have started. Resume uses the original request."
 msgstr "Processing may already have started. Resume uses the original request."
 
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 msgid "Processing media"
 msgstr "Processing media"
@@ -1859,6 +1895,10 @@ msgstr "Recent"
 #: src/shared/application/vault-processing-settings.tsx
 msgid "Reconnect to save settings. Your changes stay in this form."
 msgstr "Reconnect to save settings. Your changes stay in this form."
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Reconnect to the original workspace to inspect or recover requests."
+msgstr "Reconnect to the original workspace to inspect or recover requests."
 
 #: src/sidebar/timeline/index.tsx
 msgid "Reconnecting… Loaded notes remain available."
@@ -1955,6 +1995,7 @@ msgstr "Recover recording processing"
 msgid "Recover request"
 msgstr "Recover request"
 
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 msgid "Recover saved request"
 msgstr "Recover saved request"
@@ -1996,6 +2037,7 @@ msgstr "Refresh credential status"
 msgid "Refresh notes from disk"
 msgstr "Refresh notes from disk"
 
+#: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-processing.tsx
 msgid "Refresh requests"
 msgstr "Refresh requests"
@@ -2191,6 +2233,10 @@ msgstr "Retry cleanup"
 msgid "Retry creation"
 msgstr "Retry creation"
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Retry status"
+msgstr "Retry status"
+
 #: src/shared/application/device-recording-host.tsx
 msgid "Retry the saved append request with its original recording and processing choices."
 msgstr "Retry the saved append request with its original recording and processing choices."
@@ -2198,6 +2244,10 @@ msgstr "Retry the saved append request with its original recording and processin
 #: src/session/components/session-date.tsx
 msgid "Review saved date"
 msgstr "Review saved date"
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Review saved media requests, including imports that do not have a note yet. Recovery starts only when you choose it."
+msgstr "Review saved media requests, including imports that do not have a note yet. Recovery starts only when you choose it."
 
 #: src/session/components/title-input.tsx
 msgid "Review saved title"
@@ -2269,6 +2319,10 @@ msgstr "Saved changes apply to future summaries. Existing text changes only when
 #: src/shared/application/desktop-startup-preferences.tsx
 msgid "Saved for the next app start."
 msgstr "Saved for the next app start."
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Saved media request pages"
+msgstr "Saved media request pages"
 
 #: src/shared/application/vault-processing.tsx
 msgid "Saved notes or transcript could not be read."
@@ -2904,6 +2958,14 @@ msgstr "The selected summary provider is unavailable."
 msgid "The server may have created this vault. Retry the same request to recover its result."
 msgstr "The server may have created this vault. Retry the same request to recover its result."
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "The server outcome is not confirmed. Recover this saved request to check its original operation."
+msgstr "The server outcome is not confirmed. Recover this saved request to check its original operation."
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "The server returned a different media request. Keep the original request for review."
+msgstr "The server returned a different media request. Keep the original request for review."
+
 #: src/shared/application/vault-processing.tsx
 msgid "The summary changed during generation. View the generated text to recover it."
 msgstr "The summary changed during generation. View the generated text to recover it."
@@ -2986,6 +3048,10 @@ msgstr "This recovery copy has already been cleared."
 msgid "This removes the saved request from this device. It does not stop processing. A new summary request may run again."
 msgstr "This removes the saved request from this device. It does not stop processing. A new summary request may run again."
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "This saved request is no longer available in its original workspace."
+msgstr "This saved request is no longer available in its original workspace."
+
 #: src/shared/application/vault-document-editor.tsx
 msgid "This server does not support the document editor. Upgrade the server, then reconnect."
 msgstr "This server does not support the document editor. Upgrade the server, then reconnect."
@@ -3006,6 +3072,10 @@ msgstr "This transcript has {0} assigned speakers. Re-transcribing replaces the 
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 msgid "This transcript has 1 assigned speaker. Re-transcribing replaces the transcript and removes that speaker assignment."
 msgstr "This transcript has 1 assigned speaker. Re-transcribing replaces the transcript and removes that speaker assignment."
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "This workspace cannot resume media uploads."
+msgstr "This workspace cannot resume media uploads."
 
 #: src/settings/general/timezone.tsx
 msgid "Timezone"
@@ -3119,6 +3189,10 @@ msgstr "Transcription not set up"
 #: src/shared/application/vault-transcription.tsx
 msgid "Transcription queued"
 msgstr "Transcription queued"
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Transcription request"
+msgstr "Transcription request"
 
 #: src/settings/ai/stt/select.tsx
 msgid "Transcription runs on your device"
@@ -3319,6 +3393,10 @@ msgstr "View"
 #: src/shared/application/device-recording-queue.tsx
 msgid "Waiting for the complete recording to finish processing."
 msgstr "Waiting for the complete recording to finish processing."
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Waiting for the original media file"
+msgstr "Waiting for the original media file"
 
 #: src/shared/application/vault-media-processing.tsx
 msgid "Waiting for the original media upload"

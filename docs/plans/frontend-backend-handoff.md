@@ -604,3 +604,41 @@ with the fixture correction. This does not substitute for a new full integrated
 run after the pending Remote Core/server and CLI media source lands.
 
 Remote manual-media summary parents now use a trusted server member principal and the same member-private media namespace as their original publication receipts. Local parents omit the new optional scope field and retain `desktop` ownership and prior serialized bytes. Summary children freeze that original member and source; parent/status/result lookup cannot adopt another member's or Local receipt with the same request UUID. A focused shared-session regression covers two members plus Local declarations, original-member-only inference/child access, and historical replay after canonical transcript deletion. Root/server integration must call the crate-only scoped declaration/completion/status entry points; these are not renderer-selected filesystem paths or principals.
+
+Remote manual media is now advertised with paired `media_jobs` and
+`media_initial_metadata` capabilities. Declarations, bounded exact-byte uploads,
+member-private status/cancellation/recovery/results and summary parents reuse the
+shared journals and publications. Raw-only imports work without a transcription
+model. Remote CLI import/transcription, immutable initial metadata, partial-import
+output and explicit original-request/source recovery now use these APIs. The
+combined Native lane passed 32 focused media/CLI/Core/HTTP/export cases plus the
+three capture/append fixture cases; the separate paired-capability case and
+20-package all-target check also passed. Linux qualification passed seven Core
+media, six scoped/manual summary, three HTTP and one actual configured CPU
+import/replacement case. Full integrated and fresh platform acceptance remain
+required after subsequent source.
+
+Saved device media declarations now have a collapsed global recovery panel,
+including lost declaration replies before any canonical note exists. Expansion
+only inspects original receipts/status; recovery and source resumption require an
+explicit action with the same UUID. Fifty combined recovery/recording-host/media
+UI tests passed, followed by 31 cases including media-only device staging.
+Read-only device preparation does not grant attachment publication authority.
+
+A production macOS QA app built successfully using the local Rust toolchain.
+Its first launch exposed the intentional unknown-application-root refusal. The
+known `io.loofah.separation-qa` identity now gets its own discoverable backend
+journal root, and CLI discovery reuses that exact root without writing a
+production profile. Nine storage regressions pass. A rebuilt app must still
+complete disposable-vault UI, physical recording and large-vault acceptance.
+
+Hosted checkpoint `0d8596eb5` passed formatting/lint, frontend and workflow
+security. CLI Clippy's oversized gateway enum is boxed. A macOS append test now
+canonicalizes its temporary root before invoking the strict path guard. Two Linux
+positive-reopen tests exposed incidental inherited flock descriptors between fork
+and exec: the kernel behavior was reproduced, and the strict immediate-release
+assertion now runs in an isolated exec child and also verifies the original Arc
+is gone. No production unlock was added. Eleven full Linux capture-store runs
+passed 52 tests each, including 704 immediate reopen iterations. Fresh hosted
+checks are still required for these corrections; ongoing Windows runs have not
+been cancelled.

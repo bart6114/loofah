@@ -190,19 +190,23 @@ export type ListProcessingJobsInput = { limit: number | null; after: string | nu
 
 export type ListTranscriptionJobsInput = { limit: number | null; after: string | null }
 
+export type LocalInitialSessionMetadata = { created_at: string | null; started_at: string | null; ended_at: string | null; tags: string[]; author: string | null; skill: string | null }
+
 export type LocalMediaKind = "import_audio" | "transcribe" | "import_subtitles"
 
 export type LocalMediaSourceSnapshot = { session_id: string; session_created_at: string; recording_selection: string; recording_sha256: string; transcript_revision: string; transcript_present: boolean; audio: SessionAudio }
 
 export type LocalMediaState = "running" | "succeeded" | "failed" | "review" | "cancelled"
 
-export type LocalMediaStatus = { request_id: string; session_id: string; kind: LocalMediaKind; state: LocalMediaState; transcript_id: string | null; word_count: number | null; error: ApplicationError | null }
+export type LocalMediaStatus = { request_id: string; session_id: string; kind: LocalMediaKind; state: LocalMediaState; transcript_id: string | null; word_count: number | null; error: ApplicationError | null; imported?: SessionMeta | null }
 
 export type Me = { member: MemberInfo; personal_vault_id: string }
 
 export type MediaDeclaration = { request_id: string; operation: MediaOperation; transcription: MediaTranscriptionOptions | null; summary: CaptureProcessingSummary | null }
 
-export type MediaOperation = { kind: "import_audio"; session_id: string | null; expected: MediaSessionSnapshot | null; filename: string; content_type: string | null; created_at: string | null; transcribe: boolean; source: MediaUploadSource } | { kind: "transcribe"; expected: LocalMediaSourceSnapshot } | { kind: "import_subtitles"; session_id: string; expected: MediaSessionSnapshot; filename: string; source: MediaUploadSource }
+export type MediaImportInitialMetadata = { title: string | null; metadata: LocalInitialSessionMetadata }
+
+export type MediaOperation = { kind: "import_audio"; session_id: string | null; expected: MediaSessionSnapshot | null; filename: string; content_type: string | null; created_at: string | null; initial?: MediaImportInitialMetadata | null; transcribe: boolean; source: MediaUploadSource } | { kind: "transcribe"; expected: LocalMediaSourceSnapshot } | { kind: "import_subtitles"; session_id: string; expected: MediaSessionSnapshot; filename: string; source: MediaUploadSource }
 
 export type MediaPhase = "receiving" | "ready" | "running" | "review" | "succeeded" | "failed" | "cancelled"
 

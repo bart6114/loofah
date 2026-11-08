@@ -173,3 +173,20 @@ it("does not expose upload controls to readers", async () => {
   expect(screen.queryByRole("button", { name: "Add attachments" })).toBeNull();
   expect(f.prepareAttachmentSource).not.toHaveBeenCalled();
 });
+
+it("allows media-only device staging without granting attachment publication", async () => {
+  const f = await fixture();
+  Object.assign(f.client, { features: ["media_jobs"] });
+  const prepared = await f.scope.prepareAttachmentSource({
+    kind: "path",
+    path: "/device/diagram.png",
+    name: "diagram.png",
+  });
+  expect(f.prepareAttachmentSource).toHaveBeenCalledOnce();
+  await expect(
+    f.scope.uploadAttachmentSource("note", prepared, "original"),
+  ).rejects.toThrow("Attachment upload is unavailable");
+  expect(f.uploadAttachmentSource).not.toHaveBeenCalled();
+  await prepared.close();
+  expect(f.close).toHaveBeenCalledOnce();
+});

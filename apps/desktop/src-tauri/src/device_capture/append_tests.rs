@@ -375,7 +375,12 @@ async fn copied_append_admission_requires_private_authority_and_exact_source_for
     let _capture = crate::device_capture::CAPTURE_TEST_LOCK.lock().await;
     let fixture = Fixture::new(true).await;
     let prepared = hypr_loofah_client::CaptureAppendPreparation::prepare(
-        fixture._temp.path().join("isolated-preparation"),
+        fixture
+            ._temp
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("isolated-preparation"),
         fixture.request.clone(),
     )
     .await

@@ -203,7 +203,8 @@ export class VaultScope {
       this.disposed ||
       this.snapshot.state !== "connected" ||
       !this.client.canEdit ||
-      !this.client.features.includes("attachment_upload")
+      (!this.client.features.includes("attachment_upload") &&
+        (mutation || !this.client.features.includes("media_jobs")))
     ) {
       throw new ApplicationRequestError({
         code: "unavailable",

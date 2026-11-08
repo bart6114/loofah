@@ -7647,6 +7647,7 @@ name = "loof-cli"
 version = "0.1.0"
 dependencies = [
  "agent-access",
+ "axum",
  "chrono",
  "clap",
  "cli-docs",
@@ -7671,6 +7672,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-rustls 0.26.4",
  "tokio-util",
  "transcribe-soniqo",
  "url",

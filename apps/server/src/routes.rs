@@ -200,6 +200,8 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "capture_pending_publication".into(),
             "notes".into(),
             "session_initial_metadata".into(),
+            "media_jobs".into(),
+            "media_initial_metadata".into(),
             "session_summaries".into(),
             "timeline_read".into(),
             "transcription_policy".into(),

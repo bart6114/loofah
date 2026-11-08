@@ -232,7 +232,10 @@ async fn media_upload_uses_original_admission_and_lost_reply_never_replays() {
                 let state = receiving.clone();
                 async move {
                     let mut state = state.lock().await;
-                    assert_eq!(headers["x-loofah-media-revision"], "a".repeat(64));
+                    assert_eq!(
+                        headers["x-loofah-media-revision"].to_str().unwrap(),
+                        state.admission.as_ref().unwrap().revision
+                    );
                     assert_eq!(bytes.as_ref(), b"original bytes");
                     assert!(!headers.contains_key("content-length"));
                     state.writes += 1;

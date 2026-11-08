@@ -3910,6 +3910,7 @@ export type LocalMediaStatus = {
   transcript_id: string | null;
   word_count: number | null;
   error: ApplicationError | null;
+  imported?: SessionMeta | null;
 };
 export type LocalTranscriptionOptions = {
   model: string;
@@ -3936,6 +3937,10 @@ export type MediaDeclaration = {
   transcription: MediaTranscriptionOptions | null;
   summary: CaptureProcessingSummary | null;
 };
+export type MediaImportInitialMetadata = {
+  title: string | null;
+  metadata: LocalInitialSessionMetadata;
+};
 export type MediaOperation =
   | {
       kind: "import_audio";
@@ -3944,6 +3949,7 @@ export type MediaOperation =
       filename: string;
       content_type: string | null;
       created_at: string | null;
+      initial?: MediaImportInitialMetadata | null;
       transcribe: boolean;
       source: MediaUploadSource;
     }
