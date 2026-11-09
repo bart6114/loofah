@@ -8,6 +8,8 @@ const native = vi.hoisted(() => ({
     applicationRecordingProcessingAvailable: vi.fn(),
     applicationLocalMediaAvailable: vi.fn(),
     applicationRecordingProcessingList: vi.fn(),
+    applicationRecordingProcessingControls: vi.fn(),
+    applicationCancelRecordingProcessing: vi.fn(),
     applicationLocalMediaSource: vi.fn(),
     applicationLocalMediaImportAudio: vi.fn(),
     applicationLocalMediaTranscribe: vi.fn(),
@@ -1900,6 +1902,20 @@ it("exposes only the initialized Local recording parent owner without dispatchin
   expect(
     native.commands.applicationRecoverRecordingProcessing,
   ).not.toHaveBeenCalled();
+  const controls = { status, revision: "a".repeat(64), actions: ["recover"] };
+  native.commands.applicationRecordingProcessingControls.mockResolvedValue({
+    status: "ok",
+    data: [controls],
+  });
+  expect(await client.recordingProcessing!.controls("note")).toEqual([
+    controls,
+  ]);
+  expect(
+    native.commands.applicationRecordingProcessingControls,
+  ).toHaveBeenCalledExactlyOnceWith("note");
+  expect(
+    native.commands.applicationCancelRecordingProcessing,
+  ).not.toHaveBeenCalled();
   native.commands.applicationRecoverRecordingProcessing.mockResolvedValue({
     status: "ok",
     data: status,
@@ -1909,6 +1925,16 @@ it("exposes only the initialized Local recording parent owner without dispatchin
   ).toEqual(status);
   expect(
     native.commands.applicationRecoverRecordingProcessing,
+  ).toHaveBeenCalledExactlyOnceWith(status.declaration.request_id);
+  native.commands.applicationCancelRecordingProcessing.mockResolvedValue({
+    status: "ok",
+    data: controls,
+  });
+  expect(
+    await client.recordingProcessing!.cancel(status.declaration.request_id),
+  ).toEqual(controls);
+  expect(
+    native.commands.applicationCancelRecordingProcessing,
   ).toHaveBeenCalledExactlyOnceWith(status.declaration.request_id);
 });
 it("recording recovery obeys cancellation before dispatch and preserves unknown mutation outcome after dispatch", async () => {
@@ -1945,6 +1971,40 @@ it("recording recovery obeys cancellation before dispatch and preserves unknown 
     native.commands.applicationRecoverRecordingProcessing,
   ).toHaveBeenCalledTimes(1);
 });
+it("recording processing cancellation preserves predispatch and unknown-outcome fences", async () => {
+  native.commands.applicationRecordingProcessingAvailable.mockResolvedValue(
+    true,
+  );
+  const client = await connectLocalVault();
+  const request = crypto.randomUUID();
+  const before = new AbortController();
+  before.abort();
+  await expect(
+    client.recordingProcessing!.cancel(request, { signal: before.signal }),
+  ).rejects.toBeDefined();
+  expect(
+    native.commands.applicationCancelRecordingProcessing,
+  ).not.toHaveBeenCalled();
+  const after = new AbortController();
+  native.commands.applicationCancelRecordingProcessing.mockImplementation(
+    async () => {
+      after.abort();
+      return { status: "ok", data: null };
+    },
+  );
+  await expect(
+    client.recordingProcessing!.cancel(request, { signal: after.signal }),
+  ).rejects.toMatchObject({
+    detail: {
+      code: "cancelled",
+      retryable: false,
+      mutation_outcome: "unknown",
+    },
+  });
+  expect(
+    native.commands.applicationCancelRecordingProcessing,
+  ).toHaveBeenCalledExactlyOnceWith(request);
+});
 it("Remote clients never expose or probe Local recording parents even if a server advertises the local feature", () => {
   const remote = connectRemoteVault(
     {
@@ -1962,6 +2022,12 @@ it("Remote clients never expose or probe Local recording parents even if a serve
   ).not.toHaveBeenCalled();
   expect(
     native.commands.applicationRecordingProcessingList,
+  ).not.toHaveBeenCalled();
+  expect(
+    native.commands.applicationRecordingProcessingControls,
+  ).not.toHaveBeenCalled();
+  expect(
+    native.commands.applicationCancelRecordingProcessing,
   ).not.toHaveBeenCalled();
   expect(
     native.commands.applicationRecoverRecordingProcessing,

@@ -121,6 +121,7 @@ import {
   events,
   type ConnectionState,
   type MediaRetirementView,
+  type LocalCaptureControlSnapshot,
   type LocalCaptureStatus,
   type ManualMediaSummaryStatus,
   type SessionExportInput,
@@ -249,6 +250,14 @@ export type VaultClient = {
     ) => Promise<ManualMediaSummaryStatus | null>;
   };
   recordingProcessing?: {
+    controls: (
+      sessionId: string | null,
+      options?: RequestOptions,
+    ) => Promise<LocalCaptureControlSnapshot[]>;
+    cancel: (
+      requestId: string,
+      options?: RequestOptions,
+    ) => Promise<LocalCaptureControlSnapshot>;
     list: (
       sessionId: string | null,
       options?: RequestOptions,
@@ -788,6 +797,17 @@ export async function connectLocalVault({
       : undefined,
     recordingProcessing: recordingProcessingAvailable
       ? {
+          controls: (sessionId, options) =>
+            ipc(
+              () => commands.applicationRecordingProcessingControls(sessionId),
+              options,
+            ),
+          cancel: (requestId, options) =>
+            ipc(
+              () => commands.applicationCancelRecordingProcessing(requestId),
+              { ...options, requestId },
+              true,
+            ),
           list: (sessionId, options) =>
             ipc(
               () => commands.applicationRecordingProcessingList(sessionId),

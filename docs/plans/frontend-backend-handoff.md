@@ -2403,3 +2403,22 @@ were compiled only and remain unexecuted on this workstation. The existing
 portable record preserves source, commands, logs, hashes and those exclusions.
 No desktop app, account login, runtime discovery or provider inference was
 started for these checks.
+
+## Local cancellation controls: unvalidated integration checkpoint
+
+Source `1908e09d75` integrates the first cancellation/control slice. It adds a
+durable per-request decision, Cancelling/Cancelled states, actual native/source
+and summary-child drain tracking, valid late-result retention, truthful Core
+action snapshots and Local-only controls/cancel IPC. Existing list/status/recover
+shapes remain unchanged. Native command registration and the typed Local client
+adapter are being integrated; actual binding generation and execution are still
+pending. No desktop application testing resumed.
+
+Independent review found two gaps in that first slice: the child summary/title
+worker could pass an earlier parent check before cancellation and later start
+generation/application; transcript preparation could pass its first-poll fence
+and later commit after cancellation. Separate source fixes now fence actual
+dispatch/application admission. Their new deterministic tests distinguish
+cancellation before admission from already-admitted writes, which are preserved.
+This checkpoint is not cancellation qualification, and reviewed resolution,
+unknown-producer handling and active/history separation remain open stages.

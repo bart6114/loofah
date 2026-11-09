@@ -737,6 +737,8 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             application_recording_processing::application_recording_processing_list::<tauri::Wry>,
             application_recording_processing::application_recording_processing_status::<tauri::Wry>,
             application_recording_processing::application_recover_recording_processing::<tauri::Wry>,
+            application_recording_processing::application_recording_processing_controls::<tauri::Wry>,
+            application_recording_processing::application_cancel_recording_processing::<tauri::Wry>,
             application_transcription::application_transcription_available::<tauri::Wry>,
             application_transcription::application_transcription_policy::<tauri::Wry>,
             application_transcription::application_submit_transcription::<tauri::Wry>,
