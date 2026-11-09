@@ -39,10 +39,41 @@ fn export_publication_never_overwrites_existing_or_follows_replaced_directory() 
     assert_eq!(std::fs::read(&one).unwrap(), b"one");
     assert_eq!(std::fs::read(&two).unwrap(), b"two");
     let staged = files::stage(root.clone(), "Meeting", "txt", b"three".to_vec()).unwrap();
-    std::fs::rename(&root, root.with_file_name("retired")).unwrap();
-    std::fs::create_dir(&root).unwrap();
-    assert!(files::publish(staged).is_err());
-    assert_eq!(std::fs::read_dir(root).unwrap().count(), 0);
+    let retired = root.with_file_name("retired");
+    match std::fs::rename(&root, &retired) {
+        Ok(()) => {
+            std::fs::create_dir(&root).unwrap();
+            assert!(files::publish(staged).is_err());
+            assert_eq!(std::fs::read_dir(root).unwrap().count(), 0);
+        }
+        Err(cause) if cfg!(windows) && matches!(cause.raw_os_error(), Some(5 | 32)) => {
+            // Windows may prevent directory replacement while the staged owner
+            // pins its handles. Prove the refusal ends only after publication.
+            assert!(!retired.exists());
+            assert_eq!(std::fs::read(&one).unwrap(), b"one");
+            assert_eq!(std::fs::read(&two).unwrap(), b"two");
+            let three = files::publish(staged).unwrap();
+            assert_ne!(three, one);
+            assert_ne!(three, two);
+            assert_eq!(std::fs::read(&three).unwrap(), b"three");
+            assert_eq!(std::fs::read(&one).unwrap(), b"one");
+            assert_eq!(std::fs::read(&two).unwrap(), b"two");
+            std::fs::rename(&root, &retired).unwrap();
+            assert!(!root.exists());
+            for (path, bytes) in [
+                (&one, b"one".as_slice()),
+                (&two, b"two".as_slice()),
+                (&three, b"three".as_slice()),
+            ] {
+                assert_eq!(
+                    std::fs::read(retired.join(path.file_name().unwrap())).unwrap(),
+                    bytes
+                );
+            }
+            assert_eq!(std::fs::read_dir(retired).unwrap().count(), 3);
+        }
+        Err(cause) => panic!("Unexpected export directory rename error: {cause}"),
+    }
 }
 #[cfg(unix)]
 #[test]
