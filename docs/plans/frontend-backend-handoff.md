@@ -1498,3 +1498,15 @@ Portable records `remote_guarded_restart_080_2026_11_09`,
 `native_guarded_artifacts_080_2026_11_09` preserve original receipts and hashes.
 Final current-head CI, physical capture/OS permission confirmation and production
 HTTPS SSO remain open. Local activation gates remain default off.
+
+
+The bounded read-only audit of that note-only job found no concrete prompt
+assembly defect at `080764fe20`. The 849-byte note appears once in
+`post_meeting_memo`; participants and transcript speakers are empty, and neither
+Alice nor Bob is marked as the current user. There is no `transcript.json`, the
+custom prompt is empty, and the default instructions prohibit invented identities,
+facts and filler. The observed contradictions therefore support the recorded
+model-quality failure. The raw provider request was not retained, so this is
+source/canonical evidence rather than an exact HTTP prompt reconstruction. No
+additional inference or speculative source change followed. The portable audit
+is `remote_summary_prompt_audit_080_2026_11_09`.

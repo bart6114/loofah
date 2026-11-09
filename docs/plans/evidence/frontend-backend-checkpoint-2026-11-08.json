@@ -2231,6 +2231,34 @@
         "app_launched": false,
         "server_restarted": false
       }
+    },
+    "remote_summary_prompt_audit_080_2026_11_09": {
+      "audited_at_utc": "2026-11-09T03:57:24.093313+00:00",
+      "source": "080764fe205bc41a8422e8ebbe56b6ee20067958",
+      "scope": "Read-only source and task-only canonical input audit; no edits, builds, provider requests or inference.",
+      "session_id": "0e0675fa-d003-4f49-b06e-db628bcf1eb2",
+      "input": {
+        "notes_md_bytes": 849,
+        "transcript_json_present": false,
+        "ai_language": "en",
+        "custom_summary_prompt": ""
+      },
+      "assembly": {
+        "participants": [],
+        "transcript_speakers": [],
+        "note_occurrences": 1,
+        "note_field": "post_meeting_memo",
+        "previous_summary_read": false,
+        "alice_or_bob_marked_current_user": false
+      },
+      "source_files": [
+        "crates/loofah-core/src/jobs/source.rs",
+        "crates/loofah-core/src/jobs/generation.rs",
+        "crates/template-app/assets/enhance.system.md.jinja",
+        "crates/template-app/assets/enhance.user.md.jinja"
+      ],
+      "conclusion": "No concrete prompt-assembly defect found. Observed identity, completion, retention and deployment contradictions violate the source and default instructions; semantic quality and conciseness remain failed observations.",
+      "limitation": "Raw provider request payload was not retained; this is source/canonical evidence, not an exact HTTP prompt reconstruction."
     }
   },
   "local_work_focused": [
