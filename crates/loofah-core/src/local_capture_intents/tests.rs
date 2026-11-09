@@ -4,7 +4,10 @@ use crate::{
 };
 use hypr_loofah_protocol::{TranscriptionFailure, TranscriptionJobRequest};
 use hypr_vault_read::{TranscriptWithData, TranscriptWord};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    future::Future,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 async fn context(root: &std::path::Path) -> Arc<VaultContext> {
     let vault = root.join("vault");
@@ -163,6 +166,9 @@ async fn declaration_binds_authoritative_append_state_and_original_summary_revis
 #[derive(Clone, Default)]
 struct Engine {
     calls: Arc<AtomicUsize>,
+    prepares: Arc<AtomicUsize>,
+    returned: Arc<Notify>,
+    owner_release: Option<Arc<Notify>>,
     busy: Arc<std::sync::atomic::AtomicBool>,
     entered: Arc<Notify>,
     release: Arc<Notify>,
@@ -175,6 +181,7 @@ impl TranscriptionEngine for Engine {
         _: CancellationToken,
     ) -> TranscriptionFuture<'a, Result<Box<dyn PreparedTranscription>, TranscriptionFailure>> {
         Box::pin(async move {
+            self.prepares.fetch_add(1, Ordering::SeqCst);
             assert_eq!(request.model, "frozen-model");
             assert_eq!(request.languages, vec!["nl"]);
             if self.busy.load(Ordering::SeqCst) {
@@ -211,7 +218,16 @@ impl PreparedTranscription for Prepared {
                     metadata: None,
                 })
                 .collect();
-            drop(input);
+            if let Some(release) = &self.0.owner_release {
+                let release = release.clone();
+                tokio::spawn(async move {
+                    release.notified().await;
+                    drop(input);
+                });
+                self.0.returned.notify_one();
+            } else {
+                drop(input);
+            }
             Ok(transcript)
         })
     }
@@ -650,6 +666,494 @@ async fn busy_model_preflight_copies_no_audio_and_explicit_retry_dispatches_only
         LocalCaptureState::Succeeded
     );
     assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+    service.shutdown().await;
+    worker.shutdown().await.unwrap();
+}
+
+async fn batch_capture(
+    context: &Arc<VaultContext>,
+    service: &Arc<LocalCaptureIntents>,
+    summary: bool,
+) -> LocalCaptureDeclaration {
+    let mut input = declaration();
+    input.batch_requested = true;
+    input.transcription = Some(LocalTranscriptionOptions {
+        model: "frozen-model".into(),
+        languages: vec!["nl".into()],
+        keywords: vec![],
+    });
+    input.summary = summary.then_some(CaptureProcessingSummary {
+        target: hypr_loofah_protocol::DocumentTarget::Summary,
+        title_policy: hypr_loofah_protocol::TitlePolicy::GenerateIfEmpty,
+    });
+    let token = service.declare(input.clone()).await.unwrap();
+    std::fs::write(
+        context.store.vault_base().join("sessions/note/audio.wav"),
+        b"original native audio",
+    )
+    .unwrap();
+    token.physical_finished(Ok(())).await.unwrap();
+    token.persistence_finished(Ok(persistence())).await.unwrap();
+    input
+}
+async fn notified(notification: &Notify) {
+    tokio::time::timeout(std::time::Duration::from_secs(10), notification.notified())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn local_capture_cancel_waits_for_native_source_drain_retains_late_result_and_survives_restart()
+ {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap();
+    let context = context(&path).await;
+    let summary = Arc::new(Summary::default());
+    let summary_worker = context
+        .start_processing(summary.clone(), Arc::new(Auth))
+        .await
+        .unwrap();
+    let release = Arc::new(Notify::new());
+    let engine = Engine {
+        owner_release: Some(release.clone()),
+        ..Default::default()
+    };
+    let worker = context
+        .start_transcription(Arc::new(engine.clone()), Arc::new(Auth), Default::default())
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let input = batch_capture(&context, &service, true).await;
+    notified(&engine.entered).await;
+    assert_eq!(
+        service
+            .control_status(&input.request_id)
+            .await
+            .unwrap()
+            .actions,
+        vec![LocalCaptureAction::Cancel]
+    );
+    let cancelling = service.cancel(input.request_id.clone()).await.unwrap();
+    assert_eq!(cancelling.status.state, LocalCaptureState::Cancelling);
+    assert!(cancelling.actions.is_empty());
+    assert!(context.try_session_lifecycle_change("note").is_err());
+    let record = service
+        .state
+        .lock()
+        .await
+        .get(&input.request_id)
+        .unwrap()
+        .record
+        .clone();
+    assert!(record.cancel_requested);
+    assert!(!record.processing_drained);
+    // A separate stopped snapshot has no live capability and cannot infer a drain.
+    let second = tempfile::tempdir().unwrap();
+    let second_context = super::tests::context(&second.path().canonicalize().unwrap()).await;
+    let directory = second.path().join("operations/local-capture-intents");
+    journal::persist(&directory, &record, true).unwrap();
+    let restored = LocalCaptureIntents::open(second_context.clone())
+        .await
+        .unwrap();
+    let snapshot = restored.control_status(&input.request_id).await.unwrap();
+    assert_eq!(snapshot.status.state, LocalCaptureState::Review);
+    assert!(snapshot.actions.is_empty());
+    assert!(restored.recover(input.request_id.clone()).await.is_err());
+    assert!(
+        second_context
+            .ensure_session_jobs_idle("note")
+            .await
+            .is_err()
+    );
+    restored.shutdown().await;
+    engine.release.notify_one();
+    notified(&engine.returned).await;
+    assert_eq!(
+        service.status(&input.request_id).await.unwrap().state,
+        LocalCaptureState::Cancelling
+    );
+    assert!(context.try_session_lifecycle_change("note").is_err());
+    release.notify_one();
+    assert_eq!(
+        terminal(&service, &input.request_id).await.state,
+        LocalCaptureState::Cancelled
+    );
+    let record = service
+        .state
+        .lock()
+        .await
+        .get(&input.request_id)
+        .unwrap()
+        .record
+        .clone();
+    assert!(record.processing_drained && record.inference_drained);
+    assert!(record.published_revision.is_none());
+    assert!(record.status.summary_job_id.is_none());
+    let retained = service.root.join(&input.request_id).join("result.json");
+    assert_eq!(
+        record.result_sha256,
+        Some(ledger::hash(&std::fs::read(retained).unwrap()))
+    );
+    assert!(
+        context
+            .session_transcripts("note")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        context.read_note("note").await.unwrap().markdown.as_deref(),
+        Some("Notes")
+    );
+    assert_eq!(
+        std::fs::read(context.store.vault_base().join("sessions/note/audio.wav")).unwrap(),
+        b"original native audio"
+    );
+    assert!(context.try_session_lifecycle_change("note").is_ok());
+    assert_eq!(
+        service
+            .cancel(input.request_id.clone())
+            .await
+            .unwrap()
+            .status
+            .state,
+        LocalCaptureState::Cancelled
+    );
+    assert!(service.recover(input.request_id).await.is_err());
+    assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(summary.calls.load(Ordering::SeqCst), 0);
+    service.shutdown().await;
+    worker.shutdown().await.unwrap();
+    summary_worker.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn local_capture_cancel_waits_for_actual_summary_child_and_preserves_saved_content() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap();
+    let context = context(&path).await;
+    let summary = Arc::new(Summary::default());
+    let worker = context
+        .start_processing(summary.clone(), Arc::new(Auth))
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let (input, _) = live_summary_capture(&context, &service, &path).await;
+    notified(&summary.entered).await;
+    let before = std::fs::read(path.join("vault/sessions/note/transcript.json")).unwrap();
+    assert_eq!(
+        service
+            .cancel(input.request_id.clone())
+            .await
+            .unwrap()
+            .status
+            .state,
+        LocalCaptureState::Cancelling
+    );
+    assert!(context.try_session_lifecycle_change("note").is_err());
+    summary.release.notify_one();
+    let terminal = terminal(&service, &input.request_id).await;
+    assert_eq!(terminal.state, LocalCaptureState::Cancelled);
+    assert_eq!(
+        std::fs::read(path.join("vault/sessions/note/transcript.json")).unwrap(),
+        before
+    );
+    assert!(!path.join("vault/sessions/note/summary.md").exists());
+    assert_eq!(summary.calls.load(Ordering::SeqCst), 1);
+    assert!(
+        context
+            .processing_job(SUMMARY_OWNER.into(), terminal.summary_job_id.unwrap())
+            .await
+            .unwrap()
+            .state
+            .is_terminal()
+    );
+    assert!(context.try_session_lifecycle_change("note").is_ok());
+    service.shutdown().await;
+    worker.shutdown().await.unwrap();
+}
+
+#[derive(Default)]
+struct AdmissionAuth {
+    entered: Notify,
+    release: Notify,
+}
+impl TranscriptionAuthorizer for AdmissionAuth {
+    fn observe<'a>(
+        &'a self,
+        work: &'a TranscriptionWork,
+    ) -> TranscriptionFuture<'a, Result<TranscriptionAccess, TranscriptionFailure>> {
+        Box::pin(async move {
+            self.entered.notify_one();
+            self.release.notified().await;
+            Auth.observe(work).await
+        })
+    }
+    fn authorize<'a>(
+        &'a self,
+        work: &'a TranscriptionWork,
+    ) -> TranscriptionFuture<'a, Result<Box<dyn Send>, TranscriptionFailure>> {
+        Auth.authorize(work)
+    }
+}
+#[tokio::test]
+async fn local_capture_cancel_winning_final_inference_admission_never_calls_native_engine() {
+    let root = tempfile::tempdir().unwrap();
+    let context = context(&root.path().canonicalize().unwrap()).await;
+    let auth = Arc::new(AdmissionAuth::default());
+    let engine = Engine::default();
+    let worker = context
+        .start_transcription(Arc::new(engine.clone()), auth.clone(), Default::default())
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let input = batch_capture(&context, &service, false).await;
+    notified(&auth.entered).await;
+    service.cancel(input.request_id.clone()).await.unwrap();
+    auth.release.notify_one();
+    assert_eq!(
+        terminal(&service, &input.request_id).await.state,
+        LocalCaptureState::Cancelled
+    );
+    assert_eq!(engine.prepares.load(Ordering::SeqCst), 1);
+    assert_eq!(engine.calls.load(Ordering::SeqCst), 0);
+    assert!(
+        !service
+            .root
+            .join(&input.request_id)
+            .join("result.json")
+            .exists()
+    );
+    service.shutdown().await;
+    worker.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn local_capture_cancel_winning_dispatch_fence_never_polls_preparation_or_summary_submission()
+{
+    let root = tempfile::tempdir().unwrap();
+    let context = context(&root.path().canonicalize().unwrap()).await;
+    let service = LocalCaptureIntents::open(context).await.unwrap();
+    let input = declaration();
+    let _token = service.declare(input.clone()).await.unwrap();
+    {
+        let mut state = service.state.lock().await;
+        let entry = state.get_mut(&input.request_id).unwrap();
+        entry.record.physical = Some(Ok(()));
+        entry.record.persistence = Some(Ok(persistence()));
+        entry.record.status.state = LocalCaptureState::WaitingForPersistence;
+        entry.running = true;
+    }
+    let (_, gate) = service.processing_control(&input.request_id).await.unwrap();
+    let held = gate.lock().await;
+    let calls = AtomicUsize::new(0);
+    let mut cancellation = Box::pin(service.cancel_owned(input.request_id.clone()));
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(cancellation.as_mut().poll(cx)))
+            .await
+            .is_pending()
+    );
+    let mut preparation = Box::pin(
+        service.dispatch_processing(&input.request_id, |_| {}, async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }),
+    );
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(preparation.as_mut().poll(cx)))
+            .await
+            .is_pending()
+    );
+    drop(held);
+    let (cancelled, prepared) = futures_util::future::join(cancellation, preparation).await;
+    assert_eq!(
+        cancelled.unwrap().status.state,
+        LocalCaptureState::Cancelling
+    );
+    assert!(prepared.is_err());
+    assert!(
+        service
+            .dispatch_processing(&input.request_id, |_| {}, async {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            })
+            .await
+            .is_err()
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(
+        service
+            .state
+            .lock()
+            .await
+            .get(&input.request_id)
+            .unwrap()
+            .record
+            .cancel_requested
+    );
+}
+
+#[tokio::test]
+async fn local_capture_controls_never_offer_unknown_producer_or_conflict_recovery() {
+    let root = tempfile::tempdir().unwrap();
+    let context = context(&root.path().canonicalize().unwrap()).await;
+    let service = LocalCaptureIntents::open(context).await.unwrap();
+    let input = declaration();
+    let token = service.declare(input.clone()).await.unwrap();
+    assert!(service.cancel(input.request_id.clone()).await.is_err());
+    assert!(
+        service
+            .control_status(&input.request_id)
+            .await
+            .unwrap()
+            .actions
+            .is_empty()
+    );
+    token.not_started().await.unwrap();
+    for value in [LocalCaptureState::Review, LocalCaptureState::Conflict] {
+        service
+            .update(&input.request_id, |record| record.status.state = value)
+            .await
+            .unwrap();
+        assert!(
+            service
+                .control_status(&input.request_id)
+                .await
+                .unwrap()
+                .actions
+                .is_empty()
+        );
+    }
+    assert!(
+        service
+            .controls(Some("another-session"))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    service.shutdown().await;
+}
+
+#[tokio::test]
+async fn local_capture_private_schema_preserves_legacy_without_inventing_cancel_or_drain_proof() {
+    let root = tempfile::tempdir().unwrap();
+    let context = context(&root.path().canonicalize().unwrap()).await;
+    let service = LocalCaptureIntents::open(context).await.unwrap();
+    let input = declaration();
+    service
+        .declare(input.clone())
+        .await
+        .unwrap()
+        .not_started()
+        .await
+        .unwrap();
+    let mut old = service
+        .state
+        .lock()
+        .await
+        .get(&input.request_id)
+        .unwrap()
+        .record
+        .clone();
+    old.version = 1;
+    let mut json = serde_json::to_value(&old).unwrap();
+    for key in [
+        "cancel_requested",
+        "processing_drained",
+        "inference_drained",
+        "summary_dispatch_pending",
+        "summary_drained",
+    ] {
+        json.as_object_mut().unwrap().remove(key);
+    }
+    let other = tempfile::tempdir().unwrap();
+    let directory = other.path().join(&input.request_id);
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::write(
+        directory.join("intent.json"),
+        serde_json::to_vec(&json).unwrap(),
+    )
+    .unwrap();
+    let loaded = journal::load(other.path(), "vault").unwrap();
+    assert_eq!(loaded[0].version, 1);
+    assert_eq!(
+        std::fs::read(directory.join("intent.json")).unwrap(),
+        serde_json::to_vec(&json).unwrap()
+    );
+    assert!(
+        !loaded[0].cancel_requested
+            && !loaded[0].processing_drained
+            && !loaded[0].inference_drained
+    );
+    assert_eq!(loaded[0].status.state, LocalCaptureState::NotStarted);
+    let mut future = loaded[0].clone();
+    future.version = 3;
+    assert!(journal::persist(other.path(), &future, false).is_err());
+    service.shutdown().await;
+}
+
+#[tokio::test]
+async fn local_capture_controls_do_not_offer_recovery_for_a_terminal_cancelled_summary_child() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap();
+    let context = context(&path).await;
+    let summary = Arc::new(Summary::default());
+    let worker = context
+        .start_processing(summary.clone(), Arc::new(Auth))
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let (input, _) = live_summary_capture(&context, &service, &path).await;
+    notified(&summary.entered).await;
+    let child = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if let Some(child) = service
+                .status(&input.request_id)
+                .await
+                .unwrap()
+                .summary_job_id
+            {
+                break child;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    context
+        .cancel_processing_job(SUMMARY_OWNER.into(), child)
+        .await
+        .unwrap();
+    summary.release.notify_one();
+    assert_eq!(
+        terminal(&service, &input.request_id).await.state,
+        LocalCaptureState::Review
+    );
+    assert!(
+        service
+            .control_status(&input.request_id)
+            .await
+            .unwrap()
+            .actions
+            .is_empty()
+    );
+    assert!(service.recover(input.request_id.clone()).await.is_err());
+    service
+        .update(&input.request_id, |record| {
+            record.status.summary_job_id = None
+        })
+        .await
+        .unwrap();
+    assert!(
+        service
+            .control_status(&input.request_id)
+            .await
+            .unwrap()
+            .actions
+            .is_empty()
+    );
+    assert!(service.recover(input.request_id).await.is_err());
+    assert_eq!(summary.calls.load(Ordering::SeqCst), 1);
     service.shutdown().await;
     worker.shutdown().await.unwrap();
 }

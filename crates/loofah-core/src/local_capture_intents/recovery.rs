@@ -22,8 +22,23 @@ impl LocalCaptureIntents {
                 .ok_or_else(|| review("Original intent missing"))?
                 .record
                 .clone();
+            if record.cancel_requested {
+                return Err(review(
+                    "Cancelled work cannot dispatch again; unresolved ownership requires review",
+                ));
+            }
             if !unresolved(&record) {
                 return Ok(record.status);
+            }
+            if !this
+                .control_status(&request)
+                .await?
+                .actions
+                .contains(&LocalCaptureAction::Recover)
+            {
+                return Err(review(
+                    "This original intent has no recoverable processing step",
+                ));
             }
             if record.physical != Some(Ok(())) || !matches!(record.persistence, Some(Ok(_))) {
                 return Err(review(
@@ -41,11 +56,18 @@ impl LocalCaptureIntents {
                 .await?;
             let mut state = this.state.lock().await;
             let entry = state.get_mut(&request).unwrap();
-            if entry.running || entry.admission.is_some() {
+            if this.stop.is_cancelled() || entry.running || entry.admission.is_some() {
                 return Err(review("Original Local intent is still active"));
             }
+            let mut next = entry.record.clone();
+            next.version = 2;
+            next.status.state = LocalCaptureState::WaitingForPersistence;
+            next.processing_drained = false;
+            this.persist(&next, false).await?;
+            entry.record = next;
             entry.admission = Some(Arc::new(admission));
             entry.running = true;
+            entry.cancel = this.stop.child_token();
             drop(state);
             this.clone().start(request.clone());
             this.status(&request).await
@@ -89,6 +111,7 @@ impl LocalCaptureIntents {
             } => self
                 .update(request, |record| {
                     record.published_revision = Some(revision.clone());
+                    record.inference_drained = true;
                     record.status.transcript_id = Some(transcript_id);
                     if let Some(source) = &mut record.source {
                         source.transcript_revision = revision;

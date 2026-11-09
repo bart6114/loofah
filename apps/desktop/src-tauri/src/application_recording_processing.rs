@@ -1,5 +1,7 @@
 use crate::{application::context, local_capture::LocalCaptureState};
-use hypr_loofah_core::local_capture_intents::{LocalCaptureIntents, LocalCaptureStatus};
+use hypr_loofah_core::local_capture_intents::{
+    LocalCaptureControlSnapshot, LocalCaptureIntents, LocalCaptureStatus,
+};
 use hypr_loofah_protocol::{ApplicationError, ErrorCode};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
@@ -70,6 +72,32 @@ pub async fn application_recover_recording_processing<R: tauri::Runtime>(
     service.recover(request_id).await
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn application_recording_processing_controls<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: Option<String>,
+) -> Result<Vec<LocalCaptureControlSnapshot>, ApplicationError> {
+    let service = service(&app)?;
+    if let Some(session) = &session_id {
+        hypr_loofah_protocol::validate_session_id(session).map_err(|_| {
+            hypr_loofah_client::failure(ErrorCode::Validation, "Invalid recording session")
+        })?;
+    }
+    service.controls(session_id.as_deref()).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_cancel_recording_processing<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    request_id: String,
+) -> Result<LocalCaptureControlSnapshot, ApplicationError> {
+    let service = service(&app)?;
+    validate_request(&request_id)?;
+    service.cancel(request_id).await
+}
+
 fn validate_request(value: &str) -> Result<(), ApplicationError> {
     uuid::Uuid::parse_str(value)
         .ok()
@@ -129,6 +157,17 @@ mod tests {
         assert!(!application_recording_processing_available(
             app.handle().clone()
         ));
+        assert!(
+            application_recording_processing_controls(app.handle().clone(), None)
+                .await
+                .is_err()
+        );
+        assert!(
+            application_cancel_recording_processing(app.handle().clone(), request.clone())
+                .await
+                .is_err()
+        );
+
         assert_eq!(
             application_recording_processing_list(app.handle().clone(), None)
                 .await
@@ -199,6 +238,20 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].declaration.request_id, request);
         assert_eq!(listed[0].state, State::NotStarted);
+        let controls =
+            application_recording_processing_controls(app.handle().clone(), Some("note".into()))
+                .await
+                .unwrap();
+        assert_eq!(controls.len(), 1);
+        assert_eq!(controls[0].status, listed[0]);
+        assert!(controls[0].actions.is_empty());
+        assert_eq!(controls[0].revision.len(), 64);
+        assert!(
+            application_cancel_recording_processing(app.handle().clone(), request.clone())
+                .await
+                .is_err()
+        );
+
         assert!(
             application_recording_processing_list(app.handle().clone(), Some("other".into()))
                 .await

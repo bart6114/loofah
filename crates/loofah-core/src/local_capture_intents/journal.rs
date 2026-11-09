@@ -26,7 +26,7 @@ pub(super) fn load(root: &Path, vault: &str) -> Result<Vec<Record>, ApplicationE
         }
         let mut record: Record = serde_json::from_slice(&raw).map_err(review)?;
         validate_record(&record)?;
-        if record.version != 1
+        if !matches!(record.version, 1 | 2)
             || record.vault_id != vault
             || record.status.declaration.request_id != name
             || record.status.transcription_owner != TRANSCRIPTION_OWNER
@@ -35,6 +35,7 @@ pub(super) fn load(root: &Path, vault: &str) -> Result<Vec<Record>, ApplicationE
             return Err(review("Local intent identity changed"));
         }
         if unresolved(&record) {
+            record.version = 2;
             record.status.state = LocalCaptureState::Review;
             record.status.message=Some("An earlier process did not confirm completion; retained output requires explicit recovery".into());
             persist(root, &record, false)?;
@@ -62,12 +63,52 @@ pub(super) fn persist(root: &Path, record: &Record, create: bool) -> Result<(), 
 
 fn validate_record(record: &Record) -> Result<(), ApplicationError> {
     validate(&record.status.declaration)?;
-    if record.version != 1
+    if !matches!(record.version, 1 | 2)
         || record.status.transcription_owner != TRANSCRIPTION_OWNER
         || record.status.summary_owner != SUMMARY_OWNER
         || chrono::DateTime::parse_from_rfc3339(&record.session_created_at).is_err()
     {
         return Err(review("Invalid Local intent binding"));
+    }
+    if record.version == 1
+        && (record.cancel_requested
+            || record.processing_drained
+            || record.inference_drained
+            || record.summary_dispatch_pending
+            || record.summary_drained
+            || matches!(
+                record.status.state,
+                LocalCaptureState::Cancelling | LocalCaptureState::Cancelled
+            ))
+    {
+        return Err(review(
+            "Cancellation requires the version 2 Local intent schema",
+        ));
+    }
+    if record.processing_drained
+        && ((record.inference_dispatched && !record.inference_drained)
+            || record.summary_dispatch_pending
+            || (record.status.summary_job_id.is_some() && !record.summary_drained))
+    {
+        return Err(review("Processing drain evidence is incomplete"));
+    }
+    if record.cancel_requested
+        && !matches!(
+            record.status.state,
+            LocalCaptureState::Cancelling
+                | LocalCaptureState::Cancelled
+                | LocalCaptureState::Review
+        )
+    {
+        return Err(review("Cancelled work cannot reenter processing"));
+    }
+    if record.status.state == LocalCaptureState::Cancelled
+        && (!record.cancel_requested
+            || !record.processing_drained
+            || record.physical != Some(Ok(()))
+            || !matches!(record.persistence, Some(Ok(_))))
+    {
+        return Err(review("Cancellation has no confirmed original drain"));
     }
     let declaration = &record.status.declaration;
     match (&declaration.summary, &record.summary) {

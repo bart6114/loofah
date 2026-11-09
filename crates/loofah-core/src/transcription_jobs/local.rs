@@ -1,6 +1,6 @@
 use super::*;
 use futures_util::FutureExt;
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, future::Future, path::PathBuf};
 
 pub(crate) struct LocalInferenceInput {
     pub request_id: String,
@@ -49,31 +49,19 @@ impl VaultContext {
             .map_err(engine_error)?;
         Ok((PreparedLocalInference { prepared, request }, input))
     }
-    pub(crate) async fn transcribe_local_capture_source(
+    pub(crate) async fn complete_local_capture_inference(
         self: &Arc<Self>,
         input: LocalInferenceInput,
         prepared: PreparedLocalInference,
         cancel: CancellationToken,
-    ) -> Result<TranscriptWithData, ApplicationError> {
-        let completed = self
-            .complete_local_inference(input, prepared, cancel)
-            .await?;
-        if let Some(cause) = completed.publication_error {
-            return Err(cause);
-        }
-        Ok(completed.transcript)
-    }
-    pub(super) async fn complete_local_inference(
-        self: &Arc<Self>,
-        input: LocalInferenceInput,
-        prepared: PreparedLocalInference,
-        cancel: CancellationToken,
+        dispatch: Arc<tokio::sync::Mutex<()>>,
     ) -> Result<crate::local_cli::LocalMediaTranscription, ApplicationError> {
-        self.complete_media_inference(
+        self.complete_media_inference_guarded(
             input,
             prepared,
             cancel,
             crate::local_capture_intents::TRANSCRIPTION_OWNER.into(),
+            Some(dispatch),
         )
         .await
     }
@@ -83,6 +71,17 @@ impl VaultContext {
         prepared: PreparedLocalInference,
         cancel: CancellationToken,
         principal: String,
+    ) -> Result<crate::local_cli::LocalMediaTranscription, ApplicationError> {
+        self.complete_media_inference_guarded(input, prepared, cancel, principal, None)
+            .await
+    }
+    async fn complete_media_inference_guarded(
+        self: &Arc<Self>,
+        input: LocalInferenceInput,
+        prepared: PreparedLocalInference,
+        cancel: CancellationToken,
+        principal: String,
+        dispatch: Option<Arc<tokio::sync::Mutex<()>>>,
     ) -> Result<crate::local_cli::LocalMediaTranscription, ApplicationError> {
         let service = self.transcription_service()?;
         let PreparedLocalInference { prepared, request } = prepared;
@@ -138,11 +137,34 @@ impl VaultContext {
                 metadata: metadata.clone(),
                 request,
             };
+            let gate = match &dispatch {
+                Some(gate) => Some(gate.lock().await),
+                None => None,
+            };
+            // Only the capture caller installs this admission fence. Cancellation
+            // after admission remains cooperative and must wait for source release.
+            if dispatch.is_some() && stop.is_cancelled() {
+                drop(inference);
+                return Err(engine_error(TranscriptionFailure::Interrupted));
+            }
             let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 prepared.transcribe(inference, stop.clone())
             })) {
-                Ok(future) => std::panic::AssertUnwindSafe(future).catch_unwind().await,
-                Err(panic) => Err(panic),
+                Ok(future) => {
+                    let mut future = Box::pin(std::panic::AssertUnwindSafe(future).catch_unwind());
+                    let first =
+                        std::future::poll_fn(|cx| std::task::Poll::Ready(future.as_mut().poll(cx)))
+                            .await;
+                    drop(gate);
+                    match first {
+                        std::task::Poll::Ready(result) => result,
+                        std::task::Poll::Pending => future.await,
+                    }
+                }
+                Err(panic) => {
+                    drop(gate);
+                    Err(panic)
+                }
             };
             while !*release.borrow() {
                 if release.changed().await.is_err() {

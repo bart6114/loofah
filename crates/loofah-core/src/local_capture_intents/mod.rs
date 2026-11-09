@@ -1,5 +1,8 @@
 //! Local capture declarations survive the producer, renderer and process. Only
 //! trusted native completion tokens can admit post-processing of their source.
+//! Private journal schema 2 adds cancellation and drain evidence. Legacy terminal
+//! receipts remain readable without rewriting history; mutations upgrade the
+//! record atomically. Older executables must not interpret schema 2 receipts.
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use hypr_loofah_protocol::{
@@ -16,6 +19,8 @@ use crate::{
     vault::{error, storage_error},
 };
 
+mod controls;
+pub use controls::{LocalCaptureAction, LocalCaptureControlSnapshot};
 mod journal;
 mod recovery;
 #[cfg(test)]
@@ -57,6 +62,8 @@ pub enum LocalCaptureState {
     WaitingForPersistence,
     Transcribing,
     Summarizing,
+    Cancelling,
+    Cancelled,
     Succeeded,
     Skipped,
     NotStarted,
@@ -89,11 +96,23 @@ struct Record {
     inference_dispatched: bool,
     result_sha256: Option<String>,
     published_revision: Option<String>,
+    #[serde(default)]
+    cancel_requested: bool,
+    #[serde(default)]
+    processing_drained: bool,
+    #[serde(default)]
+    inference_drained: bool,
+    #[serde(default)]
+    summary_dispatch_pending: bool,
+    #[serde(default)]
+    summary_drained: bool,
 }
 struct Entry {
     record: Record,
     admission: Option<Arc<OwnedRwLockReadGuard<()>>>,
     running: bool,
+    cancel: CancellationToken,
+    dispatch: Arc<Mutex<()>>,
 }
 pub struct LocalCaptureIntents {
     context: Arc<VaultContext>,
@@ -150,6 +169,7 @@ impl LocalCaptureIntents {
         })
         .await
         .map_err(review)??;
+        let stop = CancellationToken::new();
         let service = Arc::new(Self {
             context: context.clone(),
             root,
@@ -163,12 +183,14 @@ impl LocalCaptureIntents {
                                 record,
                                 admission: None,
                                 running: false,
+                                cancel: stop.child_token(),
+                                dispatch: Arc::new(Mutex::new(())),
                             },
                         )
                     })
                     .collect(),
             ),
-            stop: CancellationToken::new(),
+            stop,
             changed: Notify::new(),
         });
         context
@@ -297,7 +319,7 @@ impl LocalCaptureIntents {
         }
         let request = input.request_id.clone();
         let record = Record {
-            version: 1,
+            version: 2,
             vault_id: self.context.events.vault_id(),
             status: LocalCaptureStatus {
                 declaration: input,
@@ -317,6 +339,11 @@ impl LocalCaptureIntents {
             inference_dispatched: false,
             result_sha256: None,
             published_revision: None,
+            cancel_requested: false,
+            processing_drained: false,
+            inference_drained: false,
+            summary_dispatch_pending: false,
+            summary_drained: false,
         };
         self.persist(&record, true).await?;
         state.insert(
@@ -325,6 +352,8 @@ impl LocalCaptureIntents {
                 record,
                 admission: Some(Arc::new(admission)),
                 running: false,
+                cancel: self.stop.child_token(),
+                dispatch: Arc::new(Mutex::new(())),
             },
         );
         Ok(LocalCaptureIntent {
@@ -353,7 +382,11 @@ impl LocalCaptureIntents {
             .get_mut(request)
             .ok_or_else(|| review("Local intent unavailable"))?;
         let mut next = entry.record.clone();
+        next.version = 2;
         change(&mut next);
+        if next.cancel_requested && !next.processing_drained {
+            next.status.state = LocalCaptureState::Cancelling;
+        }
         self.persist(&next, false).await?;
         entry.record = next.clone();
         Ok(next)
@@ -497,6 +530,7 @@ fn unresolved(record: &Record) -> bool {
             | LocalCaptureState::WaitingForPersistence
             | LocalCaptureState::Transcribing
             | LocalCaptureState::Summarizing
+            | LocalCaptureState::Cancelling
             | LocalCaptureState::Review
     )
 }
@@ -572,6 +606,7 @@ impl VaultContext {
         if entry.record.status.state != LocalCaptureState::Summarizing
             || entry.record.status.declaration.session_id != origin.session_id
             || entry.record.source.as_ref() != Some(&origin.source)
+            || entry.record.cancel_requested
             || service.stop.is_cancelled()
         {
             return Err(review("Local summary parent is not ready"));

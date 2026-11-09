@@ -41,7 +41,8 @@ export function VaultRecordingProcessing({
   const query = useQuery(
     {
       queryKey: key,
-      queryFn: ({ signal }) => scope.run(() => api.list(sessionId, { signal })),
+      queryFn: ({ signal }) =>
+        scope.run(() => api.controls(sessionId, { signal })),
       enabled: connected,
       staleTime: 0,
       refetchInterval: 15_000,
@@ -67,29 +68,77 @@ export function VaultRecordingProcessing({
     },
     scope.queryClient,
   );
+  const cancellation = useMutation(
+    {
+      retry: false,
+      networkMode: "always",
+      mutationFn: (requestId: string) => {
+        if (
+          !lifetime.active ||
+          !scope.client.canEdit ||
+          scope.getSnapshot().state !== "connected"
+        )
+          throw new Error(
+            t`This recording is no longer available for cancellation`,
+          );
+        return scope.run(() =>
+          api.cancel(requestId, { signal: lifetime.abort.signal }),
+        );
+      },
+      onSettled: () => scope.queryClient.invalidateQueries({ queryKey: key }),
+    },
+    scope.queryClient,
+  );
   if (denied) return null;
   const rows =
-    query.data?.filter((value) => value.declaration.session_id === sessionId) ??
-    [];
+    query.data?.filter(
+      (value) => value.status.declaration.session_id === sessionId,
+    ) ?? [];
   if (!rows.length && !query.error) return null;
   return (
     <section
       className="flex flex-col gap-2 border-t p-3"
       aria-label={t`Recording processing`}
     >
-      {rows.map((value) => (
+      {rows.map(({ status: value, actions }) => (
         <div
           key={value.declaration.request_id}
           className="flex flex-col gap-1 text-sm"
         >
           <p role="status">{recordingStatus(value)}</p>
           {value.message && <p>{value.message}</p>}
-          {["review", "conflict"].includes(value.state) && (
+          {actions.includes("cancel") && (
             <Button
               size="sm"
               variant="outline"
               disabled={
-                !connected || !scope.client.canEdit || recovery.isPending
+                !connected ||
+                !scope.client.canEdit ||
+                recovery.isPending ||
+                cancellation.isPending
+              }
+              onClick={() => cancellation.mutate(value.declaration.request_id)}
+            >
+              <Trans>Cancel processing</Trans>
+            </Button>
+          )}
+          {value.state === "cancelling" && (
+            <p>
+              <Trans>
+                Waiting for processing resources. Saved recording and content
+                will be kept.
+              </Trans>
+            </p>
+          )}
+          {actions.includes("recover") && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                !connected ||
+                !scope.client.canEdit ||
+                recovery.isPending ||
+                cancellation.isPending
               }
               onClick={() => recovery.mutate(value.declaration.request_id)}
             >
@@ -98,8 +147,10 @@ export function VaultRecordingProcessing({
           )}
         </div>
       ))}
-      {(query.error || recovery.error) && (
-        <p role="alert">{(recovery.error ?? query.error)?.message}</p>
+      {(query.error || recovery.error || cancellation.error) && (
+        <p role="alert">
+          {(cancellation.error ?? recovery.error ?? query.error)?.message}
+        </p>
       )}
       {query.isError && (
         <Button
@@ -124,6 +175,10 @@ function recordingStatus(value: LocalCaptureStatus) {
       return <Trans>Transcribing recording</Trans>;
     case "summarizing":
       return <Trans>Creating summary</Trans>;
+    case "cancelling":
+      return <Trans>Cancelling recording processing</Trans>;
+    case "cancelled":
+      return <Trans>Recording processing cancelled</Trans>;
     case "succeeded":
       return <Trans>Recording processing complete</Trans>;
     case "skipped":

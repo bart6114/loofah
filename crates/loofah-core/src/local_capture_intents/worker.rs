@@ -19,32 +19,48 @@ impl LocalCaptureIntents {
             let result = std::panic::AssertUnwindSafe(self.process(&request))
                 .catch_unwind()
                 .await;
-            if let Err(cause) =
-                result.unwrap_or_else(|_| Err(review("Local processing worker was lost")))
-            {
-                let _ = self
-                    .update(&request, |record| {
-                        record.status.state = if cause.mutation_outcome
-                            == Some(hypr_loofah_protocol::MutationOutcome::NotCommitted)
-                        {
-                            LocalCaptureState::Conflict
-                        } else {
-                            LocalCaptureState::Review
-                        };
-                        record.status.message = Some(cause.message);
-                    })
-                    .await;
-            }
+            let completed = result.is_ok();
+            let outcome =
+                result.unwrap_or_else(|_| Err(review("Local processing worker was lost")));
             let mut state = self.state.lock().await;
             if let Some(entry) = state.get_mut(&request) {
+                let mut record = entry.record.clone();
+                record.version = 2;
+                let drained = completed
+                    && (!record.inference_dispatched || record.inference_drained)
+                    && !record.summary_dispatch_pending
+                    && (record.status.summary_job_id.is_none() || record.summary_drained);
+                record.processing_drained = drained;
+                if record.cancel_requested && drained {
+                    record.status.state = LocalCaptureState::Cancelled;
+                    record.status.message = Some("Processing cancelled after original resources drained; saved content and retained output were preserved".into());
+                } else if let Err(cause) = outcome {
+                    record.status.state = if !record.cancel_requested
+                        && cause.mutation_outcome
+                            == Some(hypr_loofah_protocol::MutationOutcome::NotCommitted)
+                    {
+                        LocalCaptureState::Conflict
+                    } else {
+                        LocalCaptureState::Review
+                    };
+                    record.status.message = Some(cause.message);
+                }
+                let saved = self.persist(&record, false).await.is_ok();
+                if saved {
+                    entry.record = record;
+                }
                 entry.running = false;
-                entry.admission.take();
+                if drained && saved {
+                    entry.admission.take();
+                }
             }
             drop(state);
             self.changed.notify_waiters();
         });
     }
     pub(super) async fn process(&self, request: &str) -> Result<(), ApplicationError> {
+        self.check_processing(request).await?;
+        let (cancel, _) = self.processing_control(request).await?;
         let mut record = self
             .state
             .lock()
@@ -76,6 +92,7 @@ impl LocalCaptureIntents {
                 record = recovered;
             }
         }
+        self.check_processing(request).await?;
         let guard = self
             .context
             .store
@@ -114,6 +131,7 @@ impl LocalCaptureIntents {
                 return Ok(());
             }
         }
+        self.check_processing(request).await?;
         let guard = self
             .context
             .store
@@ -174,12 +192,46 @@ impl LocalCaptureIntents {
                 .clone()
                 .ok_or_else(|| review("Summary source missing"))?,
         };
-        let job = self
-            .context
-            .submit_local_capture_summary(request.into(), summary, origin)
-            .await?;
+        let submitted = self
+            .dispatch_processing(
+                request,
+                |record| {
+                    record.summary_dispatch_pending = true;
+                    record.summary_drained = false;
+                },
+                self.context.submit_local_capture_summary(
+                    request.into(),
+                    summary.clone(),
+                    origin.clone(),
+                ),
+            )
+            .await;
+        let job = match submitted {
+            Ok(job) => job,
+            Err(error) => {
+                // The owned submit future has finished. A read-only lookup of the
+                // exact child distinguishes rejection from a retained admission.
+                match self
+                    .context
+                    .processing_jobs()?
+                    .replay_local_capture(request.into(), summary, origin)
+                    .await?
+                {
+                    Some(job) => job,
+                    None => {
+                        self.update(request, |record| {
+                            record.summary_dispatch_pending = false;
+                            record.summary_drained = true;
+                        })
+                        .await?;
+                        return Err(error);
+                    }
+                }
+            }
+        };
         self.update(request, |record| {
-            record.status.summary_job_id = Some(job.id.clone())
+            record.status.summary_job_id = Some(job.id.clone());
+            record.summary_dispatch_pending = false;
         })
         .await?;
         loop {
@@ -189,6 +241,7 @@ impl LocalCaptureIntents {
                 .await?;
             if snapshot.state.is_terminal() {
                 self.update(request, |record| {
+                    record.summary_drained = true;
                     record.status.state = match snapshot.state {
                         ProcessingJobState::Succeeded => LocalCaptureState::Succeeded,
                         ProcessingJobState::Conflict => LocalCaptureState::Conflict,
@@ -202,7 +255,7 @@ impl LocalCaptureIntents {
                 .await?;
                 return Ok(());
             }
-            if self.stop.is_cancelled() {
+            if cancel.is_cancelled() {
                 self.context
                     .cancel_processing_job(SUMMARY_OWNER.into(), job.id.clone())
                     .await?;
@@ -211,6 +264,8 @@ impl LocalCaptureIntents {
         }
     }
     async fn transcribe(&self, request: &str, record: Record) -> Result<Record, ApplicationError> {
+        self.check_processing(request).await?;
+        let (cancel, dispatch) = self.processing_control(request).await?;
         let session = record.status.declaration.session_id.clone();
         let source = match self
             .context
@@ -293,9 +348,14 @@ impl LocalCaptureIntents {
                 owner: Box::new((source.clone(), admission)),
             };
             let (prepared, input) = self
-                .context
-                .prepare_local_capture_engine(input, self.stop.child_token())
+                .dispatch_processing(
+                    request,
+                    |_| {},
+                    self.context
+                        .prepare_local_capture_engine(input, cancel.clone()),
+                )
                 .await?;
+            self.check_processing(request).await?;
             let copy = source.clone();
             let target = input.path.clone();
             let pin = self.context.clone();
@@ -305,15 +365,26 @@ impl LocalCaptureIntents {
             })
             .await
             .map_err(review)??;
-            self.update(request, |record| {
-                record.inference_dispatched = true;
-                record.status.state = LocalCaptureState::Transcribing;
-            })
-            .await?;
-            let transcript = self
-                .context
-                .transcribe_local_capture_source(input, prepared, self.stop.child_token())
+            let completed = self
+                .dispatch_processing(
+                    request,
+                    |record| {
+                        record.inference_dispatched = true;
+                        record.inference_drained = false;
+                        record.status.state = LocalCaptureState::Transcribing;
+                    },
+                    self.context.complete_local_capture_inference(
+                        input,
+                        prepared,
+                        cancel.clone(),
+                        dispatch,
+                    ),
+                )
+                .await;
+            self.update(request, |record| record.inference_drained = true)
                 .await?;
+            let completed = completed?;
+            let transcript = completed.transcript;
             let bytes = ledger::encode_result(&transcript)?;
             let sha = ledger::hash(&bytes);
             let resultpath = directory.join("result.json");
@@ -329,8 +400,14 @@ impl LocalCaptureIntents {
                 record.status.transcript_id = Some(transcript.id.clone());
             })
             .await?;
+            if let Some(error) = completed.publication_error {
+                return Err(error);
+            }
             transcript
         };
+        self.update(request, |record| record.inference_drained = true)
+            .await?;
+        self.check_processing(request).await?;
         if transcript.session_id != session || transcript.user_id != TRANSCRIPTION_OWNER {
             return Err(review("Retained inference identity changed"));
         }
@@ -348,28 +425,33 @@ impl LocalCaptureIntents {
                 "Local session generation changed during transcription",
             ));
         }
-        let plan = self
-            .context
-            .store
-            .prepare_transcript_publication(
-                &self
-                    .root
-                    .parent()
-                    .ok_or_else(|| review("Operation root unavailable"))?
-                    .join("transcript-publications"),
-                self.publication_identity(request)?,
-                baseline,
-                transcript,
-            )
-            .await
-            .map_err(|e| storage_error(e, true))?;
-        let outcome = plan
-            .recheck()
-            .await
-            .map_err(|e| storage_error(e, true))?
-            .commit()
-            .await
-            .map_err(|e| storage_error(e, true))?;
+        let outcome = self
+            .dispatch_processing(request, |_| {}, async {
+                let plan = self
+                    .context
+                    .store
+                    .prepare_transcript_publication(
+                        &self
+                            .root
+                            .parent()
+                            .ok_or_else(|| review("Operation root unavailable"))?
+                            .join("transcript-publications"),
+                        self.publication_identity(request)?,
+                        baseline,
+                        transcript,
+                    )
+                    .await
+                    .map_err(|e| storage_error(e, true))?;
+                let outcome = plan
+                    .recheck()
+                    .await
+                    .map_err(|e| storage_error(e, true))?
+                    .commit()
+                    .await
+                    .map_err(|e| storage_error(e, true))?;
+                Ok(outcome)
+            })
+            .await?;
         match outcome {
             TranscriptPublicationOutcome::Published { revision, .. }
             | TranscriptPublicationOutcome::AlreadyCommitted { revision, .. } => {
