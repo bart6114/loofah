@@ -451,7 +451,25 @@ async fn local_parent_cancel_waits_for_admitted_summary_write() {
     pause.entered().await;
     let service = f.service.clone();
     let request = f.request.clone();
-    let mut cancellation = Box::pin(async move { service.cancel(request).await });
+    let mut cancellation = Box::pin(async move { service.cancel_for_test(request).await });
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(cancellation.as_mut().poll(cx)))
+            .await
+            .is_pending()
+    );
+    assert_eq!(
+        f.service.status(&f.request).await.unwrap().state,
+        LocalCaptureState::Summarizing
+    );
+    assert!(
+        f.service
+            .control_status(&f.request)
+            .await
+            .unwrap()
+            .actions
+            .contains(&crate::local_capture_intents::LocalCaptureAction::Cancel)
+    );
+    // The state lock is now known free; this poll reaches the held dispatch gate.
     assert!(
         std::future::poll_fn(|cx| std::task::Poll::Ready(cancellation.as_mut().poll(cx)))
             .await
@@ -476,7 +494,25 @@ async fn local_parent_cancel_waits_for_admitted_title_metadata_write() {
     pause.entered().await;
     let service = f.service.clone();
     let request = f.request.clone();
-    let mut cancellation = Box::pin(async move { service.cancel(request).await });
+    let mut cancellation = Box::pin(async move { service.cancel_for_test(request).await });
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(cancellation.as_mut().poll(cx)))
+            .await
+            .is_pending()
+    );
+    assert_eq!(
+        f.service.status(&f.request).await.unwrap().state,
+        LocalCaptureState::Summarizing
+    );
+    assert!(
+        f.service
+            .control_status(&f.request)
+            .await
+            .unwrap()
+            .actions
+            .contains(&crate::local_capture_intents::LocalCaptureAction::Cancel)
+    );
+    // The state lock is now known free; this poll reaches the held dispatch gate.
     assert!(
         std::future::poll_fn(|cx| std::task::Poll::Ready(cancellation.as_mut().poll(cx)))
             .await
