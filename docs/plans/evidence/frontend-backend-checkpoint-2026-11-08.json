@@ -14658,6 +14658,195 @@
       },
       "correction": "df585977eae0ed874d1e0ec2f70fcaef472df004",
       "scope": "Both native Windows jobs completed with identical two OS33 fixture snapshots, all other targeted tests passed. Production locking remains unchanged. Both speech runs passed; installer/uninstall steps were skipped. No job cancelled or retried. The correction needs fresh Windows qualification."
+    },
+    "packaged_deployment_first_runtime_failure_and_canonical_scope_fix_2026_11_09": {
+      "failed_source": "6e56a7d60360b3d8f333ba930bf6f563427bc567",
+      "failure": {
+        "sha256": "fb6b3454e92c8be363c2cdf921af6aea1b1250518fb35383ed74d5994ea4c5aa",
+        "report": {
+          "head": "6e56a7d60360b3d8f333ba930bf6f563427bc567",
+          "merge": "5d2fd0e447fb4f29b6e193f0effa5ade82578c8e",
+          "job": 129198385221,
+          "conclusion": "failure",
+          "qualified_runtime_test": {
+            "name": "packaged_caddy_append_and_restart",
+            "passed": 0,
+            "failed": 1,
+            "ignored": 0,
+            "seconds": 0.49
+          },
+          "cause": {
+            "classification": "harness_origin_canonicalization",
+            "location": "apps/server/tests/deployment.rs:302",
+            "failure_location": "apps/server/tests/deployment.rs:177",
+            "coordinator_origin": "https://127.0.0.1:52765",
+            "sdk_url_origin": "https://127.0.0.1:52765/",
+            "sdk_outcome": "Validation/NotCommitted before begin_capture POST",
+            "recommended_correction": "Bind CaptureScope.server to client.address() without weakening existing SDK identity guard"
+          },
+          "before_failure_evidence": [
+            "packaged default server executable started under original hardened systemd template",
+            "actual nonroot UID999",
+            "storage/cache roots0700 UID999",
+            "only owned listener127.0.0.1:46397, no IPv6/extra listen",
+            "Caddy actual TLS and fixture-only additive capabilities overlay",
+            "SDK authenticated provision/note create and corresponding original SSE event",
+            "normal owned SIGTERM teardown; server inactive/success and Caddy exit0"
+          ],
+          "not_qualified": [
+            "raw capture/append/chunks/canonical proof",
+            "service restart and replay",
+            "postrestart SSE",
+            "production SSO",
+            "inference",
+            "physical capture"
+          ],
+          "separate_observation": "Core search cache initialization logged Vault changed during reconciliation; retry during concurrent note creation; not causal to local SDK scope rejection",
+          "artifacts_independently_hashed": {
+            "deployment-test": {
+              "sha256": "7ad5b8760bbedbda4dace0f99bba1e961f3c450aea3ff7cc6a81658fd4fd0914",
+              "bytes": 84522936
+            },
+            "loofah-server": {
+              "sha256": "30171c0514990ec9dcd53bb5e5d26979000c9d73ed2095dbc6e40bdad0e15968",
+              "bytes": 74594928
+            },
+            "caddy": {
+              "sha256": "4ef1f68c70219536b2711fd16547a79841a2dec2d6b4e56b1e3e5e9da76028e6",
+              "bytes": 44376248
+            }
+          },
+          "files": {
+            "packaged-deployment-13680063868/console.log": {
+              "sha256": "97011ba31f21f42d036e151434d5b26e7660bd63fb26b48d2d9a5c2e71bf79d1",
+              "bytes": 830
+            },
+            "packaged-deployment-13680063868/evidence/opt/loofah-deployment-14868e49bd1b/acceptance.json": {
+              "sha256": "0e9c0729b40d53073fff06b3e940f3e248e68338e7eca85137109714a2393c17",
+              "bytes": 19041
+            },
+            "packaged-deployment-13680063868/evidence/opt/loofah-deployment-14868e49bd1b/driver.log": {
+              "sha256": "55328f64c82454d1cdc267c73732a90446f5da90a060cede3a848d521002fde1",
+              "bytes": 661
+            },
+            "packaged-deployment-13680063868/evidence/opt/loofah-deployment-14868e49bd1b/server-journal.log": {
+              "sha256": "43edb57e225136a0e7ce884de64a3f2a0372ab3f458ccb8d210bc3e1ad9b9561",
+              "bytes": 2337
+            },
+            "packaged-deployment-13680063868/evidence/opt/loofah-deployment-14868e49bd1b/caddy.log": {
+              "sha256": "a9735e8c6603bd38f9468aafc291935643bf69a6e8b03e620698a1a8b085109b",
+              "bytes": 3440
+            },
+            "packaged-deployment-13680063868/evidence/opt/loofah-deployment-14868e49bd1b/listeners-initial.json": {
+              "sha256": "310d1ff8286a1ea08d3c11955c841ad6614c401ca268d798099d698a2fe367d3",
+              "bytes": 943
+            },
+            "packaged-deployment-13680063868/evidence/opt/loofah-deployment-14868e49bd1b/capabilities-production.json": {
+              "sha256": "0b5892d90f15754d4f30ab91ddd43ff5c96caef3d1682f85aba644ba25e6078b",
+              "bytes": 857
+            },
+            "packaged-deployment-13680063868/evidence/opt/loofah-deployment-14868e49bd1b/capabilities-fixture.json": {
+              "sha256": "b84c808fa7a682713eae408e20963a0a0fa250513e9124c4c24c56bb89348524",
+              "bytes": 874
+            },
+            "packaged-deployment-13680063868/build.jsonl": {
+              "sha256": "ece7a67daef4eeb262e8a5c5226c841536435de5158634990a4a0cd19d465fa8",
+              "bytes": 453018
+            }
+          },
+          "zip_sha256": "9b244f804b6166e3df1f52ec5ef26cfbdb193be49f8185b26d6aaafbae4463b5",
+          "tar_sha256": "6f622c2017649169db556d97043560918e2f16e81915a8926b7f8807df510126",
+          "storage_files": [
+            "var/lib/loofah-deployment-14868e49bd1b/runtime/c8772cff-34bf-46c1-a4bc-0dde8c5f3e32/creates/capture-processing/.lock",
+            "var/lib/loofah-deployment-14868e49bd1b/runtime/c8772cff-34bf-46c1-a4bc-0dde8c5f3e32/creates/242028db7a64075c4dadf0fad402db0c7d94d03b74ae30483000abbe12174597.json",
+            "var/lib/loofah-deployment-14868e49bd1b/catalog.json",
+            "var/lib/loofah-deployment-14868e49bd1b/.loofah-server.lock",
+            "var/lib/loofah-deployment-14868e49bd1b/vaults/c8772cff-34bf-46c1-a4bc-0dde8c5f3e32/AGENTS.md",
+            "var/lib/loofah-deployment-14868e49bd1b/vaults/c8772cff-34bf-46c1-a4bc-0dde8c5f3e32/sessions/242028db-7a64-475c-8dad-f0fad402db0c/notes.md",
+            "var/lib/loofah-deployment-14868e49bd1b/vaults/c8772cff-34bf-46c1-a4bc-0dde8c5f3e32/sessions/242028db-7a64-475c-8dad-f0fad402db0c/_meta.json",
+            "var/lib/loofah-deployment-14868e49bd1b/vaults/c8772cff-34bf-46c1-a4bc-0dde8c5f3e32/.loofah-vault.lock"
+          ]
+        }
+      },
+      "corrected_source": "ae54d36b8139e07abf5a68cab1bec90a73c29240",
+      "compile_request": {
+        "sha256": "06b7de0db47affd33506441a72f915b8eb3fbe1cf31e57742ab59f02cf50017d",
+        "report": {
+          "source": "ae54d36b8139e07abf5a68cab1bec90a73c29240",
+          "command": [
+            "nice",
+            "-n",
+            "5",
+            "cargo",
+            "check",
+            "--locked",
+            "-p",
+            "desktop",
+            "-p",
+            "loof-cli",
+            "-p",
+            "loofah-local-owner",
+            "-p",
+            "loofah-local-media",
+            "-p",
+            "loofah-client",
+            "-p",
+            "loofah-core",
+            "-p",
+            "loofah-protocol",
+            "-p",
+            "loofah-server",
+            "-p",
+            "capture-store",
+            "-p",
+            "vault-read",
+            "-p",
+            "vault-write",
+            "-p",
+            "search-cache",
+            "-p",
+            "listener-core",
+            "-p",
+            "listener2-core",
+            "-p",
+            "transcribe-whisper-local",
+            "-p",
+            "tauri-plugin-transcription",
+            "-p",
+            "storage",
+            "-p",
+            "export-core",
+            "-p",
+            "fs-sync-core",
+            "-p",
+            "tauri-plugin-fs-sync",
+            "-p",
+            "tauri-plugin-windows",
+            "-p",
+            "audio-actual",
+            "--features",
+            "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+            "--all-targets"
+          ],
+          "scope": "Compile-only stable22-package all-target graph after canonical SDK-origin fixture correction. No desktop/audio/model runtime."
+        }
+      },
+      "compile_result": {
+        "sha256": "b401a539ca1492d8eed889e2ca6a209b5e1ec8c4df8ea403360bd890152ab1e2",
+        "report": {
+          "source": "ae54d36b8139e07abf5a68cab1bec90a73c29240",
+          "exit": 0,
+          "seconds": 13.58960258300067,
+          "sha256": "227af9e10d88d7381fccdf43ac0b0f8033f0adb84cc58c2d9e212852945c10bc"
+        }
+      },
+      "production_scope_source_audit": {
+        "saved_profile": "crates/loofah-client/src/profiles.rs: ConnectionProfiles::create calls server_origin(), which validates and returns Url::to_string()",
+        "native_scope": "apps/desktop/src-tauri/src/device_capture/remote.rs: profile_scope uses saved profile.server and validate_client requires exact client.address() equality",
+        "existing_fixtures": "Native append_tests.rs and processing_tests.rs already derive scope.server from client.address()",
+        "meaning": "Supports a fixture-only correction. No SDK guard, saved request identity, production profile, producer or canonical content changed. Not a new Native runtime pass."
+      },
+      "pending": "Corrected actual systemd/Caddy append and restart execution requires a new source push after all healthy6e56 jobs finish. No cancellation/retry or local app test performed."
     }
   },
   "local_work_focused": [
