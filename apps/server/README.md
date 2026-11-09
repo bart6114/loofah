@@ -1124,6 +1124,49 @@ Remote lifecycle actions use the checked contract.
 
 Verified original media uploads can be downloaded with `GET /api/v1/vaults/{vault}/media/requests/{request}/source` and the original `X-Loofah-Media-Revision`. This member-private, editor-authorized operation returns the exact declared bytes, length and SHA-256 without decoding, publishing or restarting a job. Incomplete or changed uploads are unavailable. Streams recheck access for every bounded chunk and retain the original vault and descriptor until actual I/O ends; clients must verify the complete digest before saving. A request in review because its configured model changed can therefore recover its source without adopting a new model or canonical baseline.
 
+### Explicit media-upload retirement
+
+`GET /api/v1/vaults/{vault}/media/requests/{request}/retirement` reports checked
+eligibility or the original cleanup decision. `POST` to the same path requires
+the cleanup UUID in both `retirement_id` and `X-Request-ID`, the expected admission
+revision, declaration checksum, original source descriptor and an explicit
+disposition. The implementation is experimental; `media_retirement` remains
+unadvertised pending integrated Native and Windows qualification. Normal clients
+must negotiate that capability before offering cleanup.
+
+Only confirmed successful work or a new admission durably proven never dispatched
+can qualify. Ambiguous legacy records, uncertain inference/publication, failed or
+dispatched-cancelled work, unresolved summaries and active workers/readers remain
+retained. Status reads never start cleanup or inference. An accepted cleanup
+intent fences upload and recovery; interrupted cleanup requires explicit retry
+of its original UUID and body. Completed replay returns the original receipt
+without touching later session work or reappeared files.
+
+The recovery review distinguishes a verified exported copy, explicit discard of
+the retained upload (including an incomplete upload), and request-slot release
+for operations without an upload. The Native export observation records a
+verified no-clobber publication; it cannot guarantee the user still retains that
+copy later. Cleanup removes only the dispatcher's exact private `source` and
+`partial` files, and releases its active declared-byte/request reservation after
+the durable receipt is complete. It preserves canonical notes/audio/transcripts,
+generated results and lower publication journals, which may retain other source
+or normalization copies. This is not a promise to reclaim all physical disk use.
+
+Private verification keeps source/request ownership and runs outside the session
+write fence; fresh authorization, lifecycle and worker checks guard the final
+unlink and receipt commit. Changed identities, links or unexpected files fail
+closed. The empty private source directory is retained. Tombstones live outside
+the active inventory with separate limits of 4,096 records and 16 MiB per member
+and vault; they have no automatic expiry. Preserve them and all operation storage
+in backups.
+
+New admissions use private schema 3. Older readers reject those admissions, but
+may ignore the separate archive after completed cleanup; they cannot safely
+reuse retired identities. Downgrade therefore requires the matching complete
+pre-retirement backup. A restored interrupted intent whose file IDs changed
+requires operator review and retains its bytes; it never guesses deletion
+authority from a matching filename or checksum alone.
+
 Explicit capture retirement uses a bounded five-minute client request budget:
 large sealed captures require fresh source verification and durable per-chunk
 removal. Ordinary capture calls keep their 35-second transport deadline. A
