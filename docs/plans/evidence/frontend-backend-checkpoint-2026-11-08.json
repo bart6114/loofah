@@ -3893,6 +3893,26 @@
           }
         }
       }
+    },
+    "hosted_36_speech_x64_fixture_download_failure_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/speech-x64-fixture-download-failure.json",
+      "sha256": "d12b0238afea0193d9990589f7333ba484f14b4c5e43550c2d115ef77e31857d",
+      "record": {
+        "head": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+        "run_id": 42568044984,
+        "job_id": 128998811023,
+        "architecture": "Windows x64",
+        "failed_at_utc": "2026-11-09T05:53:31.9617672Z",
+        "failed_step": "Run real speaker detection",
+        "failure": "Invoke-WebRequest of public six-speaker fixture returned504GatewayTime-out before speaker inference",
+        "fixture_url": "https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav",
+        "speaker_test_executed": false,
+        "prior_whisper_and_onnx_transcription_passed": true,
+        "arm64_status_at_receipt": "stillrunning; no outcome inferred",
+        "no_retry_cancel_or_redispatch": true,
+        "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998811023.log",
+        "sha256": "70d0b74305426f2152f3801b815cb2811ea9979111b8a32d634c7b362807c22b"
+      }
     }
   },
   "local_work_focused": [

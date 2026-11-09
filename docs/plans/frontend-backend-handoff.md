@@ -5,8 +5,9 @@ terminal. Five passed; native Windows x64 and ARM64 each failed four new fixture
 cases during Git configuration setup, before the production helper or Cargo suite
 ran. Both new SDK concurrency regressions passed on Linux and macOS. The isolated
 fixture correction is locally qualified and awaits the next Windows PR run. The
-independent direct-36 Windows speech run remains healthy and in progress; its
-branch-ref concurrency group is separate from the next PR group. The prior `073`
+independent direct-36 Windows speech run remains in progress: x64 stopped on a
+504 fixture-download response before speaker inference, while ARM64 is still
+running. Its branch-ref concurrency group is separate from the next PR group. The prior `073`
 checkpoint's full platform successes remain source-scoped evidence. Physical
 capture awaits OS permission confirmation, production HTTPS SSO needs staging
 configuration, and observed Qwen accuracy and conciseness remain failed. Local
@@ -1784,7 +1785,7 @@ The separate speech run `42568044984` remains in progress at this receipt and
 continues untouched on direct `36f85d04c8`. The workflow uses
 `windows-ci-${{ github.ref }}`: its branch-ref group differs from the next
 `refs/pull/123/merge` group, and push triggers only target `main`. Thus the next
-fixture-only PR push does not cancel this healthy manual run. No retry or second
+fixture-only PR push does not cancel the remaining manual ARM64 work. No retry or second
 manual speech dispatch is planned for unchanged production processing code.
 The next PR still must execute all four helpers and both SDK concurrency cases
 on both Windows architectures.
@@ -1794,3 +1795,12 @@ source, exact workflow/job states, raw log hashes, failure details and concurren
 proof. It deliberately does not claim every workflow terminal or speech success.
 All earlier records remain unchanged; no cancellation, retry, release or user
 permission change was made.
+
+
+The direct-36 x64 speech job failed at the public six-speaker
+fixture download with HTTP 504, before speaker inference. Its preceding Whisper
+and ONNX transcription cases passed; this is not a speaker-model regression or
+a complete direct-36 x64 speech pass. ARM64 remains running at this update.
+`records.hosted_36_speech_x64_fixture_download_failure_2026_11_09` preserves the
+exact failed step, timestamp and raw log hash. No retry, cancellation or second
+manual dispatch was made. The earlier pending receipt remains unchanged.
