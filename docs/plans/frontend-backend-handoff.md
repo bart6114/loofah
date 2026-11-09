@@ -2345,3 +2345,21 @@ assertions remain unchanged. The initial exit101/log is preserved, and its queue
 all-target check did not run. The next qualification also includes server and
 CLI libraries to check their canonical-publication expectations, with desktop
 test execution still excluded.
+
+Qualification at clean frozen `bc6a17c672` then passed **1,449 / 0 failed /
+13 ignored** across four complete library cohorts: CLI96/0/0, Core540/0/2,
+server182/0/6 and vault-write631/0/5. All ten new regression functions passed,
+including all four policy/target combinations inside the real-worker case.
+The 17 other library binaries were explicitly not executed; this is not a full
+21-library test pass. The stable 21-package all-target check passed in 30.48
+seconds, retaining the existing nine desktop-library/four test warnings.
+
+The portable record preserves both source-scoped runs, commands, explicit runner
+selection, raw log hashes, failed original expectations and later corrected
+results. It also records the exact already-superseded server-test object group
+pruned for local disk headroom; current compiled libraries, all current21 test
+artifacts, optimized QA artifacts, models and raw evidence were retained.
+No desktop app or physical capture was started. Native UI/production-build and
+new-head platform qualification remain pending; lifecycle/output/transcript,
+append and retirement activation gates remain off. Summary semantic quality
+remains unqualified by this presentation correction.
