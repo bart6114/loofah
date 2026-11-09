@@ -847,6 +847,7 @@ async fn strict_journal_reopen_rejects_future_duplicate_or_changed_private_recor
         "result",
         "missing",
         "future_result",
+        "member",
     ] {
         let mut fixture = Fixture::new(false).await;
         let context = fixture.context();
@@ -884,6 +885,8 @@ async fn strict_journal_reopen_rejects_future_duplicate_or_changed_private_recor
             serde_json::to_string(&data).unwrap()
         } else if mutation == "uuid" {
             old.replace(REQUEST, &REQUEST.to_uppercase())
+        } else if mutation == "member" {
+            old.replace(MEMBER, &MEMBER.to_uppercase())
         } else if mutation == "future_result" {
             let path = private.join(format!("{}.result.json", job.id));
             let output = std::fs::read_to_string(&path).unwrap().replacen(
@@ -1201,3 +1204,6 @@ async fn managed_context_starts_one_owned_worker_without_a_second_runtime_or_sto
     runtime.shutdown().await.unwrap();
     assert!(unlocked(root.path()));
 }
+
+#[path = "principal_tests.rs"]
+mod principal_tests;

@@ -291,7 +291,7 @@ impl Journal {
         request: TranscriptionJobRequest,
         origin: Option<crate::capture_processing::CaptureChildOrigin>,
     ) -> Result<TranscriptionJobSnapshot, ApplicationError> {
-        let member = uuid(&member)?;
+        let member = principal_uuid(&member)?;
         let request_id = uuid(&request_id)?;
         if let Some(origin) = &origin {
             origin.validate_request(&request)?;
@@ -352,7 +352,7 @@ impl Journal {
         .await
     }
     pub async fn record(&self, member: String, job: String) -> Result<Record, ApplicationError> {
-        let member = uuid(&member)?;
+        let member = principal_uuid(&member)?;
         let job = uuid(&job)?;
         self.run(move |s| {
             s.records
@@ -375,7 +375,7 @@ impl Journal {
         member: String,
         input: ListTranscriptionJobsInput,
     ) -> Result<TranscriptionJobPage, ApplicationError> {
-        let member = uuid(&member)?;
+        let member = principal_uuid(&member)?;
         let limit = input.limit.unwrap_or(50) as usize;
         if !(1..=200).contains(&limit) {
             return Err(error(
@@ -697,7 +697,7 @@ fn validate(r: &Record, vault: &str, id: &str) -> Result<(), ApplicationError> {
         || r.vault_id != vault
         || r.snapshot.id != id
         || !uuid(id).is_ok_and(|canonical| canonical == id)
-        || !uuid(&r.member).is_ok_and(|canonical| canonical == r.member)
+        || !principal_uuid(&r.member).is_ok_and(|canonical| canonical == r.member)
         || !uuid(&r.request_id).is_ok_and(|canonical| canonical == r.request_id)
         || r.snapshot.session_id != r.request.session_id
         || validate_transcription_job_request(&r.request).is_err()
@@ -986,7 +986,7 @@ impl Journal {
         request: TranscriptionJobRequest,
         origin: Option<crate::capture_processing::CaptureChildOrigin>,
     ) -> Result<Option<TranscriptionJobSnapshot>, ApplicationError> {
-        let member = uuid(&member)?;
+        let member = principal_uuid(&member)?;
         let request_id = uuid(&request_id)?;
         self.run(move |state| {
             let Some(record) = state

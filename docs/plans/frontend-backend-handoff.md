@@ -1239,7 +1239,27 @@ protocol, discovered its tool schema, returned the exact note/marker, preserved
 its SHA and exited zero. The installed stable `loof` symlink remained unchanged.
 The frozen pre-import receipt is under the task lab's
 `local-performance/gui-acceptance-b755-pre-import.json`, copied into the portable
-checkpoint evidence. CPU import and physical capture remain unqualified here.
+checkpoint evidence. CPU import and physical capture remained unqualified in that pre-import receipt.
+
+After the corrected soak had drained, the same optimized artifact imported the
+30-second English fixture through the Local GUI. Canonical audio, a 73-word
+transcript and its automatic summary were saved. Native Whisper used Metal; the
+Native diarizer completed eight temporal segments and the saved provider hints
+assigned all 73 words to one speaker cluster. This proves diarizer execution, not
+multi-speaker accuracy. No additional inference was run to investigate that
+observation. The import's status panel exposed a separate defect: the standalone
+principal is intentionally the legacy nil UUID, but the transcription job ledger
+rejected it using its nonnil operation-ID validator. Import and summary success
+do not qualify that panel.
+
+The correction separates canonical principal UUID validation from nonnil
+request/job/cursor validation, preserving the Native-injected identity, existing
+host authorization and member isolation. Source regressions cover nil-principal
+submit/list/get/result and journal reopen without regeneration, invalid principal
+forms, nil operation IDs and authorizer refusal. This correction still requires
+shared-lane Rust verification and a refreshed optimized GUI artifact before the
+Local transcription status panel is qualified. Task-only evidence is retained in
+`local-performance/audio-import-diagnostics.json`.
 
 Fresh hosted frontend/editor, CLI, container, format/lint/security and configured
 Linux x64 CPU qualification passed at `b755769c25`; real Windows speech processing

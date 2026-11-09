@@ -493,6 +493,24 @@ fn capacity() -> ApplicationError {
         "Transcription storage or queue capacity reached",
     )
 }
+fn principal_uuid(value: &str) -> Result<String, ApplicationError> {
+    let parsed = uuid::Uuid::parse_str(value).map_err(|_| {
+        error(
+            ErrorCode::Validation,
+            "A canonical principal UUID is required",
+        )
+    })?;
+    let canonical = parsed.to_string();
+    if canonical != value {
+        return Err(error(
+            ErrorCode::Validation,
+            "A canonical principal UUID is required",
+        ));
+    }
+    // Native's legacy self identity is nil; operation identities remain nonnil.
+    Ok(canonical)
+}
+
 fn uuid(value: &str) -> Result<String, ApplicationError> {
     let parsed = uuid::Uuid::parse_str(value)
         .map_err(|_| error(ErrorCode::Validation, "A UUID is required"))?;
