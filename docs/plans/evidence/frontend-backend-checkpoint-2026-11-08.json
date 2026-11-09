@@ -9676,6 +9676,1384 @@
         "Modelsemanticquality remainsfailed/unqualified",
         "FullNative/productionUI acceptance stillpending"
       ]
+    },
+    "hosted_fada283_terminal_and_arm_uninstall_failure_2026_11_09": {
+      "source": "fada28348314b9d6607830c30fed58c586114cce",
+      "scope": "All seven hosted workflows terminal. PR jobs merge checkout a91d9bdf; speech direct branch checkout. Later local heading/image/cancellation/resolution changes not qualified. No rerun or cancellation.",
+      "reports": {
+        "terminal-summary.json": {
+          "sha256": "23603876b97c00bc213e0f1c80c7eab25a74f61f25b3441ae17e714da2e3b8a1",
+          "report": {
+            "workflow_head": "fada28348314b9d6607830c30fed58c586114cce",
+            "snapshot_at_utc": "2026-11-09T10:40:10Z",
+            "all_terminal": true,
+            "pr_checkout": {
+              "sha": "a91d9bdfba8530efcbf8cdc24d294a200a06ea74",
+              "parents": [
+                "a6a8f001d9165881e59fd0fa29df944da26b8801",
+                "fada28348314b9d6607830c30fed58c586114cce"
+              ],
+              "commit": {
+                "message": "Merge fada28348314b9d6607830c30fed58c586114cce into a6a8f001d9165881e59fd0fa29df944da26b8801"
+              }
+            },
+            "runs": [
+              {
+                "id": 42590828744,
+                "name": "backend-ci",
+                "status": "completed",
+                "conclusion": "success",
+                "url": "https://github.com/bart6114/loofah/actions/runs/42590828744",
+                "event": "pull_request",
+                "run_attempt": 1,
+                "jobs": [
+                  {
+                    "id": 129071731574,
+                    "name": "container",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "cb4c236c2b73245cb53ded9c27013fa106159733991a2c8e29f080109762a03f",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071731574.log",
+                    "media_retirement_named_passes": [],
+                    "rust_cohorts": 0,
+                    "rust_totals": {
+                      "passed": 0,
+                      "failed": 0,
+                      "ignored": 0
+                    },
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ]
+                  },
+                  {
+                    "id": 129071731955,
+                    "name": "headless",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "ed2e1ad9dcdc5aee2d3cd8b6c95336a697389d0a9463a36c1cec01343458aa0a",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071731955.log",
+                    "media_retirement_named_passes": [
+                      "media_jobs::retirement::tests::explicit_media_retirement_uses_five_minute_budget_without_extending_ordinary_requests",
+                      "tests::media_jobs::retirement::media_retirement_blocked_before_post_preserves_verified_source_export",
+                      "tests::media_jobs::retirement::media_retirement_export_observation_race_preserves_original_decision_and_ack",
+                      "tests::media_jobs::retirement::media_retirement_lost_reply_keeps_uuid_and_readonly_status_never_redispatches",
+                      "tests::media_jobs::retirement::media_retirement_original_profile_and_login_changes_refuse_before_dispatch",
+                      "tests::media_jobs::retirement::media_retirement_receipt_preserves_original_export_decision_and_only_matching_acknowledgement",
+                      "local_cli::remote::retirement::tests::media_retirement_abandoned_caller_retains_shutdown_and_session_until_io_finishes",
+                      "local_cli::remote::retirement::tests::media_retirement_abandoned_source_read_still_blocks_actual_cleanup",
+                      "local_cli::remote::retirement::tests::media_retirement_allows_checked_note_appends_during_both_hashes_but_fences_final_unlink",
+                      "local_cli::remote::retirement::tests::media_retirement_archive_budget_and_future_receipts_fail_closed",
+                      "local_cli::remote::retirement::tests::media_retirement_changed_or_unknown_source_preserves_files_and_quota",
+                      "local_cli::remote::retirement::tests::media_retirement_completed_replay_ignores_later_work_and_preserves_reappeared_bytes",
+                      "local_cli::remote::retirement::tests::media_retirement_rechecks_owned_source_identity_after_hash_before_unlink",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_ambiguous_legacy_and_dispatched_terminal_states",
+                      "local_cli::remote::retirement::tests::media_retirement_crash_after_each_destructive_boundary_keeps_quota_and_exact_retry",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_hardlinked_and_oversized_sources_before_intent",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_symlinked_source_without_touching_target",
+                      "local_cli::remote::retirement::tests::media_retirement_revocation_and_member_isolation_preserve_source",
+                      "local_cli::remote::retirement::tests::media_retirement_releases_both_quotas_but_never_reuses_original_identity",
+                      "local_cli::remote::retirement::tests::media_retirement_rechecks_session_and_authorization_after_long_verification",
+                      "local_cli::remote::retirement::tests::media_retirement_waits_for_source_reader_and_preserves_canonical_and_result",
+                      "media::retirement_tests::media_retirement_binds_original_declaration_revision_and_explicit_disposition",
+                      "tests::media_retirement::media_retirement_http_never_dispatched_discard_does_not_create_content",
+                      "tests::media_retirement::media_retirement_http_rejects_reader_foreign_member_and_changed_decisions",
+                      "tests::media_retirement::media_retirement_http_keeps_results_and_original_identity_after_restart"
+                    ],
+                    "rust_cohorts": 22,
+                    "rust_totals": {
+                      "passed": 1691,
+                      "failed": 0,
+                      "ignored": 19
+                    },
+                    "new_principal_tests": {
+                      "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                      "local_principal_still_requires_original_host_authorization": true,
+                      "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                    },
+                    "new_fence_tests": {
+                      "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                      "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                      "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                      "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                      "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                    },
+                    "sdk_refresh_tests": {
+                      "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                      "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                    },
+                    "git_helper_tests": {
+                      "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                      "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                      "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                      "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                    },
+                    "listener_identity_tests": {
+                      "same_label_device_fixtures_keep_independent_actor_names_and_drains": false,
+                      "all_recovery_masks_interrupt_device_prefix_without_reopening_source": false,
+                      "maintenance_rejects_active_retiring_and_storage_finalizing_capture": false
+                    },
+                    "append_http_tests": {
+                      "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": true,
+                      "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": true,
+                      "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": true
+                    },
+                    "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ]
+                  },
+                  {
+                    "id": 129071732072,
+                    "name": "linux-cpu-stt",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "99688aaf7055ba18b0f1ff1ead896edd6213dc9cb2ec3d4b4fc14c9914927588",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071732072.log",
+                    "media_retirement_named_passes": [],
+                    "count_note": "CPU command reprints successful summaries for exact-selection checks; do not aggregate duplicate lines.",
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ]
+                  }
+                ],
+                "artifacts": [
+                  {
+                    "id": 13662162483,
+                    "node_id": "MDg6QXJ0aWZhY3QxMzY2MjE2MjQ4Mw==",
+                    "name": "linux-cpu-stt",
+                    "size_in_bytes": 87220,
+                    "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13662162483",
+                    "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13662162483/zip",
+                    "expired": false,
+                    "digest": "sha256:a92f60488cb20e9afdff9f9d5aa3c7667e4b9385268de9e36a06257e17e30e69",
+                    "created_at": "2026-11-09T09:22:56Z",
+                    "updated_at": "2026-11-09T09:22:56Z",
+                    "expires_at": "2026-11-16T09:22:55Z",
+                    "workflow_run": {
+                      "id": 42590828744,
+                      "repository_id": 1309166815,
+                      "head_repository_id": 1309166815,
+                      "head_branch": "refactor/frontend-backend-separation",
+                      "head_sha": "fada28348314b9d6607830c30fed58c586114cce"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": 42590828591,
+                "name": "desktop-ci",
+                "status": "completed",
+                "conclusion": "success",
+                "url": "https://github.com/bart6114/loofah/actions/runs/42590828591",
+                "event": "pull_request",
+                "run_attempt": 1,
+                "jobs": [
+                  {
+                    "id": 129071731717,
+                    "name": "frontend",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "5ecaeca6419331118fc633e9e11a044aebf9a55458a4d32f4e7c1c797b2669ca",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071731717.log",
+                    "media_retirement_named_passes": [],
+                    "rust_cohorts": 0,
+                    "rust_totals": {
+                      "passed": 0,
+                      "failed": 0,
+                      "ignored": 0
+                    },
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ],
+                    "frontend_totals": {
+                      "desktop": {
+                        "tests": 2636,
+                        "files": 298
+                      },
+                      "editor": {
+                        "tests": 303,
+                        "files": 31
+                      },
+                      "actual_summary_lines": [
+                        "Test Files  31 passed (31)",
+                        "Tests  303 passed (303)",
+                        "Test Files  298 passed (298)",
+                        "Tests  2636 passed (2636)"
+                      ]
+                    }
+                  },
+                  {
+                    "id": 129071732299,
+                    "name": "rust",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "eb2337f0d374ae7a161196f3a8710ca059549e4bfb1d6a6e37640a2d0e7582dd",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071732299.log",
+                    "media_retirement_named_passes": [
+                      "media_jobs::retirement::tests::explicit_media_retirement_uses_five_minute_budget_without_extending_ordinary_requests",
+                      "tests::media_jobs::retirement::media_retirement_blocked_before_post_preserves_verified_source_export",
+                      "tests::media_jobs::retirement::media_retirement_export_observation_race_preserves_original_decision_and_ack",
+                      "tests::media_jobs::retirement::media_retirement_lost_reply_keeps_uuid_and_readonly_status_never_redispatches",
+                      "tests::media_jobs::retirement::media_retirement_original_profile_and_login_changes_refuse_before_dispatch",
+                      "tests::media_jobs::retirement::media_retirement_receipt_preserves_original_export_decision_and_only_matching_acknowledgement",
+                      "local_cli::remote::retirement::tests::media_retirement_abandoned_caller_retains_shutdown_and_session_until_io_finishes",
+                      "local_cli::remote::retirement::tests::media_retirement_abandoned_source_read_still_blocks_actual_cleanup",
+                      "local_cli::remote::retirement::tests::media_retirement_archive_budget_and_future_receipts_fail_closed",
+                      "local_cli::remote::retirement::tests::media_retirement_allows_checked_note_appends_during_both_hashes_but_fences_final_unlink",
+                      "local_cli::remote::retirement::tests::media_retirement_changed_or_unknown_source_preserves_files_and_quota",
+                      "local_cli::remote::retirement::tests::media_retirement_completed_replay_ignores_later_work_and_preserves_reappeared_bytes",
+                      "local_cli::remote::retirement::tests::media_retirement_rechecks_owned_source_identity_after_hash_before_unlink",
+                      "local_cli::remote::retirement::tests::media_retirement_crash_after_each_destructive_boundary_keeps_quota_and_exact_retry",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_ambiguous_legacy_and_dispatched_terminal_states",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_hardlinked_and_oversized_sources_before_intent",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_symlinked_source_without_touching_target",
+                      "local_cli::remote::retirement::tests::media_retirement_revocation_and_member_isolation_preserve_source",
+                      "local_cli::remote::retirement::tests::media_retirement_releases_both_quotas_but_never_reuses_original_identity",
+                      "local_cli::remote::retirement::tests::media_retirement_rechecks_session_and_authorization_after_long_verification",
+                      "local_cli::remote::retirement::tests::media_retirement_waits_for_source_reader_and_preserves_canonical_and_result",
+                      "media::retirement_tests::media_retirement_binds_original_declaration_revision_and_explicit_disposition",
+                      "tests::media_retirement::media_retirement_http_keeps_results_and_original_identity_after_restart",
+                      "tests::media_retirement::media_retirement_http_never_dispatched_discard_does_not_create_content",
+                      "tests::media_retirement::media_retirement_http_rejects_reader_foreign_member_and_changed_decisions"
+                    ],
+                    "rust_cohorts": 182,
+                    "rust_totals": {
+                      "passed": 3262,
+                      "failed": 0,
+                      "ignored": 124
+                    },
+                    "new_principal_tests": {
+                      "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                      "local_principal_still_requires_original_host_authorization": true,
+                      "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                    },
+                    "new_fence_tests": {
+                      "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                      "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                      "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                      "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                      "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                    },
+                    "sdk_refresh_tests": {
+                      "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                      "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                    },
+                    "git_helper_tests": {
+                      "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                      "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                      "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                      "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                    },
+                    "listener_identity_tests": {
+                      "same_label_device_fixtures_keep_independent_actor_names_and_drains": true,
+                      "all_recovery_masks_interrupt_device_prefix_without_reopening_source": true,
+                      "maintenance_rejects_active_retiring_and_storage_finalizing_capture": true
+                    },
+                    "append_http_tests": {
+                      "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": true,
+                      "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": true,
+                      "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": true
+                    },
+                    "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+                    "listener_cohort": {
+                      "passed": 91,
+                      "failed": 0,
+                      "ignored": 0,
+                      "seconds": 2.43
+                    },
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ]
+                  }
+                ],
+                "artifacts": []
+              },
+              {
+                "id": 42590828653,
+                "name": "windows-ci",
+                "status": "completed",
+                "conclusion": "failure",
+                "url": "https://github.com/bart6114/loofah/actions/runs/42590828653",
+                "event": "pull_request",
+                "run_attempt": 1,
+                "jobs": [
+                  {
+                    "id": 129071731624,
+                    "name": "native (windows-2025, x86_64-pc-windows-msvc)",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "e0514b7ce243084acbdc34908a58eecf456d93addf12f5d8233d355f72a130b9",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071731624.log",
+                    "media_retirement_named_passes": [
+                      "media_jobs::retirement::tests::explicit_media_retirement_uses_five_minute_budget_without_extending_ordinary_requests",
+                      "tests::media_jobs::retirement::media_retirement_blocked_before_post_preserves_verified_source_export",
+                      "tests::media_jobs::retirement::media_retirement_export_observation_race_preserves_original_decision_and_ack",
+                      "tests::media_jobs::retirement::media_retirement_lost_reply_keeps_uuid_and_readonly_status_never_redispatches",
+                      "tests::media_jobs::retirement::media_retirement_original_profile_and_login_changes_refuse_before_dispatch",
+                      "tests::media_jobs::retirement::media_retirement_receipt_preserves_original_export_decision_and_only_matching_acknowledgement",
+                      "local_cli::remote::retirement::tests::media_retirement_abandoned_caller_retains_shutdown_and_session_until_io_finishes",
+                      "local_cli::remote::retirement::tests::media_retirement_archive_budget_and_future_receipts_fail_closed",
+                      "local_cli::remote::retirement::tests::media_retirement_abandoned_source_read_still_blocks_actual_cleanup",
+                      "local_cli::remote::retirement::tests::media_retirement_allows_checked_note_appends_during_both_hashes_but_fences_final_unlink",
+                      "local_cli::remote::retirement::tests::media_retirement_changed_or_unknown_source_preserves_files_and_quota",
+                      "local_cli::remote::retirement::tests::media_retirement_completed_replay_ignores_later_work_and_preserves_reappeared_bytes",
+                      "local_cli::remote::retirement::tests::media_retirement_rechecks_owned_source_identity_after_hash_before_unlink",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_ambiguous_legacy_and_dispatched_terminal_states",
+                      "local_cli::remote::retirement::tests::media_retirement_crash_after_each_destructive_boundary_keeps_quota_and_exact_retry",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_hardlinked_and_oversized_sources_before_intent",
+                      "local_cli::remote::retirement::tests::media_retirement_revocation_and_member_isolation_preserve_source",
+                      "local_cli::remote::retirement::tests::media_retirement_releases_both_quotas_but_never_reuses_original_identity",
+                      "local_cli::remote::retirement::tests::media_retirement_rechecks_session_and_authorization_after_long_verification",
+                      "local_cli::remote::retirement::tests::media_retirement_waits_for_source_reader_and_preserves_canonical_and_result",
+                      "media::retirement_tests::media_retirement_binds_original_declaration_revision_and_explicit_disposition"
+                    ],
+                    "rust_cohorts": 70,
+                    "rust_totals": {
+                      "passed": 2271,
+                      "failed": 0,
+                      "ignored": 47
+                    },
+                    "new_principal_tests": {
+                      "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                      "local_principal_still_requires_original_host_authorization": true,
+                      "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                    },
+                    "new_fence_tests": {
+                      "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                      "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                      "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                      "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                      "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                    },
+                    "sdk_refresh_tests": {
+                      "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                      "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                    },
+                    "git_helper_tests": {
+                      "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": true,
+                      "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": true,
+                      "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": true,
+                      "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": true
+                    },
+                    "listener_identity_tests": {
+                      "same_label_device_fixtures_keep_independent_actor_names_and_drains": true,
+                      "all_recovery_masks_interrupt_device_prefix_without_reopening_source": true,
+                      "maintenance_rejects_active_retiring_and_storage_finalizing_capture": true
+                    },
+                    "append_http_tests": {
+                      "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": false,
+                      "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": false,
+                      "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": false
+                    },
+                    "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+                    "listener_cohort": {
+                      "passed": 91,
+                      "failed": 0,
+                      "ignored": 0,
+                      "seconds": 1.75
+                    },
+                    "installer_runtime_smoke_passed": true,
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ]
+                  },
+                  {
+                    "id": 129071732224,
+                    "name": "native (windows-11-arm, aarch64-pc-windows-msvc)",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "active": [],
+                    "failed_steps": [
+                      "Test installed app and uninstall"
+                    ],
+                    "log_sha256": "2683e938f9121b2f772364bb6934c0a62fd0c467b57ddd4a77b8be9ead601f72",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071732224.log",
+                    "media_retirement_named_passes": [
+                      "media_jobs::retirement::tests::explicit_media_retirement_uses_five_minute_budget_without_extending_ordinary_requests",
+                      "tests::media_jobs::retirement::media_retirement_blocked_before_post_preserves_verified_source_export",
+                      "tests::media_jobs::retirement::media_retirement_export_observation_race_preserves_original_decision_and_ack",
+                      "tests::media_jobs::retirement::media_retirement_lost_reply_keeps_uuid_and_readonly_status_never_redispatches",
+                      "tests::media_jobs::retirement::media_retirement_original_profile_and_login_changes_refuse_before_dispatch",
+                      "tests::media_jobs::retirement::media_retirement_receipt_preserves_original_export_decision_and_only_matching_acknowledgement",
+                      "local_cli::remote::retirement::tests::media_retirement_abandoned_caller_retains_shutdown_and_session_until_io_finishes",
+                      "local_cli::remote::retirement::tests::media_retirement_abandoned_source_read_still_blocks_actual_cleanup",
+                      "local_cli::remote::retirement::tests::media_retirement_archive_budget_and_future_receipts_fail_closed",
+                      "local_cli::remote::retirement::tests::media_retirement_changed_or_unknown_source_preserves_files_and_quota",
+                      "local_cli::remote::retirement::tests::media_retirement_completed_replay_ignores_later_work_and_preserves_reappeared_bytes",
+                      "local_cli::remote::retirement::tests::media_retirement_crash_after_each_destructive_boundary_keeps_quota_and_exact_retry",
+                      "local_cli::remote::retirement::tests::media_retirement_rechecks_owned_source_identity_after_hash_before_unlink",
+                      "local_cli::remote::retirement::tests::media_retirement_allows_checked_note_appends_during_both_hashes_but_fences_final_unlink",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_hardlinked_and_oversized_sources_before_intent",
+                      "local_cli::remote::retirement::tests::media_retirement_refuses_ambiguous_legacy_and_dispatched_terminal_states",
+                      "local_cli::remote::retirement::tests::media_retirement_releases_both_quotas_but_never_reuses_original_identity",
+                      "local_cli::remote::retirement::tests::media_retirement_revocation_and_member_isolation_preserve_source",
+                      "local_cli::remote::retirement::tests::media_retirement_waits_for_source_reader_and_preserves_canonical_and_result",
+                      "local_cli::remote::retirement::tests::media_retirement_rechecks_session_and_authorization_after_long_verification",
+                      "media::retirement_tests::media_retirement_binds_original_declaration_revision_and_explicit_disposition"
+                    ],
+                    "rust_cohorts": 70,
+                    "rust_totals": {
+                      "passed": 2271,
+                      "failed": 0,
+                      "ignored": 47
+                    },
+                    "new_principal_tests": {
+                      "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                      "local_principal_still_requires_original_host_authorization": true,
+                      "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                    },
+                    "new_fence_tests": {
+                      "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                      "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                      "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                      "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                      "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                    },
+                    "sdk_refresh_tests": {
+                      "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                      "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                    },
+                    "git_helper_tests": {
+                      "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": true,
+                      "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": true,
+                      "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": true,
+                      "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": true
+                    },
+                    "listener_identity_tests": {
+                      "same_label_device_fixtures_keep_independent_actor_names_and_drains": true,
+                      "all_recovery_masks_interrupt_device_prefix_without_reopening_source": true,
+                      "maintenance_rejects_active_retiring_and_storage_finalizing_capture": true
+                    },
+                    "append_http_tests": {
+                      "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": false,
+                      "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": false,
+                      "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": false
+                    },
+                    "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+                    "listener_cohort": {
+                      "passed": 91,
+                      "failed": 0,
+                      "ignored": 0,
+                      "seconds": 1.66
+                    },
+                    "installer_runtime_smoke_passed": false,
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ],
+                    "installer_failure": {
+                      "step": "Test installed app and uninstall",
+                      "script": "apps/desktop/src-tauri/scripts/test-windows-install.ps1",
+                      "line": 61,
+                      "message": "Uninstall left the desktop executable behind",
+                      "actual_at_utc": "2026-11-09T10:30:27Z",
+                      "preceding_verified_scope": "Installer completed; ARM64 executable and CRT checks, installed CLI/MCP commands and actual app startup/window assertions passed. The uninstaller process returned zero, then the executable-presence assertion failed. Later unmanaged-file, managed-CLI, PATH and startup-entry assertions were not reached.",
+                      "classification": "Unclassified product or fixture timing issue; no retry or source change authorized by this receipt.",
+                      "decisive_lines": [
+                        {
+                          "line": 6535,
+                          "text": "2026-11-09T10:30:27.3722650Z Exception: C:\\a\\loofah\\loofah\\apps\\desktop\\src-tauri\\scripts\\test-windows-install.ps1:61"
+                        },
+                        {
+                          "line": 6537,
+                          "text": "2026-11-09T10:30:27.3724946Z   61 |  … $executable) { throw 'Uninstall left the desktop executable behind' }"
+                        },
+                        {
+                          "line": 6539,
+                          "text": "2026-11-09T10:30:27.3726828Z      | Uninstall left the desktop executable behind"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": 129071734470,
+                    "name": "speech-models",
+                    "status": "completed",
+                    "conclusion": "skipped",
+                    "active": [],
+                    "failed_steps": []
+                  }
+                ],
+                "artifacts": [
+                  {
+                    "id": 13666245301,
+                    "node_id": "MDg6QXJ0aWZhY3QxMzY2NjI0NTMwMQ==",
+                    "name": "loofah-windows-x86_64-pc-windows-msvc-a91d9bdfba8530efcbf8cdc24d294a200a06ea74",
+                    "size_in_bytes": 371750244,
+                    "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13666245301",
+                    "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13666245301/zip",
+                    "expired": false,
+                    "digest": "sha256:baa3ef79b11cb4575fb7531121ea02bc8357c1c871349bedf99d9e2f39f0bf60",
+                    "created_at": "2026-11-09T10:25:36Z",
+                    "updated_at": "2026-11-09T10:25:36Z",
+                    "expires_at": "2026-11-23T10:25:20Z",
+                    "workflow_run": {
+                      "id": 42590828653,
+                      "repository_id": 1309166815,
+                      "head_repository_id": 1309166815,
+                      "head_branch": "refactor/frontend-backend-separation",
+                      "head_sha": "fada28348314b9d6607830c30fed58c586114cce"
+                    }
+                  },
+                  {
+                    "id": 13665314266,
+                    "node_id": "MDg6QXJ0aWZhY3QxMzY2NTMxNDI2Ng==",
+                    "name": "loofah-windows-aarch64-pc-windows-msvc-a91d9bdfba8530efcbf8cdc24d294a200a06ea74",
+                    "size_in_bytes": 338233523,
+                    "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13665314266",
+                    "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13665314266/zip",
+                    "expired": false,
+                    "digest": "sha256:ff58c550cc036404c80eff8a1f97e855268c7d4df41511679af66943aaba072c",
+                    "created_at": "2026-11-09T10:30:41Z",
+                    "updated_at": "2026-11-09T10:30:41Z",
+                    "expires_at": "2026-11-23T10:30:28Z",
+                    "workflow_run": {
+                      "id": 42590828653,
+                      "repository_id": 1309166815,
+                      "head_repository_id": 1309166815,
+                      "head_branch": "refactor/frontend-backend-separation",
+                      "head_sha": "fada28348314b9d6607830c30fed58c586114cce"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": 42590828580,
+                "name": "ci",
+                "status": "completed",
+                "conclusion": "success",
+                "url": "https://github.com/bart6114/loofah/actions/runs/42590828580",
+                "event": "pull_request",
+                "run_attempt": 1,
+                "jobs": [
+                  {
+                    "id": 129071731264,
+                    "name": "fmt",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "758892f16918074d0e23e57a05f4066ea023704127f1921affb0f96195737941",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071731264.log",
+                    "media_retirement_named_passes": [],
+                    "rust_cohorts": 0,
+                    "rust_totals": {
+                      "passed": 0,
+                      "failed": 0,
+                      "ignored": 0
+                    },
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ]
+                  },
+                  {
+                    "id": 129071731580,
+                    "name": "lint",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "ca2cea24ad1b2a978a9738b52dc362fdb864552f8644c2e53873f6a89e2e401a",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071731580.log",
+                    "media_retirement_named_passes": [],
+                    "rust_cohorts": 0,
+                    "rust_totals": {
+                      "passed": 0,
+                      "failed": 0,
+                      "ignored": 0
+                    },
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ]
+                  }
+                ],
+                "artifacts": []
+              },
+              {
+                "id": 42590828586,
+                "name": "cli-ci",
+                "status": "completed",
+                "conclusion": "success",
+                "url": "https://github.com/bart6114/loofah/actions/runs/42590828586",
+                "event": "pull_request",
+                "run_attempt": 1,
+                "jobs": [
+                  {
+                    "id": 129071731054,
+                    "name": "cli-ci",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "9545f3402a5387b53c1adfdf8e2800a6e5b60c3299404fbf9ad380903fdb2687",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071731054.log",
+                    "media_retirement_named_passes": [],
+                    "rust_cohorts": 20,
+                    "rust_totals": {
+                      "passed": 274,
+                      "failed": 0,
+                      "ignored": 2
+                    },
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ]
+                  }
+                ],
+                "artifacts": []
+              },
+              {
+                "id": 42590828603,
+                "name": "zizmor",
+                "status": "completed",
+                "conclusion": "success",
+                "url": "https://github.com/bart6114/loofah/actions/runs/42590828603",
+                "event": "pull_request",
+                "run_attempt": 1,
+                "jobs": [
+                  {
+                    "id": 129071730732,
+                    "name": "zizmor",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "e5d07d122b2dec1336c632d30474b2eb6db6a7d6f43eed85725a5ec0bc3f9097",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071730732.log",
+                    "media_retirement_named_passes": [],
+                    "rust_cohorts": 0,
+                    "rust_totals": {
+                      "passed": 0,
+                      "failed": 0,
+                      "ignored": 0
+                    },
+                    "checkout_observed": [
+                      "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+                    ]
+                  }
+                ],
+                "artifacts": []
+              },
+              {
+                "id": 42591024353,
+                "name": "windows-ci",
+                "status": "completed",
+                "conclusion": "success",
+                "url": "https://github.com/bart6114/loofah/actions/runs/42591024353",
+                "event": "workflow_dispatch",
+                "run_attempt": 1,
+                "jobs": [
+                  {
+                    "id": 129072380292,
+                    "name": "speech-models (windows-2025)",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "98ada1bb213b3b348f5cc678375c73a0c84fd5b4021796c3cca9b8596bb2148b",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129072380292.log",
+                    "media_retirement_named_passes": [],
+                    "rust_cohorts": 7,
+                    "rust_totals": {
+                      "passed": 8,
+                      "failed": 0,
+                      "ignored": 0
+                    },
+                    "checkout_observed": [
+                      "fada28348314b9d6607830c30fed58c586114cce"
+                    ]
+                  },
+                  {
+                    "id": 129072380758,
+                    "name": "speech-models (windows-11-arm)",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "active": [],
+                    "failed_steps": [],
+                    "log_sha256": "6b0420f1a4aec7e2e3d0f51a50f48b49e2f8fd9ace7284cdb5df642cbe77cc67",
+                    "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129072380758.log",
+                    "media_retirement_named_passes": [],
+                    "rust_cohorts": 7,
+                    "rust_totals": {
+                      "passed": 8,
+                      "failed": 0,
+                      "ignored": 0
+                    },
+                    "checkout_observed": [
+                      "fada28348314b9d6607830c30fed58c586114cce"
+                    ]
+                  },
+                  {
+                    "id": 129072382615,
+                    "name": "native",
+                    "status": "completed",
+                    "conclusion": "skipped",
+                    "active": [],
+                    "failed_steps": []
+                  }
+                ],
+                "artifacts": []
+              }
+            ],
+            "qualification_limit": "Counts describe actual logged executions at fada283. Windows aggregate includes separate standalone Git-helper and release-policy tests; verify their exact names and the two SDK concurrency regressions separately. No physical capture or production SSO claim.",
+            "terminal_outcome": {
+              "successful_workflows": 6,
+              "failed_workflows": 1,
+              "failed_job": 129071732224,
+              "failed_step": "Test installed app and uninstall",
+              "attempts": "All seven runs remained on their first attempt. No retries or cancellations."
+            },
+            "qualification_limits": [
+              "Exact hosted source is fada28348314b9d6607830c30fed58c586114cce, PR checkout a91d9bdfba8530efcbf8cdc24d294a200a06ea74; direct speech checkout is fada.",
+              "The later local heading runtime fix and its local validation are outside this hosted checkpoint.",
+              "User pause on local desktop testing persists. No local app launches or local runtime QA were performed during this audit.",
+              "Production SSO acceptance is explicitly deferred by the user; no SSO pass is claimed.",
+              "Configured model tests establish their actual assertions, not overall summary accuracy or conciseness."
+            ],
+            "verification_note": "The first external receipt verifier incorrectly required listener tests in the headless package list. The verifier was corrected to require them only in macOS and native Windows jobs, where they actually ran; no CI test was rerun.",
+            "linked_receipts": {
+              "macos-prewarm-qualification.json": {
+                "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/macos-prewarm-qualification.json",
+                "sha256": "36e4645a006215e42cbd410f321cea375b23c8f1e0d0af2a6f5ae3e90c36a3f2"
+              },
+              "speech-terminal-qualification.json": {
+                "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/speech-terminal-qualification.json",
+                "sha256": "29b332139a1b24e940c079f492f0bbb3621c65d8467bafd787ae332e0bb1c92e"
+              },
+              "linux-cpu-qualification.json": {
+                "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/linux-cpu-qualification.json",
+                "sha256": "6520e1b407c49d6f55142418264599a6822c773dc14a85a5fe38b25586cc790d"
+              },
+              "speech-dispatch.json": {
+                "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/speech-dispatch.json",
+                "sha256": "d71a43e98ee6db31270c27b45220419efc53c49aea8a87b071219a20e85a985d"
+              },
+              "pr-merge-checkout.json": {
+                "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/pr-merge-checkout.json",
+                "sha256": "209a66c011157dcbefbc30fc510e6aaf2dd706f2c078f5ecbf5ef8e8dbbb1e82"
+              }
+            }
+          }
+        },
+        "arm-installer-failure.json": {
+          "sha256": "d099246f24568c76ea6956d25842af866011a4eb15dc7dafad4dfb8878e54ee1",
+          "report": {
+            "source": "fada28348314b9d6607830c30fed58c586114cce",
+            "checkout": "a91d9bdfba8530efcbf8cdc24d294a200a06ea74",
+            "job": {
+              "id": 129071732224,
+              "name": "native (windows-11-arm, aarch64-pc-windows-msvc)",
+              "status": "completed",
+              "conclusion": "failure",
+              "active": [],
+              "failed_steps": [
+                "Test installed app and uninstall"
+              ],
+              "log_sha256": "2683e938f9121b2f772364bb6934c0a62fd0c467b57ddd4a77b8be9ead601f72",
+              "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071732224.log",
+              "media_retirement_named_passes": [
+                "media_jobs::retirement::tests::explicit_media_retirement_uses_five_minute_budget_without_extending_ordinary_requests",
+                "tests::media_jobs::retirement::media_retirement_blocked_before_post_preserves_verified_source_export",
+                "tests::media_jobs::retirement::media_retirement_export_observation_race_preserves_original_decision_and_ack",
+                "tests::media_jobs::retirement::media_retirement_lost_reply_keeps_uuid_and_readonly_status_never_redispatches",
+                "tests::media_jobs::retirement::media_retirement_original_profile_and_login_changes_refuse_before_dispatch",
+                "tests::media_jobs::retirement::media_retirement_receipt_preserves_original_export_decision_and_only_matching_acknowledgement",
+                "local_cli::remote::retirement::tests::media_retirement_abandoned_caller_retains_shutdown_and_session_until_io_finishes",
+                "local_cli::remote::retirement::tests::media_retirement_abandoned_source_read_still_blocks_actual_cleanup",
+                "local_cli::remote::retirement::tests::media_retirement_archive_budget_and_future_receipts_fail_closed",
+                "local_cli::remote::retirement::tests::media_retirement_changed_or_unknown_source_preserves_files_and_quota",
+                "local_cli::remote::retirement::tests::media_retirement_completed_replay_ignores_later_work_and_preserves_reappeared_bytes",
+                "local_cli::remote::retirement::tests::media_retirement_crash_after_each_destructive_boundary_keeps_quota_and_exact_retry",
+                "local_cli::remote::retirement::tests::media_retirement_rechecks_owned_source_identity_after_hash_before_unlink",
+                "local_cli::remote::retirement::tests::media_retirement_allows_checked_note_appends_during_both_hashes_but_fences_final_unlink",
+                "local_cli::remote::retirement::tests::media_retirement_refuses_hardlinked_and_oversized_sources_before_intent",
+                "local_cli::remote::retirement::tests::media_retirement_refuses_ambiguous_legacy_and_dispatched_terminal_states",
+                "local_cli::remote::retirement::tests::media_retirement_releases_both_quotas_but_never_reuses_original_identity",
+                "local_cli::remote::retirement::tests::media_retirement_revocation_and_member_isolation_preserve_source",
+                "local_cli::remote::retirement::tests::media_retirement_waits_for_source_reader_and_preserves_canonical_and_result",
+                "local_cli::remote::retirement::tests::media_retirement_rechecks_session_and_authorization_after_long_verification",
+                "media::retirement_tests::media_retirement_binds_original_declaration_revision_and_explicit_disposition"
+              ],
+              "rust_cohorts": 70,
+              "rust_totals": {
+                "passed": 2271,
+                "failed": 0,
+                "ignored": 47
+              },
+              "new_principal_tests": {
+                "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                "local_principal_still_requires_original_host_authorization": true,
+                "local_principal_survives_submit_result_replay_and_journal_reopen": true
+              },
+              "new_fence_tests": {
+                "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+              },
+              "sdk_refresh_tests": {
+                "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+              },
+              "git_helper_tests": {
+                "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": true,
+                "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": true,
+                "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": true,
+                "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": true
+              },
+              "listener_identity_tests": {
+                "same_label_device_fixtures_keep_independent_actor_names_and_drains": true,
+                "all_recovery_masks_interrupt_device_prefix_without_reopening_source": true,
+                "maintenance_rejects_active_retiring_and_storage_finalizing_capture": true
+              },
+              "append_http_tests": {
+                "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": false,
+                "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": false,
+                "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": false
+              },
+              "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+              "listener_cohort": {
+                "passed": 91,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 1.66
+              },
+              "installer_runtime_smoke_passed": false,
+              "checkout_observed": [
+                "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+              ],
+              "installer_failure": {
+                "step": "Test installed app and uninstall",
+                "script": "apps/desktop/src-tauri/scripts/test-windows-install.ps1",
+                "line": 61,
+                "message": "Uninstall left the desktop executable behind",
+                "actual_at_utc": "2026-11-09T10:30:27Z",
+                "preceding_verified_scope": "Installer completed; ARM64 executable and CRT checks, installed CLI/MCP commands and actual app startup/window assertions passed. The uninstaller process returned zero, then the executable-presence assertion failed. Later unmanaged-file, managed-CLI, PATH and startup-entry assertions were not reached.",
+                "classification": "Unclassified product or fixture timing issue; no retry or source change authorized by this receipt.",
+                "decisive_lines": [
+                  {
+                    "line": 6535,
+                    "text": "2026-11-09T10:30:27.3722650Z Exception: C:\\a\\loofah\\loofah\\apps\\desktop\\src-tauri\\scripts\\test-windows-install.ps1:61"
+                  },
+                  {
+                    "line": 6537,
+                    "text": "2026-11-09T10:30:27.3724946Z   61 |  … $executable) { throw 'Uninstall left the desktop executable behind' }"
+                  },
+                  {
+                    "line": 6539,
+                    "text": "2026-11-09T10:30:27.3726828Z      | Uninstall left the desktop executable behind"
+                  }
+                ]
+              }
+            },
+            "artifact": {
+              "id": 13665314266,
+              "node_id": "MDg6QXJ0aWZhY3QxMzY2NTMxNDI2Ng==",
+              "name": "loofah-windows-aarch64-pc-windows-msvc-a91d9bdfba8530efcbf8cdc24d294a200a06ea74",
+              "size_in_bytes": 338233523,
+              "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13665314266",
+              "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13665314266/zip",
+              "expired": false,
+              "digest": "sha256:ff58c550cc036404c80eff8a1f97e855268c7d4df41511679af66943aaba072c",
+              "created_at": "2026-11-09T10:30:41Z",
+              "updated_at": "2026-11-09T10:30:41Z",
+              "expires_at": "2026-11-23T10:30:28Z",
+              "workflow_run": {
+                "id": 42590828653,
+                "repository_id": 1309166815,
+                "head_repository_id": 1309166815,
+                "head_branch": "refactor/frontend-backend-separation",
+                "head_sha": "fada28348314b9d6607830c30fed58c586114cce"
+              }
+            }
+          }
+        },
+        "macos-prewarm-qualification.json": {
+          "sha256": "36e4645a006215e42cbd410f321cea375b23c8f1e0d0af2a6f5ae3e90c36a3f2",
+          "report": {
+            "source": "fada28348314b9d6607830c30fed58c586114cce",
+            "observed_at_utc": "2026-11-09T10:10:58Z",
+            "job": {
+              "id": 129071732299,
+              "name": "rust",
+              "status": "completed",
+              "conclusion": "success",
+              "active": [],
+              "failed_steps": [],
+              "log_sha256": "eb2337f0d374ae7a161196f3a8710ca059549e4bfb1d6a6e37640a2d0e7582dd",
+              "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129071732299.log",
+              "media_retirement_named_passes": [
+                "media_jobs::retirement::tests::explicit_media_retirement_uses_five_minute_budget_without_extending_ordinary_requests",
+                "tests::media_jobs::retirement::media_retirement_blocked_before_post_preserves_verified_source_export",
+                "tests::media_jobs::retirement::media_retirement_export_observation_race_preserves_original_decision_and_ack",
+                "tests::media_jobs::retirement::media_retirement_lost_reply_keeps_uuid_and_readonly_status_never_redispatches",
+                "tests::media_jobs::retirement::media_retirement_original_profile_and_login_changes_refuse_before_dispatch",
+                "tests::media_jobs::retirement::media_retirement_receipt_preserves_original_export_decision_and_only_matching_acknowledgement",
+                "local_cli::remote::retirement::tests::media_retirement_abandoned_caller_retains_shutdown_and_session_until_io_finishes",
+                "local_cli::remote::retirement::tests::media_retirement_abandoned_source_read_still_blocks_actual_cleanup",
+                "local_cli::remote::retirement::tests::media_retirement_archive_budget_and_future_receipts_fail_closed",
+                "local_cli::remote::retirement::tests::media_retirement_allows_checked_note_appends_during_both_hashes_but_fences_final_unlink",
+                "local_cli::remote::retirement::tests::media_retirement_changed_or_unknown_source_preserves_files_and_quota",
+                "local_cli::remote::retirement::tests::media_retirement_completed_replay_ignores_later_work_and_preserves_reappeared_bytes",
+                "local_cli::remote::retirement::tests::media_retirement_rechecks_owned_source_identity_after_hash_before_unlink",
+                "local_cli::remote::retirement::tests::media_retirement_crash_after_each_destructive_boundary_keeps_quota_and_exact_retry",
+                "local_cli::remote::retirement::tests::media_retirement_refuses_ambiguous_legacy_and_dispatched_terminal_states",
+                "local_cli::remote::retirement::tests::media_retirement_refuses_hardlinked_and_oversized_sources_before_intent",
+                "local_cli::remote::retirement::tests::media_retirement_refuses_symlinked_source_without_touching_target",
+                "local_cli::remote::retirement::tests::media_retirement_revocation_and_member_isolation_preserve_source",
+                "local_cli::remote::retirement::tests::media_retirement_releases_both_quotas_but_never_reuses_original_identity",
+                "local_cli::remote::retirement::tests::media_retirement_rechecks_session_and_authorization_after_long_verification",
+                "local_cli::remote::retirement::tests::media_retirement_waits_for_source_reader_and_preserves_canonical_and_result",
+                "media::retirement_tests::media_retirement_binds_original_declaration_revision_and_explicit_disposition",
+                "tests::media_retirement::media_retirement_http_keeps_results_and_original_identity_after_restart",
+                "tests::media_retirement::media_retirement_http_never_dispatched_discard_does_not_create_content",
+                "tests::media_retirement::media_retirement_http_rejects_reader_foreign_member_and_changed_decisions"
+              ],
+              "rust_cohorts": 182,
+              "rust_totals": {
+                "passed": 3262,
+                "failed": 0,
+                "ignored": 124
+              },
+              "new_principal_tests": {
+                "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                "local_principal_still_requires_original_host_authorization": true,
+                "local_principal_survives_submit_result_replay_and_journal_reopen": true
+              },
+              "new_fence_tests": {
+                "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+              },
+              "sdk_refresh_tests": {
+                "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+              },
+              "git_helper_tests": {
+                "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+              },
+              "listener_identity_tests": {
+                "same_label_device_fixtures_keep_independent_actor_names_and_drains": true,
+                "all_recovery_masks_interrupt_device_prefix_without_reopening_source": true,
+                "maintenance_rejects_active_retiring_and_storage_finalizing_capture": true
+              },
+              "append_http_tests": {
+                "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": true,
+                "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": true,
+                "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": true
+              },
+              "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+              "listener_cohort": {
+                "passed": 91,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 2.43
+              },
+              "checkout_observed": [
+                "a91d9bdfba8530efcbf8cdc24d294a200a06ea74"
+              ]
+            },
+            "prewarm": {
+              "swiftpm_version": "Swift Package Manager - Swift 6.3.3",
+              "actions_cache_restore": "miss",
+              "helper_result": "downloaded and checksum verified",
+              "bytes": 2112822,
+              "sha256": "68517f044b98a54e8779dccab850ae383ad5a5595471430c9e10118abec345cd",
+              "cache_save": "success",
+              "transient_retry_messages": 0,
+              "raw_evidence": [
+                "2026-11-09T09:08:52.0167820Z Swift Package Manager - Swift 6.3.3",
+                "2026-11-09T09:08:53.0017660Z Cache not found for input keys: macos-swiftpm-speechcore-v1-68517f044b98a54e8779dccab850ae383ad5a5595471430c9e10118abec345cd",
+                "2026-11-09T09:08:54.1426420Z Swift Package Manager - Swift 6.3.3",
+                "2026-11-09T09:08:54.1502020Z SpeechCore verified artifact cached (2112822 bytes)",
+                "2026-11-09T09:08:56.2285270Z Cache saved with key: macos-swiftpm-speechcore-v1-68517f044b98a54e8779dccab850ae383ad5a5595471430c9e10118abec345cd"
+              ],
+              "scope": "The helper prewarmed the reviewed SwiftPM 6.3 cache location and subsequent desktop check, desktop tests and workspace tests succeeded. This is a hosted first-attempt result; the two earlier 053 HTTP 504 failures remain separate evidence."
+            }
+          }
+        },
+        "speech-terminal-qualification.json": {
+          "sha256": "29b332139a1b24e940c079f492f0bbb3621c65d8467bafd787ae332e0bb1c92e",
+          "report": {
+            "observed_at_utc": "2026-11-09T09:40:54Z",
+            "source": "fada28348314b9d6607830c30fed58c586114cce",
+            "scope": "Direct branch checkout on both native Windows architectures; configured real CPU transcription, cancellation, diarization and reference embedding. Hosted execution only; local desktop testing remains paused.",
+            "dispatch": {
+              "started_at_utc": "2026-11-09T09:07:58Z",
+              "completed_at_utc": "2026-11-09T09:08:00Z",
+              "head_sha": "fada28348314b9d6607830c30fed58c586114cce",
+              "run_id": 42591024353,
+              "method": "gh workflow run windows_ci.yaml",
+              "inputs": {
+                "speech-models": true,
+                "bundle-only": false
+              },
+              "run": {
+                "id": 42591024353,
+                "name": "windows-ci",
+                "node_id": "WFR_kwLOTghM388AAAAJ6p904Q",
+                "head_branch": "refactor/frontend-backend-separation",
+                "head_sha": "fada28348314b9d6607830c30fed58c586114cce",
+                "path": ".github/workflows/windows_ci.yaml",
+                "display_title": "windows-ci",
+                "run_number": 123,
+                "event": "workflow_dispatch",
+                "status": "in_progress",
+                "conclusion": null,
+                "workflow_id": 353798379,
+                "check_suite_id": 115357279500,
+                "check_suite_node_id": "CS_kwDOTghM388AAAAa29RlDA",
+                "url": "https://api.github.com/repos/bart6114/loofah/actions/runs/42591024353",
+                "html_url": "https://github.com/bart6114/loofah/actions/runs/42591024353",
+                "pull_requests": [
+                  {
+                    "url": "https://api.github.com/repos/bart6114/loofah/pulls/123",
+                    "id": 5172892985,
+                    "number": 123,
+                    "head": {
+                      "ref": "refactor/frontend-backend-separation",
+                      "sha": "fada28348314b9d6607830c30fed58c586114cce",
+                      "repo": {
+                        "id": 1309166815,
+                        "url": "https://api.github.com/repos/bart6114/loofah",
+                        "name": "loofah"
+                      }
+                    },
+                    "base": {
+                      "ref": "main",
+                      "sha": "a6a8f001d9165881e59fd0fa29df944da26b8801",
+                      "repo": {
+                        "id": 1309166815,
+                        "url": "https://api.github.com/repos/bart6114/loofah",
+                        "name": "loofah"
+                      }
+                    }
+                  }
+                ],
+                "created_at": "2026-11-09T09:08:00Z",
+                "updated_at": "2026-11-09T09:08:05Z",
+                "actor": {
+                  "login": "bart6114",
+                  "id": 1965492,
+                  "node_id": "MDQ6VXNlcjE5NjU0OTI=",
+                  "avatar_url": "https://avatars.githubusercontent.com/u/1965492?v=4",
+                  "gravatar_id": "",
+                  "url": "https://api.github.com/users/bart6114",
+                  "html_url": "https://github.com/bart6114",
+                  "followers_url": "https://api.github.com/users/bart6114/followers",
+                  "following_url": "https://api.github.com/users/bart6114/following{/other_user}",
+                  "gists_url": "https://api.github.com/users/bart6114/gists{/gist_id}",
+                  "starred_url": "https://api.github.com/users/bart6114/starred{/owner}{/repo}",
+                  "subscriptions_url": "https://api.github.com/users/bart6114/subscriptions",
+                  "organizations_url": "https://api.github.com/users/bart6114/orgs",
+                  "repos_url": "https://api.github.com/users/bart6114/repos",
+                  "events_url": "https://api.github.com/users/bart6114/events{/privacy}",
+                  "received_events_url": "https://api.github.com/users/bart6114/received_events",
+                  "type": "User",
+                  "user_view_type": "public",
+                  "site_admin": false
+                },
+                "run_attempt": 1,
+                "referenced_workflows": [],
+                "run_started_at": "2026-11-09T09:08:00Z",
+                "triggering_actor": {
+                  "login": "bart6114",
+                  "id": 1965492,
+                  "node_id": "MDQ6VXNlcjE5NjU0OTI=",
+                  "avatar_url": "https://avatars.githubusercontent.com/u/1965492?v=4",
+                  "gravatar_id": "",
+                  "url": "https://api.github.com/users/bart6114",
+                  "html_url": "https://github.com/bart6114",
+                  "followers_url": "https://api.github.com/users/bart6114/followers",
+                  "following_url": "https://api.github.com/users/bart6114/following{/other_user}",
+                  "gists_url": "https://api.github.com/users/bart6114/gists{/gist_id}",
+                  "starred_url": "https://api.github.com/users/bart6114/starred{/owner}{/repo}",
+                  "subscriptions_url": "https://api.github.com/users/bart6114/subscriptions",
+                  "organizations_url": "https://api.github.com/users/bart6114/orgs",
+                  "repos_url": "https://api.github.com/users/bart6114/repos",
+                  "events_url": "https://api.github.com/users/bart6114/events{/privacy}",
+                  "received_events_url": "https://api.github.com/users/bart6114/received_events",
+                  "type": "User",
+                  "user_view_type": "public",
+                  "site_admin": false
+                },
+                "jobs_url": "https://api.github.com/repos/bart6114/loofah/actions/runs/42591024353/jobs",
+                "logs_url": "https://api.github.com/repos/bart6114/loofah/actions/runs/42591024353/logs",
+                "check_suite_url": "https://api.github.com/repos/bart6114/loofah/check-suites/115357279500",
+                "artifacts_url": "https://api.github.com/repos/bart6114/loofah/actions/runs/42591024353/artifacts",
+                "cancel_url": "https://api.github.com/repos/bart6114/loofah/actions/runs/42591024353/cancel",
+                "rerun_url": "https://api.github.com/repos/bart6114/loofah/actions/runs/42591024353/rerun",
+                "previous_attempt_url": null,
+                "workflow_url": "https://api.github.com/repos/bart6114/loofah/actions/workflows/353798379",
+                "head_commit": {
+                  "id": "fada28348314b9d6607830c30fed58c586114cce",
+                  "tree_id": "b72b5a8c73b302ca71f573128f99a24f98c8b2cf",
+                  "message": "docs: preserve optimized retirement build and desktop QA pause",
+                  "timestamp": "2026-11-09T09:06:13Z",
+                  "author": {
+                    "name": "Bart6114",
+                    "email": "bartsmeets86@gmail.com"
+                  },
+                  "committer": {
+                    "name": "Bart6114",
+                    "email": "bartsmeets86@gmail.com"
+                  }
+                },
+                "repository": {
+                  "id": 1309166815,
+                  "node_id": "R_kgDOTghM3w",
+                  "name": "loofah",
+                  "full_name": "bart6114/loofah",
+                  "private": false,
+                  "owner": {
+                    "login": "bart6114",
+                    "id": 1965492,
+                    "node_id": "MDQ6VXNlcjE5NjU0OTI=",
+                    "avatar_url": "https://avatars.githubusercontent.com/u/1965492?v=4",
+                    "gravatar_id": "",
+                    "url": "https://api.github.com/users/bart6114",
+                    "html_url": "https://github.com/bart6114",
+                    "followers_url": "https://api.github.com/users/bart6114/followers",
+                    "following_url": "https://api.github.com/users/bart6114/following{/other_user}",
+                    "gists_url": "https://api.github.com/users/bart6114/gists{/gist_id}",
+                    "starred_url": "https://api.github.com/users/bart6114/starred{/owner}{/repo}",
+                    "subscriptions_url": "https://api.github.com/users/bart6114/subscriptions",
+                    "organizations_url": "https://api.github.com/users/bart6114/orgs",
+                    "repos_url": "https://api.github.com/users/bart6114/repos",
+                    "events_url": "https://api.github.com/users/bart6114/events{/privacy}",
+                    "received_events_url": "https://api.github.com/users/bart6114/received_events",
+                    "type": "User",
+                    "user_view_type": "public",
+                    "site_admin": false
+                  },
+                  "html_url": "https://github.com/bart6114/loofah",
+                  "description": "Free, open-source Markdown knowledge vault for macOS. Record and transcribe meetings locally, keep notes as files you can carry across tools, and give agents read-only MCP access. No accounts, subscriptions, telemetry, or cloud backend.",
+                  "fork": false,
+                  "url": "https://api.github.com/repos/bart6114/loofah",
+                  "forks_url": "https://api.github.com/repos/bart6114/loofah/forks",
+                  "keys_url": "https://api.github.com/repos/bart6114/loofah/keys{/key_id}",
+                  "collaborators_url": "https://api.github.com/repos/bart6114/loofah/collaborators{/collaborator}",
+                  "teams_url": "https://api.github.com/repos/bart6114/loofah/teams",
+                  "hooks_url": "https://api.github.com/repos/bart6114/loofah/hooks",
+                  "issue_events_url": "https://api.github.com/repos/bart6114/loofah/issues/events{/number}",
+                  "events_url": "https://api.github.com/repos/bart6114/loofah/events",
+                  "assignees_url": "https://api.github.com/repos/bart6114/loofah/assignees{/user}",
+                  "branches_url": "https://api.github.com/repos/bart6114/loofah/branches{/branch}",
+                  "tags_url": "https://api.github.com/repos/bart6114/loofah/tags",
+                  "blobs_url": "https://api.github.com/repos/bart6114/loofah/git/blobs{/sha}",
+                  "git_tags_url": "https://api.github.com/repos/bart6114/loofah/git/tags{/sha}",
+                  "git_refs_url": "https://api.github.com/repos/bart6114/loofah/git/refs{/sha}",
+                  "trees_url": "https://api.github.com/repos/bart6114/loofah/git/trees{/sha}",
+                  "statuses_url": "https://api.github.com/repos/bart6114/loofah/statuses/{sha}",
+                  "languages_url": "https://api.github.com/repos/bart6114/loofah/languages",
+                  "stargazers_url": "https://api.github.com/repos/bart6114/loofah/stargazers",
+                  "contributors_url": "https://api.github.com/repos/bart6114/loofah/contributors",
+                  "subscribers_url": "https://api.github.com/repos/bart6114/loofah/subscribers",
+                  "subscription_url": "https://api.github.com/repos/bart6114/loofah/subscription",
+                  "commits_url": "https://api.github.com/repos/bart6114/loofah/commits{/sha}",
+                  "git_commits_url": "https://api.github.com/repos/bart6114/loofah/git/commits{/sha}",
+                  "comments_url": "https://api.github.com/repos/bart6114/loofah/comments{/number}",
+                  "issue_comment_url": "https://api.github.com/repos/bart6114/loofah/issues/comments{/number}",
+                  "contents_url": "https://api.github.com/repos/bart6114/loofah/contents/{+path}",
+                  "compare_url": "https://api.github.com/repos/bart6114/loofah/compare/{base}...{head}",
+                  "merges_url": "https://api.github.com/repos/bart6114/loofah/merges",
+                  "archive_url": "https://api.github.com/repos/bart6114/loofah/{archive_format}{/ref}",
+                  "downloads_url": "https://api.github.com/repos/bart6114/loofah/downloads",
+                  "issues_url": "https://api.github.com/repos/bart6114/loofah/issues{/number}",
+                  "pulls_url": "https://api.github.com/repos/bart6114/loofah/pulls{/number}",
+                  "milestones_url": "https://api.github.com/repos/bart6114/loofah/milestones{/number}",
+                  "notifications_url": "https://api.github.com/repos/bart6114/loofah/notifications{?since,all,participating}",
+                  "labels_url": "https://api.github.com/repos/bart6114/loofah/labels{/name}",
+                  "releases_url": "https://api.github.com/repos/bart6114/loofah/releases{/id}",
+                  "deployments_url": "https://api.github.com/repos/bart6114/loofah/deployments"
+                },
+                "head_repository": {
+                  "id": 1309166815,
+                  "node_id": "R_kgDOTghM3w",
+                  "name": "loofah",
+                  "full_name": "bart6114/loofah",
+                  "private": false,
+                  "owner": {
+                    "login": "bart6114",
+                    "id": 1965492,
+                    "node_id": "MDQ6VXNlcjE5NjU0OTI=",
+                    "avatar_url": "https://avatars.githubusercontent.com/u/1965492?v=4",
+                    "gravatar_id": "",
+                    "url": "https://api.github.com/users/bart6114",
+                    "html_url": "https://github.com/bart6114",
+                    "followers_url": "https://api.github.com/users/bart6114/followers",
+                    "following_url": "https://api.github.com/users/bart6114/following{/other_user}",
+                    "gists_url": "https://api.github.com/users/bart6114/gists{/gist_id}",
+                    "starred_url": "https://api.github.com/users/bart6114/starred{/owner}{/repo}",
+                    "subscriptions_url": "https://api.github.com/users/bart6114/subscriptions",
+                    "organizations_url": "https://api.github.com/users/bart6114/orgs",
+                    "repos_url": "https://api.github.com/users/bart6114/repos",
+                    "events_url": "https://api.github.com/users/bart6114/events{/privacy}",
+                    "received_events_url": "https://api.github.com/users/bart6114/received_events",
+                    "type": "User",
+                    "user_view_type": "public",
+                    "site_admin": false
+                  },
+                  "html_url": "https://github.com/bart6114/loofah",
+                  "description": "Free, open-source Markdown knowledge vault for macOS. Record and transcribe meetings locally, keep notes as files you can carry across tools, and give agents read-only MCP access. No accounts, subscriptions, telemetry, or cloud backend.",
+                  "fork": false,
+                  "url": "https://api.github.com/repos/bart6114/loofah",
+                  "forks_url": "https://api.github.com/repos/bart6114/loofah/forks",
+                  "keys_url": "https://api.github.com/repos/bart6114/loofah/keys{/key_id}",
+                  "collaborators_url": "https://api.github.com/repos/bart6114/loofah/collaborators{/collaborator}",
+                  "teams_url": "https://api.github.com/repos/bart6114/loofah/teams",
+                  "hooks_url": "https://api.github.com/repos/bart6114/loofah/hooks",
+                  "issue_events_url": "https://api.github.com/repos/bart6114/loofah/issues/events{/number}",
+                  "events_url": "https://api.github.com/repos/bart6114/loofah/events",
+                  "assignees_url": "https://api.github.com/repos/bart6114/loofah/assignees{/user}",
+                  "branches_url": "https://api.github.com/repos/bart6114/loofah/branches{/branch}",
+                  "tags_url": "https://api.github.com/repos/bart6114/loofah/tags",
+                  "blobs_url": "https://api.github.com/repos/bart6114/loofah/git/blobs{/sha}",
+                  "git_tags_url": "https://api.github.com/repos/bart6114/loofah/git/tags{/sha}",
+                  "git_refs_url": "https://api.github.com/repos/bart6114/loofah/git/refs{/sha}",
+                  "trees_url": "https://api.github.com/repos/bart6114/loofah/git/trees{/sha}",
+                  "statuses_url": "https://api.github.com/repos/bart6114/loofah/statuses/{sha}",
+                  "languages_url": "https://api.github.com/repos/bart6114/loofah/languages",
+                  "stargazers_url": "https://api.github.com/repos/bart6114/loofah/stargazers",
+                  "contributors_url": "https://api.github.com/repos/bart6114/loofah/contributors",
+                  "subscribers_url": "https://api.github.com/repos/bart6114/loofah/subscribers",
+                  "subscription_url": "https://api.github.com/repos/bart6114/loofah/subscription",
+                  "commits_url": "https://api.github.com/repos/bart6114/loofah/commits{/sha}",
+                  "git_commits_url": "https://api.github.com/repos/bart6114/loofah/git/commits{/sha}",
+                  "comments_url": "https://api.github.com/repos/bart6114/loofah/comments{/number}",
+                  "issue_comment_url": "https://api.github.com/repos/bart6114/loofah/issues/comments{/number}",
+                  "contents_url": "https://api.github.com/repos/bart6114/loofah/contents/{+path}",
+                  "compare_url": "https://api.github.com/repos/bart6114/loofah/compare/{base}...{head}",
+                  "merges_url": "https://api.github.com/repos/bart6114/loofah/merges",
+                  "archive_url": "https://api.github.com/repos/bart6114/loofah/{archive_format}{/ref}",
+                  "downloads_url": "https://api.github.com/repos/bart6114/loofah/downloads",
+                  "issues_url": "https://api.github.com/repos/bart6114/loofah/issues{/number}",
+                  "pulls_url": "https://api.github.com/repos/bart6114/loofah/pulls{/number}",
+                  "milestones_url": "https://api.github.com/repos/bart6114/loofah/milestones{/number}",
+                  "notifications_url": "https://api.github.com/repos/bart6114/loofah/notifications{?since,all,participating}",
+                  "labels_url": "https://api.github.com/repos/bart6114/loofah/labels{/name}",
+                  "releases_url": "https://api.github.com/repos/bart6114/loofah/releases{/id}",
+                  "deployments_url": "https://api.github.com/repos/bart6114/loofah/deployments"
+                }
+              },
+              "prior_manual_runs": [
+                {
+                  "id": 42568044984,
+                  "head_sha": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+                  "status": "completed",
+                  "conclusion": "success"
+                },
+                {
+                  "id": 42559211763,
+                  "head_sha": "073e5b7cd3e50caa890c48e317894582de39d878",
+                  "status": "completed",
+                  "conclusion": "success"
+                },
+                {
+                  "id": 42546527094,
+                  "head_sha": "b755769c2542b3454b511544a9f6b7d9ea29228a",
+                  "status": "completed",
+                  "conclusion": "success"
+                },
+                {
+                  "id": 42539976339,
+                  "head_sha": "71ea43cf9455beb536b13dcb22481f17f62a02a8",
+                  "status": "completed",
+                  "conclusion": "success"
+                },
+                {
+                  "id": 42520467223,
+                  "head_sha": "0d8596eb5d8a0eb8d785d472f0f7d7ec68df5ef5",
+                  "status": "completed",
+                  "conclusion": "success"
+                }
+              ]
+            },
+            "qualification": {
+              "id": 42591024353,
+              "name": "windows-ci",
+              "status": "completed",
+              "conclusion": "success",
+              "url": "https://github.com/bart6114/loofah/actions/runs/42591024353",
+              "event": "workflow_dispatch",
+              "run_attempt": 1,
+              "jobs": [
+                {
+                  "id": 129072380292,
+                  "name": "speech-models (windows-2025)",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "98ada1bb213b3b348f5cc678375c73a0c84fd5b4021796c3cca9b8596bb2148b",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129072380292.log",
+                  "media_retirement_named_passes": [],
+                  "rust_cohorts": 7,
+                  "rust_totals": {
+                    "passed": 8,
+                    "failed": 0,
+                    "ignored": 0
+                  },
+                  "checkout_observed": [
+                    "fada28348314b9d6607830c30fed58c586114cce"
+                  ]
+                },
+                {
+                  "id": 129072380758,
+                  "name": "speech-models (windows-11-arm)",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "6b0420f1a4aec7e2e3d0f51a50f48b49e2f8fd9ace7284cdb5df642cbe77cc67",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-fada283-audit/129072380758.log",
+                  "media_retirement_named_passes": [],
+                  "rust_cohorts": 7,
+                  "rust_totals": {
+                    "passed": 8,
+                    "failed": 0,
+                    "ignored": 0
+                  },
+                  "checkout_observed": [
+                    "fada28348314b9d6607830c30fed58c586114cce"
+                  ]
+                },
+                {
+                  "id": 129072382615,
+                  "name": "native",
+                  "status": "completed",
+                  "conclusion": "skipped",
+                  "active": [],
+                  "failed_steps": []
+                }
+              ],
+              "artifacts": []
+            }
+          }
+        }
+      },
+      "acceptance_limits": [
+        "ARM installer executable removal failed after successful app startup; root cause unproven",
+        "Desktop app tests on this workstation remain user-paused",
+        "Production company HTTPS SSO explicitly deferred",
+        "Capabilities remain off pending full acceptance"
+      ]
     }
   },
   "local_work_focused": [

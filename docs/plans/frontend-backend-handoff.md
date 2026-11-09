@@ -15,18 +15,21 @@ desktop testing was paused. This build is compiler/bundle evidence only; it does
 not activate `media_retirement`, `capture_append` or the Local gates. The portable
 record preserves exact artifact hashes and the user pause.
 
-Current acceptance status, 2026-11-09: all six PR workflows at `053447421f` are
-terminal. Five passed. Each native Windows architecture passed 2,250 executions,
-including the 91-case listener library, all four Git helpers, both SDK refresh
-regressions and installer/runtime smoke checks. Linux headless passed 1,666 tests,
-including all three append HTTP cases. macOS stopped before workspace tests on
-an external SpeechCore HTTP 504 in both the original attempt and its single
-authorized retry; that retry budget is exhausted. Frontend passed and was not
-rerun. The later CI prewarm is not qualified by those runs. Production HTTPS SSO
-is explicitly deferred by the user, not passed. Physical capture remains separate
-acceptance work, and observed Qwen accuracy and conciseness remain failed. Local
-lifecycle, output deletion and transcript activation gates remain default off;
-no merge or release is authorized.
+Current hosted acceptance at published `fada28348314b9d6607830c30fed58c586114cce`:
+all seven workflows are terminal. Six succeeded. Linux backend passed 1,691 tests,
+macOS passed 3,262 with 124 explicit ignores, and the CLI passed 274. Frontend
+passed 2,636 desktop tests and 303 editor tests. The macOS SpeechCore prewarm
+qualified a cache miss, verified helper download and successful cache save.
+Both normal Windows architectures passed 2,271 Rust tests with 47 explicit
+ignores. Windows x64 completed installer/runtime/uninstall smoke checks; ARM
+installed and launched but failed the immediate executable-removal assertion
+after uninstall. Its cause remains unproven. A separate first-attempt real CPU
+speech dispatch passed 8 executions across 7 cohorts on each Windows architecture.
+The portable terminal record includes exact checkout/job IDs, named regressions,
+raw log hashes and the ARM artifact/failure receipt. These results do not qualify
+later unpushed heading, image or Local cancellation/resolution source. Production
+HTTPS SSO remains explicitly deferred, desktop app tests remain paused, observed
+Qwen accuracy/conciseness remains failed, and activation gates remain off.
 
 This document retains chronological checkpoint history. Later dated evidence
 supersedes earlier uses of “current”, “pending” and “analysis-only”; those older
@@ -2462,3 +2465,13 @@ The external manifest records every path and filename-list SHA. This is targeted
 cache maintenance, not test qualification. The integrated workflow-helper suite
 passed 44 tests. Desktop app testing stays paused, production SSO stays deferred,
 and all activation gates remain off.
+
+
+The first integrated adapter run at frozen `8f7bf9a70f` passed all 47 unit tests,
+including original resolution UUID/input replay, pre-dispatch cancellation,
+unknown mutation outcome and Remote no-Local-probing checks. The Native exporter
+retry failed before generation: an independent `/bin/rm` process was actively
+removing the shared build directory, causing just-produced dependency metadata
+to disappear. Its exit101/log are preserved; no shared-library or desktop
+behavioral tests ran. Native validation waits for that exact cleanup process to
+finish rather than racing a rebuild against deletion.
