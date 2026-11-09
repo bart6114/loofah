@@ -2311,3 +2311,25 @@ The earlier first-capture snapshot remains separate. The provider log used by
 the source audit also has a frozen copy, preserving its observed hash if future
 authorized QA appends to the runtime log. These were read-only source copies;
 no canonical file, desktop process or inference was started or changed.
+
+## Existing-title generated publication correction: source checkpoint
+
+Source through `c9d034622d` integrates the existing-title parity correction.
+Generated summary and template publication captures the authoritative session
+title, applies the existing Markdown stamping rule, checks the complete stamped
+size and parses that Markdown outside the final exclusive write fence. The
+existing body/task/tag transaction then compares both document revision and
+title before new migration, intent or publication. A rename after preparation
+returns Conflict; unrelated metadata edits remain accepted. Blank-title handling
+and optional title-generation policy are unchanged. No second AlreadyNamed write
+or new inference is introduced.
+
+Raw retained model results remain raw. Canonical content and any body-applied
+receipt identify the stamped bytes; interrupted compound recovery uses the
+already-admitted bytes and preserves later user metadata edits. Source adds ten
+regression functions, including a four-row real-worker target/policy matrix,
+rename races, no legacy migration on conflict, stamped bounds and task extraction.
+Existing crash fixtures distinguish generated from published bytes. Formatting
+and source review are complete; execution and integrated checks remain pending.
+Desktop app testing stays paused, all activation gates remain off, and observed
+model-quality failures remain unchanged.
