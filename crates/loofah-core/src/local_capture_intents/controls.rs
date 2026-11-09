@@ -6,6 +6,7 @@ use std::{future::Future, task::Poll};
 pub enum LocalCaptureAction {
     Cancel,
     Recover,
+    KeepCurrentContent,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(deny_unknown_fields)]
@@ -13,6 +14,7 @@ pub struct LocalCaptureControlSnapshot {
     pub status: LocalCaptureStatus,
     pub revision: String,
     pub actions: Vec<LocalCaptureAction>,
+    pub resolution: Option<LocalCaptureResolution>,
 }
 impl LocalCaptureIntents {
     pub async fn controls(
@@ -66,6 +68,9 @@ impl LocalCaptureIntents {
     ) -> Result<LocalCaptureControlSnapshot, ApplicationError> {
         let mut actions = Vec::new();
         if !self.stop.is_cancelled() {
+            if resolution::closable(&record) && !running && !admitted {
+                actions.push(LocalCaptureAction::KeepCurrentContent);
+            }
             if cancellable(&record, running) {
                 actions.push(LocalCaptureAction::Cancel);
             }
@@ -102,7 +107,8 @@ impl LocalCaptureIntents {
             }
         }
         Ok(LocalCaptureControlSnapshot {
-            revision: ledger::hash(&ledger::encode_bounded_result(&record, 128 * 1024)?),
+            revision: control_revision(&record)?,
+            resolution: record.resolution,
             status: record.status,
             actions,
         })
@@ -215,4 +221,11 @@ pub(super) fn recoverable(record: &Record) -> bool {
         && record.physical == Some(Ok(()))
         && matches!(record.persistence, Some(Ok(_)))
         && (!record.inference_dispatched || record.result_sha256.is_some())
+}
+
+pub(super) fn control_revision(record: &Record) -> Result<String, ApplicationError> {
+    Ok(ledger::hash(&ledger::encode_bounded_result(
+        record,
+        128 * 1024,
+    )?))
 }

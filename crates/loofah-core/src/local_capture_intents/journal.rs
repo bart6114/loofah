@@ -26,7 +26,7 @@ pub(super) fn load(root: &Path, vault: &str) -> Result<Vec<Record>, ApplicationE
         }
         let mut record: Record = serde_json::from_slice(&raw).map_err(review)?;
         validate_record(&record)?;
-        if !matches!(record.version, 1 | 2)
+        if !matches!(record.version, 1 | 2 | 3)
             || record.vault_id != vault
             || record.status.declaration.request_id != name
             || record.status.transcription_owner != TRANSCRIPTION_OWNER
@@ -63,12 +63,30 @@ pub(super) fn persist(root: &Path, record: &Record, create: bool) -> Result<(), 
 
 fn validate_record(record: &Record) -> Result<(), ApplicationError> {
     validate(&record.status.declaration)?;
-    if !matches!(record.version, 1 | 2)
+    if !matches!(record.version, 1 | 2 | 3)
         || record.status.transcription_owner != TRANSCRIPTION_OWNER
         || record.status.summary_owner != SUMMARY_OWNER
         || chrono::DateTime::parse_from_rfc3339(&record.session_created_at).is_err()
     {
         return Err(review("Invalid Local intent binding"));
+    }
+    if record.version < 3
+        && (record.resolution.is_some() || record.status.state == LocalCaptureState::Closed)
+    {
+        return Err(review(
+            "Resolution requires the version 3 Local intent schema",
+        ));
+    }
+    if let Some(resolution) = &record.resolution {
+        resolution::validate_resolution(resolution)?;
+        if record.status.state != LocalCaptureState::Closed
+            || !resolution::confirmed_drain(record)
+            || record.cancel_requested
+        {
+            return Err(review("Closed processing has no confirmed original drain"));
+        }
+    } else if record.status.state == LocalCaptureState::Closed {
+        return Err(review("Closed processing has no reviewed resolution"));
     }
     if record.version == 1
         && (record.cancel_requested

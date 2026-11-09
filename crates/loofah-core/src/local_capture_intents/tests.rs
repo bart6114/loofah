@@ -1063,6 +1063,7 @@ async fn local_capture_private_schema_preserves_legacy_without_inventing_cancel_
         "inference_drained",
         "summary_dispatch_pending",
         "summary_drained",
+        "resolution",
     ] {
         json.as_object_mut().unwrap().remove(key);
     }
@@ -1087,7 +1088,7 @@ async fn local_capture_private_schema_preserves_legacy_without_inventing_cancel_
     );
     assert_eq!(loaded[0].status.state, LocalCaptureState::NotStarted);
     let mut future = loaded[0].clone();
-    future.version = 3;
+    future.version = 4;
     assert!(journal::persist(other.path(), &future, false).is_err());
     service.shutdown().await;
 }
@@ -1436,5 +1437,334 @@ async fn retained_publication_cancellation(point: PublicationPoint) {
     entry.running = false;
     entry.admission.take();
     drop(state);
+    service.shutdown().await;
+}
+
+fn resolution_request(snapshot: &LocalCaptureControlSnapshot) -> LocalCaptureResolution {
+    LocalCaptureResolution {
+        resolution_id: uuid::Uuid::new_v4().to_string(),
+        expected_revision: snapshot.revision.clone(),
+        decision: LocalCaptureResolutionDecision::KeepCurrentContent,
+    }
+}
+fn fixture_files(root: &std::path::Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    fn visit(
+        root: &std::path::Path,
+        directory: &std::path::Path,
+        files: &mut BTreeMap<PathBuf, Vec<u8>>,
+    ) {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if entry.file_type().unwrap().is_dir() {
+                visit(root, &path, files);
+            } else {
+                files.insert(
+                    path.strip_prefix(root).unwrap().to_owned(),
+                    std::fs::read(path).unwrap(),
+                );
+            }
+        }
+    }
+    let mut files = BTreeMap::new();
+    visit(root, root, &mut files);
+    files
+}
+
+#[tokio::test]
+async fn local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap();
+    let (input, resolution, closed) = {
+        let context = context(&path).await;
+        let summary = Arc::new(Summary::default());
+        let worker = context
+            .start_processing(summary.clone(), Arc::new(Auth))
+            .await
+            .unwrap();
+        let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+        let (input, token) = live_summary_capture(&context, &service, &path).await;
+        notified(&summary.entered).await;
+        context
+            .store
+            .save_summary("note", "User-edited summary", None, None)
+            .await
+            .unwrap();
+        context
+            .store
+            .save_note("note", "Current note ![](attachments/kept.png)", None)
+            .await
+            .unwrap();
+        let attachment = path.join("vault/sessions/note/attachments");
+        std::fs::create_dir_all(&attachment).unwrap();
+        std::fs::write(attachment.join("kept.png"), b"user attachment").unwrap();
+        std::fs::write(
+            path.join("vault/sessions/note/.private"),
+            b"unknown private bytes",
+        )
+        .unwrap();
+        summary.release.notify_one();
+        assert_eq!(
+            terminal(&service, &input.request_id).await.state,
+            LocalCaptureState::Conflict
+        );
+        let snapshot = service.control_status(&input.request_id).await.unwrap();
+        assert_eq!(
+            snapshot.actions,
+            vec![LocalCaptureAction::KeepCurrentContent]
+        );
+        let stale = resolution_request(&snapshot);
+        service
+            .update(&input.request_id, |record| {
+                record.status.message = Some("Reviewed conflict detail".into())
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .resolve(input.request_id.clone(), stale)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Conflict
+        );
+        let snapshot = service.control_status(&input.request_id).await.unwrap();
+        let resolution = resolution_request(&snapshot);
+        let mut before = fixture_files(&path);
+        let closed = service
+            .resolve(input.request_id.clone(), resolution.clone())
+            .await
+            .unwrap();
+        assert_eq!(closed.status.state, LocalCaptureState::Closed);
+        assert!(closed.actions.is_empty());
+        assert_eq!(closed.resolution.as_ref(), Some(&resolution));
+        let closed_record = service
+            .state
+            .lock()
+            .await
+            .get(&input.request_id)
+            .unwrap()
+            .record
+            .clone();
+        for invalid in 0..4 {
+            let mut record = closed_record.clone();
+            match invalid {
+                0 => record.version = 2,
+                1 => record.resolution = None,
+                2 => record.processing_drained = false,
+                _ => {
+                    record.resolution.as_mut().unwrap().expected_revision = "not-a-revision".into()
+                }
+            }
+            assert!(journal::persist(&service.root, &record, false).is_err());
+        }
+        let mut after = fixture_files(&path);
+        let intent = PathBuf::from(format!(
+            "operations/local-capture-intents/{}/intent.json",
+            input.request_id
+        ));
+        assert_ne!(before.remove(&intent), after.remove(&intent));
+        assert_eq!(before, after);
+        assert_eq!(summary.calls.load(Ordering::SeqCst), 1);
+        // Closing cannot revive an old producer capability or replay processing.
+        token.physical_finished(Ok(())).await.unwrap();
+        assert!(token.not_started().await.is_err());
+        assert_eq!(
+            service
+                .recover(input.request_id.clone())
+                .await
+                .unwrap()
+                .state,
+            LocalCaptureState::Closed
+        );
+        let mut changed = resolution.clone();
+        changed.resolution_id = uuid::Uuid::new_v4().to_string();
+        assert!(
+            service
+                .resolve(input.request_id.clone(), changed)
+                .await
+                .is_err()
+        );
+        let mut changed = resolution.clone();
+        changed.expected_revision = closed.revision.clone();
+        assert!(
+            service
+                .resolve(input.request_id.clone(), changed)
+                .await
+                .is_err()
+        );
+        context
+            .store
+            .save_note("note", "An unrelated later note edit", None)
+            .await
+            .unwrap();
+        let before = fixture_files(&path);
+        assert_eq!(
+            serde_json::to_value(
+                service
+                    .resolve(input.request_id.clone(), resolution.clone())
+                    .await
+                    .unwrap()
+            )
+            .unwrap(),
+            serde_json::to_value(&closed).unwrap()
+        );
+        assert_eq!(before, fixture_files(&path));
+        service.shutdown().await;
+        worker.shutdown().await.unwrap();
+        drop(token);
+        (input, resolution, closed)
+    };
+    let context = context(&path).await;
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let before = fixture_files(&path);
+    let replayed = service.resolve(input.request_id, resolution).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&replayed).unwrap(),
+        serde_json::to_value(&closed).unwrap()
+    );
+    assert_eq!(before, fixture_files(&path));
+    assert_eq!(
+        context.read_note("note").await.unwrap().markdown.as_deref(),
+        Some("An unrelated later note edit")
+    );
+    service.shutdown().await;
+}
+
+#[tokio::test]
+async fn local_capture_resolution_refuses_unknown_or_live_ownership_and_changed_session_generation()
+{
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap();
+    let context = context(&path).await;
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let input = declaration();
+    let token = service.declare(input.clone()).await.unwrap();
+    token.not_started().await.unwrap();
+    let initial = service
+        .state
+        .lock()
+        .await
+        .get(&input.request_id)
+        .unwrap()
+        .record
+        .clone();
+    for (state, physical, persistence, processing_drained, pending_child, running, admitted) in [
+        (
+            LocalCaptureState::Review,
+            None,
+            None,
+            false,
+            false,
+            false,
+            false,
+        ),
+        (
+            LocalCaptureState::Conflict,
+            None,
+            None,
+            true,
+            false,
+            false,
+            false,
+        ),
+        (
+            LocalCaptureState::Conflict,
+            Some(Ok(())),
+            Some(Ok(super::tests::persistence())),
+            false,
+            false,
+            false,
+            false,
+        ),
+        (
+            LocalCaptureState::Conflict,
+            Some(Ok(())),
+            Some(Ok(super::tests::persistence())),
+            true,
+            true,
+            false,
+            false,
+        ),
+        (
+            LocalCaptureState::Conflict,
+            Some(Ok(())),
+            Some(Ok(super::tests::persistence())),
+            true,
+            false,
+            true,
+            false,
+        ),
+        (
+            LocalCaptureState::Conflict,
+            Some(Ok(())),
+            Some(Ok(super::tests::persistence())),
+            true,
+            false,
+            false,
+            true,
+        ),
+    ] {
+        let admission = if admitted {
+            Some(Arc::new(context.admit_session_work("note").await.unwrap()))
+        } else {
+            None
+        };
+        {
+            let mut values = service.state.lock().await;
+            let entry = values.get_mut(&input.request_id).unwrap();
+            entry.record = initial.clone();
+            entry.record.status.state = state;
+            entry.record.physical = physical;
+            entry.record.persistence = persistence;
+            entry.record.processing_drained = processing_drained;
+            entry.record.summary_dispatch_pending = pending_child;
+            entry.running = running;
+            entry.admission = admission;
+        }
+        let snapshot = service.control_status(&input.request_id).await.unwrap();
+        assert!(
+            !snapshot
+                .actions
+                .contains(&LocalCaptureAction::KeepCurrentContent)
+        );
+        assert!(
+            service
+                .resolve(input.request_id.clone(), resolution_request(&snapshot))
+                .await
+                .is_err()
+        );
+        assert!(
+            service
+                .state
+                .lock()
+                .await
+                .get(&input.request_id)
+                .unwrap()
+                .record
+                .resolution
+                .is_none()
+        );
+    }
+    {
+        let mut state = service.state.lock().await;
+        let entry = state.get_mut(&input.request_id).unwrap();
+        entry.admission.take();
+        entry.running = false;
+        entry.record.session_created_at = "2000-01-01T00:00:00Z".into();
+    }
+    let snapshot = service.control_status(&input.request_id).await.unwrap();
+    assert_eq!(
+        snapshot.actions,
+        vec![LocalCaptureAction::KeepCurrentContent]
+    );
+    let before = fixture_files(&path);
+    assert!(
+        service
+            .resolve(input.request_id, resolution_request(&snapshot))
+            .await
+            .is_err()
+    );
+    assert_eq!(before, fixture_files(&path));
     service.shutdown().await;
 }

@@ -2,7 +2,8 @@
 //! trusted native completion tokens can admit post-processing of their source.
 //! Private journal schema 2 adds cancellation and drain evidence. Legacy terminal
 //! receipts remain readable without rewriting history; mutations upgrade the
-//! record atomically. Older executables must not interpret schema 2 receipts.
+//! record atomically. Schema 3 retains explicit reviewed resolution receipts.
+//! Older executables must not interpret newer private schemas.
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use hypr_loofah_protocol::{
@@ -23,6 +24,8 @@ mod controls;
 pub use controls::{LocalCaptureAction, LocalCaptureControlSnapshot};
 mod journal;
 mod recovery;
+mod resolution;
+pub use resolution::{LocalCaptureResolution, LocalCaptureResolutionDecision};
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -69,6 +72,7 @@ pub enum LocalCaptureState {
     NotStarted,
     Review,
     Conflict,
+    Closed,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(deny_unknown_fields)]
@@ -106,6 +110,8 @@ struct Record {
     summary_dispatch_pending: bool,
     #[serde(default)]
     summary_drained: bool,
+    #[serde(default)]
+    resolution: Option<LocalCaptureResolution>,
 }
 struct Entry {
     record: Record,
@@ -348,6 +354,7 @@ impl LocalCaptureIntents {
             inference_drained: false,
             summary_dispatch_pending: false,
             summary_drained: false,
+            resolution: None,
         };
         self.persist(&record, true).await?;
         state.insert(
@@ -386,7 +393,7 @@ impl LocalCaptureIntents {
             .get_mut(request)
             .ok_or_else(|| review("Local intent unavailable"))?;
         let mut next = entry.record.clone();
-        next.version = 2;
+        next.version = next.version.max(2);
         change(&mut next);
         if next.cancel_requested && !next.processing_drained {
             next.status.state = LocalCaptureState::Cancelling;
