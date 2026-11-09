@@ -8033,6 +8033,584 @@
           }
         }
       ]
+    },
+    "completed_media_retirement_stopped_restore_2026_11_09": {
+      "schema": 1,
+      "completed_at_utc": "2026-11-09T09:22:59.367332+00:00",
+      "status": "pass",
+      "qualification": "Same-version stopped maintenance CLI backup/restore plus real authenticated TLS HTTP replay of completed media-retirement tombstone",
+      "source": "94c0cf6b9005701c09942b36bfe5ec6cf8b1c560",
+      "binary_sha256": "e38a9605c88f6f79d74054632b9acd15c591ecda5ef97f799cf36783db58259a",
+      "provenance": {
+        "at": "2026-11-09T09:20:47.246967+00:00",
+        "source": "94c0cf6b9005701c09942b36bfe5ec6cf8b1c560",
+        "binary": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-retirement/bin/loofah-server-94c0cf6b90",
+        "binary_sha256": "e38a9605c88f6f79d74054632b9acd15c591ecda5ef97f799cf36783db58259a",
+        "original_file_count": 53,
+        "lab_helper_sha256": "92056c034c3da92ef9814f79bb5cc30b416c4b962124d574966afdce8ccdff8a",
+        "original_server_config_sha256": "7c0c3317866b531e03dc2a2a3fe8c717e8059027e7bfd028cb2ac3e2d7791898",
+        "purpose": "Stopped maintenance CLI backup/restore of completed new media retirement receipt; no desktop/model activity."
+      },
+      "maintenance": [
+        {
+          "command": [
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-retirement/bin/loofah-server-94c0cf6b90",
+            "backup",
+            "--storage-root",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/server-storage",
+            "--output",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/backup-main/snapshot",
+            "--secrets-output",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/backup-private/snapshot"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.38374779199511977,
+          "stdout": "{\"snapshot_id\":\"ce643cdf-88d6-48d8-8e31-dbd283f75c9f\",\"entries\":88,\"secrets_required\":true}\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-retirement/bin/loofah-server-94c0cf6b90",
+            "verify-backup",
+            "--snapshot",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/backup-main/snapshot",
+            "--secrets",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/backup-private/snapshot"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.013230709002527874,
+          "stdout": "{\"snapshot_id\":\"ce643cdf-88d6-48d8-8e31-dbd283f75c9f\",\"entries\":88,\"secrets_required\":true}\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-retirement/bin/loofah-server-94c0cf6b90",
+            "restore",
+            "--snapshot",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/backup-main/snapshot",
+            "--secrets",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/backup-private/snapshot",
+            "--storage-root",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/restored-storage"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.5124454169999808,
+          "stdout": "{\"snapshot_id\":\"ce643cdf-88d6-48d8-8e31-dbd283f75c9f\",\"entries\":88,\"secrets_required\":true}\n",
+          "stderr": ""
+        }
+      ],
+      "bundles": {
+        "snapshot_id": "ce643cdf-88d6-48d8-8e31-dbd283f75c9f",
+        "main_manifest_sha256": "10d9c1f901470b12d155b346cb2521e92374acc4afc4b807c55b781557441f32",
+        "private_manifest_sha256": "2fe989e3c5230ebabf3528cc2bd06ef8041d1f62052bd59438a879590c484644",
+        "secrets_required": true,
+        "private_entry_count": 13,
+        "restored_exact_except_ephemeral_service_lock": true,
+        "source_files_unchanged": 53,
+        "restored_files": 52,
+        "main_contains_provider_credential_paths": false,
+        "private_pairing_verified": true,
+        "private_bundle_mode": "0o700"
+      },
+      "configuration": {
+        "operator_config_preserved_separately": true,
+        "source_config_unmodified": true,
+        "only_config_changes": {
+          "storage_root": {
+            "before": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/server-storage",
+            "after": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/restored-storage"
+          },
+          "cache_root": {
+            "before": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/server-cache",
+            "after": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/restored-cache"
+          }
+        },
+        "tls_oidc_fixture_reused_without_copying_keys_into_storage": true,
+        "cache_root_fresh_before_start": true,
+        "models_started": false
+      },
+      "http": {
+        "at": "2026-11-09T09:21:37.045858+00:00",
+        "status": "pass",
+        "original_files_unchanged": 53,
+        "restored_payload_files_unchanged": 52,
+        "only_new_ephemeral_files": [
+          ".loofah-server.lock"
+        ],
+        "request_id": "57ddb7e3-0c1c-4342-8a10-ee070ac5ce52",
+        "retirement_id": "70d0ea84-30df-4c4a-9af5-ada004f699c0",
+        "retired_receipt": {
+          "request_id": "57ddb7e3-0c1c-4342-8a10-ee070ac5ce52",
+          "revision": "a32d228c-781c-437e-9864-b64038e419f2",
+          "declaration_sha256": "80fa5417773e6478b50c47fc6c1f72d73c66ba78c24df1fb7c34a59b91b7181f",
+          "source": {
+            "sha256": "1c9bd33aa8330a227a3df5eef24a262012553ab7aaeb2ecab07d432e461da6d6",
+            "size_bytes": 49
+          },
+          "state": "retired",
+          "retirement": {
+            "retirement_id": "70d0ea84-30df-4c4a-9af5-ada004f699c0",
+            "expected_revision": "a32d228c-781c-437e-9864-b64038e419f2",
+            "expected_declaration_sha256": "80fa5417773e6478b50c47fc6c1f72d73c66ba78c24df1fb7c34a59b91b7181f",
+            "expected_source": {
+              "sha256": "1c9bd33aa8330a227a3df5eef24a262012553ab7aaeb2ecab07d432e461da6d6",
+              "size_bytes": 49
+            },
+            "disposition": "exported"
+          },
+          "reason": null,
+          "quota_released": true,
+          "allowed_dispositions": []
+        },
+        "canonical_session_id": "f9ba905e-6862-4551-bd4f-21c166045b69",
+        "same_uuid_replay": true,
+        "result_status_summary_identical": true,
+        "quota_released": true,
+        "original_source_http_status": 503,
+        "private_source_absent": true,
+        "empty_private_source_directory_retained": true,
+        "new_model_job_files": [],
+        "capability_overlay": false,
+        "desktop_qa": "paused",
+        "inference": false,
+        "historical_job_hashes": {
+          "runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/3d1a165490256bdd6aa9686ab0f62c208072b287c68f44cc4d34eb13303fd079.json": {
+            "bytes": 747,
+            "sha256": "fb0711c9f9848dff3204227e5f4a85bbcea4b61672e49f6a5c8dfb2c0c56125e"
+          },
+          "runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/314322d1b9c25c5b59f83671973410bb03f1c7dfe4fdcdf32369befd9f2bef7a.json": {
+            "bytes": 747,
+            "sha256": "b73df10f3042b32e73ce353c26833adc6a6c8fb2a04d48a48b731131ed9dcbd3"
+          },
+          "runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/titles/c3443410-5af3-4b93-a997-1438f8d4986e.json": {
+            "bytes": 468,
+            "sha256": "07ccf5d3a998dd4656363d2f284a77c3ebd6626164b58ae4ea1e9acbd7195cb8"
+          },
+          "runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/titles/5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c.json": {
+            "bytes": 468,
+            "sha256": "3af448e1b9e39165675115676cfe811e3a746f7b82e95cf8c785bd3a9caded51"
+          },
+          "runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/results/c3443410-5af3-4b93-a997-1438f8d4986e.json": {
+            "bytes": 364,
+            "sha256": "2b3893378044712a083267e519bc724521dd529ed577021d98e4a763e783cf82"
+          },
+          "runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/results/5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c.json": {
+            "bytes": 3522,
+            "sha256": "e66dc875b3e3557311c7452bdd9fb82d48948cc8736f317e8980588c1f3ede46"
+          },
+          "runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/previews/c3443410-5af3-4b93-a997-1438f8d4986e.json": {
+            "bytes": 538,
+            "sha256": "0983fac4ca439095fb1d39844975870ab33deb653a3f90f6e44f2ad4f6b53491"
+          },
+          "runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/previews/5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c.json": {
+            "bytes": 3695,
+            "sha256": "9f9cebe2496b2507ffb6c2bd1b2a4f08b7f68a089d88bf79bb4fad5f0bfb485f"
+          }
+        }
+      },
+      "shutdown": {
+        "at": "2026-11-09T09:22:05.064554+00:00",
+        "lab_exit_code": 0,
+        "owned_lab_and_server_absent": true,
+        "fixture_ports_free": [
+          18443,
+          18081,
+          18082
+        ],
+        "desktop_qa": "paused"
+      },
+      "final_inventory": {
+        "original53files_and_all_directory_modes_unchanged": true,
+        "restored52payload_files_and_directory_modes_exact": true,
+        "ephemeral_service_lock_omitted_by_backup_and_recreated_at_start": true,
+        "new_model_job_files": []
+      },
+      "limits": [
+        "Same immutable94 binary used for backup, restore and service; not a cross-version upgrade/downgrade qualification.",
+        "Completed retirement tombstone only; no new interrupted-retirement or partial-source crash claim.",
+        "Synthetic OIDC and trusted fixture TLS only; production SSO acceptance pending.",
+        "Capability media_retirement remains absent and overlay disabled throughout restored service checks.",
+        "No desktop app/UI/testing, microphone, inference, model downloads, source edits, builds, push, or original-service restart.",
+        "Canonical/result/lower subtitle copies remain intentionally; only dispatcher source retired.",
+        "Private bundle retained with owner-only permissions; credential values excluded from report/logs."
+      ],
+      "failed_attempts": [],
+      "evidence_files": {
+        "original-server.json": {
+          "bytes": 887,
+          "sha256": "7c0c3317866b531e03dc2a2a3fe8c717e8059027e7bfd028cb2ac3e2d7791898"
+        },
+        "restored-before-start.json": {
+          "bytes": 18940,
+          "sha256": "b1c9d663506c6f63001b6089e693734669e20a87ca4257352de34d171d198c24"
+        },
+        "loofah-retirement-restored-http.py": {
+          "bytes": 4609,
+          "sha256": "432214c896e2d900a099c1dd9a7e8dbf61f15f6b0b6343306add3c93f0ee8633"
+        },
+        "restored-http-pass.json": {
+          "bytes": 3515,
+          "sha256": "440658a7c011f38dba74f4aaf7c60292af3e430b1c013e890ac5ceb489c4278a"
+        },
+        "original-before.json": {
+          "bytes": 19106,
+          "sha256": "25981c5ed721cce7f7620734b869d4283bc14b8dbb79a803ddf06db7299edc74"
+        },
+        "provenance.json": {
+          "bytes": 686,
+          "sha256": "516b86baf8ecb22e8df1d5d2725b16bfd403b5350352df147d5fb0cbbcce080d"
+        },
+        "shutdown-completed.json": {
+          "bytes": 197,
+          "sha256": "9add30027582431dc4d8a2adf49425f73dd14ca53c6df52b9529b4da7e52dc16"
+        },
+        "cli-1-backup.json": {
+          "bytes": 821,
+          "sha256": "7f484e284b27ffab656658fc0289f2390d61f07d6ec1d323412ccb1675f33af7"
+        },
+        "restored-canonical.json": {
+          "bytes": 415,
+          "sha256": "f585409ffb088b574948ccfef42249ca109e3847111c34fff784468e13b3473a"
+        },
+        "loofah-retirement-backup-prepare.py": {
+          "bytes": 4133,
+          "sha256": "e1e57eb527da9b97330f592f37fcf807ca1e8eb62d1a9df3d02e26f45a118199"
+        },
+        "original-after.json": {
+          "bytes": 19106,
+          "sha256": "25981c5ed721cce7f7620734b869d4283bc14b8dbb79a803ddf06db7299edc74"
+        },
+        "restored-http.jsonl": {
+          "bytes": 3639,
+          "sha256": "922fe566021d25dcbeca1ea9ddc7df65af4e4144a2e875b08d5a51176aa74192"
+        },
+        "bundle-scope.json": {
+          "bytes": 420,
+          "sha256": "08fd7ddf3f194988817963a6aab39eb734473bb63f8eb83dc3c0cf47ac64206a"
+        },
+        "shutdown-request.json": {
+          "bytes": 1021,
+          "sha256": "48fe16ab8356c913f742bd0fcf0dd10d8e2eebcc87060f335e4716ce7355cb26"
+        },
+        "cli-2-verify-backup.json": {
+          "bytes": 689,
+          "sha256": "e7ff42ed6074b66efd6d57697e39574df15d6fc092f9d502653fee19b7aa4325"
+        },
+        "restored-after-shutdown.json": {
+          "bytes": 19106,
+          "sha256": "25981c5ed721cce7f7620734b869d4283bc14b8dbb79a803ddf06db7299edc74"
+        },
+        "original-lab.json": {
+          "bytes": 808,
+          "sha256": "0c86b24df3c6b605f692c95a87fb4f9496f773468a462ea08fc63b22ff8df308"
+        },
+        "cli-3-restore.json": {
+          "bytes": 836,
+          "sha256": "080c255664051eef144b5ff29d529cb91b17bdf043eb37e527740e3e8b2fec27"
+        },
+        "restored-service.log": {
+          "bytes": 92,
+          "sha256": "d8193a91775034c0d5de67f236531eecb0af62e0d4c2c3be63d15fbb6c63438d"
+        }
+      },
+      "restored_server_provenance": {
+        "binary": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-retirement/bin/loofah-server-94c0cf6b90",
+        "sha256": "e38a9605c88f6f79d74054632b9acd15c591ecda5ef97f799cf36783db58259a",
+        "fixture_source": "94c0cf6b9005701c09942b36bfe5ec6cf8b1c560",
+        "binary_source": "94c0cf6b9005701c09942b36bfe5ec6cf8b1c560"
+      },
+      "evidence_receipt": {
+        "historical_machine_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/media-retirement-stopped-restore-94/evidence/acceptance-evidence.json",
+        "sha256": "c055388d46cefdbe6874be89a03f9d9f2dc269861428f7cbe70cd6665d327a61"
+      }
+    },
+    "documentation_build_after_physical_http_evidence_2026_11_09": {
+      "source": "6d070f0836675265fc35e434e256085d09ca6f6b",
+      "command": "pnpm --filter @hypr/docs build",
+      "exit_code": 0,
+      "pages": 36,
+      "internal_links": "All internal links are valid",
+      "scope": "Published Astro documentation and its link validator; does not imply plans are rendered routes",
+      "log": {
+        "historical_machine_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/docs-after-physical-http-evidence-build.log",
+        "sha256": "74ddd74593b6212b3658f9cd51985195d8633e764f95f7e2210fc1232887ddec"
+      }
+    },
+    "summary_parameter_source_audit_and_heading_gap_2026_11_09": {
+      "schema_version": 1,
+      "observed_utc": "2026-11-09T09:30:39.672242+00:00",
+      "reviewed_source": "fada28348314b9d6607830c30fed58c586114cce",
+      "hash_snapshot_source": "6d070f0836675265fc35e434e256085d09ca6f6b",
+      "baseline_source": "a6a8f001d9165881e59fd0fa29df944da26b8801",
+      "runtime_server_source": "080764fe205bc41a8422e8ebbe56b6ee20067958",
+      "scope": {
+        "synthetic_session_id": "0e0675fa-d003-4f49-b06e-db628bcf1eb2",
+        "job_id": "5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c",
+        "request_id": "e2668e4a-04e5-42bc-8db5-9f430a695108",
+        "private_physical_audio_read": false
+      },
+      "templates": [
+        {
+          "path": "crates/template-app/assets/enhance.system.md.jinja",
+          "current_sha256": "b365fdd668ed2f29f00ddc237b88a76d919f84f6ccb438b0d053c799d0599b6c",
+          "baseline_a6_sha256": "b365fdd668ed2f29f00ddc237b88a76d919f84f6ccb438b0d053c799d0599b6c",
+          "server080_sha256": "b365fdd668ed2f29f00ddc237b88a76d919f84f6ccb438b0d053c799d0599b6c",
+          "current_matches_baseline": true,
+          "current_matches_served": true
+        },
+        {
+          "path": "crates/template-app/assets/enhance.user.md.jinja",
+          "current_sha256": "c4002422fbd779dcfd3a479ef85f950e0b9d597b5dd4b18ef624a62480dc6716",
+          "baseline_a6_sha256": "c4002422fbd779dcfd3a479ef85f950e0b9d597b5dd4b18ef624a62480dc6716",
+          "server080_sha256": "c4002422fbd779dcfd3a479ef85f950e0b9d597b5dd4b18ef624a62480dc6716",
+          "current_matches_baseline": true,
+          "current_matches_served": true
+        },
+        {
+          "path": "crates/template-app/assets/enhance.output-contract.md",
+          "current_sha256": "206910230a786f46459def442a5cefb4d40ba7a948b22670f39e0dd670a1f85b",
+          "baseline_a6_sha256": "206910230a786f46459def442a5cefb4d40ba7a948b22670f39e0dd670a1f85b",
+          "server080_sha256": "206910230a786f46459def442a5cefb4d40ba7a948b22670f39e0dd670a1f85b",
+          "current_matches_baseline": true,
+          "current_matches_served": true
+        },
+        {
+          "path": "crates/template-app/assets/_macros.jinja",
+          "current_sha256": "cff84129d16ee7a92d9ef82e80bed5a01036f9d30193de63c76f48cd6a4a5294",
+          "baseline_a6_sha256": "cff84129d16ee7a92d9ef82e80bed5a01036f9d30193de63c76f48cd6a4a5294",
+          "server080_sha256": "cff84129d16ee7a92d9ef82e80bed5a01036f9d30193de63c76f48cd6a4a5294",
+          "current_matches_baseline": true,
+          "current_matches_served": true
+        }
+      ],
+      "source_files": [
+        {
+          "path": "crates/template-app/src/enhance.rs",
+          "sha256": "58148cd0b9924f98657bacbf8f114a490945b885a3969ffd748c49a2e999b14a"
+        },
+        {
+          "path": "crates/loofah-core/src/jobs/source.rs",
+          "sha256": "c0e7b1a295451a02917e73a14b2c09435f89ec3a98b53f866efd2b6813087818"
+        },
+        {
+          "path": "crates/loofah-core/src/jobs/generation.rs",
+          "sha256": "4ada6d309bf869b3385abd2b8e5cafbfdfa02b6ec4c4fb284bc1af96d185ae95"
+        },
+        {
+          "path": "crates/loofah-core/src/jobs/providers/request.rs",
+          "sha256": "2e9982569a46917a393f46198ffd17d8edbc6e8cdbbc2fb148529eb3f4414a24"
+        },
+        {
+          "path": "crates/loofah-core/src/jobs/providers/mod.rs",
+          "sha256": "ceb4853e7e2fab6f985c9dbfd9e56fcfe285817e5eefedb5ec6ab8e19f53568c"
+        },
+        {
+          "path": "crates/loofah-core/src/jobs/result.rs",
+          "sha256": "0a6dc87732622e990f9b4a8fb1f7d324a8d1be0144c74faf509988f2c120a446"
+        },
+        {
+          "path": "crates/loofah-core/src/jobs/worker.rs",
+          "sha256": "9e39bfa18d91c4c41a9aa610eb7cba12fb9a6f59f06e11bcdf8b8f184b79facd"
+        },
+        {
+          "path": "crates/loofah-core/src/jobs/title_worker.rs",
+          "sha256": "b85d41fd261f38cfcf0562489106b1192f37e0a944cb9391136d4b82d00b31ca"
+        },
+        {
+          "path": "crates/vault-write/src/generated_title.rs",
+          "sha256": "d9a45c9617d98b5a16e2dc0200d9c0d9a96b81015677eb1443e985a55e5fc810"
+        },
+        {
+          "path": "apps/desktop/src/store/zustand/ai-task/task-configs/enhance-workflow.ts",
+          "sha256": "e3089c8621bfc5268ee750dde6ddc96a219645df75ce7f818f1b4153d955e9cd"
+        },
+        {
+          "path": "apps/desktop/src/store/zustand/ai-task/task-configs/enhance-transform.ts",
+          "sha256": "7d5a78d40d45c9224bc593453b04b052f163afef4a8ca9b85ec64655169b4693"
+        },
+        {
+          "path": "apps/desktop/src/store/zustand/ai-task/task-configs/enhance-validator.ts",
+          "sha256": "c464a1f5cb920133624e05fe0d20e6b178ce7833040d1e35b415c479aae0a318"
+        },
+        {
+          "path": "apps/desktop/src/store/zustand/ai-task/task-configs/summary-tag-footer.ts",
+          "sha256": "1896e69ed2f7e4a5b772768e4376b0734e007a9359cbbffd77f64bb64190da9b"
+        },
+        {
+          "path": "apps/desktop/src/store/zustand/ai-task/shared/transform_impl.ts",
+          "sha256": "b968f15cf4b584b72fbe63a64e3ea2ff59dc8438735669f7c91c5c53d73760d5"
+        },
+        {
+          "path": "apps/desktop/src/store/zustand/ai-task/shared/validate.ts",
+          "sha256": "38ea9d27ddd792cddf12ec8e90fc7ffbdd4624fa3b4eebd22ae7780855a71482"
+        },
+        {
+          "path": "apps/desktop/src/store/zustand/ai-task/task-configs/enhance-success.ts",
+          "sha256": "76157d19fd830ef5bedb53044cea081cc4fb2bdd9265c56b1dd226192d001068"
+        },
+        {
+          "path": "apps/desktop/src/session/title-content.ts",
+          "sha256": "959caa3be3b2efc602ec5ca9e33f4614a449abc23a995668d451b139ef185df7"
+        },
+        {
+          "path": "apps/desktop/src/ai/hooks/useLLMConnection.ts",
+          "sha256": "88b495afef88aaf537d925ba5bd7cfac5abf66101f52666eae7ffae412c264ce"
+        }
+      ],
+      "evidence": {
+        "original_acceptance_receipt": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/server-refresh-080764fe20/summary-functional-quality-limited-20261109T035117.json",
+          "sha256": "14ce08f00c1e43a621cf73483ab07466df0a05c0c7619ebe0e8e7a193fc41b58"
+        },
+        "provider_log": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/qa-ollama-server.log",
+          "sha256_at_observation": "17a7472fa7d75feb2eb0a4046c546ea27df2dd6f0fdd6fd103b1e988d3bd902d",
+          "bytes_at_observation": 223702,
+          "excerpt_lines": [
+            2395,
+            2433
+          ]
+        },
+        "immutable_selected_excerpt": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/summary-source-parity-audit-20261109/synthetic-ollama-excerpt.log",
+          "sha256": "99fe0d172cf24d92558d24dd1e338100fd7e12830b9cbf6365815661b581c536",
+          "bytes": 3603
+        },
+        "values": {
+          "http_calls": 2,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "first_attempt_cancellation_observed": true,
+          "temperature_reported": 1.0,
+          "top_p_reported": 1.0,
+          "second_output_tokens_reported": 577,
+          "second_truncated": false,
+          "raw_provider_request_retained": false
+        }
+      },
+      "findings": {
+        "case_conclusion": "No demonstrated prompt/context or generation-parameter migration defect causing the synthetic semantic/conciseness failure. Does not establish model size as cause.",
+        "matching_parameters": {
+          "max_output_tokens": 8192,
+          "temperature": "omitted in both summary call sites; deterministic0 helper is title-only",
+          "max_retries_ceiling": 4,
+          "heading_attempt_limit": 2,
+          "concision_sentence_identical": true
+        },
+        "retry_limit": "Matching max_retries ceiling is not identical retry policy. Rust retries explicit429 only; ambiguous postdispatch failures return Interrupted to prevent unknown paid replay.",
+        "context": "Preserved synthetic session has notes only; Core supplies no transcripts/participants, inserts note once, and shared template explicitly says unmarked current user is unidentified.",
+        "cleanup": "Both filter think/thinking, extract loofah-tags and normalize bullets. Rust additionally rejects empty/fence-only output. No cleanup path creates the observed semantic claims.",
+        "separate_heading_presentation_difference": {
+          "legacy_refs": [
+            "apps/desktop/src/store/zustand/ai-task/task-configs/enhance-success.ts:85",
+            "apps/desktop/src/session/title-content.ts:54"
+          ],
+          "shared_refs": [
+            "crates/loofah-core/src/jobs/worker.rs:318",
+            "crates/loofah-core/src/jobs/title_worker.rs:42"
+          ],
+          "behavior": "Legacy prepends an existing session title if provider first H1 differs. Shared body is persisted directly and AlreadyNamed title stage skips stamping. This does not explain factual contradictions or source expansion and is not a claim of byte-identical cleanup."
+        },
+        "quality_gate": "Synthetic summary semantic accuracy and conciseness remain not passed."
+      },
+      "limits": [
+        "Raw historical provider request was not retained; no byte-for-byte reconstruction claim.",
+        "Two calls are tied by preserved job/receipt/timing and cancellation evidence, not an HTTP correlation-ID capture.",
+        "No new inference, models, network, services, apps, tests, source edits or vault writes.",
+        "Current/baseline asset identity and code review do not establish real-model semantic parity."
+      ],
+      "audit_receipt": {
+        "historical_machine_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/summary-source-parity-audit-20261109/audit.json",
+        "sha256": "7e0e62c502ceed56b6bf516ffc47249e08a76386e9c649d7db03bc70fffba931"
+      },
+      "heading_gap_state": "Concrete legacy existing-title prefix mismatch; implementation assigned in isolated source-only worktree; no fix qualification yet",
+      "immutable_provider_log_copy": {
+        "historical_machine_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/summary-source-parity-audit-20261109/qa-ollama-server-at-observation.log",
+        "bytes": 223702,
+        "sha256": "17a7472fa7d75feb2eb0a4046c546ea27df2dd6f0fdd6fd103b1e988d3bd902d"
+      }
+    },
+    "physical_completed_capture_immutable_snapshot_2026_11_09": {
+      "manifest": {
+        "created_at": 1794217201.0224159,
+        "purpose": "Preserve completed AA0 second-capture output and existing logs before any future user-authorized desktop testing; read-only canonical source",
+        "executed_source": {
+          "commit": "aa0a5ed1c70ac6ecd767e2bebc8567ea4d7f142d",
+          "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cargo_lock_sha256": "78061132247937bfcbde48d51cb21dade13f2cc0467a6cebe1f0e3ae94cc952c"
+        },
+        "desktop_testing_paused": true,
+        "files": [
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/vault/sessions/b94b1b04-f3bb-46f8-9c06-776b4b12e845/_meta.json",
+            "copy": "_meta.json",
+            "bytes": 328,
+            "sha256": "0c372d2e777b88d17025afbdb6f74eb2b7ece9a0eae009a889862dd2b08b61b6"
+          },
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/vault/sessions/b94b1b04-f3bb-46f8-9c06-776b4b12e845/notes.md",
+            "copy": "notes.md",
+            "bytes": 203,
+            "sha256": "0e82d58d03426285ad80baa3d704b00addd876978e21211bf7914cd2bddab756"
+          },
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/vault/sessions/b94b1b04-f3bb-46f8-9c06-776b4b12e845/transcript.json",
+            "copy": "transcript.json",
+            "bytes": 124307,
+            "sha256": "ae550f8a327755d49cd7af37bbdd2ce0430498154d6c803a32dae2673a8f64d8"
+          },
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/vault/sessions/b94b1b04-f3bb-46f8-9c06-776b4b12e845/summary.md",
+            "copy": "summary.md",
+            "bytes": 1306,
+            "sha256": "d4c5d99866f01cce6cd9c4e3d9cfad5ebaaa729d5cb045cbcbe3af8781b26dee"
+          },
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/vault/sessions/b94b1b04-f3bb-46f8-9c06-776b4b12e845/audio.mp3",
+            "copy": "audio.mp3",
+            "bytes": 3106944,
+            "sha256": "c1a2596e26eef96d4f56eceb3e6648fbef98b5f2b113fd08f045e3b1b3865b64"
+          },
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/vault/sessions/b94b1b04-f3bb-46f8-9c06-776b4b12e845/audio.peaks.json",
+            "copy": "audio.peaks.json",
+            "bytes": 13517,
+            "sha256": "c60a3f9f9d2c6db7792c651c7d8c0aa0f59c5bdbff89077af86d654a6acc5f54"
+          },
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/logs/desktop.log",
+            "copy": "desktop.log",
+            "bytes": 136423,
+            "sha256": "d941daed3d34f9aa302a5155aee597a33f49d484bedeed24ce4547ab2243be81"
+          },
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/performance-reports.json",
+            "copy": "performance-reports.json",
+            "bytes": 116765,
+            "sha256": "8b83db973e6c75f5b68bff151a21aa79b0ce7592247058a9b9bbe08e9e4acfe6"
+          },
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/physical-acceptance-evidence.json",
+            "copy": "physical-acceptance-evidence.json",
+            "bytes": 28025,
+            "sha256": "9b783755d450578cd687606bc51c548e01f17ee390e138364b57a0f1604d3f17"
+          },
+          {
+            "source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/physical-performance-window-analysis.json",
+            "copy": "physical-performance-window-analysis.json",
+            "bytes": 4369,
+            "sha256": "0bca01e1834b02995c391808eb6c2294d8ea73aacabc8eb2e5c4e375e4ecf3e1"
+          }
+        ]
+      },
+      "manifest_receipt": {
+        "historical_machine_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/completed-batch-before-desktop-pause/manifest.json",
+        "sha256": "f6e453031d044dafe3b549435ba13e5adc0a55a44846b1410da7cd0d876cec34"
+      },
+      "canonical_files_changed": false,
+      "desktop_apps_launched": false
     }
   },
   "local_work_focused": [

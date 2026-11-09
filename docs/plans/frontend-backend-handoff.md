@@ -2248,3 +2248,66 @@ provenance. Direct Python HTTP acceptance supplements the Core/route tests; it
 does not qualify Native SDK export or the paused retirement UI. All owned QA
 desktop apps, fixture services and task-local Ollama have since stopped, while
 their data, models, binaries and logs remain preserved for the user's signal.
+
+## Completed retirement through stopped backup/restore, 2026-11-09
+
+The same immutable `94c0cf6b90` server passed actual maintenance CLI `backup`,
+`verify-backup` and `restore`, followed by authenticated TLS replay from a fresh
+restored storage root and initially absent cache. CLI exits were zero in
+0.384/0.013/0.512 seconds. Main and required private snapshots pair by UUID and
+SHA-256; provider credential paths occur only in the owner-only private bundle
+(13 entries including directories), with no credential values in the report.
+
+All 53 original service files and directory modes stayed unchanged. The 52
+restored payload files and modes match exactly; the excluded ephemeral service
+lock was recreated at startup. Configuration changed only storage/cache roots.
+The completed retirement GET and exact original-UUID POST returned the same
+receipt, terminal status, retained result and skipped-summary record. Quota
+remained released; original source stayed unavailable, and no new model job
+appeared. Canonical and historical job/result hashes remained unchanged. The
+fixture capability overlay stayed off throughout. Both temporary processes
+stopped normally with helper exit zero; all three fixture ports were free.
+
+This qualifies same-version stopped restoration of a completed retirement on
+the recorded macOS artifact. It does not establish cross-version upgrade,
+Windows/Linux execution or interrupted-retirement restoration. No desktop
+testing or inference resumed. Exact commands, manifests, inventories, hashes
+and HTTP receipts are copied into the existing portable evidence record.
+
+The published Astro documentation also built from `6d070f083` with 36 pages and
+all internal links valid. This is the website build scope, not a claim that the
+plan files are published routes. Desktop QA remains user-paused; production
+SSO remains explicitly deferred.
+
+## Summary-source audit and existing-title heading gap, 2026-11-09
+
+A source/receipt review of the retained synthetic notes-only job found no
+demonstrated migration cause for its inaccurate, overlong output. The four
+shared template assets match baseline `a6a8f001d` and executed server `080764fe20`.
+Both paths omit summary temperature and pass an 8,192-token ceiling and
+`max_retries=4`. Their transport retry policies are deliberately not identical:
+the shared HTTP adapter retries explicit 429 rejection only and reports ambiguous
+dispatch interruption without replay. Both allow at most two heading-validation
+attempts. The preserved provider log records temperature one, 577 output tokens
+and no truncation, with a cancelled heading attempt and retry in one durable job.
+No raw historical provider request was retained, so this is not byte-for-byte
+prompt reconstruction. Model accuracy and conciseness remain failed acceptance.
+
+The review did identify a separate presentation mismatch. Legacy
+`ensureMarkdownFirstLineTitle` prepends the current existing session title when
+the generated H1 differs. Shared generated publication currently retains the
+provider heading, while the optional title stage returns AlreadyNamed. This
+does not explain fabricated facts. A source-only fix is assigned to restore
+the existing-title rule under checked publication, preserving document/title
+conflicts, bounds and compound task/tag recovery. It is not yet integrated or
+qualified. The portable record preserves concrete template/source hashes,
+provider-log provenance, limits and the open gap. No new inference or desktop
+testing was performed for this audit.
+
+The completed second physical batch's six owned canonical files and four existing
+log/analysis files are now copied into an immutable pause snapshot, verified by
+manifest SHA-256 `f6e453031d044dafe3b549435ba13e5adc0a55a44846b1410da7cd0d876cec34`.
+The earlier first-capture snapshot remains separate. The provider log used by
+the source audit also has a frozen copy, preserving its observed hash if future
+authorized QA appends to the runtime log. These were read-only source copies;
+no canonical file, desktop process or inference was started or changed.
