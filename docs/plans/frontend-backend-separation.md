@@ -21,8 +21,9 @@ Durable device capture/upload, explicit processing declarations, pending notes,
 append/repair, authenticated bounded live captions and verified cleanup are
 implemented. Native Local ownership and CLI routing are composed with the managed
 vault. Checked Local session lifecycle and output deletion activation remain
-default off pending final producer/persistence and platform acceptance. Streamed
-processing previews and independent Remote note windows are under integration.
+default off pending final producer/persistence and platform acceptance. Bounded private processing previews and independent Remote note windows are
+implemented and Native-qualified; actual two-client GUI/platform acceptance is
+still in progress.
 
 Current validation includes Native, TLS/HTTP, frontend, configured local models,
 packaged Linux CPU, stopped-service upgrade and forced backup/restore interruption
@@ -338,10 +339,10 @@ qualification gates; historical checkpoints after this audit describe their
 original source state, not an outstanding-work list.
 
 - [ ] **Phase 1: shared application layer.** Shared vault writes, application operations, ownership, startup, settings, watcher, search and generated contracts are implemented. Complete final adapter/platform qualification.
-- [ ] **Phase 2: frontend client.** The shared main shell, scoped requests/subscriptions, editing/recovery, content, assets, jobs and device capture are integrated. Complete standalone Remote windows, preview UI, postqualification Local activation and final regressions.
+- [ ] **Phase 2: frontend client.** The shared main shell, scoped requests/subscriptions, editing/recovery, content, assets, jobs and device capture are integrated. Complete actual independent-client GUI/platform acceptance, postqualification Local activation and final regressions.
 - [ ] **Phase 3: first remote slice.** OIDC/PKCE, OS credentials, private provisioning, HTTPS, SSE and saved-profile Remote-only startup are implemented. Existing Native TLS/media tests include 50/150/500 ms RTT and reconnects. Complete clean deployment and actual-client compatibility acceptance.
 - [ ] **Phase 4: vault sharing and content.** Shared roles, checked mutations, attachment staging/recovery, authenticated playback, source export, import/export and Local/Remote CLI ownership are implemented. Complete final Native and Windows qualification, guarded Local lifecycle/output activation and stopped Local-vault adoption.
-- [ ] **Phase 5: processing.** Shared summary/title/tag/template and transcription policies, durable jobs/recovery, owner-managed provider secrets and configured CPU models are implemented. Streamed private preview source is under integration with its capability disabled. Complete preview, final Native provider and platform acceptance.
+- [ ] **Phase 5: processing.** Shared summary/title/tag/template and transcription policies, durable jobs/recovery, owner-managed provider secrets and configured CPU models are implemented. Bounded private previews are advertised with configured workers after Native/TLS/provider qualification. Complete actual production UI and final platform acceptance.
 - [ ] **Phase 6: resilient remote capture.** Durable native staging/uploader, processing intent, pending/append/repair, live captions and verified cleanup are implemented. Controlled outage/restart, exact-source repair and full-size replay evidence is recorded honestly in the handoff. Complete physical capture, realistic latency/jitter/bandwidth and final sustained/platform acceptance.
 - [ ] **Phase 7: release hardening.** Linux images, systemd/Caddy, readiness, private operational observations, retention, stopped-service maintenance, upgrade and interrupted large-copy recovery are implemented and qualified on recorded artifacts. Complete final-head hosted Linux x64/Windows x64/ARM64 checks, compatibility/deployment and production macOS QA.
 

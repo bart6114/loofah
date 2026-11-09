@@ -22,6 +22,15 @@ existing managed Context and original lease. Its shutdown joins admitted owner
 work before the final Store flush. Generated contracts and full Native/platform
 validation remain integration gates; source checkpoints alone do not prove them.
 
+Latest combined checkpoint: 2,419 Native library tests passed (34 explicit ignored),
+2,615 frontend tests passed in 298 files, actual Native Ollama preview/summary/title
+and replay passed, and all-target checks plus debug binaries passed. Qualified
+previews are now advertised with configured workers. The exact dev-only A/B QA
+trust allowlist passed its default-build negative test. Checked Local lifecycle,
+output deletion and transcript UI activation remain default off pending final
+platform/physical acceptance. A corrected, shaped two-hour paced run is active;
+its outcome is not yet qualified. Independent Native A/B UI acceptance is next.
+
 Completed continuation checks so far (local logs are under the cache above):
 
 - Original-head frontend baseline: 2,563 tests in 279 files. The current shared
@@ -1066,3 +1075,15 @@ and `native-window-preview-adoption-binaries.log`. These supplement the precedin
 full Native/frontend/model results; fresh hosted Windows/Linux qualification and
 physical production QA remain open.
 Native Remote TLS UI qualification may use only the exact development fixture bundle IDs `io.loofah.remote-qa`, `io.loofah.remote-qa-a`, and `io.loofah.remote-qa-b`, with the desktop `dev` feature and an explicit `LOOFAH_QA_ROOT_CA`. The A/B IDs allow independent macOS single-instance sockets and OS credential namespaces; separate `LOOFAH_GLOBAL_BASE` and absolute `LOOFAH_QA_DOWNLOADS_ROOT` directories remain required for disposable runs. This does not enable custom trust in production or authorize OS trust changes. A synthetic numeric-loopback HTTP issuer can exercise the actual browser PKCE callback while the API uses verified fixture TLS; it does not qualify production HTTPS SSO. Build both artifacts serially from the existing Native worktree and shared cache.
+
+
+The corrected shaped rehearsal passed in 81.01 seconds before launching the
+authorized 7,200-second paced run. All three profiles carried successful capture
+uploads (6/13/18 chunks), exact PCM/repair/retirement and RSS assertions passed,
+and maximum producer lateness was 33ms. The earlier zero-traffic 500ms rehearsal
+failure is retained; its coverage assertion was preserved. The long run keeps
+the original outages/restarts and adds bounded network shaping without host
+network changes. It uses immutable server source 573 and a separately hashed
+harness overlay 5be/31ad; current Native production behavior is unchanged except
+the subsequently qualified preview capability declaration. Monitor/evidence
+paths remain under the local task cache. No long-run pass is claimed yet.
