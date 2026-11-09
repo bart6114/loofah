@@ -270,7 +270,8 @@ and check service errors before treating a backup as cleanly stopped.
 
 The `backend-ci` container job also runs a disposable Ubuntu deployment acceptance
 using the executable extracted from the default image and the documented systemd
-and Caddy templates. It checks private non-root storage, verified TLS, typed SDK
+and Caddy templates. It checks private non-root storage and PID-owned loopback
+listeners before and after restart, verified TLS, typed SDK
 SSE, exact stereo append/replay and clean stop/start. Its synthetic loopback issuer
 and committed test certificate require no company credentials or trust-store
 changes. A discovery-only fixture advertises `capture_append` for this test;

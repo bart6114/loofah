@@ -13515,6 +13515,17 @@
       },
       "pending": "Actual packaged Ubuntu systemd/Caddy installation and real CPU WebSocket50/150/500 profiles require fresh hosted execution. These local checks compile the driver and test only the no-model proxy/coordination helpers. No app, microphone, model inference or local VM started.",
       "activation": "No production capability, feature, deadline, model or transport behavior changed."
+    },
+    "packaged_deployment_and_shaped_websocket_private_listener_check_2026_11_09": {
+      "source": "65d5f026fa34c415c8c70140dd976e7b78dc3c9a",
+      "helpers": {
+        "passed": 54,
+        "failed": 0,
+        "log_sha256": "702f03dc79cdfd6cd5158c007595e68c93b7d83d6991c093c9714fdf80e2232a"
+      },
+      "new_cases": "Three owned-listener parser/ownership cases include rejection of wildcard/IPv6, extra/missing/wrong-port listeners and malformed data; unrelated namespace rows and established connections do not count as owned listeners.",
+      "runtime_assertion": "Read bounded service PID fd/tcp/tcp6 snapshots before and after restart, confirm stable process start ticks and expected listener inode ownership, preserve owned raw rows and table hashes, and require only the configured IPv4 loopback listener.",
+      "limits": "Offline helper tests only. Actual proc sampling and installed Linux deployment remain pending hosted CI. Rust sources unchanged since the recorded23b5766ecf all-target check; no desktop or physical tests resumed."
     }
   },
   "local_work_focused": [

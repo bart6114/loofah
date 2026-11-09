@@ -2865,3 +2865,13 @@ snapshot fixtures described above, so its installer/uninstall steps did not run.
 Normal ARM is still running its original test step at this checkpoint. Full raw
 log hashes and named execution evidence are copied into the existing portable
 record; no local desktop test was resumed or production capability activated.
+
+
+The deployment coordinator now independently samples the running service PID's
+owned TCP listeners before and after restart. Bounded fd/table reads and stable
+process start/inode checks require exactly its configured IPv4 loopback endpoint;
+wildcard, IPv6 and extra listeners fail with owned-row evidence retained. Three
+new offline cases cover ownership, endpoint rejection and malformed/native-word
+parsing. All 54 workflow helpers passed at `65d5f026fa`; actual Linux proc sampling
+and installed deployment remain pending CI. Rust source has not changed since
+the recorded integrated compile and two proxy passes.
