@@ -1,13 +1,25 @@
 use crate::cli::TagsCommand;
-use crate::{Error, Result, output};
+use crate::{Result, output};
 
 pub async fn run(cache: &hypr_search_cache::Cache, command: TagsCommand, json: bool) -> Result<()> {
+    let reader = crate::agent_reader::AgentReader::local(cache.vault().to_owned(), cache.clone());
+    run_with_reader(&reader, command, json).await
+}
+pub async fn run_with_reader(
+    reader: &crate::agent_reader::AgentReader,
+    command: TagsCommand,
+    json: bool,
+) -> Result<()> {
     match command {
         TagsCommand::List => {
-            let cache = cache.clone();
-            let tags = tokio::task::spawn_blocking(move || cache.tags_fresh())
-                .await
-                .map_err(|error| Error::operation("list tags", error.to_string()))??;
+            let gateway = reader.command_gateway().await?;
+            let tags = match gateway
+                .execute(hypr_loofah_protocol::LocalCliOperation::Tags {})
+                .await?
+            {
+                hypr_loofah_protocol::LocalCliReply::Tags { tags } => tags,
+                _ => return Err(crate::profiles::unexpected()),
+            };
             let rendered = if json {
                 output::json("tags.list", &tags, None)?
             } else if tags.is_empty() {

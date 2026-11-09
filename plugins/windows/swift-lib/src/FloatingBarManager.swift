@@ -106,6 +106,7 @@ final class FloatingBarManager {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.isApplyingExternalState = true
+      self.model.captureKey = state.captureKey
       self.model.status = state.status
       self.model.amplitude = min(max(state.amplitude, 0), 1)
       self.model.colorScheme = state.colorScheme

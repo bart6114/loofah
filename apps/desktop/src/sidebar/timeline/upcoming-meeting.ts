@@ -1,15 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 
-import { useTimelineSessionsTable } from "./queries";
-import {
-  buildTimelineBuckets,
-  deriveTimelineWindowData,
-  type TimelineBucket,
-} from "./utils";
-
-import { useConfigValue } from "~/shared/config";
-import { useCurrentDay } from "~/shared/hooks/useCurrentDay";
+import { useNearestTimelineBuckets } from "./queries";
+import { type TimelineBucket } from "./utils";
 
 const UPCOMING_MEETING_VISIBLE_WINDOW_MS = 5 * 60 * 1000;
 const UPCOMING_MEETING_STATUS_TICK_MS = 1_000;
@@ -22,22 +15,8 @@ export type SidebarUpcomingMeetingStatus = {
 };
 
 export function useSidebarUpcomingMeetingStatus(): SidebarUpcomingMeetingStatus | null {
-  const timezone = useConfigValue("timezone") || undefined;
   const formatLabel = useUpcomingMeetingLabelFormatter();
-  const timelineSessionsTable = useTimelineSessionsTable();
-  const currentDay = useCurrentDay(timezone);
-
-  const buckets = useMemo(() => {
-    const windowData = deriveTimelineWindowData({
-      timelineSessionsTable,
-      timezone,
-    });
-
-    return buildTimelineBuckets({
-      timelineSessionsTable: windowData.timelineSessionsTable,
-      timezone,
-    });
-  }, [currentDay, timelineSessionsTable, timezone]);
+  const buckets = useNearestTimelineBuckets();
 
   return useUpcomingMeetingStatus(buckets, formatLabel);
 }

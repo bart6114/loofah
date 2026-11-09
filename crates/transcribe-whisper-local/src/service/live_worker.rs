@@ -11,21 +11,21 @@ use std::{
 };
 use tokio::sync::{OwnedSemaphorePermit, mpsc, oneshot};
 
-pub(super) struct Work {
+pub(crate) struct Work {
     pub channel: usize,
     pub chunk: AudioChunk,
     pub permits: Vec<OwnedSemaphorePermit>,
     pub queued: Instant,
 }
 
-pub(super) enum Job {
+pub(crate) enum Job {
     Audio(Work),
     Evidence(Vec<f32>),
     Deadline,
     Finish { duration: f64, finalized: bool },
 }
 
-pub(super) enum Output {
+pub(crate) enum Output {
     Segment(usize, super::Segment, bool),
     Finished { duration: f64, finalized: bool },
     Error(String),
@@ -40,12 +40,31 @@ pub(super) fn start(
     mpsc::Receiver<Output>,
     oneshot::Receiver<()>,
 ) {
+    let worker = start_owned(loaded, params, cancelled).expect("start whisper worker");
+    (worker.jobs, worker.output, worker.completion)
+}
+
+pub(crate) struct OwnedWorker {
+    pub jobs: mpsc::Sender<Job>,
+    pub output: mpsc::Receiver<Output>,
+    pub initialized: oneshot::Receiver<Result<(), String>>,
+    pub completion: oneshot::Receiver<()>,
+    pub thread: std::thread::JoinHandle<()>,
+}
+
+pub(crate) fn start_owned(
+    loaded: Arc<LoadedWhisper>,
+    params: ListenParams,
+    cancelled: Arc<AtomicBool>,
+) -> Result<OwnedWorker, std::io::Error> {
     let (tx, mut rx) = mpsc::channel::<Job>(32);
     let (out, output) = mpsc::channel(16);
     let (done, completion) = oneshot::channel();
-    std::thread::Builder::new()
+    let (ready, initialized) = oneshot::channel();
+    let thread = std::thread::Builder::new()
         .name("whisper-live".into())
         .spawn(move || {
+            let mut ready = Some(ready);
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
                 || -> Result<(), crate::Error> {
                     let languages = super::configured_languages(&params);
@@ -57,6 +76,9 @@ pub(super) fn start(
                             Ok(model)
                         })
                         .collect::<Result<Vec<_>, crate::Error>>()?;
+                    if let Some(ready) = ready.take() {
+                        let _ = ready.send(Ok(()));
+                    }
                     let mut pending = VecDeque::new();
                     let mut deadline = false;
                     while let Some(job) = rx.blocking_recv() {
@@ -159,6 +181,9 @@ pub(super) fn start(
                     Ok(())
                 },
             ));
+            if let Some(ready) = ready.take() {
+                let _ = ready.send(Err("live initialization failed".into()));
+            }
             if !cancelled.load(Ordering::Acquire) {
                 let error = match result {
                     Ok(Ok(())) => None,
@@ -170,9 +195,14 @@ pub(super) fn start(
                 }
             }
             let _ = done.send(());
-        })
-        .expect("start whisper worker");
-    (tx, output, completion)
+        })?;
+    Ok(OwnedWorker {
+        jobs: tx,
+        output,
+        initialized,
+        completion,
+        thread,
+    })
 }
 
 #[cfg(test)]

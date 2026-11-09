@@ -27,6 +27,7 @@ describe("SegmentHeader", () => {
   it("keeps the speaker label visible without exposing timestamps", () => {
     render(
       <SegmentHeader
+        sessionId="session-1"
         transcriptId="transcript-1"
         segment={createRemoteSegment(2)}
         label="Speaker 3"
@@ -43,6 +44,7 @@ describe("SegmentHeader", () => {
   it("renders the label resolved by the transcript renderer", () => {
     render(
       <SegmentHeader
+        sessionId="session-1"
         transcriptId="transcript-1"
         segment={createRemoteSegment(0)}
         label="Artem"
@@ -59,6 +61,7 @@ describe("SegmentHeader", () => {
     const segment = createRemoteSegment(0);
     const { rerender } = render(
       <SegmentHeader
+        sessionId="session-1"
         transcriptId="transcript-1"
         segment={segment}
         label="Artem"
@@ -72,6 +75,7 @@ describe("SegmentHeader", () => {
 
     rerender(
       <SegmentHeader
+        sessionId="session-1"
         transcriptId="transcript-1"
         segment={segment}
         label="Speaker 1"

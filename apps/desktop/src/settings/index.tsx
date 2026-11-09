@@ -1,3 +1,5 @@
+import { Trans } from "@lingui/react/macro";
+
 import { cn } from "@hypr/utils";
 
 import {
@@ -7,7 +9,10 @@ import {
   SettingsStorage,
 } from "./general";
 
+import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
 import { SettingsHydrationBoundary } from "~/settings/hydration-boundary";
+import { useDeviceStartActions } from "~/shared/application/device-recording-controls";
+import { VaultProcessingSettings } from "~/shared/application/vault-processing-settings";
 import {
   deferredView,
   DeferredView,
@@ -30,6 +35,7 @@ const stt = deferredView(() =>
 const developers = deferredView(() =>
   import("./developers").then((m) => ({ default: m.SettingsDevelopers })),
 );
+const EMPTY_PRELOADERS: (() => Promise<unknown>)[] = [];
 const preloaders = [stt.preload, llm.preload, developers.preload];
 
 export function TabContentSettings({
@@ -37,17 +43,64 @@ export function TabContentSettings({
 }: {
   tab: Extract<Tab, { type: "settings" }>;
 }) {
+  const access = useLegacyDesktopAccess();
+  const deviceRecording = useDeviceStartActions();
+  const requested = tab.state.tab as string | undefined;
+  const active = requested === "data" ? "storage" : (requested ?? "app");
+  if (active === "permissions")
+    return (
+      <StandardContentWrapper>
+        <SettingsView tab={tab} preloadLegacy={false} />
+      </StandardContentWrapper>
+    );
+  const feature =
+    active === "intelligence" || active === "summary-prompt"
+      ? "legacy_desktop_enhance"
+      : active === "notifications" ||
+          active === "permissions" ||
+          active === "transcription"
+        ? "legacy_desktop_transcript_controls"
+        : "legacy_desktop_session_controls";
+  if (
+    active !== "app" &&
+    !(active === "notifications" && deviceRecording) &&
+    !access.isAvailable(feature)
+  )
+    return (
+      <StandardContentWrapper>
+        <div
+          className="flex flex-col items-start gap-4 p-6"
+          data-settings-content
+        >
+          <p role="status">
+            <Trans>This operation is unavailable for this connection.</Trans>
+          </p>
+          <VaultProcessingSettings scope={access.scope} />
+        </div>
+      </StandardContentWrapper>
+    );
   return (
     <StandardContentWrapper>
       <SettingsHydrationBoundary>
-        <SettingsView tab={tab} />
+        <SettingsView
+          tab={tab}
+          preloadLegacy={
+            access.isAvailable("legacy_desktop_enhance") && access.isAvailable()
+          }
+        />
       </SettingsHydrationBoundary>
     </StandardContentWrapper>
   );
 }
 
-function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
-  usePreloadViews(preloaders);
+function SettingsView({
+  tab,
+  preloadLegacy,
+}: {
+  tab: Extract<Tab, { type: "settings" }>;
+  preloadLegacy: boolean;
+}) {
+  usePreloadViews(preloadLegacy ? preloaders : EMPTY_PRELOADERS);
   const requestedTab = tab.state.tab as string | undefined;
   const activeTab =
     requestedTab === "data" ? "storage" : (tab.state.tab ?? "app");

@@ -11,17 +11,38 @@ mod api;
 mod error;
 mod listener;
 mod listener2;
+mod local_capture;
+mod maintenance;
+pub use local_capture::*;
 
 pub use api::*;
 pub use error::{Error, Result};
 pub use hypr_transcription_core::listener::{
     DegradedError, ListenerRuntime, LiveTranscriptDelta, LiveTranscriptEngine,
-    LiveTranscriptSegment, LiveTranscriptSegmentDelta, LiveTranscriptUpdate,
+    LiveTranscriptSegment, LiveTranscriptSegmentDelta, LiveTranscriptUpdate, TranscriptionMode,
+};
+pub use hypr_transcription_core::listener::{
+    ListenerRuntime as DeviceListenerRuntime, SessionDataEvent as DeviceSessionDataEvent,
+    SessionErrorEvent as DeviceSessionErrorEvent,
+    SessionLifecycleEvent as DeviceSessionLifecycleEvent,
+    SessionProgressEvent as DeviceSessionProgressEvent,
+    actors::{
+        CaptureBackgroundGuard, CaptureMaintenanceGate, CaptureMaintenanceGuard,
+        ChannelMode as DeviceChannelMode, DeviceAppendReceipt, DeviceCaptureArgs,
+        DeviceCaptureCompletion, DeviceCaptureCompletionSnapshot, DeviceCaptureKey,
+        DeviceCaptureReporter, DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink,
+        DeviceSinkError, OwnedLocalCaptureArgs, RootActor as DeviceCaptureRoot,
+        RootArgs as DeviceCaptureRootArgs, RootMsg as DeviceCaptureRootMsg,
+    },
 };
 pub use hypr_transcription_core::listener2::{
     Error as Listener2Error, Result as Listener2Result, Subtitle, Token,
     is_supported_languages_batch, list_documented_language_codes_batch, parse_subtitle_from_path,
     suggest_providers_for_languages_batch,
+};
+pub use listener::{
+    DeviceCaptureStartError, admit_session_maintenance, device_capture_root_ready,
+    start_device_capture, stop_device_capture, tracked_start_device_capture,
 };
 pub use listener::{Listener, ListenerPluginExt};
 pub use listener2::{Listener2, Listener2PluginExt};
@@ -39,7 +60,9 @@ pub struct PluginState {
 
 pub type SessionStateCache = Arc<StdMutex<HashMap<String, (bool, bool)>>>;
 
+#[derive(Default)]
 pub struct BatchSessionRegistry {
+    maintenance: Arc<tokio::sync::RwLock<()>>,
     pub sessions: StdMutex<HashMap<String, BatchSessionEntry>>,
 }
 
@@ -108,8 +131,11 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
             app.manage(state);
             app.manage(Arc::new(BatchSessionRegistry {
                 sessions: StdMutex::new(HashMap::new()),
+                ..Default::default()
             }));
 
+            let maintenance = CaptureMaintenanceGate::default();
+            app.manage(maintenance.clone());
             let audio = app.state::<Arc<dyn AudioProvider>>().inner().clone();
             let session_state_cache: SessionStateCache = Arc::new(StdMutex::new(HashMap::new()));
             app.manage(session_state_cache.clone());
@@ -122,7 +148,11 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
                 Actor::spawn(
                     Some(RootActor::name()),
                     RootActor,
-                    RootArgs { runtime, audio },
+                    RootArgs {
+                        runtime,
+                        audio,
+                        maintenance,
+                    },
                 )
                 .await
                 .map(|_| tracing::info!("root_actor_spawned"))
@@ -140,7 +170,7 @@ mod test {
 
     #[test]
     fn export_types() {
-        const OUTPUT_FILE: &str = "./js/bindings.gen.ts";
+        const OUTPUT_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/js/bindings.gen.ts");
 
         make_specta_builder::<tauri::Wry>()
             .export(

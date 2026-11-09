@@ -18,8 +18,35 @@ const drafts = new Map<
 >();
 const listeners = new Map<string, Set<() => void>>();
 
+export function enhancedNoteDraftKey(
+  scope: string,
+  sessionId: string,
+  documentId: string,
+) {
+  return JSON.stringify(["vault-enhanced", scope, sessionId, documentId]);
+}
+
+export function hasUnsavedSessionNoteDrafts(scope: string, sessionId: string) {
+  const raw = JSON.stringify(["vault-note", scope, sessionId]);
+  const enhanced = `${JSON.stringify(["vault-enhanced", scope, sessionId]).slice(0, -1)},`;
+  for (const [key, draft] of drafts)
+    if ((key === raw || key.startsWith(enhanced)) && !draft.saved) return true;
+  return false;
+}
+
 function notify(key: string) {
   listeners.get(key)?.forEach((listener) => listener());
+}
+
+export function discardNoteDraft(key: string) {
+  drafts.delete(key);
+  notify(key);
+}
+
+export function acknowledgeNoteDraft(key: string, content: JSONContent) {
+  const draft = drafts.get(key);
+  if (draft && areEquivalentEditorContents(draft.getContent(), content))
+    discardNoteDraft(key);
 }
 
 export function captureNoteDraft(

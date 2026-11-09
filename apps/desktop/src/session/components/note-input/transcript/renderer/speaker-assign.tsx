@@ -1,5 +1,13 @@
 import { Plural } from "@lingui/react/macro";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Checkbox } from "@hypr/ui/components/ui/checkbox";
 import {
@@ -10,12 +18,17 @@ import {
 import { cn } from "@hypr/utils";
 
 import { ensurePerson, type Person } from "~/people/queries";
+import {
+  legacyTranscriptControlsAvailable,
+  useVaultReadScope,
+} from "~/shared/application/use-vault-read-scope";
 import type { Segment } from "~/stt/live-segment";
 import { assignTranscriptSpeaker, type TranscriptRecord } from "~/stt/queries";
 
 export type ChannelAssignmentState = {
   anchorWordIdBySpeakerIndex: Map<number, string>;
   channelHasAssignment: boolean;
+  editorRevision?: string;
 };
 
 export const EMPTY_CHANNEL_ASSIGNMENT_STATE: ChannelAssignmentState = {
@@ -25,6 +38,7 @@ export const EMPTY_CHANNEL_ASSIGNMENT_STATE: ChannelAssignmentState = {
 
 export function SpeakerRenameControl({
   segment,
+  sessionId,
   transcriptId,
   color,
   label,
@@ -35,6 +49,7 @@ export function SpeakerRenameControl({
   channelAssignmentState = EMPTY_CHANNEL_ASSIGNMENT_STATE,
 }: {
   segment: Segment;
+  sessionId: string;
   transcriptId: string;
   color: string;
   label: string;
@@ -44,6 +59,53 @@ export function SpeakerRenameControl({
   people?: readonly Person[];
   channelAssignmentState?: ChannelAssignmentState;
 }) {
+  const { scope, current } = useVaultReadScope();
+  const editor = scope.client.transcriptEditor;
+  const checkedAvailable =
+    !!editor &&
+    !!channelAssignmentState.editorRevision &&
+    scope.client.canEdit &&
+    scope.getSnapshot().state === "connected";
+  const revision = useRef<string | undefined>(undefined);
+  const mutation = useMutation(
+    { mutationFn: (run: () => Promise<{ id: string; name: string }>) => run() },
+    scope.queryClient,
+  );
+
+  const target = useRef({ sessionId, transcriptId });
+  target.current = { sessionId, transcriptId };
+  const locked = useRef(disabled);
+  locked.current = disabled;
+  const active = useRef(false);
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+  const available = useCallback(
+    () =>
+      active.current &&
+      current() &&
+      !!sessionId &&
+      target.current.sessionId === sessionId &&
+      target.current.transcriptId === transcriptId &&
+      !locked.current &&
+      (checkedAvailable || legacyTranscriptControlsAvailable(scope)),
+    [scope, current, sessionId, transcriptId, checkedAvailable],
+  );
+  const check = useCallback(() => {
+    if (!available())
+      throw new Error("Transcript editing is unavailable for this connection");
+  }, [available]);
+  const assign = useCallback(
+    async (input: Parameters<typeof assignTranscriptSpeaker>[0]) => {
+      check();
+      await assignTranscriptSpeaker(input, check);
+      check();
+    },
+    [check],
+  );
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
   const [touched, setTouched] = useState(false);
@@ -114,16 +176,77 @@ export function SpeakerRenameControl({
   }, [draft]);
 
   const startEditing = useCallback(() => {
+    if (!available()) return;
+    revision.current = channelAssignmentState.editorRevision;
+    mutation.reset();
     committedRef.current = false;
     setDraft(label);
     setTouched(false);
     setHighlightIndex(-1);
     setApplyToChannel(false);
     setEditing(true);
-  }, [label]);
+  }, [label, available, channelAssignmentState.editorRevision, mutation]);
 
   const runAssignments = useCallback(
     async (speakerLabel: string) => {
+      if (editor) {
+        check();
+        const expectedRevision = revision.current;
+        if (!expectedRevision)
+          throw new Error("Reload the transcript before assigning a speaker");
+        const channel =
+          segment.key.channel === "DirectMic"
+            ? 0
+            : segment.key.channel === "RemoteParty"
+              ? 1
+              : 2;
+        const assignments: {
+          transcript_id: string;
+          channel: number;
+          speaker_index: number | null;
+          speaker_label: string;
+          anchor_word_id: string;
+        }[] = [];
+        const add = (index: number | null, anchor: string | undefined) => {
+          if (anchor)
+            assignments.push({
+              transcript_id: transcriptId,
+              channel,
+              speaker_index: index,
+              speaker_label: speakerLabel,
+              anchor_word_id: anchor,
+            });
+        };
+        if (offerChannelWideAssign && applyToChannel) {
+          if (segment.key.speaker_index == null)
+            add(null, getAssignmentAnchorWordId(segment));
+          for (const [index, anchor] of anchorWordIdBySpeakerIndex)
+            add(index, anchor);
+        } else
+          add(
+            segment.key.speaker_index ?? null,
+            getAssignmentAnchorWordId(segment),
+          );
+        if (!assignments.length) return;
+        const result = await editor.assign(sessionId, {
+          expected_revision: expectedRevision,
+          assignments,
+        });
+        check();
+        await scope.queryClient.invalidateQueries({
+          queryKey: [
+            "vault",
+            scope.client.scope,
+            "transcript_editor",
+            sessionId,
+          ],
+        });
+        if (result.kind === "conflict")
+          throw new Error(
+            "The transcript changed. Review the reloaded transcript before assigning the speaker again.",
+          );
+        return;
+      }
       if (offerChannelWideAssign && applyToChannel) {
         // Channel-scope fallback first (only needed when the clicked segment
         // itself has no index): later per-index writes keep it on a diarized
@@ -131,7 +254,7 @@ export function SpeakerRenameControl({
         if (segment.key.speaker_index == null) {
           const anchorWordId = getAssignmentAnchorWordId(segment);
           if (anchorWordId) {
-            await assignTranscriptSpeaker({
+            await assign({
               transcriptId,
               segmentKey: segment.key,
               speakerLabel,
@@ -140,7 +263,7 @@ export function SpeakerRenameControl({
           }
         }
         for (const [speakerIndex, anchorWordId] of anchorWordIdBySpeakerIndex) {
-          await assignTranscriptSpeaker({
+          await assign({
             transcriptId,
             segmentKey: {
               channel: segment.key.channel,
@@ -159,7 +282,7 @@ export function SpeakerRenameControl({
         return;
       }
 
-      await assignTranscriptSpeaker({
+      await assign({
         transcriptId,
         segmentKey: segment.key,
         speakerLabel,
@@ -167,6 +290,11 @@ export function SpeakerRenameControl({
       });
     },
     [
+      assign,
+      editor,
+      check,
+      scope,
+      sessionId,
       anchorWordIdBySpeakerIndex,
       applyToChannel,
       offerChannelWideAssign,
@@ -180,7 +308,7 @@ export function SpeakerRenameControl({
       optimisticName: string,
       run: () => Promise<{ id: string; name: string }>,
     ) => {
-      if (committedRef.current) {
+      if (committedRef.current || !available()) {
         return;
       }
       committedRef.current = true;
@@ -189,8 +317,10 @@ export function SpeakerRenameControl({
       commitSettledRef.current = false;
       setPendingLabel(optimisticName);
       setEditing(false);
-      run()
+      mutation
+        .mutateAsync(run)
         .then((person) => {
+          check();
           onAssigned?.(person.id);
           if (seq !== commitSeqRef.current) {
             return;
@@ -216,7 +346,7 @@ export function SpeakerRenameControl({
           setPendingLabel(null);
         });
     },
-    [label, onAssigned],
+    [label, onAssigned, available, check, mutation],
   );
 
   const canAssign =
@@ -236,11 +366,15 @@ export function SpeakerRenameControl({
     }
 
     commit(name, async () => {
-      const person = await ensurePerson(name);
+      check();
+      const person = editor
+        ? await editor.ensurePerson({ name })
+        : await ensurePerson(name);
+      check();
       await runAssignments(person.id);
-      return { id: person.id, name: person.name };
+      return { id: person.id, name: person.name ?? name };
     });
-  }, [canAssign, commit, draft, label, runAssignments]);
+  }, [canAssign, commit, draft, label, runAssignments, check, editor]);
 
   const selectPerson = useCallback(
     (person: Person) => {
@@ -258,7 +392,7 @@ export function SpeakerRenameControl({
     [canAssign, commit, runAssignments],
   );
 
-  if (editing) {
+  if (editing && available()) {
     return (
       <Popover open={suggestions.length > 0 || offerChannelWideAssign}>
         <PopoverAnchor asChild>
@@ -363,21 +497,33 @@ export function SpeakerRenameControl({
   }
 
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={startEditing}
-      className={cn([
-        "-my-0.5 rounded-full py-0.5 pr-2",
-        disabled
-          ? "cursor-default"
-          : "cursor-pointer underline-offset-2 hover:underline focus-visible:underline",
-        className,
-      ])}
-      style={{ color }}
-    >
-      {pendingLabel ?? label}
-    </button>
+    <>
+      <button
+        type="button"
+        disabled={
+          disabled ||
+          mutation.isPending ||
+          !current() ||
+          !(checkedAvailable || legacyTranscriptControlsAvailable(scope))
+        }
+        onClick={startEditing}
+        className={cn([
+          "-my-0.5 rounded-full py-0.5 pr-2",
+          disabled
+            ? "cursor-default"
+            : "cursor-pointer underline-offset-2 hover:underline focus-visible:underline",
+          className,
+        ])}
+        style={{ color }}
+      >
+        {available() ? (pendingLabel ?? label) : label}
+      </button>
+      {mutation.error && (
+        <span role="alert" className="text-xs text-red-600">
+          {mutation.error.message}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -449,6 +595,8 @@ export function buildChannelAssignmentStates(
     }
   }
 
+  for (const state of states.values())
+    state.editorRevision = transcript?.editorRevision;
   return states;
 }
 

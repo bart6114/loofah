@@ -33,6 +33,20 @@ impl SpeakerInput {
     }
 
     pub fn stream(self) -> Result<SpeakerStream> {
+        self.stream_with_integrity(None)
+    }
+
+    pub(crate) fn stream_with_integrity(
+        self,
+        integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+    ) -> Result<SpeakerStream> {
+        self.stream_owned(integrity, None)
+    }
+    pub(crate) fn stream_owned(
+        self,
+        integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+        owner: Option<Arc<dyn Send + Sync>>,
+    ) -> Result<SpeakerStream> {
         let rb = HeapRb::<f32>::new(BUFFER_SIZE);
         let (producer, consumer) = rb.split();
 
@@ -44,6 +58,7 @@ impl SpeakerInput {
         let dropped_samples = Arc::new(AtomicUsize::new(0));
         let (init_tx, init_rx) = std::sync::mpsc::channel();
 
+        let owner_integrity = integrity.clone();
         let capture_thread = {
             let waker = waker.clone();
             let wake_pending = wake_pending.clone();
@@ -53,11 +68,12 @@ impl SpeakerInput {
             let dropped_samples = dropped_samples.clone();
 
             thread::spawn(move || {
+                let _owner = owner;
                 let result = capture_audio_loop(
                     producer,
                     waker.clone(),
                     wake_pending.clone(),
-                    alive.clone(),
+                    (alive.clone(), integrity.clone()),
                     running,
                     current_sample_rate,
                     dropped_samples,
@@ -65,6 +81,9 @@ impl SpeakerInput {
                 );
 
                 if let Err(err) = result {
+                    if let Some(integrity) = &integrity {
+                        integrity.mark_discontinuity(false, true);
+                    }
                     error!("Audio capture loop failed: {}", err);
                 }
 
@@ -94,6 +113,7 @@ impl SpeakerInput {
             current_sample_rate,
             running,
             capture_thread: Some(capture_thread),
+            integrity: owner_integrity,
         })
     }
 }
@@ -104,9 +124,14 @@ pub struct SpeakerStream {
     current_sample_rate: Arc<AtomicU32>,
     running: Arc<AtomicBool>,
     capture_thread: Option<thread::JoinHandle<()>>,
+    integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
 }
 
 impl SpeakerStream {
+    pub(super) fn request_stop_capture(&mut self) -> bool {
+        self.running.store(false, Ordering::Release);
+        true
+    }
     pub fn sample_rate(&self) -> u32 {
         self.current_sample_rate.load(Ordering::Acquire)
     }
@@ -124,12 +149,13 @@ fn capture_audio_loop(
     mut producer: HeapProd<f32>,
     waker: Arc<AtomicWaker>,
     wake_pending: Arc<AtomicBool>,
-    alive: Arc<AtomicBool>,
+    health: (Arc<AtomicBool>, Option<Arc<hypr_audio::CaptureIntegrity>>),
     running: Arc<AtomicBool>,
     current_sample_rate: Arc<AtomicU32>,
     dropped_samples: Arc<AtomicUsize>,
     init_tx: std::sync::mpsc::Sender<Result<()>>,
 ) -> Result<()> {
+    let (alive, integrity) = health;
     let setup_result = (|| -> Result<_> {
         initialize_mta()
             .ok()
@@ -238,6 +264,7 @@ fn capture_audio_loop(
             &mut scratch,
             &mut producer,
         )?;
+        stats.record_integrity(integrity.as_deref(), false, true);
         if stats.dropped > 0 {
             dropped_samples.fetch_add(stats.dropped, Ordering::Relaxed);
         }
@@ -314,6 +341,9 @@ impl PinnedDrop for SpeakerStream {
         if let Some(thread) = this.capture_thread.take()
             && let Err(err) = thread.join()
         {
+            if let Some(integrity) = this.integrity.as_ref() {
+                integrity.mark_discontinuity(false, true);
+            }
             error!("Failed to join capture thread: {:?}", err);
         }
     }

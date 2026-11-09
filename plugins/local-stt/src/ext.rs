@@ -419,8 +419,8 @@ fn diarizer_needs_download(state: &hypr_transcribe_soniqo::ModelDownloadState) -
     !matches!(state.status.as_str(), "ready" | "downloading")
 }
 
-// Diarization is always-on when its model is present: any downloaded STT model
-// pulls the diarizer in, but a missing/failed diarizer never blocks STT.
+// An explicit STT download also fetches optional diarization. Merely opening
+// a vault must not scan unrelated model caches or start a network download.
 pub(crate) fn maybe_start_diarizer_download<R: Runtime>(app_handle: tauri::AppHandle<R>) {
     tauri::async_runtime::spawn(async move {
         match diarizer_download_state().await {
@@ -447,28 +447,6 @@ pub(crate) fn maybe_start_diarizer_download<R: Runtime>(app_handle: tauri::AppHa
             LocalModel::Diarizer(DiarizerModel::FluidCommunity),
             hypr_transcribe_soniqo::diarize::model_download_state,
         );
-    });
-}
-
-pub(crate) fn backfill_diarizer_download<R: Runtime>(app_handle: tauri::AppHandle<R>) {
-    tauri::async_runtime::spawn(async move {
-        for model in LocalModel::all() {
-            if model.model_kind() != LocalModelKind::Stt
-                || !model.is_available_on_current_platform()
-            {
-                continue;
-            }
-
-            if app_handle
-                .local_stt()
-                .is_model_downloaded(&model)
-                .await
-                .unwrap_or(false)
-            {
-                maybe_start_diarizer_download(app_handle.clone());
-                return;
-            }
-        }
     });
 }
 

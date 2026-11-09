@@ -9,11 +9,11 @@ pub use hypr_search_cache::{
     get_tokenizer_name_for_language, register_tokenizers,
 };
 use tauri::Manager;
-use tokio::sync::RwLock;
+
 const PLUGIN_NAME: &str = "tantivy";
 #[derive(Default)]
 pub struct IndexState {
-    pub cache: RwLock<Option<hypr_search_cache::Cache>>,
+    pub service: std::sync::Arc<hypr_loofah_core::search::SearchService>,
 }
 
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {

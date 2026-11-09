@@ -32,11 +32,21 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Settings<'a, R, M> {
 
     pub fn vault_base(&self) -> Result<Utf8PathBuf, crate::Error> {
         let snapshot = self.manager.state::<crate::state::StartupSnapshot>();
-        Utf8PathBuf::from_path_buf(snapshot.startup_vault_base().clone())
+        let base = snapshot
+            .startup_vault_base()
+            .ok_or(crate::Error::LocalVaultUnavailable)?;
+        Utf8PathBuf::from_path_buf(base.clone())
             .map_err(|_| hypr_storage::Error::PathNotValidUtf8.into())
     }
 
     pub fn resolve_startup_vault_base(&self) -> Result<PathBuf, crate::Error> {
+        if self
+            .manager
+            .try_state::<crate::DesktopBootstrap>()
+            .is_some_and(|state| !state.is_local())
+        {
+            return Err(crate::Error::LocalVaultUnavailable);
+        }
         let settings_base = self.settings_base_path()?;
         Ok(hypr_storage::vault::resolve_base(
             &settings_base,
@@ -72,30 +82,24 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Settings<'a, R, M> {
     }
 
     pub fn config(&self) -> crate::AppConfig {
-        self.manager.state::<crate::ConfigState>().snapshot()
+        self.manager
+            .state::<std::sync::Arc<crate::ConfigState>>()
+            .snapshot()
     }
 
     pub async fn set_config_values(
         &self,
         values: std::collections::HashMap<String, serde_json::Value>,
     ) -> crate::Result<()> {
-        use tauri::Emitter;
-
-        let state = self.manager.state::<crate::ConfigState>();
-        let next = state.set_values(values).await?;
-
-        // Broadcast the FULL new config to every webview, including the one
-        // that issued the write: the FE store replaces its snapshot
-        // idempotently, so the writer's own echo is harmless and keeps all
-        // windows converged on the same state.
-        self.manager
-            .app_handle()
-            .emit(crate::CONFIG_CHANGED_EVENT, &next)?;
+        let state = self.manager.state::<std::sync::Arc<crate::ConfigState>>();
+        state.set_values(values).await?;
         Ok(())
     }
 
     pub fn reset_config(&self) -> crate::Result<()> {
-        self.manager.state::<crate::ConfigState>().reset()?;
+        self.manager
+            .state::<std::sync::Arc<crate::ConfigState>>()
+            .reset()?;
         Ok(())
     }
 }
@@ -149,6 +153,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Settings<'a, R, M> {
     }
 
     pub async fn set_vault_base(&self, new_path: Utf8PathBuf) -> Result<(), crate::Error> {
+        self.vault_base()?;
         let settings_base = self.settings_base_path()?;
         hypr_storage::vault::persist_vault_path(&settings_base, &settings_base, new_path.as_ref())?;
         Ok(())

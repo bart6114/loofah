@@ -12,6 +12,9 @@ const hoisted = vi.hoisted(() => ({
     type: string;
   },
   canGoBack: false,
+  newNote: vi.fn(),
+  newNoteCurrent: vi.fn(),
+  newNoteAndListen: vi.fn(),
   close: vi.fn(),
   goBack: vi.fn(),
   handlers: new Map<string, (event?: { defaultPrevented: boolean }) => void>(),
@@ -40,8 +43,9 @@ vi.mock("react-hotkeys-hook", () => ({
 }));
 
 vi.mock("~/shared/useNewNote", () => ({
-  useNewNote: () => vi.fn(),
-  useNewNoteAndListen: () => vi.fn(),
+  useNewNote: (options?: { behavior?: string }) =>
+    options?.behavior === "current" ? hoisted.newNoteCurrent : hoisted.newNote,
+  useNewNoteAndListen: () => hoisted.newNoteAndListen,
 }));
 
 vi.mock("~/store/zustand/tabs", () => {
@@ -89,6 +93,7 @@ vi.mock("~/store/zustand/tabs", () => {
       }
     },
     useTabs,
+    useTabsStore: () => ({ getState: getTabsState }),
   };
 });
 
@@ -113,6 +118,9 @@ describe("useClassicMainShortcuts", () => {
     hoisted.canGoBack = false;
     hoisted.goBack.mockClear();
     hoisted.handlers.clear();
+    hoisted.newNote.mockClear();
+    hoisted.newNoteCurrent.mockClear();
+    hoisted.newNoteAndListen.mockClear();
     hoisted.openCurrent.mockClear();
     hoisted.openNew.mockClear();
     hoisted.select.mockClear();
@@ -124,6 +132,30 @@ describe("useClassicMainShortcuts", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+  });
+
+  it.each(["empty", "sessions"])(
+    "routes Cmd/Ctrl+N from %s through the expected scoped creation intent",
+    (type) => {
+      hoisted.currentTab = { active: true, id: "note", slotId: "slot", type };
+      renderHook(() => useClassicMainShortcuts());
+      hoisted.handlers.get("mod+n")!();
+      expect(
+        type === "empty" ? hoisted.newNoteCurrent : hoisted.newNote,
+      ).toHaveBeenCalledOnce();
+      expect(
+        type === "empty" ? hoisted.newNote : hoisted.newNoteCurrent,
+      ).not.toHaveBeenCalled();
+      expect(hoisted.newNoteAndListen).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the explicit recording shortcut on its existing capture action", () => {
+    renderHook(() => useClassicMainShortcuts());
+    hoisted.handlers.get("mod+shift+n")!();
+    expect(hoisted.newNoteAndListen).toHaveBeenCalledOnce();
+    expect(hoisted.newNote).not.toHaveBeenCalled();
+    expect(hoisted.newNoteCurrent).not.toHaveBeenCalled();
   });
 
   it("does not bind removed shortcuts", () => {

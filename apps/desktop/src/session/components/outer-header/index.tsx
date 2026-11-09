@@ -10,8 +10,8 @@ import { OverflowButton } from "./overflow";
 
 import { useAudioPlayer } from "~/audio-player";
 import { useShell } from "~/contexts/shell";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import type { EditorView } from "~/store/zustand/tabs/schema";
-import { useListener } from "~/stt/contexts";
 import { useStartListening } from "~/stt/useStartListening";
 import {
   isMainWebviewWindow,
@@ -34,7 +34,9 @@ export function OuterHeader({
   onStartRecording?: () => void;
 }) {
   const { leftsidebar } = useShell();
-  const sessionMode = useListener((state) => state.getSessionMode(sessionId));
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
+  const sessionMode = legacy.mode;
   const showSidebarTimelineHeaderGutter =
     !standaloneWindow && !leftsidebar.expanded;
   const showExpandedSidebarTimelineHeader = leftsidebar.expanded;
@@ -84,11 +86,13 @@ export function OuterHeader({
         data-tauri-drag-region
         className="relative z-10 ml-auto flex shrink-0 items-center gap-0 pr-1"
       >
-        <HeaderMeetingControl
-          sessionId={sessionId}
-          sessionMode={sessionMode}
-          onStartRecording={onStartRecording}
-        />
+        {isAvailable() && (
+          <HeaderMeetingControl
+            sessionId={sessionId}
+            sessionMode={sessionMode}
+            onStartRecording={onStartRecording}
+          />
+        )}
         <OverflowButton
           standaloneWindow={standaloneWindow}
           sessionId={sessionId}
@@ -109,16 +113,22 @@ function HeaderMeetingControl({
   sessionMode: string;
   onStartRecording?: () => void;
 }) {
-  const startListening = useStartListening(sessionId);
-  const { stop, stopTranscription } = useListener((state) => ({
-    stop: state.stop,
-    stopTranscription: state.stopTranscription,
-  }));
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
+  const startListening = useStartListening(sessionId, isAvailable);
+  const stop = useCallback(() => {
+    if (isAvailable()) legacy.listener!.getState().stop();
+  }, [isAvailable, legacy.listener]);
+  const stopTranscription = (id: string) =>
+    isAvailable()
+      ? legacy.listener!.getState().stopTranscription(id)
+      : Promise.resolve();
   const hasTranscript = useHasTranscript(sessionId);
   const { audioExists } = useAudioPlayer();
   const canResume = audioExists || hasTranscript;
   const { t } = useLingui();
   const start = useCallback(() => {
+    if (!isAvailable()) return;
     onStartRecording?.();
     if (!isMainWebviewWindow()) {
       void requestMainListenerControl("start", sessionId);
@@ -126,15 +136,16 @@ function HeaderMeetingControl({
     }
 
     void startListening();
-  }, [onStartRecording, sessionId, startListening]);
+  }, [onStartRecording, sessionId, startListening, isAvailable]);
   const stopListening = useCallback(() => {
+    if (!isAvailable()) return;
     if (!isMainWebviewWindow()) {
       void requestMainListenerControl("stop", sessionId);
       return;
     }
 
     stop();
-  }, [sessionId, stop]);
+  }, [sessionId, stop, isAvailable]);
   const action = (() => {
     if (sessionMode === "active") {
       return {

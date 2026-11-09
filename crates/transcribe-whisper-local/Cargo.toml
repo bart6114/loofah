@@ -41,6 +41,7 @@ owhisper-interface = { workspace = true }
 bytes = { workspace = true }
 serde_html_form = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 

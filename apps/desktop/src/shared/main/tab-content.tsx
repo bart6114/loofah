@@ -1,3 +1,6 @@
+import { Trans } from "@lingui/react/macro";
+
+import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
 import { TabContentNote } from "~/session";
 import {
   deferredView,
@@ -30,6 +33,16 @@ export function MainTabContent({ tab }: { tab: Tab }) {
 }
 
 function Content({ tab }: { tab: Tab }) {
+  const access = useLegacyDesktopAccess();
+  if (
+    tab.type === "onboarding" &&
+    !access.isAvailable("legacy_desktop_session_controls")
+  )
+    return (
+      <div role="status" className="text-muted-foreground p-6">
+        <Trans>This operation is unavailable for this connection.</Trans>
+      </div>
+    );
   if (tab.type === "sessions") {
     return <TabContentNote tab={tab} />;
   }

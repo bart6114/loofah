@@ -7,6 +7,7 @@ mod subtitle;
 pub use batch::transcript;
 pub use batch::{
     BatchParams, BatchProvider, BatchRunMode, BatchRunOutput, expects_progressive_batch, run_batch,
+    run_owned_whisper_batch,
 };
 pub use error::*;
 pub use events::*;

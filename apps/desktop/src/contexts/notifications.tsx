@@ -105,11 +105,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const hasActiveEnhancement = false;
 
-  const currentTab = useTabs(
-    (state: {
-      currentTab: ReturnType<typeof useTabs.getState>["currentTab"];
-    }) => state.currentTab,
-  );
+  const currentTab = useTabs((state) => state.currentTab);
   const isAiTab =
     currentTab?.type === "settings" &&
     ["transcription", "intelligence"].includes(currentTab.state?.tab ?? "");

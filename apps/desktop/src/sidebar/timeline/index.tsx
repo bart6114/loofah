@@ -21,39 +21,39 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
+  useLayoutEffect,
 } from "react";
 
 import { Button } from "@hypr/ui/components/ui/button";
 import { cn } from "@hypr/utils";
 
+import { UNDATED_ID, UNTAGGED_ID } from "./controller";
 import { TimelineItemComponent } from "./item";
-import { useTimelineSessionsTable } from "./queries";
-import {
-  CurrentTimeIndicator,
-  useCurrentTimeMs,
-  useSmartCurrentTime,
-} from "./realtime";
+import { usePagedTimeline } from "./queries";
+import { CurrentTimeIndicator, useCurrentTimeMs } from "./realtime";
 import {
   buildTimelineRows,
   getTimelineRowHeight,
   type TimelineRow,
 } from "./rows";
+import { TimelineStreamControl } from "./stream-control";
 import {
   useUpcomingMeetingStatus,
   useUpcomingMeetingLabelFormatter,
 } from "./upcoming-meeting";
 import {
-  buildTagTimelineBuckets,
-  buildTimelineBuckets,
-  deriveTimelineWindowData,
   getItemTimestamp,
   hasFutureTimelineItems,
   type TimelineBucket,
-  type TimelineSessionsTable,
 } from "./utils";
 
 import { useEnhancingSessionIds } from "~/ai/hooks/useEnhancingSessions";
-import { useDeleteSession } from "~/session/hooks/useDeleteSession";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
+import {
+  useDeleteSession,
+  useSessionDeletionAccess,
+} from "~/session/hooks/useDeleteSession";
 import { setSettingValue } from "~/settings/queries";
 import { useConfigValue } from "~/shared/config";
 import { scrollElementByWheel } from "~/shared/dom/scroll-wheel";
@@ -61,7 +61,6 @@ import { useMountEffect } from "~/shared/hooks/useMountEffect";
 import { useNativeContextMenu } from "~/shared/hooks/useNativeContextMenu";
 import { useTabs } from "~/store/zustand/tabs";
 import { useTimelineSelection } from "~/store/zustand/timeline-selection";
-import { useListener } from "~/stt/contexts";
 
 const EMPTY_BUCKETS: TimelineBucket[] = [];
 
@@ -76,69 +75,81 @@ export const TimelineView = memo(function TimelineView({
   const timezone = useConfigValue("timezone") || undefined;
   const groupBy: "date" | "tag" =
     useConfigValue("sidebar_group_by") === "tag" ? "tag" : "date";
-  const expandedTags = useConfigValue("sidebar_expanded_tags");
-  const timelineSessionsTable = useTimelineSessionsTable();
-
-  const { buckets: allBuckets, hasMoreFutureItems } = useTimelineData({
-    timelineSessionsTable,
-    timezone,
-    groupBy,
-  });
-  const expandedTagSet = useMemo(() => new Set(expandedTags), [expandedTags]);
-  // Tag sections default to collapsed: headers keep the full count but drop
-  // their items -- also from the flat selection keys below, so keyboard/shift
-  // selection skips hidden rows. Nested tag buckets (slash tags) only render
-  // when every ancestor is expanded; walk `parentId` rather than splitting ids
-  // so synthetic buckets like `Untagged` are never parsed as paths.
-  const buckets = useMemo(() => {
-    if (groupBy !== "tag") {
-      return allBuckets;
-    }
-    const bucketsById = new Map(
-      allBuckets.map((bucket) => [bucket.id, bucket]),
-    );
-    return allBuckets
-      .filter((bucket) => {
-        for (let p = bucket.parentId; p; p = bucketsById.get(p)?.parentId) {
-          if (!expandedTagSet.has(p)) {
-            return false;
-          }
-        }
-        return true;
-      })
-      .map((bucket) =>
-        expandedTagSet.has(bucket.id) ? bucket : { ...bucket, items: [] },
-      );
-  }, [allBuckets, expandedTagSet, groupBy]);
+  const timeline = usePagedTimeline();
+  const {
+    owner,
+    state,
+    available,
+    supported,
+    buckets,
+    table: timelineSessionsTable,
+    laterCount,
+  } = timeline;
+  const expandedTagSet = useMemo(
+    () =>
+      new Set([...state.expanded, ...(state.undatedOpen ? [UNDATED_ID] : [])]),
+    [state.expanded, state.undatedOpen],
+  );
+  const hasMoreFutureItems = laterCount > 0;
   const bucketItemCounts = useMemo(
     () =>
       new Map(
-        allBuckets.map((bucket) => [
+        buckets.map((bucket) => [
           bucket.id,
           bucket.totalCount ?? bucket.items.length,
         ]),
       ),
-    [allBuckets],
+    [buckets],
+  );
+  const persistExpanded = useCallback(
+    (next: string[]) => {
+      owner.setExpanded(next);
+      const paths = next.flatMap((id) => {
+        if (id === UNTAGGED_ID) return ["Untagged"];
+        try {
+          const value: unknown = JSON.parse(id);
+          return Array.isArray(value) &&
+            value[0] === "tag" &&
+            typeof value[1] === "string"
+            ? [value[1]]
+            : [];
+        } catch {
+          return [];
+        }
+      });
+      void setSettingValue(
+        "sidebar_expanded_tags",
+        JSON.stringify([...new Set(paths)]),
+      );
+    },
+    [owner],
   );
   const toggleTagExpanded = useCallback(
-    (label: string) => {
-      const next = expandedTags.includes(label)
-        ? expandedTags.filter((tag) => tag !== label)
-        : [...expandedTags, label];
-      void setSettingValue("sidebar_expanded_tags", JSON.stringify(next));
+    (id: string) => {
+      if (id === UNDATED_ID) {
+        owner.toggleUndated();
+        return;
+      }
+      persistExpanded(
+        state.expanded.includes(id)
+          ? state.expanded.filter((value) => value !== id)
+          : [...state.expanded, id],
+      );
     },
-    [expandedTags],
+    [owner, state.expanded, persistExpanded],
   );
-  const anyTagExpanded = useMemo(
-    () =>
-      groupBy === "tag" &&
-      allBuckets.some((bucket) => expandedTagSet.has(bucket.id)),
-    [allBuckets, expandedTagSet, groupBy],
-  );
+  const anyTagExpanded =
+    groupBy === "tag" &&
+    buckets.some((bucket) => expandedTagSet.has(bucket.id));
   const toggleAllTagsExpanded = useCallback(() => {
-    const next = anyTagExpanded ? [] : allBuckets.map((bucket) => bucket.id);
-    void setSettingValue("sidebar_expanded_tags", JSON.stringify(next));
-  }, [allBuckets, anyTagExpanded]);
+    const all = [
+      ...(state.facets?.nodes.map((node) =>
+        JSON.stringify(["tag", node.path]),
+      ) ?? []),
+      UNTAGGED_ID,
+    ];
+    persistExpanded(anyTagExpanded ? [] : all);
+  }, [state.facets, anyTagExpanded, persistExpanded]);
   const hasToday = useMemo(
     () =>
       groupBy === "date" && buckets.some((bucket) => bucket.label === "Today"),
@@ -150,11 +161,11 @@ export const TimelineView = memo(function TimelineView({
     groupBy === "date" ? buckets : EMPTY_BUCKETS,
     formatUpcomingMeetingLabel,
   );
-  const activeSessionId = useListener((state) =>
-    state.live.status === "active" || state.live.status === "finalizing"
-      ? state.live.sessionId
-      : null,
-  );
+  const legacy = useLegacySessionActivity("");
+  const activeSessionId =
+    legacy.liveStatus === "active" || legacy.liveStatus === "finalizing"
+      ? legacy.liveSessionId
+      : null;
   const enhancingSessionIds = useEnhancingSessionIds();
   const enhancingSessionIdSet = useMemo(
     () => new Set(enhancingSessionIds),
@@ -182,7 +193,10 @@ export const TimelineView = memo(function TimelineView({
   const anchorId = useTimelineSelection((s) => s.anchorId);
   const selectAll = useTimelineSelection((s) => s.selectAll);
   const clearSelection = useTimelineSelection((s) => s.clear);
+  const reconcileSelection = useTimelineSelection((s) => s.reconcile);
   const deleteSession = useDeleteSession();
+  const { isAvailable: deletionAvailable, available: deletionEnabled } =
+    useSessionDeletionAccess();
 
   const flatItemKeys = useMemo(() => {
     // Deduped: in tag mode a multi-tag session appears in several buckets but
@@ -195,6 +209,10 @@ export const TimelineView = memo(function TimelineView({
     }
     return [...keys];
   }, [buckets]);
+  useEffect(
+    () => reconcileSelection(flatItemKeys),
+    [reconcileSelection, flatItemKeys],
+  );
   const flatItemKeysRef = useRef(flatItemKeys);
   flatItemKeysRef.current = flatItemKeys;
   const getFlatItemKeys = useCallback(() => flatItemKeysRef.current, []);
@@ -229,25 +247,55 @@ export const TimelineView = memo(function TimelineView({
   );
   const suppressCurrentTimeIndicator =
     groupBy === "tag" || hasActiveVisibleSession || !hasFutureItems;
-  const rows = useMemo(
-    () =>
-      buildTimelineRows({
-        buckets,
-        currentTimeMs: indicatorTimeMs,
-        fallbackIndicatorIndex: indicatorIndex,
-        groupBy,
-        hasToday,
-        suppressCurrentTimeIndicator,
-      }),
-    [
+  const rows = useMemo(() => {
+    const base = buildTimelineRows({
       buckets,
+      currentTimeMs: indicatorTimeMs,
+      fallbackIndicatorIndex: indicatorIndex,
       groupBy,
       hasToday,
-      indicatorIndex,
-      indicatorTimeMs,
       suppressCurrentTimeIndicator,
-    ],
-  );
+    });
+    const result: TimelineRow[] = [];
+    const bucketsById = new Map(buckets.map((bucket) => [bucket.id, bucket]));
+    if (groupBy === "date")
+      result.push({ kind: "page", key: "page:future", streamKey: "future" });
+    for (let index = 0; index < base.length; index++) {
+      const row = base[index]!;
+      result.push(row);
+      const bucketId =
+        row.kind === "bucket-header"
+          ? row.bucket.id
+          : row.kind === "session"
+            ? row.bucketId
+            : null;
+      const next = base[index + 1];
+      if (bucketId && (!next || next.kind === "bucket-header")) {
+        const bucket = bucketsById.get(bucketId);
+        if (
+          bucket?.streamKey &&
+          expandedTagSet.has(bucketId) &&
+          (bucket.directCount ?? 0) > 0
+        )
+          result.push({
+            kind: "page",
+            key: `page:${bucketId}`,
+            streamKey: bucket.streamKey,
+          });
+      }
+    }
+    if (groupBy === "date")
+      result.push({ kind: "page", key: "page:past", streamKey: "past" });
+    return result;
+  }, [
+    buckets,
+    expandedTagSet,
+    groupBy,
+    hasToday,
+    indicatorIndex,
+    indicatorTimeMs,
+    suppressCurrentTimeIndicator,
+  ]);
   const bucketHeaderIndexes = useMemo(
     () =>
       rows.flatMap((row, index) =>
@@ -297,7 +345,20 @@ export const TimelineView = memo(function TimelineView({
       : "h-8";
   const topSpacerHeight = topChromeInset ? 48 : topChipsOverlapHeader ? 36 : 32;
   const showTopSpacer = topChromeInset || hasMoreFutureItems;
-  const timelinePreludeHeight = (showTopSpacer ? topSpacerHeight : 0) + 27;
+  const preludeRef = useRef<HTMLDivElement>(null);
+  const [preludeHeight, setPreludeHeight] = useState(27);
+  useLayoutEffect(() => {
+    const element = preludeRef.current;
+    if (!element) return;
+    const measure = () =>
+      setPreludeHeight(element.getBoundingClientRect().height || 27);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const timelinePreludeHeight =
+    (showTopSpacer ? topSpacerHeight : 0) + preludeHeight;
   const topChipStackTopClassName = topChromeInset
     ? "top-4"
     : topChipsOverlapHeader
@@ -314,6 +375,34 @@ export const TimelineView = memo(function TimelineView({
     scrollMargin: timelinePreludeHeight,
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
+  const visibleBucketIds = virtualRows
+    .flatMap((virtualRow) => {
+      const row = rows[virtualRow.index];
+      return row?.kind === "bucket-header"
+        ? [row.bucket.id]
+        : row?.kind === "session"
+          ? [row.bucketId]
+          : row?.kind === "page"
+            ? [row.streamKey]
+            : [];
+    })
+    .join("\n");
+  useEffect(() => {
+    if (!available) return;
+    const visible = new Set(visibleBucketIds.split("\n"));
+    owner.ensureVisible(
+      buckets.flatMap((bucket) =>
+        visible.has(bucket.id) &&
+        expandedTagSet.has(bucket.id) &&
+        (bucket.directCount ?? 0) > 0 &&
+        bucket.streamKey &&
+        bucket.view
+          ? [{ key: bucket.streamKey, view: bucket.view }]
+          : [],
+      ),
+    );
+  }, [owner, available, visibleBucketIds, buckets, expandedTagSet]);
+
   const isTodayVisible = isVirtualRowVisible(
     rowVirtualizer,
     virtualRows,
@@ -372,7 +461,7 @@ export const TimelineView = memo(function TimelineView({
     const todayLengthChanged =
       previousTodayBucketLengthRef.current !== todayBucketLength;
     previousTodayBucketLengthRef.current = todayBucketLength;
-    if (initialNowScrollDoneRef.current && !todayLengthChanged) {
+    if (initialNowScrollDoneRef.current || owner.readViewport(groupBy)) {
       return;
     }
     initialNowScrollDoneRef.current = true;
@@ -392,20 +481,37 @@ export const TimelineView = memo(function TimelineView({
     isTodayVisible,
     rowVirtualizer,
     todayBucketLength,
+    owner,
+    groupBy,
   ]);
+  const initialWindowReady =
+    groupBy === "date"
+      ? Boolean(
+          state.streams.get("past")?.pages.length &&
+          state.streams.get("future")?.pages.length,
+        )
+      : Boolean(state.facets && !state.facetsPending);
+  const lastSelectedScroll = useRef<string | undefined>(undefined);
   useEffect(() => {
+    if (lastSelectedScroll.current === selectedSessionId) return;
+    if (currentTab?.type !== "sessions") {
+      lastSelectedScroll.current = undefined;
+      return;
+    }
+    if (selectedSessionRowIndex < 0) {
+      if (initialWindowReady) lastSelectedScroll.current = selectedSessionId;
+      return;
+    }
+    lastSelectedScroll.current = selectedSessionId;
     if (
-      currentTab?.type !== "sessions" ||
-      selectedSessionRowIndex < 0 ||
+      owner.readViewport(groupBy) ||
       isVirtualRowVisible(
         rowVirtualizer,
         rowVirtualizer.getVirtualItems(),
         selectedSessionRowIndex,
       )
-    ) {
+    )
       return;
-    }
-
     const frame = requestAnimationFrame(() => {
       rowVirtualizer.scrollToIndex(selectedSessionRowIndex, {
         align: "center",
@@ -413,7 +519,70 @@ export const TimelineView = memo(function TimelineView({
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [currentTab?.type, rowVirtualizer, selectedSessionRowIndex]);
+  }, [
+    currentTab?.type,
+    selectedSessionId,
+    rowVirtualizer,
+    selectedSessionRowIndex,
+    initialWindowReady,
+    owner,
+    groupBy,
+  ]);
+
+  const viewportKey = groupBy;
+  const restoreAttempt = useRef<string | null>(null);
+  const cohort = `${state.epoch}:${groupBy}`;
+  useEffect(() => {
+    if (restoreAttempt.current === cohort) return;
+    const saved = owner.readViewport(viewportKey);
+    if (!saved) {
+      restoreAttempt.current = cohort;
+      return;
+    }
+    if (
+      !state.revision ||
+      state !== owner.getSnapshot() ||
+      [...state.streams.values()].some((stream) => stream.pending) ||
+      (groupBy === "date"
+        ? !state.streams.get("past")?.pages.length ||
+          !state.streams.get("future")?.pages.length
+        : !state.facets)
+    )
+      return;
+    restoreAttempt.current = cohort;
+    initialNowScrollDoneRef.current = true;
+    const index = rows.findIndex(
+      (row) =>
+        row.kind === "session" &&
+        row.item.id === saved.sessionId &&
+        row.bucketId === saved.bucketId,
+    );
+    if (index >= 0) {
+      rowVirtualizer.scrollToIndex(index, { align: "start", behavior: "auto" });
+      const element = containerRef.current;
+      if (element) element.scrollTop += saved.offset;
+    } else {
+      if (containerRef.current) containerRef.current.scrollTop = 0;
+      owner.viewportUnavailable();
+    }
+  }, [cohort, owner, viewportKey, rows, rowVirtualizer, state, groupBy]);
+  const rememberViewport = useCallback(() => {
+    const scrollTop = containerRef.current?.scrollTop ?? 0;
+    const first = rowVirtualizer
+      .getVirtualItems()
+      .find(
+        (value) =>
+          value.end > scrollTop && rows[value.index]?.kind === "session",
+      );
+    const row = first ? rows[first.index] : undefined;
+    if (first && row?.kind === "session")
+      owner.saveViewport(viewportKey, {
+        sessionId: row.item.id,
+        bucketId: row.bucketId,
+        offset: scrollTop - first.start,
+        revision: state.revision,
+      });
+  }, [owner, viewportKey, rows, rowVirtualizer, state.revision]);
 
   useMountEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -461,6 +630,7 @@ export const TimelineView = memo(function TimelineView({
   });
 
   const handleDeleteSelected = useCallback(() => {
+    if (!deletionAvailable()) return;
     const sessionIds = selectedIds
       .filter((key) => key.startsWith("session-"))
       .map((key) => key.replace("session-", ""));
@@ -475,7 +645,13 @@ export const TimelineView = memo(function TimelineView({
     }
 
     clearSelection();
-  }, [selectedIds, deleteSession, clearSelection, timelineSessionsTable]);
+  }, [
+    selectedIds,
+    deleteSession,
+    clearSelection,
+    timelineSessionsTable,
+    deletionAvailable,
+  ]);
 
   const sessionCount = useMemo(
     () => selectedIds.filter((key) => key.startsWith("session-")).length,
@@ -490,11 +666,11 @@ export const TimelineView = memo(function TimelineView({
               id: "delete-selected",
               text: t`Delete Selected (${sessionCount})`,
               action: handleDeleteSelected,
-              disabled: sessionCount === 0,
+              disabled: sessionCount === 0 || !deletionEnabled,
             },
           ]
         : [],
-    [selectedIds, sessionCount, handleDeleteSelected, t],
+    [selectedIds, sessionCount, handleDeleteSelected, t, deletionEnabled],
   );
 
   const showContextMenu = useNativeContextMenu(contextMenuItems);
@@ -526,6 +702,7 @@ export const TimelineView = memo(function TimelineView({
         ref={containerRef}
         data-sidebar-timeline-scroll
         onContextMenu={showContextMenu}
+        onScroll={rememberViewport}
         className={cn(["flex h-full flex-col overflow-y-auto", "rounded-xl"])}
       >
         {(topChromeInset || hasMoreFutureItems) && (
@@ -535,45 +712,112 @@ export const TimelineView = memo(function TimelineView({
             className={cn([topSpacerClassName, "shrink-0"])}
           />
         )}
-        <div
-          data-sidebar-timeline-group-toggle
-          className="flex shrink-0 items-center gap-2.5 pt-2 pb-1 pl-3"
-        >
-          {(["date", "tag"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              aria-pressed={mode === groupBy}
-              onClick={() => void setSettingValue("sidebar_group_by", mode)}
-              className={cn([
-                "rounded-sm text-[11px] font-medium transition-none",
-                "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-hidden",
-                mode === groupBy
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              ])}
-            >
-              {mode === "date" ? t`By date` : t`By tag`}
-            </button>
-          ))}
-          {groupBy === "tag" && (
-            <button
-              type="button"
-              aria-label={anyTagExpanded ? t`Collapse all` : t`Expand all`}
-              title={anyTagExpanded ? t`Collapse all` : t`Expand all`}
-              onClick={toggleAllTagsExpanded}
-              className={cn([
-                "mr-3 ml-auto",
-                "text-muted-foreground hover:text-foreground transition-none",
-              ])}
-            >
-              {anyTagExpanded ? (
-                <ChevronsDownUpIcon size={13} />
-              ) : (
-                <ChevronsUpDownIcon size={13} />
+        <div ref={preludeRef}>
+          <div
+            data-sidebar-timeline-group-toggle
+            className="flex shrink-0 items-center gap-2.5 pt-2 pb-1 pl-3"
+          >
+            {(["date", "tag"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={mode === groupBy}
+                onClick={() => void setSettingValue("sidebar_group_by", mode)}
+                className={cn([
+                  "rounded-sm text-[11px] font-medium transition-none",
+                  "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-hidden",
+                  mode === groupBy
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                ])}
+              >
+                {mode === "date" ? t`By date` : t`By tag`}
+              </button>
+            ))}
+            {groupBy === "tag" && (
+              <button
+                type="button"
+                aria-label={anyTagExpanded ? t`Collapse all` : t`Expand all`}
+                title={anyTagExpanded ? t`Collapse all` : t`Expand all`}
+                onClick={toggleAllTagsExpanded}
+                className={cn([
+                  "mr-3 ml-auto",
+                  "text-muted-foreground hover:text-foreground transition-none",
+                ])}
+              >
+                {anyTagExpanded ? (
+                  <ChevronsDownUpIcon size={13} />
+                ) : (
+                  <ChevronsUpDownIcon size={13} />
+                )}
+              </button>
+            )}
+          </div>
+          <div
+            className="text-muted-foreground px-3 text-xs"
+            aria-live="polite"
+          >
+            {!supported ? (
+              <p>
+                <Trans>This server does not support the timeline.</Trans>
+              </p>
+            ) : !available ? (
+              <p>
+                <Trans>Vault unavailable</Trans>
+              </p>
+            ) : null}
+            {timeline.connection.state === "reconnecting" && (
+              <p>
+                <Trans>Reconnecting… Loaded notes remain available.</Trans>
+              </p>
+            )}
+            {state.notice && (
+              <button type="button" onClick={() => owner.clearNotice()}>
+                {state.notice === "anchor_missing" ? (
+                  <Trans>
+                    The previous note is outside the refreshed window. Scroll
+                    position was reset.
+                  </Trans>
+                ) : (
+                  <Trans>
+                    The timeline changed. Its loaded window was refreshed.
+                  </Trans>
+                )}
+              </button>
+            )}
+            {state.facetsError && groupBy === "tag" && (
+              <p role="alert">
+                {state.facetsError.message}{" "}
+                <button onClick={() => owner.retryFacets()}>
+                  <Trans>Retry</Trans>
+                </button>
+              </p>
+            )}
+            {state.facetsPending && groupBy === "tag" && (
+              <p role="status">
+                <Trans>Loading tags…</Trans>
+              </p>
+            )}
+            {sessionCount > 0 && (
+              <p>
+                <Trans>{sessionCount} loaded notes selected</Trans>
+              </p>
+            )}
+            {selectedSessionId &&
+              !flatSessionItemKeys.includes(`session-${selectedSessionId}`) &&
+              state.revision && (
+                <p>
+                  <Trans>
+                    The open note is outside this loaded timeline window.
+                  </Trans>
+                </p>
               )}
-            </button>
-          )}
+            {hasMoreFutureItems && !state.allFuture && (
+              <button onClick={() => owner.showFuture()}>
+                <Trans>Show later dates ({laterCount})</Trans>
+              </button>
+            )}
+          </div>
         </div>
         <div
           data-sidebar-timeline-virtual-canvas
@@ -646,37 +890,43 @@ export const TimelineView = memo(function TimelineView({
         />
       )}
 
-      {(showUpcomingMeetingChip || showTopNowChip) && (
-        <div
-          data-sidebar-timeline-top-chip-stack
-          className={cn([
-            "absolute left-1/2 z-20 flex -translate-x-1/2 transform flex-col items-center gap-2",
-            topChipStackTopClassName,
-          ])}
-        >
-          {upcomingMeetingStatus && showUpcomingMeetingChip && (
-            <SidebarUpcomingMeetingStatus
-              label={upcomingMeetingStatus.label}
-              onClick={scrollToUpcomingMeeting}
-              title={upcomingMeetingStatus.title}
-            />
-          )}
-          {showTopNowChip && (
-            <TimelineNowChip direction="up" onClick={scrollToToday} />
-          )}
-        </div>
-      )}
+      {available &&
+        supported &&
+        (showUpcomingMeetingChip || showTopNowChip) && (
+          <div
+            data-sidebar-timeline-top-chip-stack
+            className={cn([
+              "absolute left-1/2 z-20 flex -translate-x-1/2 transform flex-col items-center gap-2",
+              topChipStackTopClassName,
+            ])}
+          >
+            {upcomingMeetingStatus && showUpcomingMeetingChip && (
+              <SidebarUpcomingMeetingStatus
+                label={upcomingMeetingStatus.label}
+                onClick={scrollToUpcomingMeeting}
+                title={upcomingMeetingStatus.title}
+              />
+            )}
+            {showTopNowChip && (
+              <TimelineNowChip direction="up" onClick={scrollToToday} />
+            )}
+          </div>
+        )}
 
-      {!showUpcomingMeetingChip && !isTodayVisible && !isScrolledPastToday && (
-        <TimelineNowChip
-          onClick={scrollToToday}
-          direction="down"
-          className={cn([
-            "absolute bottom-2 left-1/2 -translate-x-1/2 transform",
-            "z-40",
-          ])}
-        />
-      )}
+      {available &&
+        supported &&
+        !showUpcomingMeetingChip &&
+        !isTodayVisible &&
+        !isScrolledPastToday && (
+          <TimelineNowChip
+            onClick={scrollToToday}
+            direction="down"
+            className={cn([
+              "absolute bottom-2 left-1/2 -translate-x-1/2 transform",
+              "z-40",
+            ])}
+          />
+        )}
     </div>
   );
 });
@@ -706,6 +956,9 @@ function TimelineVirtualRow({
   toggleTagExpanded: (bucketId: string) => void;
   upcomingMeetingStatus: ReturnType<typeof useUpcomingMeetingStatus>;
 }) {
+  if (row.kind === "page")
+    return <TimelineStreamControl streamKey={row.streamKey} />;
+
   if (row.kind === "bucket-header") {
     const { bucket } = row;
     return (
@@ -734,7 +987,9 @@ function TimelineVirtualRow({
             ) : (
               <ChevronRightIcon size={12} className="shrink-0" />
             )}
-            <span className="truncate">{bucket.label}</span>
+            <span className="truncate">
+              {bucket.id === UNDATED_ID ? <Trans>Undated</Trans> : bucket.label}
+            </span>
             <span className="tracking-normal">
               ({bucketItemCounts.get(bucket.id) ?? 0})
             </span>
@@ -1031,48 +1286,4 @@ function isVirtualRowVisible(
     row.end > scrollOffset + margin &&
     row.start < scrollOffset + viewportHeight - margin
   );
-}
-
-function useTimelineData({
-  timelineSessionsTable,
-  timezone,
-  groupBy,
-}: {
-  timelineSessionsTable: TimelineSessionsTable;
-  timezone?: string;
-  groupBy: "date" | "tag";
-}): {
-  buckets: TimelineBucket[];
-  hasMoreFutureItems: boolean;
-} {
-  // Tag mode has no date window: every session shows under its tags, so the
-  // future-items filtering (and its "more" affordance) doesn't apply.
-  const windowData = useMemo(
-    () =>
-      groupBy === "tag"
-        ? { timelineSessionsTable, hasMoreFutureItems: false }
-        : deriveTimelineWindowData({ timelineSessionsTable, timezone }),
-    [groupBy, timelineSessionsTable, timezone],
-  );
-  const currentTimeMs = useSmartCurrentTime(windowData.timelineSessionsTable);
-  // Tag buckets are time-independent; pinning the dep keeps the minute tick
-  // from rebuilding every bucket/item identity in tag mode.
-  const bucketTimeMs = groupBy === "tag" ? 0 : currentTimeMs;
-
-  return useMemo(() => {
-    const buckets =
-      groupBy === "tag"
-        ? buildTagTimelineBuckets({
-            timelineSessionsTable: windowData.timelineSessionsTable,
-          })
-        : buildTimelineBuckets({
-            timelineSessionsTable: windowData.timelineSessionsTable,
-            timezone,
-          });
-
-    return {
-      buckets,
-      hasMoreFutureItems: windowData.hasMoreFutureItems,
-    };
-  }, [groupBy, windowData, bucketTimeMs, timezone]);
 }

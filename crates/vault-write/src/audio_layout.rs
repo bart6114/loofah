@@ -7,6 +7,16 @@ impl SessionStore {
         &self,
         id: &str,
     ) -> Result<tokio::sync::OwnedMutexGuard<()>, StoreError> {
+        self.ensure_append_ready(id)?;
+        let guard = self.lock_session_audio_for_append(id).await?;
+        self.ensure_append_ready(id)?;
+        Ok(guard)
+    }
+
+    pub(crate) async fn lock_session_audio_for_append(
+        &self,
+        id: &str,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, StoreError> {
         super::validate_session_id(id)?;
         let _writes = self.lock_writes().await;
         self.ensure_ready()?;
@@ -32,6 +42,7 @@ impl SessionStore {
         guard: &WriteGuard<'_>,
         id: &str,
     ) -> Result<SessionAudio, StoreError> {
+        self.ensure_append_ready(id)?;
         let mut meta = self
             .read_meta(id)
             .await?
@@ -50,11 +61,12 @@ impl SessionStore {
         }
         let vault = self.vault_base.clone();
         let dir = self.session_dir(id).await?;
-        let transcripts = tokio::task::spawn_blocking(move || {
-            hypr_vault_read::transcript::read_transcript_json_in(&vault, &dir)
-        })
-        .await
-        .map_err(|e| StoreError::Io(e.to_string()))??;
+        let transcripts = self
+            .spawn_blocking(move || {
+                hypr_vault_read::transcript::read_transcript_json_in(&vault, &dir)
+            })
+            .await
+            .map_err(|e| StoreError::Io(e.to_string()))??;
         let words = transcripts.transcripts.iter().flat_map(|t| &t.words);
         let sources: Vec<_> = words
             .map(|w| {

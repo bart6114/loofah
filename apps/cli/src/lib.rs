@@ -1,10 +1,14 @@
 #![forbid(unsafe_code)]
 
+mod agent_reader;
 mod cli;
+mod command_gateway;
 mod commands;
 mod error;
+mod local_owner;
 mod mcp;
 mod output;
+mod profiles;
 mod vault;
 
 pub use cli::Args;
@@ -12,138 +16,155 @@ pub use error::{Error, Result};
 pub use output::JSON_SCHEMA_VERSION;
 
 pub async fn run(args: Args) -> Result<u8> {
+    let json_progress = args.json || matches!(&args.command, cli::Command::Mcp);
+    // Keep the task-local wrapper and main runtime future small. The command
+    // remains on this task, so progress and cancellation behavior are unchanged.
+    output::with_progress_format(json_progress, Box::pin(run_inner(args))).await
+}
+
+async fn run_inner(args: Args) -> Result<u8> {
+    if let cli::Command::Profiles { command } = args.command {
+        if args.profile.is_some() || args.base.is_some() || args.vault_path.is_some() {
+            return Err(Error::operation(
+                "manage server profiles",
+                "Profile management does not accept --profile, --base, or --vault-path",
+            ));
+        }
+        profiles::run(command, args.json).await?;
+        return Ok(0);
+    }
+    if let Some(name) = &args.profile {
+        match &args.command {
+            cli::Command::Sessions { .. }
+            | cli::Command::Tags { .. }
+            | cli::Command::Mcp
+            | cli::Command::Import { .. }
+            | cli::Command::Transcribe { .. } => {}
+            _ => {
+                return Err(Error::operation(
+                    "run remote command",
+                    "This command is not available for server profiles yet. No local vault was accessed.",
+                ));
+            }
+        }
+        let target = profiles::RemoteTarget::select(name).await?;
+        let reader = agent_reader::AgentReader::Remote(target.clone());
+        match args.command {
+            cli::Command::Sessions { command } => {
+                commands::meetings::run_with_reader(&reader, command, args.json).await?
+            }
+            cli::Command::Tags { command } => {
+                commands::tags::run_with_reader(&reader, command, args.json).await?
+            }
+            cli::Command::Import {
+                file,
+                title,
+                into,
+                transcribe,
+                created_at,
+                started_at,
+                ended_at,
+                author,
+                skill,
+            } => {
+                // Remote media recovery/upload state must not enlarge every Local command.
+                return Box::pin(async {
+                    target
+                        .begin_media()
+                        .await?
+                        .import_media(
+                            file,
+                            title,
+                            into,
+                            transcribe,
+                            commands::NewSessionOptions {
+                                created_at,
+                                started_at,
+                                ended_at,
+                                author,
+                                skill,
+                                tags: Vec::new(),
+                            },
+                            args.json,
+                        )
+                        .await
+                })
+                .await;
+            }
+            cli::Command::Transcribe { id } => {
+                Box::pin(async {
+                    target
+                        .begin_media()
+                        .await?
+                        .transcribe_media(&id, args.json)
+                        .await
+                })
+                .await?
+            }
+            cli::Command::Mcp => mcp::serve_with_reader(reader).await?,
+            _ => unreachable!("remote commands were checked before selecting the profile"),
+        }
+        return Ok(0);
+    }
     if matches!(&args.command, cli::Command::Doctor) {
-        let ready = commands::doctor::run(&args, args.json)?;
+        let ready = commands::doctor::run(&args, args.json).await?;
         return Ok(if ready { 0 } else { 1 });
     }
     let vault = vault::open(&args)?;
-    let cache = hypr_search_cache::Cache::for_vault(&vault)?;
-    let explicit_init = matches!(&args.command, cli::Command::Init);
-    let worker = cache.clone();
-    let json = args.json;
-    let report = tokio::task::spawn_blocking(move || {
-        if !explicit_init {
-            match worker.check() {
-                Ok(()) => return Ok(None),
-                Err(hypr_search_cache::Error::NotReady) => {}
-                Err(error) => return Err(error),
+    let cache = crate::vault::cache_for_vault(&vault)?;
+    if matches!(&args.command, cli::Command::Init) {
+        let progress = std::sync::Arc::new(move |event: hypr_loofah_protocol::LocalCliProgress| {
+            use std::io::Write;
+            let mut stderr = std::io::stderr().lock();
+            if args.json {
+                let _ = writeln!(stderr, "{}", serde_json::to_string(&event).unwrap());
+            } else {
+                let _ = writeln!(
+                    stderr,
+                    "{}: {} / {}",
+                    event.phase,
+                    event.processed,
+                    event
+                        .total
+                        .map(|total| total.to_string())
+                        .unwrap_or_else(|| "?".into())
+                );
             }
-        }
-        worker
-            .initialize(&mut |event| {
-                use std::io::Write;
-                let mut stderr = std::io::stderr().lock();
-                if json {
-                    let _ = writeln!(stderr, "{}", serde_json::to_string(&event).unwrap());
-                } else {
-                    let _ = writeln!(
-                        stderr,
-                        "{}: {} / {}",
-                        event.phase,
-                        event.processed,
-                        event
-                            .total
-                            .map(|total| total.to_string())
-                            .unwrap_or_else(|| "?".into())
-                    );
-                }
-                let _ = stderr.flush();
-            })
-            .map(Some)
-    })
-    .await
-    .map_err(|error| Error::operation("prepare cache", error.to_string()))??;
-    if explicit_init {
-        let report = report.expect("explicit init always initializes the cache");
+            let _ = stderr.flush();
+        });
+        let response = local_owner::LocalGateway::new(vault, cache)
+            .execute_with_upload(
+                hypr_loofah_protocol::LocalCliOperation::Initialize {},
+                None,
+                progress,
+            )
+            .await?;
+        let hypr_loofah_protocol::LocalCliReply::Initialized {
+            cache_path,
+            added,
+            updated,
+            deleted,
+            sessions,
+        } = response.response.result?
+        else {
+            return Err(profiles::unexpected());
+        };
         if args.json {
             output::emit(&output::json(
                 "init",
-                &serde_json::json!({ "cache_path": cache.path(), "ready": true, "added": report.added, "updated": report.updated, "deleted": report.deleted, "sessions": report.sessions }),
+                &serde_json::json!({ "cache_path": cache_path, "ready": true, "added": added, "updated": updated, "deleted": deleted, "sessions": sessions }),
                 None,
             )?);
         } else {
             output::emit(&format!(
                 "Search cache ready: {} ({} sessions)",
-                cache.path().display(),
-                report.sessions
+                cache_path.display(),
+                sessions
             ));
         }
         return Ok(0);
     }
-    let mutation = match &args.command {
-        cli::Command::Sessions { command } => {
-            matches!(
-                command,
-                cli::MeetingCommand::New { .. }
-                    | cli::MeetingCommand::Rename { .. }
-                    | cli::MeetingCommand::Delete { .. }
-                    | cli::MeetingCommand::Tag { .. }
-                    | cli::MeetingCommand::Attach { .. }
-            ) || matches!(command, cli::MeetingCommand::Note { set, append, .. } if set.is_some() || append.is_some())
-        }
-        cli::Command::Import { .. } | cli::Command::Transcribe { .. } => true,
-        _ => false,
-    };
-    if !mutation {
-        return dispatch(args, &vault, &cache).await;
-    }
-    let (result, pending_output, before) =
-        output::capture(cache.clone(), dispatch(args, &vault, &cache)).await;
-    let worker = cache.clone();
-    let (changed, persisted, reconciliation) = tokio::task::spawn_blocking(move || {
-        let mut changed = Vec::new();
-        let mut persisted = false;
-        for (id, prior) in &before {
-            match worker.sources_for(std::slice::from_ref(id)) {
-                Ok(after) if prior != &after => {
-                    persisted = true;
-                    changed.push(id.clone());
-                }
-                Err(_) => {
-                    persisted = true;
-                    changed.push(id.clone());
-                }
-                _ => {}
-            }
-        }
-        let ids: Vec<_> = before.into_keys().collect();
-        let reconciliation = if ids.is_empty() {
-            Ok(Default::default())
-        } else {
-            worker.reconcile_sessions(&ids)
-        };
-        (changed, persisted, reconciliation)
-    })
-    .await
-    .map_err(|error| Error::operation("reconcile write", error.to_string()))?;
-    match (result, reconciliation) {
-        (Ok(status), Ok(_)) => {
-            for text in pending_output {
-                output::emit(&text);
-            }
-            Ok(status)
-        }
-        (Err(error), Ok(_)) if !persisted => Err(error),
-        (Ok(_), Err(error)) if !persisted => Err(error.into()),
-        (result, reconciliation) => {
-            let reason = [
-                result.err().map(|error| error.to_string()),
-                reconciliation.err().map(|error| error.to_string()),
-            ]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join("; ");
-            if persisted {
-                Err(Error::WritePersisted {
-                    reason,
-                    session_ids: changed,
-                })
-            } else {
-                Err(Error::operation("complete command", reason))
-            }
-        }
-    }
+    dispatch(args, &vault, &cache).await
 }
 
 async fn dispatch(
@@ -152,7 +173,7 @@ async fn dispatch(
     cache: &hypr_search_cache::Cache,
 ) -> Result<u8> {
     match args.command {
-        cli::Command::Doctor | cli::Command::Init => {
+        cli::Command::Profiles { .. } | cli::Command::Doctor | cli::Command::Init => {
             unreachable!("setup commands return before dispatch")
         }
         cli::Command::Sessions { command } => {
@@ -182,13 +203,18 @@ async fn dispatch(
             )
             .await;
         }
-        cli::Command::Transcribe { id } => commands::transcribe::run(vault, &id, args.json).await?,
+        cli::Command::Transcribe { id } => {
+            commands::transcribe::run(vault, &id, args.json).await?;
+        }
         cli::Command::Mcp => mcp::serve(vault.to_path_buf(), cache.clone()).await?,
         cli::Command::Tags { command } => commands::tags::run(cache, command, args.json).await?,
     }
 
     Ok(0)
 }
+
+#[cfg(test)]
+mod future_sizes;
 
 #[cfg(test)]
 mod tests {
@@ -198,6 +224,7 @@ mod tests {
     async fn doctor_returns_nonzero_status_when_vault_is_not_ready() {
         let dir = tempfile::tempdir().unwrap();
         let status = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(dir.path().join("missing-vault")),
             json: true,
@@ -277,6 +304,7 @@ mod tests {
 
     fn meetings_args(vault: &std::path::Path, command: cli::MeetingCommand) -> Args {
         Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.to_path_buf()),
             json: false,
@@ -293,6 +321,7 @@ mod tests {
         std::fs::write(&body_path, "Decide the launch date.\n").unwrap();
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -346,6 +375,7 @@ mod tests {
 
         // The existing read path sees the new session.
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: true,
@@ -369,6 +399,7 @@ mod tests {
         std::fs::create_dir_all(&vault).unwrap();
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -408,6 +439,7 @@ mod tests {
         std::fs::create_dir_all(&vault).unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -459,6 +491,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -512,6 +545,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -564,6 +598,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -597,6 +632,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -633,6 +669,7 @@ mod tests {
         std::fs::write(&text_path, "not audio").unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -663,6 +700,7 @@ mod tests {
         std::fs::create_dir_all(&vault).unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -693,6 +731,7 @@ mod tests {
         std::fs::create_dir_all(vault.join("sessions")).unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,
@@ -714,6 +753,7 @@ mod tests {
         write_session(&vault, "meeting-1", None);
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,
@@ -736,6 +776,7 @@ mod tests {
         std::fs::write(vault.join("sessions/meeting-1/audio.mp3"), b"mp3").unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,
@@ -772,6 +813,7 @@ mod tests {
         .unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,
@@ -806,6 +848,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         let exit_code = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -851,6 +894,7 @@ mod tests {
         std::fs::write(&append_path, "Appended line").unwrap();
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -871,6 +915,7 @@ mod tests {
         );
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -900,6 +945,7 @@ mod tests {
         std::fs::write(&set_path, "body").unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -1055,7 +1101,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault = dir.path().join("vault");
         write_session(&vault, "target", Some("bounded lookup"));
-        hypr_search_cache::Cache::for_vault(&vault)
+        crate::vault::cache_for_vault(&vault)
             .unwrap()
             .initialize(&mut |_| {})
             .unwrap();
@@ -1141,6 +1187,7 @@ mod tests {
         assert_eq!(registry, vec!["hiring", "project-x"]);
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: true,
@@ -1176,6 +1223,7 @@ mod tests {
         std::fs::write(session_dir.join("_memo.md"), "Decide the launch date.").unwrap();
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,

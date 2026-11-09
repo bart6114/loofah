@@ -40,6 +40,8 @@ export type GeneralActions = {
     options?: {
       handlePersist?: LiveTranscriptPersistCallback;
       onStopped?: OnStoppedCallback;
+      isAvailable?: () => boolean;
+      requestId?: string;
     },
   ) => Promise<boolean>;
   stop: () => void;
@@ -53,7 +55,11 @@ export type GeneralActions = {
   ) => Promise<void>;
   startTranscription: (
     params: TranscriptionParams,
-    options?: { handlePersist?: BatchPersistCallback },
+    options?: {
+      handlePersist?: BatchPersistCallback;
+      requestId?: string;
+      onTerminal?: () => void;
+    },
   ) => Promise<void>;
   stopTranscription: (sessionId: string) => Promise<void>;
   canStartLiveSession: (sessionId: string) => boolean;
@@ -81,6 +87,7 @@ export const createGeneralSlice = <
     }
 
     return enqueueSessionAudioOperation(targetSessionId, async () => {
+      if (options?.isAvailable && !options.isAvailable()) return false;
       const currentMode = get().getSessionMode(targetSessionId);
       if (currentMode === "running_batch") {
         console.warn(
@@ -106,7 +113,14 @@ export const createGeneralSlice = <
         get().setOnStopped(targetSessionId, options.onStopped);
       }
 
-      const started = await startLiveSession(set, get, targetSessionId, params);
+      const started = await startLiveSession(
+        set,
+        get,
+        targetSessionId,
+        params,
+        options?.isAvailable,
+        options?.requestId ?? crypto.randomUUID(),
+      );
       if (!started) {
         if (options?.handlePersist) {
           get().setTranscriptPersist(targetSessionId, undefined);
@@ -173,7 +187,10 @@ export const createGeneralSlice = <
       get().setBatchPersist(sessionId, options.handlePersist);
     }
 
-    await runBatchSession(get, sessionId, params);
+    await runBatchSession(get, sessionId, params, {
+      requestId: options?.requestId ?? crypto.randomUUID(),
+      onTerminal: options?.onTerminal,
+    });
   },
   stopTranscription: async (sessionId) => {
     if (!sessionId) {

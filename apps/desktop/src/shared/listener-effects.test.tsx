@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   openNew: vi.fn(),
   openNewNote: vi.fn(),
+  recordNew: vi.fn(),
   emit: vi.fn(),
   registrations: [] as {
     handler: (event: any) => void;
@@ -19,7 +20,10 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
   getCurrentWebviewWindow: () => ({}),
 }));
-vi.mock("~/shared/useNewNote", () => ({ useNewNote: () => mocks.openNewNote }));
+vi.mock("~/shared/useNewNote", () => ({
+  useNewNote: () => mocks.openNewNote,
+  useNewNoteAndListen: () => mocks.recordNew,
+}));
 vi.mock("~/store/zustand/tabs", () => ({
   useTabs: (select: any) => select({ openNew: mocks.openNew }),
   isTabInputSupported: () => true,
@@ -111,4 +115,26 @@ it("cleans replaced navigation dependencies and handles registration rejection",
   expect(cleanup).toHaveBeenCalledOnce();
   expect(mocks.navigate).not.toHaveBeenCalled();
   hook.unmount();
+});
+
+it("routes both native new-note events through the captured creation action and ignores late events", async () => {
+  const hook = renderHook(useNavigationEvents);
+  await act(async () =>
+    mocks.registrations.forEach((registration) =>
+      registration.resolve(vi.fn()),
+    ),
+  );
+  const [navigate, openTab] = mocks.registrations;
+  act(() => {
+    navigate.handler({ payload: { path: "/app/new" } });
+    openTab.handler({ payload: { tab: { type: "sessions", id: "new" } } });
+  });
+  expect(mocks.openNewNote).toHaveBeenCalledTimes(2);
+  expect(mocks.openNew).not.toHaveBeenCalled();
+  hook.unmount();
+  act(() => {
+    navigate.handler({ payload: { path: "/app/new" } });
+    openTab.handler({ payload: { tab: { type: "sessions", id: "new" } } });
+  });
+  expect(mocks.openNewNote).toHaveBeenCalledTimes(2);
 });

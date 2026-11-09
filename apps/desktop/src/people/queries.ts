@@ -1,12 +1,14 @@
-import { useIndexQuery } from "~/shared/index-query";
-import { commands, type Result } from "~/types/tauri.gen";
+import { useQuery } from "@tanstack/react-query";
+
+import { getApplicationClient } from "~/shared/application/client";
+import type { PersonItem } from "~/shared/application/protocol.gen";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
+import { type Result } from "~/types/tauri.gen";
 
 export type Person = {
   id: string;
   name: string;
 };
-
-const peopleQueryKey = ["people"];
 
 function unwrap<T>(result: Result<T, string>): T {
   if (result.status === "error") {
@@ -16,22 +18,31 @@ function unwrap<T>(result: Result<T, string>): T {
 }
 
 export async function listPeople(): Promise<Person[]> {
-  const items = unwrap(await commands.peopleList());
-  return items.map((item) => ({ id: item.id, name: item.name ?? item.id }));
+  const items = unwrap(await getApplicationClient().store.peopleList());
+  return peopleRecords(items);
 }
 
 export function usePeople(): Person[] {
-  const { data = EMPTY_PEOPLE } = useIndexQuery({
-    entity: "people",
-    queryKey: peopleQueryKey,
-    queryFn: listPeople,
-  });
-
-  return data;
+  const owner = useVaultReadScope();
+  const supported = owner.scope.client.features.includes("content_read");
+  const query = useQuery(
+    {
+      ...owner.scope.peopleOptions(),
+      enabled: supported && owner.readable,
+      select: peopleRecords,
+    },
+    owner.scope.queryClient,
+  );
+  return supported && owner.readable
+    ? (query.data ?? EMPTY_PEOPLE)
+    : EMPTY_PEOPLE;
+}
+function peopleRecords(items: PersonItem[]): Person[] {
+  return items.map((item) => ({ id: item.id, name: item.name ?? item.id }));
 }
 
 export async function ensurePerson(name: string): Promise<Person> {
-  const item = unwrap(await commands.peopleEnsure(name));
+  const item = unwrap(await getApplicationClient().store.peopleEnsure(name));
   return { id: item.id, name: item.name ?? item.id };
 }
 

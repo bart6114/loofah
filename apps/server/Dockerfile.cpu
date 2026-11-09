@@ -1,0 +1,43 @@
+FROM rust:1.94-bookworm AS rust-toolchain
+
+FROM ubuntu:24.04 AS builder
+ARG TARGETARCH
+ARG DEBIAN_FRONTEND=noninteractive
+RUN test "$TARGETARCH" = amd64
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip git build-essential software-properties-common cmake clang autoconf automake libtool pkg-config && rm -rf /var/lib/apt/lists/*
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup \
+    PATH=/usr/local/cargo/bin:$PATH \
+    RUNNER_TEMP=/opt/loofah-native \
+    GITHUB_ENV=/opt/loofah-native.env \
+    LOOFAH_WHISPER_CPU=1 \
+    GGML_NATIVE=OFF \
+    CARGO_BUILD_JOBS=2
+COPY .github/actions/cli_native_setup/linux.sh /opt/loofah-linux-native.sh
+RUN bash /opt/loofah-linux-native.sh x86_64-unknown-linux-gnu && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY . .
+RUN bash -euc 'while IFS="=" read -r native_key native_value; do export "$native_key=$native_value"; done < "$GITHUB_ENV"; cargo build --locked --release -p loofah-server --features cpu-transcription'
+
+FROM ubuntu:24.04 AS runtime-base
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 libgcc-s1 libgomp1 && rm -rf /var/lib/apt/lists/* && mkdir -p /var/lib/loofah /var/cache/loofah && chown 10001:10001 /var/lib/loofah /var/cache/loofah
+USER 10001:10001
+EXPOSE 8027
+HEALTHCHECK --interval=30s --timeout=5s CMD curl --fail --silent http://127.0.0.1:8027/ready || exit 1
+ENTRYPOINT ["loofah-server"]
+CMD ["--config", "/etc/loofah/server.json"]
+
+# CI packages its already-tested Ubuntu binary without compiling native libraries twice.
+FROM runtime-base AS ci-runtime
+COPY loofah-server /usr/local/bin/loofah-server
+
+# Qualification adds the exact selected test executable to the same runtime;
+# neither its native libraries nor its executable come from a builder mount.
+FROM ci-runtime AS ci-tests
+COPY server-tests /opt/loofah-tests/server-tests
+
+FROM runtime-base AS runtime
+COPY --from=builder /build/target/release/loofah-server /usr/local/bin/loofah-server

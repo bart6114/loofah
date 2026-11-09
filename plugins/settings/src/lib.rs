@@ -1,15 +1,20 @@
 use tauri::Manager;
 
+mod bootstrap;
 mod commands;
 mod config;
+mod config_events;
 mod error;
 mod ext;
 mod state;
 
+pub use bootstrap::DesktopBootstrap;
 pub use config::*;
 pub use error::{Error, Result};
 pub use ext::*;
 pub use state::*;
+
+pub struct LocalVaultLease(pub hypr_storage::vault::VaultLease);
 
 const PLUGIN_NAME: &str = "settings";
 
@@ -42,13 +47,33 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .setup(move |app, _api| {
             specta_builder.mount_events(app);
 
-            let startup_vault_base = app.settings().resolve_startup_vault_base().unwrap();
-            let config_state = config::ConfigState::load_or_default(&startup_vault_base);
-            let snapshot = state::StartupSnapshot::new(startup_vault_base);
+            let global_base = app.settings().global_base()?;
+            let bootstrap = DesktopBootstrap::load(global_base.as_std_path())?;
+            let (config_base, snapshot) =
+                bootstrap.settings_location(|| app.settings().resolve_startup_vault_base())?;
+            let (snapshot, config_state) = if bootstrap.is_local() {
+                let lease = bootstrap::acquire_local_vault(&config_base)?;
+                let snapshot = snapshot.with_vault_lease(&lease)?;
+                let config = config::ConfigState::load_with_vault_lease(&lease);
+                assert!(app.manage(LocalVaultLease(lease)));
+                (snapshot, config)
+            } else {
+                (snapshot, config::ConfigState::load_or_default(&config_base))
+            };
+            let config_state = std::sync::Arc::new(config_state);
+            let config_events = config_events::start(app, config_state.clone());
+            assert!(app.manage(bootstrap));
             assert!(app.manage(snapshot));
             assert!(app.manage(config_state));
+            assert!(app.manage(config_events));
             Ok(())
         })
+        .on_event(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                config_events::stop(app);
+            }
+        })
+        .on_drop(|app| config_events::stop(&app))
         .build()
 }
 

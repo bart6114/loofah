@@ -75,7 +75,7 @@ export const TaskItemView = forwardRef<
   const isSelected = useIsNodeSelected();
 
   const handleToggle = useEditorEventCallback((view) => {
-    if (!view) return;
+    if (!view?.editable) return;
     const pos = getSafeNodePos(getPos);
     if (pos === null) return;
 

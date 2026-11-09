@@ -43,6 +43,7 @@ describe("SegmentRenderer", () => {
     const seekAndPlay = vi.fn();
     const view = render(
       <SegmentRenderer
+        sessionId="session-1"
         segment={segment}
         offsetMs={0}
         transcriptId="transcript-1"
@@ -61,6 +62,7 @@ describe("SegmentRenderer", () => {
     const seekAndPlay = vi.fn();
     const view = render(
       <SegmentRenderer
+        sessionId="session-1"
         segment={segment}
         offsetMs={0}
         transcriptId="transcript-1"
@@ -75,6 +77,7 @@ describe("SegmentRenderer", () => {
 
     view.rerender(
       <SegmentRenderer
+        sessionId="session-1"
         segment={segment}
         offsetMs={0}
         transcriptId="transcript-1"
@@ -93,6 +96,7 @@ describe("SegmentRenderer", () => {
     const seekAndPlay = vi.fn();
     const view = render(
       <SegmentRenderer
+        sessionId="session-1"
         segment={segment}
         offsetMs={0}
         transcriptId="transcript-1"
@@ -107,6 +111,7 @@ describe("SegmentRenderer", () => {
 
     view.rerender(
       <SegmentRenderer
+        sessionId="session-1"
         segment={segment}
         offsetMs={0}
         transcriptId="transcript-1"
@@ -126,6 +131,7 @@ describe("SegmentRenderer", () => {
     const search = createSearch("outside-1");
     const view = render(
       <SegmentRenderer
+        sessionId="session-1"
         segment={segment}
         offsetMs={0}
         transcriptId="transcript-1"
@@ -140,6 +146,7 @@ describe("SegmentRenderer", () => {
 
     view.rerender(
       <SegmentRenderer
+        sessionId="session-1"
         segment={segment}
         offsetMs={0}
         transcriptId="transcript-1"
@@ -158,6 +165,7 @@ describe("SegmentRenderer", () => {
     const seekAndPlay = vi.fn();
     const view = render(
       <SegmentRenderer
+        sessionId="session-1"
         segment={segment}
         offsetMs={0}
         transcriptId="transcript-1"
@@ -172,6 +180,7 @@ describe("SegmentRenderer", () => {
 
     view.rerender(
       <SegmentRenderer
+        sessionId="session-1"
         segment={segment}
         offsetMs={0}
         transcriptId="transcript-1"

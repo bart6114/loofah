@@ -50,6 +50,7 @@ export const SegmentRenderer = memo(
   ({
     segment,
     offsetMs,
+    sessionId,
     transcriptId,
     speakerLabel = "Speaker",
     people = EMPTY_PEOPLE,
@@ -62,6 +63,7 @@ export const SegmentRenderer = memo(
   }: {
     segment: Segment;
     offsetMs: number;
+    sessionId: string;
     transcriptId: string;
     speakerLabel?: string;
     people?: readonly Person[];
@@ -100,6 +102,7 @@ export const SegmentRenderer = memo(
     return (
       <section>
         <SegmentHeader
+          sessionId={sessionId}
           segment={segment}
           transcriptId={transcriptId}
           label={speakerLabel}

@@ -21,3 +21,9 @@ mod tests {
         assert_eq!(normalize_tag_name("#"), None);
     }
 }
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct TagItem {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+}

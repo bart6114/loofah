@@ -1,133 +1,132 @@
-import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  audioPath: vi.fn(),
-  confirmRegenerateSpeakerReset: vi.fn(),
-  handleBatchFailed: vi.fn(),
-  queueAutoEnhanceIfSummaryEmpty: vi.fn(),
-  runBatch: vi.fn(),
-  sessionTranscripts: vi.fn(),
-  toastError: vi.fn(),
-}));
-
-vi.mock("@hypr/plugin-fs-sync", () => ({
-  commands: { audioPath: mocks.audioPath },
-}));
-
-vi.mock("@hypr/ui/components/ui/toast", () => ({
-  sonnerToast: { error: mocks.toastError },
-}));
-
-vi.mock("~/services/enhancer", () => ({
-  getEnhancerService: () => ({
-    queueAutoEnhanceIfSummaryEmpty: mocks.queueAutoEnhanceIfSummaryEmpty,
-  }),
-}));
-
-vi.mock("~/stt/contexts", () => ({
-  useListener: (selector: (state: unknown) => unknown) =>
-    selector({ handleBatchFailed: mocks.handleBatchFailed }),
-}));
-
-vi.mock("~/stt/useRunBatch", () => ({
-  isStoppedTranscriptionError: (error: unknown) =>
-    error instanceof Error && error.message === "Transcription stopped.",
-  useRunBatch: () => mocks.runBatch,
-}));
-
-vi.mock("~/types/tauri.gen", () => ({
-  commands: { sessionTranscripts: mocks.sessionTranscripts },
-}));
-
-vi.mock("./regenerate-confirm", () => ({
-  confirmRegenerateSpeakerReset: mocks.confirmRegenerateSpeakerReset,
-}));
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 
 import { useRegenerateTranscript } from "./actions";
 
-function transcriptWithSpeakerLabels(...labels: string[]) {
-  return {
-    id: "transcript-1",
-    session_id: "session-1",
-    speaker_hints: labels.map((value, index) => ({
-      id: `hint-${index}`,
-      word_id: `word-${index}`,
-      type: "speaker_label",
-      value,
-    })),
-  };
+import type { VaultScope } from "~/shared/application/vault-scope";
+import { deferred, mediaFixture } from "~/stt/media-test-support";
+const mocks = vi.hoisted(() => ({ confirm: vi.fn(), toast: vi.fn() }));
+vi.mock("./regenerate-confirm", () => ({
+  confirmRegenerateSpeakerReset: mocks.confirm,
+}));
+vi.mock("@hypr/ui/components/ui/toast", () => ({
+  sonnerToast: { error: mocks.toast },
+}));
+const scopes: VaultScope[] = [];
+afterEach(() => {
+  cleanup();
+  for (const scope of scopes.splice(0)) scope.dispose();
+  vi.clearAllMocks();
+});
+async function fixture() {
+  const f = await mediaFixture();
+  scopes.push(f.scope);
+  f.media.source.mockResolvedValue({
+    session_id: "note",
+    session_created_at: "original",
+    recording_sha256: "a".repeat(64),
+    transcript_revision: "b".repeat(64),
+    transcript_present: true,
+    audio: { layout: "mixed" },
+  });
+  return f;
 }
-
-describe("useRegenerateTranscript", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.audioPath.mockResolvedValue({
-      status: "ok",
-      data: "/tmp/session.wav",
-    });
-    mocks.sessionTranscripts.mockResolvedValue({ status: "ok", data: [] });
-    mocks.runBatch.mockResolvedValue(undefined);
+it("submits the exact source snapshot captured before speaker confirmation", async () => {
+  const f = await fixture();
+  const expected = await f.media.source();
+  f.media.source.mockClear();
+  vi.mocked(f.client.transcripts).mockResolvedValue([
+    {
+      id: "transcript",
+      session_id: "note",
+      speaker_hints: [
+        { id: "hint", word_id: "word", type: "speaker_label", value: "Alice" },
+      ],
+    },
+  ] as never);
+  mocks.confirm.mockResolvedValue(true);
+  const { result } = renderHook(() => useRegenerateTranscript("note"), {
+    wrapper: f.wrapper,
   });
-
-  it("shows batch transcription failures even when an old transcript exists", async () => {
-    mocks.runBatch.mockRejectedValue(new Error("Authentication failed"));
-    const { result } = renderHook(() => useRegenerateTranscript("session-1"));
-
-    await act(async () => {
-      await result.current();
+  await act(async () => {
+    await result.current();
+  });
+  expect(mocks.confirm).toHaveBeenCalledWith(1);
+  expect(f.media.retranscribe).toHaveBeenCalledWith(expected, {
+    requestId: expect.any(String),
+  });
+});
+it.each(["source", "speakers", "confirmation"])(
+  "does not submit after the %s await loses its original scope",
+  async (boundary) => {
+    const f = await fixture();
+    const expected = await f.media.source();
+    f.media.source.mockClear();
+    const held = deferred<void>();
+    vi.mocked(f.client.transcripts).mockResolvedValue([
+      {
+        id: "t",
+        speaker_hints: [
+          { id: "h", word_id: "w", type: "speaker_label", value: "Alice" },
+        ],
+      },
+    ] as never);
+    if (boundary === "source")
+      f.media.source.mockImplementation(async () => {
+        await held.promise;
+        return expected;
+      });
+    if (boundary === "speakers")
+      vi.mocked(f.client.transcripts).mockImplementation(async () => {
+        await held.promise;
+        return [];
+      });
+    if (boundary === "confirmation")
+      mocks.confirm.mockImplementation(async () => {
+        await held.promise;
+        return true;
+      });
+    const { result } = renderHook(() => useRegenerateTranscript("note"), {
+      wrapper: f.wrapper,
     });
-
-    expect(mocks.handleBatchFailed).toHaveBeenCalledWith(
-      "session-1",
-      "Authentication failed",
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current();
+    });
+    const rejected = expect(pending).rejects.toThrow();
+    await waitFor(() =>
+      expect(
+        boundary === "source"
+          ? f.media.source
+          : boundary === "speakers"
+            ? f.client.transcripts
+            : mocks.confirm,
+      ).toHaveBeenCalledOnce(),
     );
-    expect(mocks.toastError).toHaveBeenCalledWith("Re-transcription failed", {
-      id: "transcript-regenerate-failed-session-1",
-      description: "Authentication failed",
-    });
-  });
-
-  it("regenerates without confirmation when no speakers are assigned", async () => {
-    const { result } = renderHook(() => useRegenerateTranscript("session-1"));
-
+    act(() => f.scope.dispose());
+    held.resolve();
     await act(async () => {
-      await result.current();
+      await rejected;
     });
-
-    expect(mocks.confirmRegenerateSpeakerReset).not.toHaveBeenCalled();
-    expect(mocks.runBatch).toHaveBeenCalledWith("/tmp/session.wav");
+    expect(f.media.retranscribe).not.toHaveBeenCalled();
+  },
+);
+it("declining speaker reset preserves existing transcript and does not admit model work", async () => {
+  const f = await fixture();
+  vi.mocked(f.client.transcripts).mockResolvedValue([
+    {
+      id: "t",
+      speaker_hints: [
+        { id: "h", word_id: "w", type: "speaker_label", value: "Alice" },
+      ],
+    },
+  ] as never);
+  mocks.confirm.mockResolvedValue(false);
+  const { result } = renderHook(() => useRegenerateTranscript("note"), {
+    wrapper: f.wrapper,
   });
-
-  it("asks for confirmation when speaker names are assigned and aborts on cancel", async () => {
-    mocks.sessionTranscripts.mockResolvedValue({
-      status: "ok",
-      data: [transcriptWithSpeakerLabels("Alice", "Bob")],
-    });
-    mocks.confirmRegenerateSpeakerReset.mockResolvedValue(false);
-    const { result } = renderHook(() => useRegenerateTranscript("session-1"));
-
-    await act(async () => {
-      await result.current();
-    });
-
-    expect(mocks.confirmRegenerateSpeakerReset).toHaveBeenCalledWith(2);
-    expect(mocks.runBatch).not.toHaveBeenCalled();
+  await act(async () => {
+    await result.current();
   });
-
-  it("regenerates after the speaker reset is confirmed", async () => {
-    mocks.sessionTranscripts.mockResolvedValue({
-      status: "ok",
-      data: [transcriptWithSpeakerLabels("Alice")],
-    });
-    mocks.confirmRegenerateSpeakerReset.mockResolvedValue(true);
-    const { result } = renderHook(() => useRegenerateTranscript("session-1"));
-
-    await act(async () => {
-      await result.current();
-    });
-
-    expect(mocks.confirmRegenerateSpeakerReset).toHaveBeenCalledWith(1);
-    expect(mocks.runBatch).toHaveBeenCalledWith("/tmp/session.wav");
-  });
+  expect(f.media.retranscribe).not.toHaveBeenCalled();
 });

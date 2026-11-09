@@ -35,71 +35,8 @@ pub fn raw_json(value: &impl Serialize) -> Result<String> {
         .map_err(|error| Error::operation("serialize output", error.to_string()))
 }
 
-struct PendingWrite {
-    cache: hypr_search_cache::Cache,
-    output: Vec<String>,
-    sources: std::collections::BTreeMap<String, hypr_search_cache::SourceState>,
-}
-
-tokio::task_local! {
-    static PENDING_OUTPUT: std::cell::RefCell<PendingWrite>;
-}
-
-pub async fn capture<T>(
-    cache: hypr_search_cache::Cache,
-    operation: impl std::future::Future<Output = T>,
-) -> (
-    T,
-    Vec<String>,
-    std::collections::BTreeMap<String, hypr_search_cache::SourceState>,
-) {
-    PENDING_OUTPUT
-        .scope(
-            std::cell::RefCell::new(PendingWrite {
-                cache,
-                output: Vec::new(),
-                sources: Default::default(),
-            }),
-            async {
-                let result = operation.await;
-                PENDING_OUTPUT.with(|buffer| {
-                    let mut pending = buffer.borrow_mut();
-                    (
-                        result,
-                        std::mem::take(&mut pending.output),
-                        std::mem::take(&mut pending.sources),
-                    )
-                })
-            },
-        )
-        .await
-}
-
-pub fn track_write(id: &str) -> Result<()> {
-    PENDING_OUTPUT
-        .try_with(|buffer| {
-            let mut pending = buffer.borrow_mut();
-            if !pending.sources.contains_key(id) {
-                let sources = pending
-                    .cache
-                    .sources_for(&[id.to_owned()])
-                    .map_err(|error| {
-                        Error::operation("inspect write sources", error.to_string())
-                    })?;
-                pending.sources.insert(id.to_owned(), sources);
-            }
-            Ok(())
-        })
-        .unwrap_or(Ok(()))
-}
-
 pub fn emit(text: &str) {
-    if PENDING_OUTPUT
-        .try_with(|buffer| buffer.borrow_mut().output.push(text.to_owned()))
-        .is_err()
-    {
-        println!("{text}");
-    }
+    println!("{text}");
 }
 
 pub fn write_or_emit(text: &str, path: Option<&Path>, force: bool) -> Result<()> {
@@ -178,4 +115,30 @@ mod tests {
         write_or_emit("replacement", Some(&path), true).unwrap();
         assert_eq!(std::fs::read_to_string(path).unwrap(), "replacement");
     }
+}
+
+tokio::task_local! {
+    static JSON_PROGRESS: bool;
+}
+
+pub(crate) async fn with_progress_format<T>(
+    json: bool,
+    operation: impl std::future::Future<Output = T>,
+) -> T {
+    JSON_PROGRESS.scope(json, operation).await
+}
+
+pub(crate) fn startup_progress(phase: &str, started: std::time::Instant) {
+    let mut stderr = std::io::stderr().lock();
+    if JSON_PROGRESS.try_with(|json| *json).unwrap_or(true) {
+        let event = serde_json::json!({
+            "schema_version": JSON_SCHEMA_VERSION,
+            "phase": phase,
+            "elapsed_ms": started.elapsed().as_millis(),
+        });
+        let _ = writeln!(stderr, "{event}");
+    } else {
+        let _ = writeln!(stderr, "Local search: {phase}");
+    }
+    let _ = stderr.flush();
 }

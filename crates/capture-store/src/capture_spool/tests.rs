@@ -1,0 +1,3142 @@
+use std::{
+    collections::BTreeMap,
+    path::Path,
+    sync::atomic::Ordering,
+    time::{Duration, Instant},
+};
+
+use serde_json::{Value, json};
+
+use super::*;
+
+struct TestDirectory {
+    _temporary: tempfile::TempDir,
+    path: PathBuf,
+}
+
+impl TestDirectory {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+fn test_directory() -> TestDirectory {
+    let temporary = tempfile::tempdir().unwrap();
+    // macOS CI temp paths can traverse the system /var symlink; the host passes
+    // a physical app-private parent rather than a symlinked storage namespace.
+    let path = temporary.path().canonicalize().unwrap();
+    TestDirectory {
+        _temporary: temporary,
+        path,
+    }
+}
+
+fn scope() -> CaptureScope {
+    CaptureScope {
+        server: "https://company.example/".into(),
+        member_id: "member".into(),
+        vault_id: "vault".into(),
+    }
+}
+fn identity() -> CaptureIdentity {
+    CaptureIdentity {
+        scope: scope(),
+        capture_id: uuid::Uuid::from_u128(1).to_string(),
+        request_id: uuid::Uuid::from_u128(2).to_string(),
+        target: CaptureTarget::ExistingSession {
+            session_id: "note".into(),
+            expected_audio_sha256: None,
+        },
+    }
+}
+fn pcm(frames: u32) -> Vec<u8> {
+    (0..frames)
+        .flat_map(|frame| {
+            [
+                (frame as f32 / 100_000.0).to_le_bytes(),
+                (-0.25f32).to_le_bytes(),
+            ]
+            .concat()
+        })
+        .collect()
+}
+fn dir(root: &Path, id: &CaptureIdentity) -> PathBuf {
+    root.join(hash(serde_json::to_vec(&id.scope).unwrap()))
+        .join(&id.capture_id)
+}
+fn receipt(snapshot: &CaptureSnapshot) -> CapturePrefixReceipt {
+    CapturePrefixReceipt {
+        capture_fingerprint: snapshot.capture_fingerprint.clone(),
+        chunk_count: snapshot.chunk_count,
+        frames: snapshot.frames,
+        pcm_bytes: snapshot.pcm_bytes,
+        chain_digest: snapshot.chain_digest.clone(),
+    }
+}
+fn publication(snapshot: &CaptureSnapshot) -> CapturePublication {
+    CapturePublication {
+        source: snapshot.seal.clone().unwrap(),
+        session_id: snapshot.session_id.clone().unwrap(),
+        canonical_audio_sha256: hash(b"independently verified encoded server artifact"),
+        canonical_audio_bytes: 1234,
+    }
+}
+async fn open(root: &Path) -> Arc<CaptureSpool> {
+    open_with_limits(root, CaptureSpoolLimits::default()).await
+}
+async fn open_with_limits(root: &Path, limits: CaptureSpoolLimits) -> Arc<CaptureSpool> {
+    // An unrelated fork can retain a CLOEXEC lease until exec after the last
+    // Rust owner drops. Negative ownership tests use CaptureSpool::open directly.
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            match CaptureSpool::open(root.into(), limits.clone()).await {
+                Ok(spool) => return spool,
+                Err(error) if error.code == ErrorCode::Unavailable && error.retryable => {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+                Err(error) => panic!("Cannot open capture fixture: {error:?}"),
+            }
+        }
+    })
+    .await
+    .expect("Capture fixture ownership did not release")
+}
+
+#[tokio::test]
+async fn immutable_chunks_reopen_with_exact_bytes_channels_offsets_and_source_digest() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let id = identity();
+    let spool = open(&root).await;
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let first = pcm(160);
+    let second = pcm(80);
+    let one = writer.append_chunk(0, 160, first.clone()).await.unwrap();
+    let two = writer.append_chunk(1, 80, second.clone()).await.unwrap();
+    assert_eq!(
+        (one.first_frame, one.pcm_offset, one.frames, one.bytes),
+        (0, 0, 160, 1280)
+    );
+    assert_eq!((two.first_frame, two.pcm_offset), (160, 1280));
+    assert_eq!(two.previous_digest, one.digest);
+    let seal = writer.seal().await.unwrap();
+    assert_eq!(
+        (seal.frames, seal.chunk_count, seal.pcm_bytes),
+        (240, 2, 1920)
+    );
+    assert_eq!(
+        seal.source_sha256,
+        hash([first.clone(), second.clone()].concat())
+    );
+    assert_eq!(
+        writer.append_chunk(0, 160, first.clone()).await.unwrap(),
+        one
+    );
+    assert_eq!(
+        writer
+            .append_chunk(2, 160, first.clone())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    let snapshot = writer.snapshot().await.unwrap();
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(id).await.unwrap();
+    assert_eq!(writer.snapshot().await.unwrap(), snapshot);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, first);
+    assert_eq!(writer.read_chunk(1).await.unwrap().bytes, second);
+    assert_eq!(writer.seal().await.unwrap(), seal);
+    assert_eq!(writer.chunks(None, 1).await.unwrap(), vec![one]);
+    assert_eq!(writer.chunks(Some(0), 200).await.unwrap(), vec![two]);
+    assert!(writer.chunks(Some(u64::MAX), 200).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn pending_session_binding_preserves_chunk_identity_and_cannot_redirect_a_capture() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    let mut id = identity();
+    id.target = CaptureTarget::PendingSession {
+        create_request_id: uuid::Uuid::from_u128(3).to_string(),
+    };
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let descriptor = writer.append_chunk(0, 4, pcm(4)).await.unwrap();
+    let before = writer.snapshot().await.unwrap();
+    assert!(before.session_id.is_none());
+    let after = writer
+        .bind_session("admitted-session".into())
+        .await
+        .unwrap();
+    assert_eq!(after.identity, id);
+    assert_eq!(after.capture_fingerprint, before.capture_fingerprint);
+    assert_eq!(after.chain_digest, before.chain_digest);
+    assert_eq!(
+        writer
+            .bind_session("admitted-session".into())
+            .await
+            .unwrap(),
+        after
+    );
+    assert_eq!(
+        writer
+            .bind_session("another-session".into())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(writer.read_chunk(0).await.unwrap().descriptor, descriptor);
+    assert_eq!(
+        writer
+            .bind_session("../escape".into())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Validation
+    );
+    let mut changed = id;
+    changed.target = CaptureTarget::ExistingSession {
+        session_id: "admitted-session".into(),
+        expected_audio_sha256: None,
+    };
+    assert_eq!(
+        spool.resume(changed).await.err().unwrap().code,
+        ErrorCode::Conflict
+    );
+}
+
+#[tokio::test]
+async fn capture_session_coordinates_use_the_canonical_portable_vault_rules() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    for session in [
+        "",
+        "CON",
+        "con.txt",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "LPT9.txt",
+        "note:stream",
+        "note.",
+        "note ",
+        "bad?name",
+        "../escape",
+        "path\\name",
+        ".hidden",
+        "bad\0name",
+    ] {
+        assert!(
+            hypr_loofah_protocol::validate_session_id(session).is_err(),
+            "{session}"
+        );
+        let mut id = identity();
+        id.target = CaptureTarget::ExistingSession {
+            session_id: session.into(),
+            expected_audio_sha256: None,
+        };
+        assert_eq!(
+            spool
+                .begin(id, CaptureFormat::stereo())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Validation,
+            "{session}"
+        );
+    }
+    assert!(spool.inventory(scope()).await.unwrap().is_empty());
+    let mut id = identity();
+    id.target = CaptureTarget::PendingSession {
+        create_request_id: uuid::Uuid::new_v4().to_string(),
+    };
+    let writer = spool.begin(id, CaptureFormat::stereo()).await.unwrap();
+    for session in ["CON", "note:stream", "note.", "note "] {
+        assert_eq!(
+            writer
+                .bind_session(session.into())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Validation
+        );
+    }
+    assert!(writer.snapshot().await.unwrap().session_id.is_none());
+    assert_eq!(
+        writer
+            .bind_session("Windows-safe-id_123".into())
+            .await
+            .unwrap()
+            .session_id
+            .as_deref(),
+        Some("Windows-safe-id_123")
+    );
+}
+
+#[tokio::test]
+async fn noncanonical_scope_and_capture_aliases_are_retained_and_never_reused_for_new_audio() {
+    for coordinate in ["scope", "capture"] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let mut id = identity();
+        id.capture_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee".into();
+        let writer = spool
+            .begin(id.clone(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+        drop(writer);
+        drop(spool);
+        let original = if coordinate == "scope" {
+            dir(&root, &id).parent().unwrap().to_path_buf()
+        } else {
+            dir(&root, &id)
+        };
+        let alias = original.with_file_name(
+            original
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_ascii_uppercase(),
+        );
+        let temporary = original.with_file_name("case-transition");
+        std::fs::rename(&original, &temporary).unwrap();
+        std::fs::rename(&temporary, &alias).unwrap();
+        let capture = if coordinate == "scope" {
+            alias.join(&id.capture_id)
+        } else {
+            alias.clone()
+        };
+        let path = capture.join("chunks/00000000000000000000.chunk");
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(
+            CaptureSpool::open(root, CaptureSpoolLimits::default())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Internal,
+            "{coordinate}"
+        );
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+    }
+}
+
+#[tokio::test]
+async fn invalid_pcm_declarations_and_changed_replays_never_replace_audio() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let original = pcm(8);
+    let descriptor = writer.append_chunk(0, 8, original.clone()).await.unwrap();
+    for (sequence, frames, bytes, code) in [
+        (0, 8, pcm(9), ErrorCode::Validation),
+        (0, 8, vec![0; 64], ErrorCode::Conflict),
+        (2, 8, pcm(8), ErrorCode::Conflict),
+        (1, 0, vec![], ErrorCode::Validation),
+        (
+            1,
+            1,
+            [f32::NAN.to_le_bytes(), 0f32.to_le_bytes()].concat(),
+            ErrorCode::Validation,
+        ),
+        (
+            1,
+            1,
+            [f32::INFINITY.to_le_bytes(), 0f32.to_le_bytes()].concat(),
+            ErrorCode::Validation,
+        ),
+    ] {
+        assert_eq!(
+            writer
+                .append_chunk(sequence, frames, bytes)
+                .await
+                .err()
+                .unwrap()
+                .code,
+            code
+        );
+    }
+    assert_eq!(writer.snapshot().await.unwrap().chunk_count, 1);
+    assert_eq!(writer.read_chunk(0).await.unwrap().descriptor, descriptor);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, original);
+    assert_eq!(
+        writer.chunks(None, 0).await.err().unwrap().code,
+        ErrorCode::Validation
+    );
+    assert_eq!(
+        writer.read_chunk(u64::MAX).await.err().unwrap().code,
+        ErrorCode::NotFound
+    );
+}
+
+#[tokio::test]
+async fn receipts_and_publication_are_bound_monotone_and_never_remove_audio() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer.append_chunk(0, 4, pcm(4)).await.unwrap();
+    let first = receipt(&writer.snapshot().await.unwrap());
+    writer.append_chunk(1, 4, pcm(4)).await.unwrap();
+    writer.seal().await.unwrap();
+    let all = receipt(&writer.snapshot().await.unwrap());
+    let observation = publication(&writer.snapshot().await.unwrap());
+    assert_eq!(
+        writer
+            .observe_publication(observation.clone())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    writer.acknowledge_prefix(all.clone()).await.unwrap();
+    assert_eq!(
+        writer.acknowledge_prefix(first).await.unwrap().acknowledged,
+        Some(all.clone())
+    );
+    for wrong in [
+        CapturePrefixReceipt {
+            capture_fingerprint: hash(b"another account"),
+            ..all.clone()
+        },
+        CapturePrefixReceipt {
+            frames: 123,
+            ..all.clone()
+        },
+        CapturePrefixReceipt {
+            chunk_count: 3,
+            ..all.clone()
+        },
+    ] {
+        assert_eq!(
+            writer.acknowledge_prefix(wrong).await.err().unwrap().code,
+            ErrorCode::Conflict
+        );
+    }
+    let mut wrong = observation.clone();
+    wrong.source.source_sha256 = hash(b"different recording");
+    assert_eq!(
+        writer.observe_publication(wrong).await.err().unwrap().code,
+        ErrorCode::Conflict
+    );
+    let mut wrong = observation.clone();
+    wrong.session_id = "other-session".into();
+    assert_eq!(
+        writer.observe_publication(wrong).await.err().unwrap().code,
+        ErrorCode::Conflict
+    );
+    let published = writer
+        .observe_publication(observation.clone())
+        .await
+        .unwrap();
+    assert_eq!(published.publication, Some(observation.clone()));
+    let mut wrong = observation;
+    wrong.canonical_audio_sha256 = hash(b"replacement artifact");
+    assert_eq!(
+        writer.observe_publication(wrong).await.err().unwrap().code,
+        ErrorCode::Conflict
+    );
+    for sequence in 0..2 {
+        assert!(
+            dir(&root, &id)
+                .join("chunks")
+                .join(format!("{sequence:020}.chunk"))
+                .is_file()
+        );
+        assert_eq!(writer.read_chunk(sequence).await.unwrap().bytes, pcm(4));
+    }
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    assert_eq!(
+        spool.resume(id).await.unwrap().snapshot().await.unwrap(),
+        published
+    );
+}
+
+#[tokio::test]
+async fn scopes_capture_ids_and_request_ids_cannot_be_rebound_or_cross_read() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    let id = identity();
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer.append_chunk(0, 1, pcm(1)).await.unwrap();
+    let mut changed = id.clone();
+    changed.request_id = uuid::Uuid::from_u128(9).to_string();
+    assert_eq!(
+        spool.resume(changed).await.err().unwrap().code,
+        ErrorCode::Conflict
+    );
+    let mut changed = id.clone();
+    changed.capture_id = uuid::Uuid::from_u128(9).to_string();
+    assert_eq!(
+        spool
+            .begin(changed, CaptureFormat::stereo())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    let mut other = id.clone();
+    other.scope.member_id = "another-member".into();
+    assert_eq!(
+        spool.resume(other.clone()).await.err().unwrap().code,
+        ErrorCode::NotFound
+    );
+    let second = spool
+        .begin(other.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    assert_eq!(second.snapshot().await.unwrap().chunk_count, 0);
+    assert_eq!(spool.inventory(id.scope.clone()).await.unwrap().len(), 1);
+    assert_eq!(spool.inventory(other.scope.clone()).await.unwrap().len(), 1);
+    let recovered = spool.recovery_inventory().await.unwrap();
+    assert_eq!(recovered.len(), 2);
+    assert!(recovered.iter().any(|capture| capture.identity == id));
+    assert!(recovered.iter().any(|capture| capture.identity == other));
+    assert_ne!(
+        writer.snapshot().await.unwrap().capture_fingerprint,
+        second.snapshot().await.unwrap().capture_fingerprint
+    );
+    let mut changed = CaptureFormat::stereo();
+    changed.sample_rate = 48_000;
+    assert_eq!(
+        spool.begin(id.clone(), changed).await.err().unwrap().code,
+        ErrorCode::Validation
+    );
+    let mono = CaptureFormat {
+        encoding: CaptureEncoding::PcmF32Le,
+        sample_rate: 16_000,
+        channels: vec![CaptureChannel::Microphone],
+    };
+    assert_eq!(
+        spool.begin(id, mono).await.err().unwrap().code,
+        ErrorCode::Conflict
+    );
+}
+
+#[tokio::test]
+async fn quotas_and_injected_storage_full_keep_all_previously_accepted_chunks() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let limits = CaptureSpoolLimits {
+        max_chunks: 2,
+        max_captures: 1,
+        ..CaptureSpoolLimits::default()
+    };
+    let spool = CaptureSpool::open(root.clone(), limits).await.unwrap();
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    spool
+        .fault
+        .store(Fault::BeforeChunkWrite as u8, Ordering::SeqCst);
+    let error = writer.append_chunk(1, 8, pcm(8)).await.err().unwrap();
+    assert_eq!(error.code, ErrorCode::ResourceLimit);
+    assert_eq!(error.mutation_outcome, Some(MutationOutcome::Unknown));
+    assert_eq!(writer.snapshot().await.unwrap().chunk_count, 1);
+    writer.append_chunk(1, 8, pcm(8)).await.unwrap();
+    assert_eq!(
+        writer.append_chunk(2, 8, pcm(8)).await.err().unwrap().code,
+        ErrorCode::ResourceLimit
+    );
+    let mut second = identity();
+    second.capture_id = uuid::Uuid::new_v4().to_string();
+    second.request_id = uuid::Uuid::new_v4().to_string();
+    assert_eq!(
+        spool
+            .begin(second, CaptureFormat::stereo())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+    for sequence in 0..2 {
+        assert_eq!(writer.read_chunk(sequence).await.unwrap().bytes, pcm(8));
+    }
+    drop(writer);
+    drop(spool);
+    assert_eq!(
+        CaptureSpool::open(
+            root,
+            CaptureSpoolLimits {
+                max_directory_entries: 1,
+                ..CaptureSpoolLimits::default()
+            }
+        )
+        .await
+        .err()
+        .unwrap()
+        .code,
+        ErrorCode::ResourceLimit
+    );
+    let byte_root = temp.path().join("byte-limited");
+    let spool = CaptureSpool::open(
+        byte_root,
+        CaptureSpoolLimits {
+            max_bytes: 64 * 1024,
+            ..CaptureSpoolLimits::default()
+        },
+    )
+    .await
+    .unwrap();
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    assert_eq!(
+        writer
+            .append_chunk(0, 16_000, pcm(16_000))
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+    assert_eq!(writer.snapshot().await.unwrap().chunk_count, 0);
+}
+
+#[tokio::test]
+async fn directory_quotas_are_enforced_before_accepting_data_that_cannot_reopen() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let limits = CaptureSpoolLimits {
+        max_directory_entries: 7,
+        ..CaptureSpoolLimits::default()
+    };
+    let spool = CaptureSpool::open(root.clone(), limits.clone())
+        .await
+        .unwrap();
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    assert_eq!(
+        writer.append_chunk(1, 8, pcm(8)).await.err().unwrap().code,
+        ErrorCode::ResourceLimit
+    );
+    let before = writer.snapshot().await.unwrap();
+    drop(writer);
+    drop(spool);
+    let spool = CaptureSpool::open(root, limits).await.unwrap();
+    let writer = spool.resume(identity()).await.unwrap();
+    assert_eq!(writer.snapshot().await.unwrap(), before);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(8));
+    let root = temp.path().join("cannot-begin");
+    let spool = CaptureSpool::open(
+        root.clone(),
+        CaptureSpoolLimits {
+            max_directory_entries: 4,
+            ..CaptureSpoolLimits::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        spool
+            .begin(identity(), CaptureFormat::stereo())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+    assert_eq!(std::fs::read_dir(root).unwrap().count(), 1);
+}
+
+fn disk_bytes(path: &Path) -> u64 {
+    std::fs::read_dir(path)
+        .unwrap()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            let meta = entry.metadata().unwrap();
+            if meta.is_dir() {
+                disk_bytes(&entry.path())
+            } else {
+                meta.len()
+            }
+        })
+        .sum()
+}
+
+#[tokio::test]
+async fn metadata_quota_failures_restore_cached_state_and_leave_the_previous_manifest_canonical() {
+    for operation in ["bind", "ack", "seal", "publication"] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let mut id = identity();
+        if operation == "bind" {
+            id.target = CaptureTarget::PendingSession {
+                create_request_id: uuid::Uuid::new_v4().to_string(),
+            };
+        }
+        let writer = spool
+            .begin(id.clone(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+        if operation == "publication" {
+            writer.seal().await.unwrap();
+            writer
+                .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+                .await
+                .unwrap();
+        }
+        let before = writer.snapshot().await.unwrap();
+        drop(writer);
+        drop(spool);
+        let limits = CaptureSpoolLimits {
+            max_bytes: disk_bytes(&root) + 1,
+            ..CaptureSpoolLimits::default()
+        };
+        let spool = open_with_limits(&root, limits.clone()).await;
+        let writer = spool.resume(id.clone()).await.unwrap();
+        let error = match operation {
+            "bind" => writer
+                .bind_session("server-session".into())
+                .await
+                .err()
+                .unwrap(),
+            "ack" => writer
+                .acknowledge_prefix(receipt(&before))
+                .await
+                .err()
+                .unwrap(),
+            "seal" => writer.seal().await.err().unwrap(),
+            "publication" => writer
+                .observe_publication(publication(&before))
+                .await
+                .err()
+                .unwrap(),
+            _ => unreachable!(),
+        };
+        assert_eq!(error.code, ErrorCode::ResourceLimit);
+        assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert_eq!(writer.snapshot().await.unwrap(), before, "{operation}");
+        drop(writer);
+        drop(spool);
+        let spool = open_with_limits(&root, limits).await;
+        assert_eq!(
+            spool.resume(id).await.unwrap().snapshot().await.unwrap(),
+            before,
+            "{operation}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn mono_channels_empty_seals_and_float_bit_patterns_are_explicit() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    for channel in [
+        CaptureChannel::Microphone,
+        CaptureChannel::SystemAudio,
+        CaptureChannel::Mixed,
+    ] {
+        let mut id = identity();
+        id.capture_id = uuid::Uuid::new_v4().to_string();
+        id.request_id = uuid::Uuid::new_v4().to_string();
+        let format = CaptureFormat {
+            encoding: CaptureEncoding::PcmF32Le,
+            sample_rate: 16_000,
+            channels: vec![channel],
+        };
+        let writer = spool.begin(id, format).await.unwrap();
+        let bytes = [
+            (-0.0f32).to_le_bytes(),
+            f32::MIN_POSITIVE.to_le_bytes(),
+            (-1e-20f32).to_le_bytes(),
+        ]
+        .concat();
+        writer.append_chunk(0, 3, bytes.clone()).await.unwrap();
+        assert_eq!(writer.read_chunk(0).await.unwrap().bytes, bytes);
+        assert_eq!(writer.seal().await.unwrap().frames, 3);
+    }
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let seal = writer.seal().await.unwrap();
+    assert_eq!(seal.chunk_count, 0);
+    assert_eq!(seal.frames, 0);
+    assert_eq!(seal.source_sha256, hash([]));
+    assert_eq!(
+        writer.append_chunk(0, 1, pcm(1)).await.err().unwrap().code,
+        ErrorCode::Conflict
+    );
+}
+
+#[tokio::test]
+async fn chunk_corruption_during_ownership_is_detected_before_bytes_leave_the_spool() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    let chunk = dir(&root, &identity()).join("chunks/00000000000000000000.chunk");
+    let mut corrupt = std::fs::read(&chunk).unwrap();
+    *corrupt.last_mut().unwrap() ^= 1;
+    std::fs::write(&chunk, &corrupt).unwrap();
+    assert_eq!(
+        writer.read_chunk(0).await.err().unwrap().code,
+        ErrorCode::Internal
+    );
+    assert_eq!(std::fs::read(chunk).unwrap(), corrupt);
+}
+
+#[tokio::test]
+async fn all_write_fault_boundaries_recover_once_and_reconfirm_before_replay() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let mut source = vec![];
+    for (sequence, point) in [
+        Fault::AfterChunkFileSync,
+        Fault::AfterChunkRename,
+        Fault::AfterChunkDirectorySync,
+        Fault::AfterManifestRename,
+        Fault::AfterManifestDirectorySync,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let bytes = pcm(sequence as u32 + 1);
+        source.extend(&bytes);
+        spool.fault.store(point as u8, Ordering::SeqCst);
+        assert_eq!(
+            writer
+                .append_chunk(sequence as u64, sequence as u32 + 1, bytes.clone())
+                .await
+                .err()
+                .unwrap()
+                .mutation_outcome,
+            Some(MutationOutcome::Unknown)
+        );
+        let resumed = spool.resume(id.clone()).await.unwrap();
+        assert_eq!(
+            resumed.snapshot().await.unwrap().chunk_count,
+            sequence as u64 + 1
+        );
+        let replay = resumed
+            .append_chunk(sequence as u64, sequence as u32 + 1, bytes.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            resumed
+                .read_chunk(sequence as u64)
+                .await
+                .unwrap()
+                .descriptor,
+            replay
+        );
+        assert_eq!(
+            resumed.read_chunk(sequence as u64).await.unwrap().bytes,
+            bytes
+        );
+    }
+    assert_eq!(writer.seal().await.unwrap().source_sha256, hash(source));
+    assert_eq!(
+        std::fs::read_dir(dir(&root, &id).join("chunks"))
+            .unwrap()
+            .count(),
+        5
+    );
+}
+
+#[tokio::test]
+async fn abandoned_callers_retain_the_root_lease_and_bounded_io_until_disk_work_finishes() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let release = Arc::new(std::sync::Barrier::new(2));
+    *spool.pause.lock().unwrap() = Some(TestPause {
+        point: Fault::AfterChunkFileSync as u8,
+        entered,
+        release: release.clone(),
+    });
+    let first = writer.clone();
+    let first = tokio::spawn(async move { first.append_chunk(0, 8, pcm(8)).await });
+    waiting.await.unwrap();
+    let second = writer.clone();
+    let second = tokio::spawn(async move { second.append_chunk(1, 8, pcm(8)).await });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while spool.io.available_permits() != 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        writer.snapshot().await.err().unwrap().code,
+        ErrorCode::Unavailable
+    );
+    first.abort();
+    second.abort();
+    let _ = first.await;
+    let _ = second.await;
+    drop(writer);
+    drop(spool);
+    assert_eq!(
+        CaptureSpool::open(root.clone(), CaptureSpoolLimits::default())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    tokio::task::spawn_blocking(move || release.wait())
+        .await
+        .unwrap();
+    let reopened = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match CaptureSpool::open(root.clone(), CaptureSpoolLimits::default()).await {
+                Ok(spool) => break spool,
+                Err(error) if error.code == ErrorCode::Unavailable => {
+                    tokio::time::sleep(Duration::from_millis(10)).await
+                }
+                Err(error) => panic!("{error}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        reopened
+            .resume(identity())
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .chunk_count,
+        2
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn explicit_io_barrier_joins_an_abandoned_chunk_before_reporting_drained() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let release = Arc::new(std::sync::Barrier::new(2));
+    *spool.pause.lock().unwrap() = Some(TestPause {
+        point: Fault::AfterChunkFileSync as u8,
+        entered,
+        release: release.clone(),
+    });
+    let operation = tokio::spawn({
+        let writer = writer.clone();
+        async move { writer.append_chunk(0, 8, pcm(8)).await }
+    });
+    waiting.await.unwrap();
+    operation.abort();
+    let _ = operation.await;
+    let drain = tokio::spawn({
+        let writer = writer.clone();
+        async move { writer.wait_for_io().await }
+    });
+    let started = tokio::time::timeout(Duration::from_secs(2), async {
+        while spool.io.available_permits() != 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+    let blocked = !drain.is_finished();
+    tokio::task::spawn_blocking(move || release.wait())
+        .await
+        .unwrap();
+    started.unwrap();
+    assert!(blocked);
+    tokio::time::timeout(Duration::from_secs(5), drain)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(writer.snapshot().await.unwrap().chunk_count, 1);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(8));
+}
+
+#[tokio::test]
+async fn request_lookup_is_profile_wide_and_survives_reopen_without_changing_manifests() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let first = identity();
+    let unknown = uuid::Uuid::new_v4().to_string();
+    assert!(!spool.request_exists(&first.request_id).await.unwrap());
+    assert!(!spool.request_exists(&unknown).await.unwrap());
+    let writer = spool
+        .begin(first.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    assert!(spool.request_exists(&first.request_id).await.unwrap());
+    let mut other = first.clone();
+    other.scope.member_id = "other-member".into();
+    other.scope.vault_id = "other-vault".into();
+    other.capture_id = uuid::Uuid::new_v4().to_string();
+    other.request_id = uuid::Uuid::new_v4().to_string();
+    let other_writer = spool
+        .begin(other.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let before = writer.snapshot().await.unwrap();
+    assert!(spool.request_exists(&other.request_id).await.unwrap());
+    assert!(spool.request_exists("../invalid-request").await.is_err());
+    assert_eq!(writer.snapshot().await.unwrap(), before);
+    assert!(!spool.request_exists(&unknown).await.unwrap());
+    drop(writer);
+    drop(other_writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let recovered = spool.recovery_inventory().await.unwrap();
+    assert_eq!(recovered.len(), 2);
+    assert!(recovered.iter().any(|capture| capture.identity == first));
+    assert!(recovered.iter().any(|capture| capture.identity == other));
+    assert!(spool.request_exists(&first.request_id).await.unwrap());
+    assert!(spool.request_exists(&other.request_id).await.unwrap());
+    assert_eq!(
+        spool.resume(first).await.unwrap().snapshot().await.unwrap(),
+        before
+    );
+}
+
+struct Child(std::process::Child);
+impl Drop for Child {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+#[test]
+#[ignore = "subprocess crash fixture"]
+fn capture_crash_child() {
+    let root = PathBuf::from(std::env::var_os("LOOFAH_CAPTURE_CRASH_ROOT").unwrap());
+    let point: u8 = std::env::var("LOOFAH_CAPTURE_CRASH_POINT")
+        .unwrap()
+        .parse()
+        .unwrap();
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let spool = open(&root).await;
+            let writer = spool
+                .begin(identity(), CaptureFormat::stereo())
+                .await
+                .unwrap();
+            spool.fault.store(point, Ordering::SeqCst);
+            writer.append_chunk(0, 16, pcm(16)).await.unwrap();
+            std::fs::write(
+                std::env::var_os("LOOFAH_CAPTURE_CRASH_MARKER").unwrap(),
+                b"accepted",
+            )
+            .unwrap();
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+}
+
+#[tokio::test]
+async fn killed_processes_recover_synced_pending_renamed_and_accepted_chunks_without_duplication() {
+    for point in [
+        Fault::AfterChunkFileSync as u8,
+        Fault::AfterChunkRename as u8,
+        Fault::AfterManifestRename as u8,
+        0,
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let marker = temp.path().join("paused");
+        let mut child = Child(
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "capture_spool::tests::capture_crash_child",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("LOOFAH_CAPTURE_CRASH_ROOT", &root)
+                .env("LOOFAH_CAPTURE_CRASH_POINT", point.to_string())
+                .env("LOOFAH_CAPTURE_CRASH_MARKER", &marker)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !marker.exists() {
+                assert!(child.0.try_wait().unwrap().is_none());
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(child.0.try_wait().unwrap().is_none());
+        child.0.kill().unwrap();
+        child.0.wait().unwrap();
+        let spool = open(&root).await;
+        let writer = spool.resume(identity()).await.unwrap();
+        assert_eq!(writer.snapshot().await.unwrap().chunk_count, 1);
+        let replay = writer.append_chunk(0, 16, pcm(16)).await.unwrap();
+        assert_eq!(writer.read_chunk(0).await.unwrap().descriptor, replay);
+        assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(16));
+        assert_eq!(
+            std::fs::read_dir(dir(&root, &identity()).join("chunks"))
+                .unwrap()
+                .count(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn corrupt_future_incomplete_and_foreign_recovery_files_are_retained_without_resetting_identity()
+ {
+    for mode in [
+        "future-manifest",
+        "broken-manifest",
+        "future-chunk",
+        "broken-chunk",
+        "incomplete-pending",
+        "foreign-header",
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let id = identity();
+        let writer = spool
+            .begin(id.clone(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+        drop(writer);
+        drop(spool);
+        let directory = dir(&root, &id);
+        let manifest = directory.join("manifest.json");
+        let chunk = directory.join("chunks/00000000000000000000.chunk");
+        let target = match mode {
+            "future-manifest" => {
+                let mut value: Value =
+                    serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+                value["schema_version"] = json!(2);
+                std::fs::write(&manifest, value.to_string()).unwrap();
+                manifest.clone()
+            }
+            "broken-manifest" => {
+                std::fs::write(&manifest, b"{not json").unwrap();
+                manifest.clone()
+            }
+            "incomplete-pending" => {
+                let path = directory.join("chunks/00000000000000000001.pending");
+                std::fs::write(&path, b"LFCAP001partial").unwrap();
+                path
+            }
+            "broken-chunk" => {
+                let mut bytes = std::fs::read(&chunk).unwrap();
+                *bytes.last_mut().unwrap() ^= 1;
+                std::fs::write(&chunk, bytes).unwrap();
+                chunk.clone()
+            }
+            _ => {
+                let bytes = std::fs::read(&chunk).unwrap();
+                let header_len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+                let mut header: Value =
+                    serde_json::from_slice(&bytes[12..12 + header_len]).unwrap();
+                if mode == "future-chunk" {
+                    header["schema_version"] = json!(2);
+                } else {
+                    header["descriptor"]["capture_fingerprint"] = json!(hash(b"another vault"));
+                }
+                let header = serde_json::to_vec(&header).unwrap();
+                let mut output = b"LFCAP001".to_vec();
+                output.extend((header.len() as u32).to_le_bytes());
+                output.extend(header);
+                output.extend(&bytes[12 + header_len..]);
+                std::fs::write(&chunk, output).unwrap();
+                chunk.clone()
+            }
+        };
+        let original = std::fs::read(&target).unwrap();
+        assert_eq!(
+            CaptureSpool::open(root, CaptureSpoolLimits::default())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Internal,
+            "{mode}"
+        );
+        assert_eq!(std::fs::read(target).unwrap(), original, "{mode}");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn symlinks_cannot_redirect_the_owner_manifest_or_chunk_and_private_modes_are_kept() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    assert_eq!(
+        std::fs::metadata(&root).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    for path in [
+        root.join(".lock"),
+        dir(&root, &id).join("manifest.json"),
+        dir(&root, &id).join("chunks/00000000000000000000.chunk"),
+    ] {
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    drop(writer);
+    drop(spool);
+    for path in [
+        root.join(".lock"),
+        dir(&root, &id).join("manifest.json"),
+        dir(&root, &id).join("chunks/00000000000000000000.chunk"),
+    ] {
+        let outside = temp.path().join("outside");
+        let original = std::fs::read(&path).unwrap();
+        std::fs::rename(&path, &outside).unwrap();
+        symlink(&outside, &path).unwrap();
+        assert_eq!(
+            CaptureSpool::open(root.clone(), CaptureSpoolLimits::default())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Internal
+        );
+        assert!(path.is_symlink());
+        assert_eq!(std::fs::read(&outside).unwrap(), original);
+        std::fs::remove_file(&path).unwrap();
+        std::fs::rename(&outside, &path).unwrap();
+    }
+    let alias = temp.path().join("alias");
+    symlink(&root, &alias).unwrap();
+    assert_eq!(
+        CaptureSpool::open(alias, CaptureSpoolLimits::default())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Internal
+    );
+}
+
+#[derive(Default)]
+struct FakeSender {
+    chunks: BTreeMap<u64, CaptureChunkDescriptor>,
+    bytes: BTreeMap<u64, Vec<u8>>,
+    attempts: usize,
+}
+impl FakeSender {
+    fn send(&mut self, chunk: CaptureChunk, lose_reply: bool) -> Option<CapturePrefixReceipt> {
+        self.attempts += 1;
+        if let Some(existing) = self.chunks.get(&chunk.descriptor.sequence) {
+            assert_eq!(existing, &chunk.descriptor);
+            assert_eq!(self.bytes[&chunk.descriptor.sequence], chunk.bytes);
+        } else {
+            self.bytes.insert(chunk.descriptor.sequence, chunk.bytes);
+            self.chunks
+                .insert(chunk.descriptor.sequence, chunk.descriptor.clone());
+        }
+        if lose_reply {
+            return None;
+        }
+        let last = self.chunks.last_key_value().unwrap().1;
+        Some(CapturePrefixReceipt {
+            capture_fingerprint: last.capture_fingerprint.clone(),
+            chunk_count: last.sequence + 1,
+            frames: last.first_frame + last.frames as u64,
+            pcm_bytes: last.pcm_offset + last.bytes as u64,
+            chain_digest: last.digest.clone(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn fake_sender_lost_ack_disconnect_and_device_restart_replay_identical_chunks_only() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    for sequence in 0..8 {
+        writer.append_chunk(sequence, 8, pcm(8)).await.unwrap();
+    }
+    writer.seal().await.unwrap();
+    let mut sender = FakeSender::default();
+    let ack = sender
+        .send(writer.read_chunk(0).await.unwrap(), false)
+        .unwrap();
+    writer.acknowledge_prefix(ack).await.unwrap();
+    assert!(
+        sender
+            .send(writer.read_chunk(1).await.unwrap(), true)
+            .is_none()
+    );
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    assert_eq!(spool.inventory(scope()).await.unwrap().len(), 1);
+    assert_eq!(sender.attempts, 2);
+    let writer = spool.resume(identity()).await.unwrap();
+    let acknowledged = writer.snapshot().await.unwrap().acknowledged.unwrap();
+    let remaining = writer
+        .chunks(Some(acknowledged.chunk_count - 1), 200)
+        .await
+        .unwrap();
+    for chunk in remaining {
+        let ack = sender
+            .send(writer.read_chunk(chunk.sequence).await.unwrap(), false)
+            .unwrap();
+        writer.acknowledge_prefix(ack).await.unwrap();
+    }
+    assert_eq!(sender.chunks.len(), 8);
+    assert_eq!(sender.attempts, 9);
+    let complete = writer.snapshot().await.unwrap();
+    writer
+        .observe_publication(publication(&complete))
+        .await
+        .unwrap();
+    for sequence in 0..8 {
+        assert_eq!(
+            writer.read_chunk(sequence).await.unwrap().bytes,
+            sender.bytes[&sequence]
+        );
+    }
+    assert_eq!(
+        std::fs::read_dir(dir(&root, &identity()).join("chunks"))
+            .unwrap()
+            .count(),
+        8
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "two-hour synthetic storage volume; choose LOOFAH_CAPTURE_STRESS_ROOT explicitly"]
+async fn two_hour_dual_channel_synthetic_spool_is_bounded_and_reopens_without_missing_frames() {
+    let parent = PathBuf::from(std::env::var_os("LOOFAH_CAPTURE_STRESS_ROOT").expect(
+        "Set LOOFAH_CAPTURE_STRESS_ROOT to an absolute storage directory with at least 1 GiB free",
+    ));
+    assert!(
+        parent.is_absolute(),
+        "The stress storage directory must be absolute"
+    );
+    std::fs::create_dir_all(&parent).unwrap();
+    let root = parent
+        .canonicalize()
+        .unwrap()
+        .join(uuid::Uuid::new_v4().to_string());
+    let started = Instant::now();
+    let spool = open(&root).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let initial = std::fs::metadata(dir(&root, &identity()).join("manifest.json"))
+        .unwrap()
+        .len();
+    let mut largest = initial;
+    let template = pcm(16_000);
+    let mut expected = Sha256::new();
+    println!("capture stress root: {}", root.display());
+    for sequence in 0..7200u64 {
+        let mut bytes = template.clone();
+        bytes[..4].copy_from_slice(&(sequence as f32).to_le_bytes());
+        expected.update(&bytes);
+        writer.append_chunk(sequence, 16_000, bytes).await.unwrap();
+        largest = largest.max(
+            std::fs::metadata(dir(&root, &identity()).join("manifest.json"))
+                .unwrap()
+                .len(),
+        );
+        if (sequence + 1) % 1800 == 0 {
+            println!(
+                "persisted {} synthetic seconds; elapsed {:?}; manifest bytes {}",
+                sequence + 1,
+                started.elapsed(),
+                largest
+            );
+        }
+    }
+    assert!(
+        largest < initial + 256,
+        "Manifest must not grow with the chunk list"
+    );
+    let seal = writer.seal().await.unwrap();
+    let expected = expected
+        .finalize()
+        .iter()
+        .map(|c| format!("{c:02x}"))
+        .collect::<String>();
+    assert_eq!(seal.source_sha256, expected);
+    assert_eq!(seal.frames, 115_200_000);
+    assert_eq!(seal.pcm_bytes, 921_600_000);
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let published = writer
+        .observe_publication(publication(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(identity()).await.unwrap();
+    assert_eq!(writer.snapshot().await.unwrap(), published);
+    assert_eq!(writer.seal().await.unwrap(), seal);
+    let mut count = 0;
+    let mut after = None;
+    loop {
+        let page = writer.chunks(after, 200).await.unwrap();
+        if page.is_empty() {
+            break;
+        }
+        count += page.len();
+        after = page.last().map(|chunk| chunk.sequence);
+    }
+    assert_eq!(count, 7200);
+    assert_eq!(
+        std::fs::read_dir(dir(&root, &identity()).join("chunks"))
+            .unwrap()
+            .count(),
+        7200
+    );
+    println!(
+        "two-hour synthetic capture verified: frames={}, bytes={}, chunks={}, source_sha256={}, largest_manifest={}, elapsed={:?}",
+        seal.frames,
+        seal.pcm_bytes,
+        seal.chunk_count,
+        seal.source_sha256,
+        largest,
+        started.elapsed()
+    );
+}
+
+const OBSERVATION_MS: u64 = 1_723_456_789_012;
+
+#[tokio::test]
+async fn timing_absence_keeps_the_original_v1_manifest_bytes_and_never_guesses_a_time() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let snapshot = writer.snapshot().await.unwrap();
+    let expected = format!(
+        r#"{{"schema_version":1,"snapshot":{{"identity":{},"format":{},"capture_fingerprint":"{}","created_at_ms":{},"session_id":"note","chunk_count":0,"frames":0,"pcm_bytes":0,"chain_digest":"{}","acknowledged":null,"seal":null,"publication":null}}}}"#,
+        serde_json::to_string(&id).unwrap(), serde_json::to_string(&CaptureFormat::stereo()).unwrap(),
+        snapshot.capture_fingerprint, snapshot.created_at_ms, snapshot.chain_digest,
+    ).into_bytes();
+    let manifest = dir(&root, &id).join("manifest.json");
+    assert_eq!(std::fs::read(&manifest).unwrap(), expected);
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(id.clone()).await.unwrap();
+    assert_eq!(std::fs::read(&manifest).unwrap(), expected);
+    assert_eq!(
+        writer
+            .snapshot()
+            .await
+            .unwrap()
+            .first_admitted_audio_observed_at_ms,
+        None
+    );
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    writer.seal().await.unwrap();
+    writer
+        .observe_publication(publication(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let bytes = std::fs::read(&manifest).unwrap();
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(value["schema_version"], 1);
+    assert!(
+        !value["snapshot"]
+            .as_object()
+            .unwrap()
+            .contains_key("first_admitted_audio_observed_at_ms")
+    );
+    let legacy = writer.snapshot().await.unwrap();
+    let chunk = dir(&root, &id).join("chunks/00000000000000000000.chunk");
+    let original_chunk = std::fs::read(&chunk).unwrap();
+    let original_descriptor = writer.read_chunk(0).await.unwrap().descriptor;
+    let timed = writer
+        .record_first_audio_observation(OBSERVATION_MS)
+        .await
+        .unwrap();
+    let mut unchanged = timed.clone();
+    unchanged.first_admitted_audio_observed_at_ms = None;
+    assert_eq!(unchanged, legacy);
+    assert_eq!(std::fs::read(&chunk).unwrap(), original_chunk);
+    assert_eq!(
+        writer.read_chunk(0).await.unwrap().descriptor,
+        original_descriptor
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&std::fs::read(&manifest).unwrap()).unwrap()["schema_version"],
+        2
+    );
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(id).await.unwrap();
+    assert_eq!(writer.snapshot().await.unwrap(), timed);
+    assert_eq!(
+        writer.read_chunk(0).await.unwrap().descriptor,
+        original_descriptor
+    );
+    assert_eq!(std::fs::read(chunk).unwrap(), original_chunk);
+}
+
+#[tokio::test]
+async fn timing_v2_survives_reopen_append_binding_ack_seal_and_publication_without_hash_changes() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let mut id = identity();
+    id.target = CaptureTarget::PendingSession {
+        create_request_id: uuid::Uuid::from_u128(3).to_string(),
+    };
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let before = writer.snapshot().await.unwrap();
+    let snapshot = writer
+        .record_first_audio_observation(OBSERVATION_MS)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.capture_fingerprint, before.capture_fingerprint);
+    assert_eq!(snapshot.chain_digest, before.chain_digest);
+    assert_eq!(snapshot.created_at_ms, before.created_at_ms);
+    let first = writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    writer.bind_session("remote-note".into()).await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(id.clone()).await.unwrap();
+    assert_eq!(
+        writer
+            .snapshot()
+            .await
+            .unwrap()
+            .first_admitted_audio_observed_at_ms,
+        Some(OBSERVATION_MS)
+    );
+    assert_eq!(writer.append_chunk(0, 8, pcm(8)).await.unwrap(), first);
+    writer.append_chunk(1, 4, pcm(4)).await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let sealed = writer.seal().await.unwrap();
+    assert_eq!(sealed.source_sha256, hash([pcm(8), pcm(4)].concat()));
+    writer
+        .observe_publication(publication(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let manifest = dir(&root, &id).join("manifest.json");
+    let bytes = std::fs::read(&manifest).unwrap();
+    assert_eq!(
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap()
+            .seal,
+        Some(sealed)
+    );
+    assert_eq!(std::fs::read(&manifest).unwrap(), bytes);
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let snapshot = spool.resume(id).await.unwrap().snapshot().await.unwrap();
+    assert_eq!(
+        snapshot.first_admitted_audio_observed_at_ms,
+        Some(OBSERVATION_MS)
+    );
+    assert!(snapshot.publication.is_some());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&bytes).unwrap()["schema_version"],
+        2
+    );
+}
+
+#[tokio::test]
+async fn timing_is_write_once_js_safe_and_bound_to_the_exact_existing_identity() {
+    for ms in [0, MAX_JS_SAFE_MS] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin(identity(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        assert_eq!(
+            writer
+                .record_first_audio_observation(ms)
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            Some(ms)
+        );
+        let manifest = dir(&root, &identity()).join("manifest.json");
+        let bytes = std::fs::read(&manifest).unwrap();
+        assert_eq!(
+            writer
+                .record_first_audio_observation(ms)
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            Some(ms)
+        );
+        let error = writer
+            .record_first_audio_observation(ms ^ 1)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Conflict);
+        assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert_eq!(
+            writer
+                .record_first_audio_observation(MAX_JS_SAFE_MS + 1)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Validation
+        );
+        let mut foreign = identity();
+        foreign.request_id = uuid::Uuid::from_u128(9).to_string();
+        let foreign = CaptureWriter {
+            spool: spool.clone(),
+            identity: foreign,
+            usage: writer.usage.clone(),
+        };
+        assert_eq!(
+            foreign
+                .record_first_audio_observation(ms)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Conflict
+        );
+        assert_eq!(std::fs::read(&manifest).unwrap(), bytes);
+        drop(foreign);
+        drop(writer);
+        drop(spool);
+        assert_eq!(
+            open(&root)
+                .await
+                .resume(identity())
+                .await
+                .unwrap()
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            Some(ms)
+        );
+    }
+}
+
+#[tokio::test]
+async fn timing_invalid_versions_values_duplicates_and_truncation_are_retained_without_repair() {
+    for mode in [
+        "v1-with-time",
+        "v1-null",
+        "v2-missing",
+        "v2-null",
+        "future",
+        "zero-version",
+        "negative",
+        "fraction",
+        "string",
+        "unsafe",
+        "duplicate-time",
+        "duplicate-version",
+        "truncated",
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin(identity(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap();
+        let manifest = dir(&root, &identity()).join("manifest.json");
+        drop(writer);
+        drop(spool);
+        let mut value: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+        match mode {
+            "v1-with-time" => value["schema_version"] = json!(1),
+            "v1-null" => {
+                value["schema_version"] = json!(1);
+                value["snapshot"]["first_admitted_audio_observed_at_ms"] = Value::Null;
+            }
+            "v2-missing" => {
+                value["snapshot"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("first_admitted_audio_observed_at_ms");
+            }
+            "v2-null" => value["snapshot"]["first_admitted_audio_observed_at_ms"] = Value::Null,
+            "future" => value["schema_version"] = json!(3),
+            "zero-version" => value["schema_version"] = json!(0),
+            "negative" => value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!(-1),
+            "fraction" => value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!(1.5),
+            "string" => value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!("123"),
+            "unsafe" => {
+                value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!(MAX_JS_SAFE_MS + 1)
+            }
+            _ => {}
+        }
+        let mut bytes = serde_json::to_vec(&value).unwrap();
+        if mode == "duplicate-time" {
+            bytes = String::from_utf8(bytes).unwrap().replace("\"first_admitted_audio_observed_at_ms\":", "\"first_admitted_audio_observed_at_ms\":1,\"first_admitted_audio_observed_at_ms\":").into_bytes();
+        }
+        if mode == "duplicate-version" {
+            bytes = String::from_utf8(bytes)
+                .unwrap()
+                .replace(
+                    "\"schema_version\":",
+                    "\"schema_version\":2,\"schema_version\":",
+                )
+                .into_bytes();
+        }
+        if mode == "truncated" {
+            bytes.truncate(bytes.len() / 2);
+        }
+        std::fs::write(&manifest, &bytes).unwrap();
+        assert_eq!(
+            CaptureSpool::open(root.clone(), CaptureSpoolLimits::default())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Internal,
+            "{mode}"
+        );
+        assert_eq!(std::fs::read(&manifest).unwrap(), bytes, "{mode}");
+    }
+}
+
+#[tokio::test]
+async fn timing_owned_manifest_tampering_is_detected_before_any_observation_rewrite() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer
+        .record_first_audio_observation(OBSERVATION_MS)
+        .await
+        .unwrap();
+    let manifest = dir(&root, &identity()).join("manifest.json");
+    let mut value: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+    value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!(OBSERVATION_MS + 1);
+    let bytes = serde_json::to_vec(&value).unwrap();
+    std::fs::write(&manifest, &bytes).unwrap();
+    assert_eq!(
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Internal
+    );
+    assert_eq!(std::fs::read(&manifest).unwrap(), bytes);
+}
+
+#[tokio::test]
+async fn timing_fault_boundaries_reconcile_v1_or_exact_v2_without_losing_audio_or_rewriting_time() {
+    for point in [
+        Fault::BeforeManifestWrite,
+        Fault::ShortManifestWrite,
+        Fault::AfterManifestRename,
+        Fault::AfterManifestDirectorySync,
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin(identity(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+        let manifest = dir(&root, &identity()).join("manifest.json");
+        let original = std::fs::read(&manifest).unwrap();
+        spool.fault.store(point as u8, Ordering::SeqCst);
+        assert_eq!(
+            writer
+                .record_first_audio_observation(OBSERVATION_MS)
+                .await
+                .unwrap_err()
+                .mutation_outcome,
+            Some(MutationOutcome::Unknown)
+        );
+        let before_commit = matches!(
+            point,
+            Fault::BeforeManifestWrite | Fault::ShortManifestWrite
+        );
+        assert_eq!(
+            writer
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            if before_commit {
+                None
+            } else {
+                Some(OBSERVATION_MS)
+            }
+        );
+        if before_commit {
+            assert_eq!(std::fs::read(&manifest).unwrap(), original);
+        }
+        let partial = dir(&root, &identity()).join(".capture-observation-incomplete.tmp");
+        let retained = partial.exists().then(|| std::fs::read(&partial).unwrap());
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap();
+        assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(8));
+        assert_eq!(writer.seal().await.unwrap().source_sha256, hash(pcm(8)));
+        if let Some(retained) = retained {
+            assert_eq!(std::fs::read(partial).unwrap(), retained);
+        }
+        drop(writer);
+        drop(spool);
+        assert_eq!(
+            open(&root)
+                .await
+                .resume(identity())
+                .await
+                .unwrap()
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            Some(OBSERVATION_MS)
+        );
+    }
+}
+
+#[tokio::test]
+async fn canceled_observation_callers_retain_io_and_lease_until_the_owned_timestamp_commit_finishes()
+ {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let release = Arc::new(std::sync::Barrier::new(2));
+    *spool.pause.lock().unwrap() = Some(TestPause {
+        point: Fault::BeforeManifestWrite as u8,
+        entered,
+        release: release.clone(),
+    });
+    let owned = writer.clone();
+    let task =
+        tokio::spawn(async move { owned.record_first_audio_observation(OBSERVATION_MS).await });
+    waiting.await.unwrap();
+    task.abort();
+    let _ = task.await;
+    drop(writer);
+    drop(spool);
+    assert_eq!(
+        CaptureSpool::open(root.clone(), CaptureSpoolLimits::default())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    tokio::task::spawn_blocking(move || release.wait())
+        .await
+        .unwrap();
+    let reopened = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match CaptureSpool::open(root.clone(), CaptureSpoolLimits::default()).await {
+                Ok(spool) => break spool,
+                Err(error) if error.code == ErrorCode::Unavailable => {
+                    tokio::time::sleep(Duration::from_millis(10)).await
+                }
+                Err(error) => panic!("{error}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        reopened
+            .resume(identity())
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .first_admitted_audio_observed_at_ms,
+        Some(OBSERVATION_MS)
+    );
+}
+
+#[tokio::test]
+async fn observation_quota_rejection_restores_schema_and_allows_a_smaller_ordinary_v1_write() {
+    for directory_limit in [false, true] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let mut id = identity();
+        id.target = CaptureTarget::PendingSession {
+            create_request_id: uuid::Uuid::from_u128(3).to_string(),
+        };
+        let writer = spool
+            .begin(id.clone(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        let manifest = dir(&root, &id).join("manifest.json");
+        let original = std::fs::read(&manifest).unwrap();
+        drop(writer);
+        drop(spool);
+        let limits = if directory_limit {
+            CaptureSpoolLimits {
+                max_directory_entries: 5,
+                ..CaptureSpoolLimits::default()
+            }
+        } else {
+            CaptureSpoolLimits {
+                max_bytes: original.len() as u64 * 2,
+                ..CaptureSpoolLimits::default()
+            }
+        };
+        let spool = CaptureSpool::open(root.clone(), limits).await.unwrap();
+        let writer = spool.resume(id.clone()).await.unwrap();
+        let error = writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::ResourceLimit);
+        assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert_eq!(
+            writer
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            None
+        );
+        assert_eq!(std::fs::read(&manifest).unwrap(), original);
+        if !directory_limit {
+            writer.bind_session("x".into()).await.unwrap();
+            let value: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+            assert_eq!(value["schema_version"], 1);
+        }
+        drop(writer);
+        drop(spool);
+        let spool = open(&root).await;
+        let writer = spool.resume(id).await.unwrap();
+        assert_eq!(
+            writer
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            None
+        );
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap();
+    }
+}
+
+#[test]
+#[ignore = "subprocess timestamp crash fixture"]
+fn capture_timing_crash_child() {
+    let root = PathBuf::from(std::env::var_os("LOOFAH_CAPTURE_CRASH_ROOT").unwrap());
+    let point: u8 = std::env::var("LOOFAH_CAPTURE_CRASH_POINT")
+        .unwrap()
+        .parse()
+        .unwrap();
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let spool = open(&root).await;
+            let writer = spool
+                .begin(identity(), CaptureFormat::stereo())
+                .await
+                .unwrap();
+            spool.fault.store(point, Ordering::SeqCst);
+            writer
+                .record_first_audio_observation(OBSERVATION_MS)
+                .await
+                .unwrap();
+            std::fs::write(
+                std::env::var_os("LOOFAH_CAPTURE_CRASH_MARKER").unwrap(),
+                b"accepted",
+            )
+            .unwrap();
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+}
+
+#[tokio::test]
+async fn killed_observation_processes_recover_only_committed_v2_or_unchanged_v1() {
+    for point in [
+        Fault::BeforeManifestWrite as u8,
+        Fault::ShortManifestWrite as u8,
+        Fault::AfterManifestRename as u8,
+        Fault::AfterManifestDirectorySync as u8,
+        0,
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin(identity(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+        drop(writer);
+        drop(spool);
+        let marker = temp.path().join("paused");
+        let mut child = Child(
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "capture_spool::tests::capture_timing_crash_child",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("LOOFAH_CAPTURE_CRASH_ROOT", &root)
+                .env("LOOFAH_CAPTURE_CRASH_POINT", point.to_string())
+                .env("LOOFAH_CAPTURE_CRASH_MARKER", &marker)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !marker.exists() {
+                assert!(child.0.try_wait().unwrap().is_none());
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        child.0.kill().unwrap();
+        child.0.wait().unwrap();
+        let spool = open(&root).await;
+        let writer = spool.resume(identity()).await.unwrap();
+        let expected = if point == Fault::BeforeManifestWrite as u8
+            || point == Fault::ShortManifestWrite as u8
+        {
+            None
+        } else {
+            Some(OBSERVATION_MS)
+        };
+        assert_eq!(
+            writer
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            expected
+        );
+        assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(8));
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap();
+        assert_eq!(writer.seal().await.unwrap().source_sha256, hash(pcm(8)));
+    }
+}
+
+#[tokio::test]
+async fn admitted_observation_is_in_the_first_manifest_and_replay_cannot_change_it() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), OBSERVATION_MS)
+        .await
+        .unwrap();
+    let manifest = dir(&root, &id).join("manifest.json");
+    let initial = std::fs::read(&manifest).unwrap();
+    let raw: Value = serde_json::from_slice(&initial).unwrap();
+    assert_eq!(raw["schema_version"], 2);
+    assert_eq!(
+        raw["snapshot"]["first_admitted_audio_observed_at_ms"],
+        OBSERVATION_MS
+    );
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let resumed = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), OBSERVATION_MS)
+        .await
+        .unwrap();
+    assert_eq!(resumed.read_chunk(0).await.unwrap().bytes, pcm(8));
+    let before = std::fs::read(&manifest).unwrap();
+    for ms in [OBSERVATION_MS + 1, MAX_JS_SAFE_MS + 1] {
+        let cause = match spool
+            .begin_with_observation(id.clone(), CaptureFormat::stereo(), ms)
+            .await
+        {
+            Ok(_) => panic!("changed observation admitted"),
+            Err(cause) => cause,
+        };
+        assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert_eq!(std::fs::read(&manifest).unwrap(), before);
+    }
+    assert!(spool.begin(id, CaptureFormat::stereo()).await.is_ok());
+}
+
+#[tokio::test]
+async fn observation_admission_refuses_to_fill_an_existing_undeclared_v1_capture() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let manifest = dir(&root, &id).join("manifest.json");
+    let before = std::fs::read(&manifest).unwrap();
+    let cause = match spool
+        .begin_with_observation(id, CaptureFormat::stereo(), OBSERVATION_MS)
+        .await
+    {
+        Ok(_) => panic!("undeclared observation replaced"),
+        Err(cause) => cause,
+    };
+    assert_eq!(cause.code, ErrorCode::Conflict);
+    assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+}
+
+#[tokio::test]
+async fn rejected_declared_seal_does_not_freeze_or_replace_the_admitted_prefix() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), OBSERVATION_MS)
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    let snapshot = writer.snapshot().await.unwrap();
+    let correct = CaptureSeal {
+        capture_fingerprint: snapshot.capture_fingerprint.clone(),
+        chunk_count: 1,
+        frames: 8,
+        pcm_bytes: pcm(8).len() as u64,
+        chain_digest: snapshot.chain_digest,
+        source_sha256: hash(pcm(8)),
+    };
+    let manifest = dir(&root, &id).join("manifest.json");
+    let before = std::fs::read(&manifest).unwrap();
+    let mut wrong = correct.clone();
+    wrong.source_sha256 = hash(b"wrong declaration");
+    let cause = writer.seal_if_matches(wrong.clone()).await.unwrap_err();
+    assert_eq!(cause.code, ErrorCode::Conflict);
+    assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+    assert!(writer.snapshot().await.unwrap().seal.is_none());
+    assert_eq!(
+        writer.seal_if_matches(correct.clone()).await.unwrap(),
+        correct
+    );
+    assert_eq!(
+        writer.seal_if_matches(correct.clone()).await.unwrap(),
+        correct
+    );
+    let sealed = std::fs::read(&manifest).unwrap();
+    assert!(writer.seal_if_matches(wrong).await.is_err());
+    assert_eq!(std::fs::read(&manifest).unwrap(), sealed);
+    assert!(writer.append_chunk(1, 8, pcm(8)).await.is_err());
+}
+
+fn processing_options() -> CaptureProcessingOptions {
+    CaptureProcessingOptions {
+        model: Some("operator-cpu".into()),
+        languages: vec!["en".into()],
+        keywords: vec!["Loofah".into()],
+        summary: Some(hypr_loofah_protocol::CaptureProcessingSummary {
+            target: hypr_loofah_protocol::DocumentTarget::Summary,
+            title_policy: hypr_loofah_protocol::TitlePolicy::GenerateIfEmpty,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn processing_declaration_precedes_audio_and_survives_observation_cancel_and_reopen() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_processing(
+            id.clone(),
+            CaptureFormat::stereo(),
+            Some(processing_options()),
+        )
+        .await
+        .unwrap();
+    let before = writer.snapshot().await.unwrap();
+    let expected = processing_options().request(before.capture_fingerprint.clone());
+    assert_eq!(before.processing.as_ref().unwrap().request, expected);
+    assert_eq!(before.identity, id);
+    assert_eq!(before.chunk_count, 0);
+    assert_eq!(before.first_admitted_audio_observed_at_ms, None);
+    let manifest = dir(&root, &id).join("manifest.json");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&std::fs::read(&manifest).unwrap()).unwrap()["schema_version"],
+        3
+    );
+    writer
+        .record_first_audio_observation(OBSERVATION_MS)
+        .await
+        .unwrap();
+    writer.append_chunk(0, 160, pcm(160)).await.unwrap();
+    let seal = writer.seal().await.unwrap();
+    let cancelled = writer.cancel_processing().await.unwrap();
+    assert!(cancelled.processing.as_ref().unwrap().cancel_requested);
+    assert_eq!(cancelled.processing.as_ref().unwrap().request, expected);
+    assert_eq!(cancelled.seal, Some(seal));
+    assert_eq!(writer.cancel_processing().await.unwrap(), cancelled);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(160));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&std::fs::read(&manifest).unwrap()).unwrap()["schema_version"],
+        3
+    );
+    drop(writer);
+    drop(spool);
+    let reopened = open(&root).await;
+    let writer = reopened.resume(id.clone()).await.unwrap();
+    assert_eq!(writer.snapshot().await.unwrap(), cancelled);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(160));
+    assert!(
+        reopened
+            .begin_with_processing(
+                id.clone(),
+                CaptureFormat::stereo(),
+                Some(processing_options())
+            )
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .processing
+            .unwrap()
+            .cancel_requested
+    );
+    assert_eq!(
+        reopened
+            .begin(id, CaptureFormat::stereo())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+}
+
+#[tokio::test]
+async fn processing_cannot_be_added_to_historical_capture_or_changed_after_first_begin() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    let original = identity();
+    let writer = spool
+        .begin(original.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer.append_chunk(0, 2, pcm(2)).await.unwrap();
+    assert!(writer.snapshot().await.unwrap().processing.is_none());
+    assert_eq!(
+        spool
+            .begin_with_processing(
+                original.clone(),
+                CaptureFormat::stereo(),
+                Some(processing_options())
+            )
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(
+        writer.cancel_processing().await.err().unwrap().code,
+        ErrorCode::Conflict
+    );
+    assert!(writer.snapshot().await.unwrap().processing.is_none());
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(2));
+    let mut fresh = original;
+    fresh.capture_id = uuid::Uuid::new_v4().to_string();
+    fresh.request_id = uuid::Uuid::new_v4().to_string();
+    let declared = spool
+        .begin_with_processing(
+            fresh.clone(),
+            CaptureFormat::stereo(),
+            Some(processing_options()),
+        )
+        .await
+        .unwrap();
+    let before = declared.snapshot().await.unwrap();
+    let mut changed = processing_options();
+    changed.summary = None;
+    assert_eq!(
+        spool
+            .begin_with_processing(fresh, CaptureFormat::stereo(), Some(changed))
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(declared.snapshot().await.unwrap(), before);
+}
+
+#[tokio::test]
+async fn processing_schema_and_fingerprint_tampering_never_rewrites_retained_audio() {
+    for mode in [
+        "old-schema",
+        "missing-declaration",
+        "foreign-fingerprint",
+        "unknown-option",
+        "oversized-options",
+        "append",
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin_with_processing(
+                identity(),
+                CaptureFormat::stereo(),
+                Some(processing_options()),
+            )
+            .await
+            .unwrap();
+        writer.append_chunk(0, 2, pcm(2)).await.unwrap();
+        drop(writer);
+        drop(spool);
+        let manifest = dir(&root, &identity()).join("manifest.json");
+        let mut value: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+        match mode {
+            "old-schema" => value["schema_version"] = json!(1),
+            "missing-declaration" => {
+                value["snapshot"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("processing");
+            }
+            "foreign-fingerprint" => {
+                value["snapshot"]["processing"]["request"]["capture_fingerprint"] =
+                    json!("b".repeat(64))
+            }
+            "unknown-option" => {
+                value["snapshot"]["processing"]["request"]["api_key"] = json!("private")
+            }
+            "oversized-options" => {
+                value["snapshot"]["processing"]["request"]["model"] = json!("x".repeat(513))
+            }
+            "append" => {
+                value["snapshot"]["identity"]["target"]["expected_audio_sha256"] =
+                    json!("a".repeat(64))
+            }
+            _ => unreachable!(),
+        }
+        let bytes = serde_json::to_vec(&value).unwrap();
+        std::fs::write(&manifest, &bytes).unwrap();
+        assert_eq!(
+            CaptureSpool::open(root.clone(), CaptureSpoolLimits::default())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Internal,
+            "{mode}"
+        );
+        assert_eq!(std::fs::read(&manifest).unwrap(), bytes, "{mode}");
+    }
+}
+
+#[tokio::test]
+async fn processing_cancel_unknown_commit_keeps_exact_declaration_and_pcm_without_replaying_audio()
+{
+    for point in [
+        Fault::BeforeManifestWrite,
+        Fault::ShortManifestWrite,
+        Fault::AfterManifestRename,
+        Fault::AfterManifestDirectorySync,
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin_with_processing(
+                identity(),
+                CaptureFormat::stereo(),
+                Some(processing_options()),
+            )
+            .await
+            .unwrap();
+        writer.append_chunk(0, 2, pcm(2)).await.unwrap();
+        let before = writer.snapshot().await.unwrap();
+        spool.fault.store(point as u8, Ordering::SeqCst);
+        assert_eq!(
+            writer
+                .cancel_processing()
+                .await
+                .unwrap_err()
+                .mutation_outcome,
+            Some(MutationOutcome::Unknown)
+        );
+        let observed = writer.snapshot().await.unwrap();
+        assert_eq!(
+            observed.processing.as_ref().unwrap().request,
+            before.processing.unwrap().request
+        );
+        assert_eq!(
+            observed.processing.as_ref().unwrap().cancel_requested,
+            matches!(
+                point,
+                Fault::AfterManifestRename | Fault::AfterManifestDirectorySync
+            )
+        );
+        assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(2));
+        spool.fault.store(0, Ordering::SeqCst);
+        assert!(
+            writer
+                .cancel_processing()
+                .await
+                .unwrap()
+                .processing
+                .unwrap()
+                .cancel_requested
+        );
+        drop(writer);
+        drop(spool);
+        assert!(
+            open(&root)
+                .await
+                .resume(identity())
+                .await
+                .unwrap()
+                .snapshot()
+                .await
+                .unwrap()
+                .processing
+                .unwrap()
+                .cancel_requested
+        );
+    }
+}
+
+#[tokio::test]
+async fn retirement_admission_waits_for_whole_source_users_and_excludes_new_users() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), 100)
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    writer.seal().await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    writer
+        .observe_publication(publication(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let reader = writer.clone();
+    drop(writer);
+    spool.wait_for_io().await;
+    assert_eq!(
+        spool.admit_retirement(id.clone()).await.err().unwrap().code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(reader.read_chunk(0).await.unwrap().bytes, pcm(8));
+    drop(reader);
+    let admission = spool.admit_retirement(id.clone()).await.unwrap();
+    assert_eq!(admission.snapshot().identity, id);
+    assert_eq!(
+        spool.resume(id.clone()).await.err().unwrap().code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(
+        spool
+            .begin(id.clone(), CaptureFormat::stereo())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    let mut other = id.clone();
+    other.capture_id = uuid::Uuid::new_v4().to_string();
+    other.request_id = uuid::Uuid::new_v4().to_string();
+    let independent = spool.begin(other, CaptureFormat::stereo()).await.unwrap();
+    independent.append_chunk(0, 2, pcm(2)).await.unwrap();
+    assert_eq!(spool.inventory(scope()).await.unwrap().len(), 2);
+    assert!(
+        dir(&root, &id)
+            .join("chunks/00000000000000000000.chunk")
+            .exists()
+    );
+    drop(admission);
+    assert_eq!(
+        spool
+            .resume(id)
+            .await
+            .unwrap()
+            .read_chunk(0)
+            .await
+            .unwrap()
+            .bytes,
+        pcm(8)
+    );
+}
+
+#[tokio::test]
+async fn cancelled_writer_waiter_keeps_retirement_blocked_until_actual_io_finishes() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), 100)
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    writer.seal().await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let observed = publication(&writer.snapshot().await.unwrap());
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let release = Arc::new(std::sync::Barrier::new(2));
+    *spool.pause.lock().unwrap() = Some(TestPause {
+        point: Fault::AfterManifestRename as u8,
+        entered,
+        release: release.clone(),
+    });
+    let task = tokio::spawn(async move { writer.observe_publication(observed).await });
+    waiting.await.unwrap();
+    task.abort();
+    let _ = task.await;
+    assert_eq!(
+        spool.admit_retirement(id.clone()).await.err().unwrap().code,
+        ErrorCode::Unavailable
+    );
+    tokio::task::spawn_blocking(move || release.wait())
+        .await
+        .unwrap();
+    spool.wait_for_io().await;
+    let admission = spool.admit_retirement(id.clone()).await.unwrap();
+    assert!(admission.snapshot().publication.is_some());
+    drop(admission);
+    assert_eq!(
+        spool
+            .resume(id)
+            .await
+            .unwrap()
+            .read_chunk(0)
+            .await
+            .unwrap()
+            .bytes,
+        pcm(8)
+    );
+}
+
+#[tokio::test]
+async fn retirement_admission_requires_original_published_identity_but_never_deletes() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    let id = identity();
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    drop(writer);
+    assert_eq!(
+        spool.admit_retirement(id.clone()).await.err().unwrap().code,
+        ErrorCode::Validation
+    );
+    let mut foreign = id.clone();
+    foreign.request_id = uuid::Uuid::new_v4().to_string();
+    assert!(spool.admit_retirement(foreign).await.is_err());
+    assert_eq!(
+        spool
+            .resume(id)
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .chunk_count,
+        0
+    );
+}
+
+struct VerifiedRetirement;
+impl CaptureRetirementAuthority for VerifiedRetirement {
+    fn check_current(&self) -> Result<()> {
+        Ok(())
+    }
+}
+async fn retirement_fixture(
+    spool: &Arc<CaptureSpool>,
+    id: CaptureIdentity,
+) -> hypr_loofah_protocol::CaptureRetirementRequest {
+    let writer = spool.begin(id, CaptureFormat::stereo()).await.unwrap();
+    writer.append_chunk(0, 4, pcm(4)).await.unwrap();
+    writer.append_chunk(1, 6, pcm(6)).await.unwrap();
+    writer.seal().await.unwrap();
+    let snapshot = writer.snapshot().await.unwrap();
+    writer.acknowledge_prefix(receipt(&snapshot)).await.unwrap();
+    let publication = publication(&snapshot);
+    writer
+        .observe_publication(publication.clone())
+        .await
+        .unwrap();
+    hypr_loofah_protocol::CaptureRetirementRequest {
+        cleanup_request_id: uuid::Uuid::from_u128(99).to_string(),
+        identity: snapshot.identity,
+        format: snapshot.format,
+        source: snapshot.seal.unwrap(),
+        publication,
+        processing: None,
+    }
+}
+
+#[tokio::test]
+async fn retirement_keeps_original_receipt_fences_raw_replay_and_does_not_consume_raw_quota() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let limits = CaptureSpoolLimits {
+        max_captures: 1,
+        ..Default::default()
+    };
+    let spool = CaptureSpool::open(root.clone(), limits.clone())
+        .await
+        .unwrap();
+    let request = retirement_fixture(&spool, identity()).await;
+    let original_manifest =
+        std::fs::read(dir(&root, &request.identity).join("manifest.json")).unwrap();
+    let snapshot = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .retire_verified(request.clone(), VerifiedRetirement)
+        .await
+        .unwrap();
+    assert_eq!(
+        snapshot.retirement.as_ref().unwrap().state,
+        hypr_loofah_protocol::CaptureRetirementState::Retired
+    );
+    assert_eq!(snapshot.retirement.as_ref().unwrap().remaining_chunks, 0);
+    assert_eq!(
+        std::fs::read(dir(&root, &request.identity).join("manifest.json")).unwrap(),
+        original_manifest
+    );
+    assert!(spool.resume(request.identity.clone()).await.is_err());
+    assert!(
+        spool
+            .begin(request.identity.clone(), request.format.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        spool
+            .request_exists(&request.identity.request_id)
+            .await
+            .unwrap()
+    );
+    drop(spool);
+    let spool = CaptureSpool::open(root, limits).await.unwrap();
+    assert_eq!(
+        spool.snapshot(request.identity.clone()).await.unwrap(),
+        snapshot
+    );
+    assert_eq!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .unwrap()
+            .retire_verified(request.clone(), VerifiedRetirement)
+            .await
+            .unwrap(),
+        snapshot
+    );
+    let mut changed = request.clone();
+    changed.cleanup_request_id = uuid::Uuid::from_u128(100).to_string();
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .unwrap()
+            .retire_verified(changed, VerifiedRetirement)
+            .await
+            .is_err()
+    );
+    let mut next = identity();
+    next.capture_id = uuid::Uuid::from_u128(3).to_string();
+    next.request_id = uuid::Uuid::from_u128(4).to_string();
+    assert!(spool.begin(next, CaptureFormat::stereo()).await.is_ok());
+}
+
+struct RevokeAfterFirstUnlink {
+    first: PathBuf,
+}
+impl CaptureRetirementAuthority for RevokeAfterFirstUnlink {
+    fn check_current(&self) -> Result<()> {
+        if !self.first.exists() {
+            Err(conflict("Original authorization was revoked"))
+        } else {
+            Ok(())
+        }
+    }
+}
+#[tokio::test]
+async fn interrupted_retirement_requires_explicit_same_request_and_fresh_authority_after_reopen() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let chunks = dir(&root, &request.identity).join("chunks");
+    let result = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .retire_verified(
+            request.clone(),
+            RevokeAfterFirstUnlink {
+                first: chunks.join("00000000000000000000.chunk"),
+            },
+        )
+        .await;
+    assert_eq!(
+        result.unwrap_err().mutation_outcome,
+        Some(MutationOutcome::Unknown)
+    );
+    let retained = std::fs::read(chunks.join("00000000000000000001.chunk")).unwrap();
+    drop(spool);
+    let spool = open(&root).await;
+    let snapshot = spool.snapshot(request.identity.clone()).await.unwrap();
+    assert_eq!(
+        snapshot.retirement.unwrap().state,
+        hypr_loofah_protocol::CaptureRetirementState::Pending
+    );
+    assert_eq!(
+        std::fs::read(chunks.join("00000000000000000001.chunk")).unwrap(),
+        retained
+    );
+    assert!(spool.resume(request.identity.clone()).await.is_err());
+    let mut wrong = request.clone();
+    wrong.publication.canonical_audio_sha256 = "0".repeat(64);
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .unwrap()
+            .retire_verified(wrong, VerifiedRetirement)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        std::fs::read(chunks.join("00000000000000000001.chunk")).unwrap(),
+        retained
+    );
+    spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .retire_verified(request, VerifiedRetirement)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn retirement_rejects_unknown_files_and_all_raw_users_before_writing_intent() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let writer = spool.resume(request.identity.clone()).await.unwrap();
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .is_err()
+    );
+    drop(writer);
+    let capture = dir(&root, &request.identity);
+    for name in [
+        ".unknown",
+        "chunks/unknown",
+        "chunks/00000000000000000002.chunk",
+        "chunks/00000000000000000002.pending",
+    ] {
+        let path = capture.join(name);
+        std::fs::write(&path, b"do not remove").unwrap();
+        assert!(try_retirement(&spool, request.clone()).await.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"do not remove");
+        assert!(!capture.join("retirement.json").exists());
+        assert!(capture.join("chunks/00000000000000000000.chunk").exists());
+        std::fs::remove_file(&path).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn retirement_refuses_hardlinked_private_source_and_manifest() {
+    for filename in ["manifest.json", "chunks/00000000000000000000.chunk"] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let request = retirement_fixture(&spool, identity()).await;
+        let capture = dir(&root, &request.identity);
+        let before = std::fs::read(capture.join(filename)).unwrap();
+        let external = temp.path().join("outside");
+        std::fs::hard_link(capture.join(filename), &external).unwrap();
+        assert!(try_retirement(&spool, request).await.is_err());
+        assert_eq!(std::fs::read(external).unwrap(), before);
+        assert!(!capture.join("retirement.json").exists());
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn retirement_refuses_unknown_symlink_without_touching_target() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let external = temp.path().join("outside");
+    std::fs::write(&external, b"outside").unwrap();
+    std::os::unix::fs::symlink(&external, dir(&root, &request.identity).join(".unknown")).unwrap();
+    assert!(try_retirement(&spool, request).await.is_err());
+    assert_eq!(std::fs::read(external).unwrap(), b"outside");
+}
+
+struct BlockingRetirementAuthority {
+    entered: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    release: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+    dropped: Arc<std::sync::atomic::AtomicBool>,
+}
+impl CaptureRetirementAuthority for BlockingRetirementAuthority {
+    fn check_current(&self) -> Result<()> {
+        if let Some(entered) = self.entered.lock().unwrap().take() {
+            let _ = entered.send(());
+            self.release.lock().unwrap().recv().unwrap();
+        }
+        Ok(())
+    }
+}
+impl Drop for BlockingRetirementAuthority {
+    fn drop(&mut self) {
+        self.dropped.store(true, Ordering::SeqCst);
+    }
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn retirement_owns_source_and_scope_guards_through_cancelled_waiter() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let admission = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap();
+    let (entered, started) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let guard = BlockingRetirementAuthority {
+        entered: std::sync::Mutex::new(Some(entered)),
+        release: std::sync::Mutex::new(released),
+        dropped: dropped.clone(),
+    };
+    let task = tokio::spawn(admission.retire_verified(request.clone(), guard));
+    started.await.unwrap();
+    task.abort();
+    let _ = task.await;
+    assert!(!dropped.load(Ordering::SeqCst));
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .is_err()
+    );
+    release.send(()).unwrap();
+    spool.wait_for_io().await;
+    assert!(dropped.load(Ordering::SeqCst));
+    assert_eq!(
+        spool
+            .snapshot(request.identity)
+            .await
+            .unwrap()
+            .retirement
+            .unwrap()
+            .state,
+        hypr_loofah_protocol::CaptureRetirementState::Retired
+    );
+}
+
+async fn try_retirement(
+    spool: &Arc<CaptureSpool>,
+    request: hypr_loofah_protocol::CaptureRetirementRequest,
+) -> Result<CaptureSnapshot> {
+    spool
+        .admit_retirement(request.identity.clone())
+        .await?
+        .retire_verified(request, VerifiedRetirement)
+        .await
+}
+
+#[tokio::test]
+async fn retirement_rejects_changed_source_generation_after_long_independent_verification() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let admission = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap();
+    let path = dir(&root, &request.identity).join("chunks/00000000000000000000.chunk");
+    let original = std::fs::read(&path).unwrap();
+    let mut changed = original.clone();
+    *changed.last_mut().unwrap() ^= 1;
+    std::fs::write(&path, &changed).unwrap();
+    assert!(
+        admission
+            .retire_verified(request, VerifiedRetirement)
+            .await
+            .is_err()
+    );
+    assert_eq!(std::fs::read(path).unwrap(), changed);
+}
+
+#[tokio::test]
+async fn cleanup_request_survives_lost_remote_reply_without_authorizing_source_removal() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let admission = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .declare_request(request.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        admission.snapshot().retirement.as_ref().unwrap().request,
+        request
+    );
+    assert_eq!(
+        admission.snapshot().retirement.as_ref().unwrap().state,
+        hypr_loofah_protocol::CaptureRetirementState::Declared
+    );
+    drop(admission);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(request.identity.clone()).await.unwrap();
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(4));
+    assert_eq!(writer.read_chunk(1).await.unwrap().bytes, pcm(6));
+    let pending = writer.snapshot().await.unwrap().retirement.unwrap();
+    assert_eq!(pending.request, request);
+    assert_eq!(pending.remaining_chunks, 2);
+    drop(writer);
+    let mut wrong = request.clone();
+    wrong.cleanup_request_id = uuid::Uuid::new_v4().to_string();
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .unwrap()
+            .declare_request(wrong)
+            .await
+            .is_err()
+    );
+    let admission = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .declare_request(request.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        admission
+            .retire_verified(request, VerifiedRetirement)
+            .await
+            .unwrap()
+            .retirement
+            .unwrap()
+            .state,
+        hypr_loofah_protocol::CaptureRetirementState::Retired
+    );
+}
+
+#[test]
+fn completed_spool_calls_release_actual_root_lease_without_a_retry_window() {
+    // A concurrent crash-fixture fork may temporarily inherit every parent FD,
+    // including CLOEXEC leases. Create this test's roots only after the child
+    // exec so the assertion measures our actual owner rather than that window.
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "capture_spool::tests::immediate_spool_release_child",
+            "--ignored",
+            "--nocapture",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "isolated immediate lease regression failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[tokio::test]
+#[ignore = "isolated immediate ownership regression; parent test invokes this"]
+async fn immediate_spool_release_child() {
+    for failed in [false, true] {
+        for _ in 0..32 {
+            let temp = test_directory();
+            let root = temp.path().join("spool");
+            let spool = open(&root).await;
+            let writer = spool
+                .begin(identity(), CaptureFormat::stereo())
+                .await
+                .unwrap();
+            if failed {
+                spool
+                    .fault
+                    .store(Fault::BeforeChunkWrite as u8, Ordering::SeqCst);
+                assert!(writer.append_chunk(0, 4, pcm(4)).await.is_err());
+            } else {
+                writer.append_chunk(0, 4, pcm(4)).await.unwrap();
+            }
+            let released = Arc::downgrade(&spool);
+            drop(writer);
+            drop(spool);
+            assert!(
+                released.upgrade().is_none(),
+                "an operation retained its Rust spool owner after completion"
+            );
+            // A successful join is completion evidence, not a request to poll
+            // until a task's captured owner eventually disappears.
+            let reopened = CaptureSpool::open(root, CaptureSpoolLimits::default())
+                .await
+                .unwrap();
+            drop(reopened);
+        }
+    }
+}

@@ -1,5 +1,11 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 
 import {
   json2md,
@@ -7,20 +13,28 @@ import {
   md2json,
   parseJsonContent,
 } from "@hypr/editor/markdown";
-import { useTaskStorageOptional } from "@hypr/editor/task-storage";
 import { hydrateTaskContent } from "@hypr/editor/tasks";
 
+import { taskItemToRecord } from "~/editor-bridge/task-records";
 import { waitForPendingSoftDelete } from "~/session/pending-soft-deletes";
+import { useSessionSummaries } from "~/session/summary-queries";
 import { ensureFirstLineTitle } from "~/session/title-content";
-import { useIndexQuery } from "~/shared/index-query";
+import { getApplicationClient } from "~/shared/application/client";
+import { documentEditorBaseline } from "~/shared/application/document-editor-draft";
+import type {
+  DocumentTarget,
+  MetadataSnapshot,
+  NoteEditorSnapshot,
+} from "~/shared/application/protocol.gen";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
+import { useVaultHost } from "~/shared/application/vault-provider";
 import { DEFAULT_USER_ID, id } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
 import type { DeletedSessionData } from "~/store/zustand/undo-delete";
+import { useTranscriptOverview } from "~/stt/transcript-overview";
 import {
-  commands,
   type EnhancedDoc,
   type SessionMetaPatch,
-  type SessionRecord as StoreSessionRecord,
   type TagSuggestionState,
 } from "~/types/tauri.gen";
 
@@ -57,216 +71,271 @@ export type EnhancedNoteRecord = {
 };
 
 const EMPTY_ENHANCED_NOTES: EnhancedNoteRecord[] = [];
-const EMPTY_SESSION_SUMMARIES: SessionSummaryRecord[] = [];
 
-export function useSession(sessionId: string): SessionRecord | null {
-  const taskStorage = useTaskStorageOptional();
-  const { data = null } = useIndexQuery({
-    // Editable content revalidates on mount in case a write or watcher event is
-    // still in flight when the user switches back to the note.
-    refetchOnMount: "always",
-    entity: ["sessions", "tasks"],
-    ids: [sessionId],
-    queryKey: ["session", sessionId],
-    queryFn: async () => {
-      const result = await commands.sessionGet(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      if (!result.data) return null;
-      const note = mapSessionRecord(result.data);
-      if (taskStorage && note.raw_md) {
-        const source = { type: "session_raw_note", id: sessionId };
-        const loadedTasks = await taskStorage.loadSource?.(source);
-        note.raw_md = JSON.stringify(
-          hydrateTaskContent({
-            content: JSON.parse(note.raw_md),
-            sourceTasks: loadedTasks ?? taskStorage.getTasksForSource(source),
-            getTask: (id) =>
-              loadedTasks?.find((task) => task.taskId === id) ??
-              taskStorage.getTask(id),
-          }),
-        );
-      }
-      return note;
-    },
-    enabled: Boolean(sessionId),
-  });
-  return sessionId ? data : null;
+function projectRawNote(
+  sessionId: string,
+  snapshot: NoteEditorSnapshot,
+): string | null {
+  const source = { type: "session_raw_note", id: sessionId };
+  if (
+    snapshot.tasks.tasks.some(
+      (task) => task.body !== null && !Array.isArray(task.body),
+    )
+  )
+    return null;
+  const tasks = snapshot.tasks.tasks.map(taskItemToRecord);
+  if (
+    tasks.some(
+      (task) =>
+        !task || task.sourceType !== source.type || task.sourceId !== source.id,
+    )
+  )
+    return null;
+  if (!snapshot.note.markdown) return "";
+  const owned = tasks.filter((task) => task !== null);
+  const byId = new Map(owned.map((task) => [task.taskId, task]));
+  return JSON.stringify(
+    hydrateTaskContent({
+      content: md2json(snapshot.note.markdown),
+      sourceTasks: owned,
+      getTask: (id) => byId.get(id) ?? null,
+    }),
+  );
 }
 
-/**
- * Note content for the editor, as the stringified prosemirror doc consumers expect.
- * Returns `null` while the session itself hasn't loaded -- callers should keep showing a
- * loading state for that, same as `useSession` returning `null`.
- *
- * This is `useSession`'s `raw_md` and nothing else, deliberately: the index entry's
- * `note_markdown` *is* `sessions/<id>/notes.md` (seeded by the rescan's own `read_note`,
- * kept current by `session_write_note`'s write-through and by the vault watcher's
- * `refresh_session` on external edits), and it rides the `sessions` half of the
- * `index-changed` bus. A second, separately-cached `session_read_note` here used to shadow
- * it; nothing ever invalidated that cache, so a remount inside the cache window (tab switch,
- * second window, an Obsidian edit) handed the editor pre-edit content that the next
- * keystroke's `persistChange` then wrote back over `notes.md`.
- *
- * NoteEditor preserves local edits until saving and reloading confirms their persistence,
- * and defers external changes while the editor is focused.
- */
+export function useSessionMetadata(sessionId: string): MetadataSnapshot | null {
+  const owner = useVaultReadScope();
+  const query = useQuery(
+    {
+      ...owner.scope.metadataOptions(sessionId),
+      enabled:
+        !!sessionId &&
+        owner.readable &&
+        owner.scope.client.features.includes("content_read"),
+    },
+    owner.scope.queryClient,
+  );
+  return sessionId && owner.readable && query.data?.meta.id === sessionId
+    ? query.data
+    : null;
+}
+
+function useRawNoteSource(sessionId: string) {
+  const owner = useVaultReadScope();
+  const select = useCallback(
+    (snapshot: NoteEditorSnapshot) => projectRawNote(sessionId, snapshot),
+    [sessionId],
+  );
+  const query = useQuery(
+    {
+      ...owner.scope.noteEditorOptions(sessionId),
+      enabled:
+        !!sessionId &&
+        owner.readable &&
+        owner.scope.client.features.includes("note_editor_read"),
+      refetchOnMount: "always",
+      select,
+    },
+    owner.scope.queryClient,
+  );
+  return sessionId && owner.readable ? (query.data ?? null) : null;
+}
+
+export function useSession(sessionId: string): SessionRecord | null {
+  const metadata = useSessionMetadata(sessionId);
+  const rawMd = useRawNoteSource(sessionId);
+  return useMemo(
+    () =>
+      metadata && rawMd !== null
+        ? {
+            id: metadata.meta.id,
+            user_id: DEFAULT_USER_ID,
+            created_at: metadata.meta.created_at,
+            folder_id: metadata.meta.folder ?? "",
+            title: metadata.meta.title,
+            raw_md: rawMd,
+            tags: metadata.meta.tags,
+            author: metadata.meta.author ?? null,
+            tag_suggestions: metadata.meta.tag_suggestions ?? null,
+          }
+        : null,
+    [metadata, rawMd],
+  );
+}
+
 export function useSessionRawMd(sessionId: string): string | null {
-  return useSession(sessionId)?.raw_md ?? null;
+  return useRawNoteSource(sessionId);
 }
 
 export function useSessionSummary(
   sessionId: string,
 ): SessionSummaryRecord | null {
-  const { data = null } = useIndexQuery({
-    entity: "sessions",
-    ids: [sessionId],
-    queryKey: ["session-summary", sessionId],
-    queryFn: async () => {
-      const result = await commands.sessionGet(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      const meta = result.data?.meta;
-      return meta
-        ? { id: meta.id, title: meta.title, created_at: meta.created_at }
-        : null;
-    },
-    enabled: Boolean(sessionId),
-  });
-  return sessionId ? data : null;
+  const { scope } = useVaultHost();
+  if (!scope)
+    throw new Error("Session headers require an immutable vault host");
+  const { data } = useSessionSummaries(
+    scope,
+    { kind: "ids", ids: sessionId ? [sessionId] : [] },
+    Boolean(sessionId) && scope.client.features.includes("session_summaries"),
+  );
+  return sessionId && scope.getSnapshot().state === "connected"
+    ? (data?.find((header) => header.id === sessionId) ?? null)
+    : null;
 }
 
-export function useSessionSummaries(enabled = true): SessionSummaryRecord[] {
-  const { data = EMPTY_SESSION_SUMMARIES } = useIndexQuery({
-    entity: "session_headers",
-    queryKey: ["session-summaries"],
-    enabled,
-    queryFn: async () => {
-      const result = await commands.sessionListHeaders();
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      // session_list_headers is (created_at, id) ASC; this list has always been
-      // newest-first with id as the ascending tiebreaker.
-      return [...result.data]
-        .sort(
-          (left, right) =>
-            right.created_at.localeCompare(left.created_at) ||
-            left.id.localeCompare(right.id),
-        )
-        .map((entry) => ({
-          id: entry.id,
-          title: entry.title,
-          created_at: entry.created_at,
-        }));
-    },
-  });
-  return data;
-}
-
-export function useUpdateSession(sessionId: string) {
+export function useUpdateSession(
+  sessionId: string,
+  assertCurrent?: () => void,
+) {
   return useCallback(
-    (changes: SessionChanges) => updateSession(sessionId, changes),
-    [sessionId],
+    (changes: SessionChanges) =>
+      updateSession(sessionId, changes, assertCurrent),
+    [sessionId, assertCurrent],
   );
 }
 
 export function useSessionHasTranscript(sessionId: string): boolean {
-  const { data = false } = useIndexQuery({
-    // Transcript events carry the session id.
-    entity: "transcripts",
-    ids: [sessionId],
-    queryKey: ["session-has-transcript", sessionId],
-    queryFn: async () => {
-      const result = await commands.sessionHasTranscript(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return result.data;
-    },
-    enabled: Boolean(sessionId),
-  });
-  return sessionId ? data : false;
+  return useTranscriptOverview(sessionId).data?.has_words ?? false;
 }
 
+const terminalDocumentStates = new Set([
+  "closed",
+  "access_denied",
+  "login_required",
+  "incompatible",
+]);
+function useDocumentScope() {
+  const { scope } = useVaultHost();
+  if (!scope) throw new Error("Documents require an immutable vault host");
+  const owner = useRef({
+    scope,
+    retired: terminalDocumentStates.has(scope.getSnapshot().state),
+  }).current;
+  if (owner.scope !== scope) owner.retired = true;
+  const subscribe = useCallback(
+    (changed: () => void) =>
+      owner.scope.subscribe(() => {
+        if (terminalDocumentStates.has(owner.scope.getSnapshot().state))
+          owner.retired = true;
+        changed();
+      }),
+    [owner],
+  );
+  const connection = useSyncExternalStore(subscribe, owner.scope.getSnapshot);
+  if (terminalDocumentStates.has(connection.state)) owner.retired = true;
+  return {
+    scope: owner.scope,
+    readable:
+      !owner.retired &&
+      (connection.state === "connected" || connection.state === "reconnecting"),
+  };
+}
+function useSessionDocuments(sessionId: string) {
+  const owner = useDocumentScope();
+  const query = useQuery(
+    {
+      ...owner.scope.documentsOptions(sessionId),
+      enabled: !!sessionId && owner.readable,
+    },
+    owner.scope.queryClient,
+  );
+  return {
+    ...owner,
+    data: sessionId && owner.readable ? query.data : undefined,
+  };
+}
 export function useEnhancedNoteRecords(
   sessionId: string,
 ): EnhancedNoteRecord[] {
-  const { data = EMPTY_ENHANCED_NOTES } = useIndexQuery({
-    // Doc events carry the session id, not the doc id.
-    entity: "docs",
-    ids: [sessionId],
-    queryKey: ["session-enhanced-docs", sessionId],
-    queryFn: async () => {
-      const result = await commands.sessionEnhancedDocs(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return result.data.map(mapEnhancedDoc);
-    },
-    enabled: Boolean(sessionId),
-  });
-  return sessionId ? data : EMPTY_ENHANCED_NOTES;
+  const { data } = useSessionDocuments(sessionId);
+  return useMemo(
+    () => data?.map(mapEnhancedDoc) ?? EMPTY_ENHANCED_NOTES,
+    [data],
+  );
 }
-
+export function useEnhancedNoteTitle(
+  sessionId: string,
+  enhancedNoteId: string,
+) {
+  const { data } = useSessionDocuments(sessionId);
+  return useMemo(() => {
+    const matches = data?.filter(
+      (doc) => doc.id === enhancedNoteId && doc.session_id === sessionId,
+    );
+    return matches?.length === 1 ? matches[0].title : undefined;
+  }, [data, sessionId, enhancedNoteId]);
+}
+export function useEnhancedDocumentTarget(
+  sessionId: string,
+  enhancedNoteId: string,
+): DocumentTarget | null | undefined {
+  const { data } = useSessionDocuments(sessionId);
+  return useMemo(() => {
+    if (!data) return undefined;
+    if (!enhancedNoteId) return null;
+    const matches = data.filter(
+      (doc) => doc.id === enhancedNoteId && doc.session_id === sessionId,
+    );
+    if (matches.length !== 1) return null;
+    const doc = matches[0];
+    if (doc.kind === "template_output" && doc.id === sessionId) return null;
+    return doc.kind === "summary"
+      ? { kind: "summary" }
+      : { kind: "template_output", document_id: doc.id };
+  }, [data, sessionId, enhancedNoteId]);
+}
 export function useEnhancedNote(
   enhancedNoteId: string,
-  generationId?: string,
-  sessionId?: string,
+  generationId: string | undefined,
+  sessionId: string,
 ): EnhancedNoteRecord | null {
-  const taskStorage = useTaskStorageOptional();
-  const { data = null } = useIndexQuery({
-    entity: ["docs", "tasks"],
-    ids: sessionId ? [sessionId] : undefined,
-    refetchOnMount: "always",
-    queryKey: generationId
-      ? ["enhanced-doc", enhancedNoteId, generationId]
-      : ["enhanced-doc", enhancedNoteId],
-    queryFn: async () => {
-      const isSummary = sessionId !== undefined && enhancedNoteId === sessionId;
-      let note: EnhancedNoteRecord;
-      if (isSummary) {
-        const result = await commands.sessionSummaryGet(sessionId);
-        if (result.status === "error") throw new Error(result.error);
-        if (result.data === null) return null;
-        note = mapEnhancedDoc({
-          id: sessionId,
-          session_id: sessionId,
-          kind: "summary",
-          title: "Summary",
-          template_id: "",
-          sort_order: 0,
-          markdown: result.data,
-        });
-      } else {
-        const result = await commands.enhancedDocGet(enhancedNoteId);
-        if (result.status === "error") throw new Error(result.error);
-        if (!result.data) return null;
-        note = mapEnhancedDoc(result.data);
-      }
-      const source = {
-        type: note.id === note.sessionId ? "session_summary" : "enhanced_note",
-        id: enhancedNoteId,
-      };
-      const loadedTasks = await taskStorage?.loadSource?.(source);
-      if (taskStorage && note.content) {
-        note.content = JSON.stringify(
-          hydrateTaskContent({
-            content: JSON.parse(note.content),
-            sourceTasks: loadedTasks ?? taskStorage.getTasksForSource(source),
-            getTask: (id) =>
-              loadedTasks?.find((task) => task.taskId === id) ??
-              taskStorage.getTask(id),
-          }),
-        );
-      }
-      return note;
-    },
-    enabled: Boolean(enhancedNoteId),
-  });
-  return enhancedNoteId ? data : null;
+  const { scope, readable } = useDocumentScope();
+  const target = useEnhancedDocumentTarget(sessionId, enhancedNoteId);
+  const options = useMemo(
+    () => scope.documentEditorOptions(sessionId, target ?? { kind: "summary" }),
+    [scope, sessionId, target],
+  );
+  const supported = scope.client.features.includes("document_editor_read");
+  const query = useQuery(
+    { ...options, enabled: !!sessionId && !!target && readable && supported },
+    scope.queryClient,
+  );
+  useEffect(() => {
+    if (generationId && target && readable && supported)
+      void scope.queryClient.invalidateQueries({
+        queryKey: options.queryKey,
+        exact: true,
+      });
+  }, [scope, generationId, target, readable, supported, options.queryKey]);
+  return useMemo(() => {
+    if (
+      !target ||
+      !readable ||
+      !supported ||
+      query.error ||
+      !query.data?.document.document
+    )
+      return null;
+    try {
+      documentEditorBaseline(sessionId, target, query.data);
+    } catch {
+      return null;
+    }
+    const note = mapEnhancedDoc(query.data.document.document);
+    const tasks = query.data.tasks.tasks.map(taskItemToRecord);
+    if (tasks.some((task) => task === null)) return null;
+    const records = tasks.filter((task) => task !== null);
+    const byId = new Map(records.map((task) => [task.taskId, task]));
+    if (note.content)
+      note.content = JSON.stringify(
+        hydrateTaskContent({
+          content: parseJsonContent(note.content),
+          sourceTasks: records,
+          getTask: (id) => byId.get(id) ?? null,
+        }),
+      );
+    return note;
+  }, [sessionId, target, readable, supported, query.error, query.data]);
 }
 
 export function useUpdateEnhancedNoteContent(
@@ -306,13 +375,13 @@ export function updateEnhancedNoteContent(
 
     const docWrite =
       enhancedNoteId === sessionId
-        ? await commands.sessionSaveSummary(
+        ? await getApplicationClient().store.sessionSaveSummary(
             sessionId,
             markdown,
             null,
             sessionTitle ?? null,
           )
-        : await commands.sessionSaveEnhancedDoc(
+        : await getApplicationClient().store.sessionSaveEnhancedDoc(
             sessionId,
             enhancedNoteId,
             {
@@ -334,7 +403,7 @@ export function saveSessionNote(
   title?: string,
 ): Promise<void> {
   return enqueueDatabaseWrite(`session:${sessionId}:note`, async () => {
-    const result = await commands.sessionSaveNote(
+    const result = await getApplicationClient().store.sessionSaveNote(
       sessionId,
       markdown,
       title ?? null,
@@ -415,12 +484,16 @@ export function useRefreshEnhancedNote(
 export function deleteEnhancedNote(
   enhancedNoteId: string,
   sessionId: string,
+  assertCurrent?: () => void,
 ): Promise<void> {
+  assertCurrent?.();
+  const backend = getApplicationClient().store;
   return enqueueDatabaseWrite(`enhanced-note:${enhancedNoteId}`, async () => {
+    assertCurrent?.();
     const result =
       enhancedNoteId === sessionId
-        ? await commands.sessionDeleteSummary(sessionId)
-        : await commands.sessionDeleteEnhancedDoc(sessionId, enhancedNoteId);
+        ? await backend.sessionDeleteSummary(sessionId)
+        : await backend.sessionDeleteEnhancedDoc(sessionId, enhancedNoteId);
     if (result.status === "error") {
       throw new Error(
         `Failed to delete summary ${enhancedNoteId}: ${result.error}`,
@@ -436,8 +509,12 @@ export function deleteEnhancedNote(
 export function updateSession(
   sessionId: string,
   changes: SessionChanges,
+  assertCurrent?: () => void,
 ): Promise<void> {
+  assertCurrent?.();
+  const backend = getApplicationClient().store;
   return enqueueDatabaseWrite(`session:${sessionId}`, async () => {
+    assertCurrent?.();
     const patch: SessionMetaPatch = {};
     if (changes.title !== undefined) patch.title = changes.title;
     if (changes.created_at !== undefined) patch.created_at = changes.created_at;
@@ -446,7 +523,7 @@ export function updateSession(
 
     if (Object.keys(patch).length === 0) return;
 
-    const result = await commands.sessionUpdateMeta(sessionId, patch);
+    const result = await backend.sessionUpdateMeta(sessionId, patch);
     if (result.status === "error") {
       throw new Error(`Failed to update session ${sessionId}: ${result.error}`);
     }
@@ -464,7 +541,7 @@ export async function createSession(
   const sessionId = id();
   const now = new Date().toISOString();
 
-  const metaWrite = await commands.sessionWriteMeta({
+  const metaWrite = await getApplicationClient().store.sessionWriteMeta({
     id: sessionId,
     title,
     started_at: null,
@@ -497,7 +574,10 @@ export async function createSession(
       );
     }
     if (markdown) {
-      const noteWrite = await commands.sessionWriteNote(sessionId, markdown);
+      const noteWrite = await getApplicationClient().store.sessionWriteNote(
+        sessionId,
+        markdown,
+      );
       if (noteWrite.status === "error") {
         console.error(
           "[session] failed to seed session note file",
@@ -513,18 +593,22 @@ export async function createSession(
 export async function softDeleteSession(
   sessionId: string,
   tombstone = new Date().toISOString(),
+  assertCurrent?: () => void,
 ): Promise<DeletedSessionData | null> {
   // Read title before deleting: session_delete removes the index entry outright (nothing
   // left to read back from), so anything the undo toast needs to display has to be
   // captured up front.
-  const preRead = await commands.sessionGet(sessionId);
+  assertCurrent?.();
+  const backend = getApplicationClient().store;
+  const preRead = await backend.sessionGet(sessionId);
+  assertCurrent?.();
   if (preRead.status === "error") {
     throw new Error(`session_get failed: ${preRead.error}`);
   }
   const session = preRead.data;
   if (!session) return null;
 
-  const result = await commands.sessionDelete(sessionId);
+  const result = await backend.sessionDelete(sessionId);
   if (result.status === "error") {
     // Distinct from "already deleted" (the pre-read above finding no session, which is
     // benign and returns null): the session existed and the store call itself failed. Throw so
@@ -544,30 +628,31 @@ export async function softDeleteSession(
 // enhanced-doc/tag counts, and attachments) live on the Rust side now -- see
 // `SessionStore::session_is_empty`.
 export async function isSessionEmpty(sessionId: string): Promise<boolean> {
-  const result = await commands.sessionIsEmpty(sessionId);
+  const result = await getApplicationClient().store.sessionIsEmpty(sessionId);
   if (result.status === "error") {
     throw new Error(result.error);
   }
   return result.data;
 }
 
-export async function restoreDeletedSession(
-  data: DeletedSessionData,
-): Promise<void> {
-  // The undo toast shows before the delete write commits. Wait for the in-flight
-  // delete to settle first -- session_restore looks for a folder under *today's*
-  // trash dir, which only exists once session_delete has actually moved it there.
-  await waitForPendingSoftDelete(data.session.id);
-
-  const result = await commands.sessionRestore(data.session.id);
-  if (result.status === "error") {
-    throw new Error(
-      `Failed to restore session ${data.session.id}: ${result.error}`,
+export function captureSessionRestore(scope: string) {
+  const backend = getApplicationClient().store;
+  return (sessionId: string, assertCurrent: () => void): Promise<void> =>
+    enqueueDatabaseWrite(
+      `undo-restore:${JSON.stringify([scope, sessionId])}`,
+      async () => {
+        assertCurrent();
+        await waitForPendingSoftDelete(scope, sessionId);
+        assertCurrent();
+        const result = await backend.sessionRestore(sessionId);
+        if (result.status === "error")
+          throw new Error(
+            `Failed to restore session ${sessionId}: ${result.error}`,
+          );
+        if (!result.data)
+          throw new Error(`Session ${sessionId} was never soft-deleted`);
+      },
     );
-  }
-  if (!result.data) {
-    throw new Error(`Session ${data.session.id} was never soft-deleted`);
-  }
 }
 
 // There is deliberately no "finalize the deletion" step: `session_delete` moves the whole
@@ -578,32 +663,6 @@ export async function restoreDeletedSession(
 // path inside that window (a sync client pulling the folder back from another device, a
 // late transcript flush) was destroyed irrecoverably. Hard-deleting on a synced vault is
 // not something this app does.
-
-function mapSessionRecord(record: StoreSessionRecord): SessionRecord {
-  // `note_markdown` is always markdown (the file-canonical `notes.md`); consumers
-  // still expect the stringified prosemirror doc the SQL era handed them.
-  let rawMd = record.note_markdown ?? "";
-  if (rawMd) {
-    try {
-      rawMd = JSON.stringify(md2json(rawMd));
-    } catch (error) {
-      console.error("[session] failed to decode note Markdown", error);
-    }
-  }
-
-  return {
-    id: record.meta.id,
-    // The owner concept died with the workspaces removal (D10).
-    user_id: DEFAULT_USER_ID,
-    created_at: record.meta.created_at,
-    folder_id: record.meta.folder ?? "",
-    title: record.meta.title,
-    raw_md: rawMd,
-    tags: record.meta.tags,
-    author: record.meta.author ?? null,
-    tag_suggestions: record.meta.tag_suggestions ?? null,
-  };
-}
 
 function mapEnhancedDoc(doc: EnhancedDoc): EnhancedNoteRecord {
   // `markdown` is the file body; consumers expect the stringified prosemirror doc.

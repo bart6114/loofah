@@ -7,13 +7,19 @@ import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
 import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { DropdownMenuItem } from "@hypr/ui/components/ui/dropdown-menu";
 
+import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
+
 export function ShowInFinder({ sessionId }: { sessionId: string }) {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
+      if (!isAvailable("legacy_desktop_session_controls")) return;
       const result = await fsSyncCommands.sessionDir(sessionId);
       if (result.status === "error") {
         throw new Error(result.error);
       }
+      if (!isAvailable("legacy_desktop_session_controls")) return;
       await openerCommands.openPath(result.data, null);
     },
   });

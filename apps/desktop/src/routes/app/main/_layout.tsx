@@ -8,11 +8,15 @@ export const Route = createFileRoute("/app/main/_layout")({
 });
 
 function Component() {
-  useClassicMainLifecycle();
-
   return (
     <ClassicMainLayout>
+      <MainLifecycle />
       <Outlet />
     </ClassicMainLayout>
   );
+}
+
+function MainLifecycle() {
+  useClassicMainLifecycle();
+  return null;
 }

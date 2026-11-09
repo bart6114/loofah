@@ -43,6 +43,14 @@ Imported audio is scanned for distinct speakers while it is transcribed. Click a
 
 The timed text becomes the note's transcript. No audio file is created. If an Intelligence model is configured, the app also tries to generate a summary.
 
+## Recover a Shared import
+
+In Shared workspaces that support media imports, open **Media recovery** to review saved requests, including imports that do not have a note yet. Opening the panel checks their status; it does not restart processing.
+
+Choose **Recover saved request** to recover the original operation. If an upload is still waiting for its source, choose **Choose original file to resume upload** and select the same file. Loofah verifies its contents before resuming. A different file requires a separate import.
+
+Reconnect to the original account and workspace before recovering a request. Read-only access lets you inspect status but does not enable recovery or upload.
+
 ## If nothing happens
 
 Check the file extension and make sure a downloaded Transcription model is selected for audio imports. For summaries through LM Studio or Ollama, make sure the local server is running.

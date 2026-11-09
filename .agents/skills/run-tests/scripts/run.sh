@@ -82,6 +82,8 @@ run_lint() {
 
 run_frontend() {
   run_step "UI build" pnpm -F ui build
+  run_step "shared editor typecheck" pnpm -F @hypr/editor typecheck
+  run_step "shared editor tests" pnpm -F @hypr/editor test
   run_step "desktop typecheck" pnpm -F desktop typecheck
   run_step "desktop frontend tests" pnpm -F desktop test
   run_step "desktop locale catalogs" pnpm -F desktop i18n:check
@@ -98,7 +100,7 @@ run_rust() {
   run_step "desktop Rust check" cargo check -p desktop
   run_step "desktop Rust tests" cargo test -p desktop
 
-  local workspace_args=(cargo test --workspace)
+  local workspace_args=(cargo test --workspace --features loofah-client/dev-fixtures)
   local package
   for package in "${rust_excludes[@]}"; do
     workspace_args+=(--exclude "$package")
@@ -110,6 +112,7 @@ run_cli() {
   run_step "export-core tests" cargo test --locked -p export-core
   run_step "search-cache tests" cargo test --locked -p search-cache
   run_step "agent-access tests" cargo test --locked -p agent-access
+  run_step "local owner transport tests" cargo test --locked -p loofah-local-owner
   run_step "CLI tests" cargo test --locked -p loof-cli
   run_step "TipTap tests" cargo test --locked -p tiptap
   run_step "CLI clippy" cargo clippy --locked \

@@ -8,9 +8,12 @@ import { forwardRef, useCallback, useRef, useState } from "react";
 
 import { cn } from "@hypr/utils";
 
+import { AttachmentActions, AttachmentFeedback } from "./attachment-feedback";
 import {
   useAttachmentEditingEnabled,
-  useAttachmentResolver,
+  useAttachmentPresentation,
+  AttachmentResource,
+  type AttachmentResolution,
 } from "./attachment-resolver";
 import { getSafeNodePos } from "./error-boundary";
 
@@ -94,15 +97,43 @@ export const ResizableImageView = forwardRef<
   HTMLDivElement,
   NodeViewComponentProps
 >(function ResizableImageView({ nodeProps, ...htmlAttrs }, ref) {
+  const attachmentId =
+    typeof nodeProps.node.attrs.sharedAttachmentId === "string"
+      ? nodeProps.node.attrs.sharedAttachmentId
+      : nodeProps.node.attrs.attachmentId;
+  return (
+    <div
+      ref={ref}
+      {...htmlAttrs}
+      className="relative overflow-visible select-none [&_*::selection]:bg-transparent [&::selection]:bg-transparent"
+    >
+      <AttachmentResource attachmentId={attachmentId}>
+        {(resolved) => (
+          <ResolvedImageView nodeProps={nodeProps} resolved={resolved} />
+        )}
+      </AttachmentResource>
+    </div>
+  );
+});
+
+function ResolvedImageView({
+  nodeProps,
+  resolved,
+}: {
+  nodeProps: NodeViewComponentProps["nodeProps"];
+  resolved: AttachmentResolution | null;
+}) {
   const { node, getPos } = nodeProps;
-  const resolveAttachment = useAttachmentResolver();
   const attachmentEditingEnabled = useAttachmentEditingEnabled();
   const attachmentId =
     typeof node.attrs.sharedAttachmentId === "string"
       ? node.attrs.sharedAttachmentId
       : node.attrs.attachmentId;
-  const resolvedAttachment =
-    typeof attachmentId === "string" ? resolveAttachment?.(attachmentId) : null;
+  const presentation = useAttachmentPresentation()({
+    src: node.attrs.src,
+    resolved,
+    attachmentId: typeof attachmentId === "string" ? attachmentId : undefined,
+  });
   const [isHovered, setIsHovered] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [draftWidth, setDraftWidth] = useState<number | null>(null);
@@ -198,11 +229,7 @@ export const ResizableImageView = forwardRef<
     draftWidth !== null ? `${draftWidth}px` : `${editorWidth}%`;
 
   return (
-    <div
-      ref={ref}
-      {...htmlAttrs}
-      className="relative overflow-visible select-none [&_*::selection]:bg-transparent [&::selection]:bg-transparent"
-    >
+    <>
       <div
         ref={containerRef}
         className="relative inline-block w-fit max-w-full overflow-visible"
@@ -210,9 +237,10 @@ export const ResizableImageView = forwardRef<
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <img
+        <AttachmentImage
           ref={imageRef}
-          src={resolvedAttachment?.src ?? node.attrs.src}
+          attachment={presentation}
+          src={presentation.src}
           alt={node.attrs.alt || ""}
           title={parseImageMetadata(node.attrs.title).title ?? undefined}
           onLoad={scrollCaretIntoView}
@@ -228,6 +256,15 @@ export const ResizableImageView = forwardRef<
           ])}
           draggable={false}
         />
+        {presentation.labels && (
+          <div
+            contentEditable={false}
+            className="bg-card/95 relative z-30 flex w-fit items-center gap-1 rounded border p-1"
+          >
+            <AttachmentActions resource={presentation} />
+          </div>
+        )}
+        <AttachmentFeedback resource={presentation} />
         {showControls && (
           <>
             <div
@@ -257,6 +294,52 @@ export const ResizableImageView = forwardRef<
           </>
         )}
       </div>
-    </div>
+    </>
+  );
+}
+
+const AttachmentImage = forwardRef<
+  HTMLImageElement,
+  React.ImgHTMLAttributes<HTMLImageElement> & {
+    attachment: AttachmentResolution;
+  }
+>(function AttachmentImage({ attachment: resource, onLoad, ...props }, ref) {
+  const [loaded, setLoaded] = useState<string>();
+  const [failed, setFailed] = useState<string>();
+  const message =
+    resource.preview && (props.src || !resource.feedback)
+      ? !props.src
+        ? resource.preview.unavailable
+        : failed === props.src
+          ? resource.preview.error
+          : loaded !== props.src
+            ? resource.preview.loading
+            : undefined
+      : undefined;
+  return (
+    <>
+      <img
+        {...props}
+        ref={ref}
+        loading={resource.preview ? "lazy" : undefined}
+        decoding="async"
+        onLoad={(event) => {
+          setLoaded(props.src);
+          setFailed(undefined);
+          onLoad?.(event);
+        }}
+        onError={() => setFailed(props.src)}
+      />
+      {message && (
+        <AttachmentFeedback
+          resource={{
+            feedback: { message, error: !!props.src && failed === props.src },
+            retry: failed === props.src ? resource.retry : undefined,
+            labels: resource.labels,
+            pending: resource.pending,
+          }}
+        />
+      )}
+    </>
   );
 });

@@ -21,6 +21,7 @@ pub struct SearchMeetingsInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[specta(rename = "AgentSearchHit")]
 pub struct SearchHit {
     pub session_id: String,
     pub title: String,

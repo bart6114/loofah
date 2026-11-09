@@ -1,4 +1,6 @@
 use anyhow::Result;
+#[cfg(any(target_os = "macos", test))]
+mod teardown;
 #[cfg(any(test, not(target_os = "macos")))]
 use futures_util::Stream;
 #[cfg(any(test, not(target_os = "macos")))]
@@ -52,7 +54,16 @@ pub type SpeakerStream = macos::SpeakerStream;
 
 impl SpeakerInput {
     pub fn new() -> Result<Self> {
-        let inner = PlatformSpeakerInput::new()?;
+        Self::new_owned(None)
+    }
+    pub(crate) fn new_owned(owner: Option<std::sync::Arc<dyn Send + Sync>>) -> Result<Self> {
+        #[cfg(target_os = "macos")]
+        let inner = PlatformSpeakerInput::new_owned(owner)?;
+        #[cfg(not(target_os = "macos"))]
+        let inner = {
+            let _owner = owner;
+            PlatformSpeakerInput::new()?
+        };
         Ok(Self { inner })
     }
 
@@ -75,6 +86,37 @@ impl SpeakerInput {
             buffer_idx: 0,
             buffer_rate: initial_rate,
         })
+    }
+
+    #[cfg(all(any(target_os = "macos", target_os = "windows"), not(test)))]
+    pub(crate) fn stream_owned(
+        self,
+        integrity: Option<std::sync::Arc<hypr_audio::CaptureIntegrity>>,
+        owner: Option<std::sync::Arc<dyn Send + Sync>>,
+    ) -> Result<SpeakerStream> {
+        #[cfg(target_os = "macos")]
+        {
+            Ok(self.inner.stream_owned(integrity, owner)?)
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let inner = self.inner.stream_owned(integrity, owner)?;
+            let initial_rate = inner.sample_rate();
+            Ok(SpeakerStream {
+                inner,
+                buffer: Vec::new(),
+                buffer_idx: 0,
+                buffer_rate: initial_rate,
+            })
+        }
+    }
+    #[cfg(all(any(target_os = "macos", target_os = "windows"), test))]
+    pub(crate) fn stream_owned(
+        self,
+        _integrity: Option<std::sync::Arc<hypr_audio::CaptureIntegrity>>,
+        _owner: Option<std::sync::Arc<dyn Send + Sync>>,
+    ) -> Result<SpeakerStream> {
+        self.stream()
     }
 
     #[cfg(test)]
@@ -164,6 +206,20 @@ impl hypr_audio_interface::AsyncSource for SpeakerStream {
 
     fn sample_rate(&self) -> u32 {
         self.buffer_rate
+    }
+    fn request_stop(&mut self) -> bool {
+        #[cfg(all(target_os = "windows", not(test)))]
+        {
+            self.inner.request_stop_capture()
+        }
+        #[cfg(test)]
+        {
+            true
+        }
+        #[cfg(all(not(target_os = "windows"), not(test)))]
+        {
+            false
+        }
     }
 }
 

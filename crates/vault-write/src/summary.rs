@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{IndexEntity, ScoredTagSuggestion, SessionStore, StoreError, WriteGuard, paths};
 
+mod generated;
+
 #[derive(Serialize, Deserialize)]
 struct PendingMigration {
     legacy_id: String,
@@ -25,7 +27,7 @@ impl SessionStore {
         let dir = self.session_dir(session_id).await?;
         let vault = self.vault_base.clone();
         let id = session_id.to_owned();
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             hypr_vault_read::summary::locate_in(&vault, &dir, &id)
                 .map(|summary| summary.map(|summary| summary.markdown))
                 .map_err(Into::into)
@@ -112,10 +114,44 @@ impl SessionStore {
         suggested_tags: Option<Vec<ScoredTagSuggestion>>,
         auto_apply_high_confidence_tags: bool,
     ) -> Result<(), StoreError> {
+        self.update_summary_checked_impl(
+            session_id,
+            markdown,
+            expected,
+            reconcile_tasks,
+            title,
+            suggested_tags,
+            auto_apply_high_confidence_tags,
+            None,
+            super::document_revision::DocumentWriteMode::Generated,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub(super) async fn update_summary_checked_impl(
+        &self,
+        session_id: &str,
+        markdown: &str,
+        expected: Option<&str>,
+        reconcile_tasks: bool,
+        title: Option<&str>,
+        suggested_tags: Option<Vec<ScoredTagSuggestion>>,
+        auto_apply_high_confidence_tags: bool,
+        expected_revision: Option<(&str, &std::path::Path)>,
+        mode: super::document_revision::DocumentWriteMode,
+    ) -> Result<Option<hypr_loofah_protocol::DocumentSaveOutcome>, StoreError> {
+        if expected_revision.is_some()
+            && (title.is_some() || suggested_tags.is_some() || !reconcile_tasks)
+        {
+            return Err(StoreError::Serialize(
+                "checked body replacement cannot update session metadata".into(),
+            ));
+        }
         let task_content = if reconcile_tasks {
             let markdown = markdown.to_owned();
             Some(
-                tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
+                self.spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
                     .await
                     .map_err(join_error)?
                     .map_err(StoreError::Serialize)?,
@@ -124,6 +160,20 @@ impl SessionStore {
             None
         };
         let guard = self.lock_writes().await;
+        let target = hypr_loofah_protocol::DocumentTarget::Summary;
+        if let Some((expected, operation_root)) = expected_revision {
+            self.recover_document_write_locked(&guard, operation_root, session_id)
+                .await?;
+            let current = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+            if current.revision != expected {
+                return Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Conflict(
+                    current,
+                )));
+            }
+        }
         let dir = self.writable_summary_dir(&guard, session_id).await?;
         let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
             StoreError::Io(format!("session {session_id} has no _meta.json to update"))
@@ -137,12 +187,19 @@ impl SessionStore {
         let vault = self.vault_base.clone();
         let read_dir = dir.clone();
         let id = session_id.to_owned();
-        let summary = tokio::task::spawn_blocking(move || {
-            hypr_vault_read::summary::locate_in(&vault, &read_dir, &id)
-        })
-        .await
-        .map_err(join_error)??
-        .ok_or_else(|| StoreError::Conflict("summary was deleted".into()))?;
+        let summary = self
+            .spawn_blocking(move || hypr_vault_read::summary::locate_in(&vault, &read_dir, &id))
+            .await
+            .map_err(join_error)??;
+        let summary = match summary {
+            Some(summary) => summary,
+            None if expected_revision.is_some() => hypr_vault_read::summary::LocatedSummary {
+                markdown: String::new(),
+                relative_path: paths::summary_path_in(&dir),
+                legacy_id: None,
+            },
+            None => return Err(StoreError::Conflict("summary was deleted".into())),
+        };
         if expected.is_some_and(|expected| expected != summary.markdown)
             && !(suggested_tags.is_none() && reconcile_tasks && markdown == summary.markdown)
         {
@@ -162,8 +219,26 @@ impl SessionStore {
             .unwrap_or_default();
         let tasks = if let Some(content) = task_content {
             Some(
-                self.prepare_generated_tasks(session_id, "session_summary", session_id, &content)
-                    .await?,
+                if expected_revision.is_some()
+                    && matches!(mode, super::document_revision::DocumentWriteMode::Edited)
+                {
+                    self.prepare_edited_tasks(
+                        session_id,
+                        "session_summary",
+                        session_id,
+                        &summary.markdown,
+                        &content,
+                    )
+                    .await?
+                } else {
+                    self.prepare_generated_tasks(
+                        session_id,
+                        "session_summary",
+                        session_id,
+                        &content,
+                    )
+                    .await?
+                },
             )
         } else {
             None
@@ -181,6 +256,23 @@ impl SessionStore {
         for name in &auto_applied {
             self.ensure_tag_locked(&guard, name).await?;
         }
+        let pending = if let Some((_, operation_root)) = expected_revision {
+            Some(
+                self.begin_document_write_locked(
+                    &guard,
+                    operation_root,
+                    session_id,
+                    &target,
+                    &bytes,
+                    tasks.as_deref().ok_or_else(|| {
+                        StoreError::Io("checked document save requires tasks".into())
+                    })?,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         self.write_file_locked(&guard, summary.relative_path, bytes)
             .await?;
         let task_result = if let Some(tasks) = tasks {
@@ -195,7 +287,7 @@ impl SessionStore {
             Ok(())
         };
         if changed_meta {
-            if let Err(error) = self.write_session_title_file_locked(&guard, &meta).await {
+            if let Err(error) = self.write_session_metadata_file_locked(&guard, &meta).await {
                 if let (Ok(Some(actual_meta)), Ok(Some(actual_summary))) = (
                     self.read_meta(session_id).await,
                     self.read_summary(session_id).await,
@@ -208,7 +300,21 @@ impl SessionStore {
         } else {
             self.index_set_summary(session_id, Some(markdown.to_owned()));
         }
-        task_result
+        task_result?;
+        if let Some(pending) = pending {
+            pending.finish().await?;
+        }
+        if expected_revision.is_some() {
+            let snapshot = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Io("session disappeared after save".into()))?;
+            Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Saved(
+                snapshot,
+            )))
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn delete_summary(&self, session_id: &str) -> Result<(), StoreError> {
@@ -218,7 +324,7 @@ impl SessionStore {
             .await?;
         let vault = self.vault_base.clone();
         let id = session_id.to_owned();
-        tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+        self.spawn_blocking(move || -> Result<(), StoreError> {
             if let Some(summary) = hypr_vault_read::summary::locate_in(&vault, &dir, &id)? {
                 hypr_fs_sync_core::export::move_to_trash(
                     &vault,
@@ -246,7 +352,7 @@ impl SessionStore {
         Ok(dir)
     }
 
-    fn index_set_summary(&self, id: &str, markdown: Option<String>) {
+    pub(super) fn index_set_summary(&self, id: &str, markdown: Option<String>) {
         let changed = {
             let mut index = self.index.write().unwrap();
             if let Some(docs) = index.docs.get_mut(id) {
@@ -278,16 +384,17 @@ impl SessionStore {
         let destination = paths::summary_path_in(dir);
         let vault = self.vault_base.clone();
         let target = destination.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let source = vault.join(staging);
-            let result = hypr_storage::fs::rename_no_replace(&source, &vault.join(target));
-            if result.is_err() {
-                let _ = std::fs::remove_file(source);
-            }
-            result
-        })
-        .await
-        .map_err(join_error)?;
+        let result = self
+            .spawn_blocking(move || {
+                let source = vault.join(staging);
+                let result = hypr_storage::fs::rename_no_replace(&source, &vault.join(target));
+                if result.is_err() {
+                    let _ = std::fs::remove_file(source);
+                }
+                result
+            })
+            .await
+            .map_err(join_error)?;
         result.map_err(|e| {
             if e.kind() == std::io::ErrorKind::AlreadyExists {
                 StoreError::Conflict(
@@ -353,8 +460,8 @@ impl SessionStore {
         let scan_dir = dir.to_owned();
         let session_id = id.to_owned();
         let marker_path = vault.join(&marker);
-        let pending =
-            tokio::task::spawn_blocking(move || -> Result<Option<PendingMigration>, StoreError> {
+        let pending = self
+            .spawn_blocking(move || -> Result<Option<PendingMigration>, StoreError> {
                 match std::fs::read(&marker_path) {
                     Ok(bytes) => {
                         return serde_json::from_slice(&bytes)
@@ -423,7 +530,7 @@ impl SessionStore {
         let original = pending.original.clone();
         let can_resume_without_source =
             marker_path_for_resume(&self.vault_base, &marker, dir, &pending.markdown)?;
-        tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+        self.spawn_blocking(move || -> Result<(), StoreError> {
             match std::fs::read_to_string(source_abs) {
                 Ok(raw) if raw != original => Err(StoreError::Conflict(
                     "legacy summary changed during migration".into(),
@@ -443,11 +550,10 @@ impl SessionStore {
             .await?;
         let vault = self.vault_base.clone();
         let read_dir = dir.to_owned();
-        let current = tokio::task::spawn_blocking(move || {
-            hypr_vault_read::summary::read_canonical_in(&vault, &read_dir)
-        })
-        .await
-        .map_err(join_error)??;
+        let current = self
+            .spawn_blocking(move || hypr_vault_read::summary::read_canonical_in(&vault, &read_dir))
+            .await
+            .map_err(join_error)??;
         match current {
             None => {
                 self.publish_summary_locked(guard, dir, &pending.markdown)
@@ -464,7 +570,7 @@ impl SessionStore {
             .await?;
         let vault = self.vault_base.clone();
         let original = pending.original.clone();
-        tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+        self.spawn_blocking(move || -> Result<(), StoreError> {
             match std::fs::read_to_string(vault.join(&source)) {
                 Ok(raw) if raw != original => {
                     return Err(StoreError::Conflict(

@@ -4,6 +4,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Local vault operations are unavailable for this desktop startup")]
+    LocalVaultUnavailable,
+    #[error("Cannot load desktop startup preferences: {0}")]
+    StartupPreferences(String),
+    #[error(transparent)]
+    Config(#[from] hypr_loofah_core::settings::ConfigError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]

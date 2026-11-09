@@ -24,11 +24,14 @@ import { AppI18nProvider } from "./i18n/provider";
 import { FloatingMeetingWindowHost } from "./meeting-float/host";
 import { routeTree } from "./routeTree.gen";
 import { ArtifactInvalidationSync } from "./services/artifact-invalidation";
-import { EventListeners } from "./services/event-listeners";
+import { DeviceEventListeners } from "./services/event-listeners";
 import { RegenerateTranscriptConfirmDialog } from "./session/components/note-input/transcript/regenerate-confirm";
-import { useRemoteSessionDeletionUndoListener } from "./session/hooks/useDeleteSession";
 import { initializeApplicationSettings } from "./settings/queries";
 import { initializeAppExitFlush } from "./shared/app-exit";
+import {
+  DesktopBootstrapRoot,
+  loadDesktopBootstrap,
+} from "./shared/application/desktop-bootstrap";
 import { useConfigValue } from "./shared/config";
 import { initConfigStore } from "./shared/config/store";
 import { ErrorComponent, NotFoundComponent } from "./shared/control";
@@ -56,13 +59,13 @@ declare module "@tanstack/react-router" {
   }
 }
 
-function App() {
+function App({ remoteNote = false }: { remoteNote?: boolean }) {
   const aiTaskStore = useMemo(() => createAITaskStore(), []);
 
   return (
     <>
-      <AITaskWindowSyncBridge store={aiTaskStore} />
-      <RegenerateTranscriptConfirmDialog />
+      {!remoteNote && <AITaskWindowSyncBridge store={aiTaskStore} />}
+      {!remoteNote && <RegenerateTranscriptConfirmDialog />}
       <RouterProvider
         router={router}
         context={{
@@ -74,23 +77,32 @@ function App() {
   );
 }
 
-function AppRoot() {
+function AppRoot({
+  bootstrap,
+}: {
+  bootstrap: Awaited<ReturnType<typeof loadDesktopBootstrap>> | null;
+}) {
   const theme = resolveThemeAppearance(
     getDesignTheme(useConfigValue("design_theme")),
     normalizeThemePreference(useConfigValue("theme")),
   );
-  useRemoteSessionDeletionUndoListener(isMainWindow);
 
   return (
     <QueryClientProvider client={queryClient}>
       <AppThemeProvider>
         <AppI18nProvider>
-          <StartupBoundary>
-            <App />
-            <ArtifactInvalidationSync />
-            {isMainWindow ? <FloatingMeetingWindowHost /> : null}
-            {isMainWindow ? <EventListeners /> : null}
-          </StartupBoundary>
+          {isRemoteNoteWindow ? (
+            <App remoteNote />
+          ) : (
+            <DesktopBootstrapRoot state={bootstrap!}>
+              <StartupBoundary>
+                <App />
+                <ArtifactInvalidationSync />
+                {isMainWindow ? <FloatingMeetingWindowHost /> : null}
+                {isMainWindow ? <DeviceEventListeners /> : null}
+              </StartupBoundary>
+            </DesktopBootstrapRoot>
+          )}
           <Toaster position="bottom-right" theme={theme} />
         </AppI18nProvider>
       </AppThemeProvider>
@@ -101,7 +113,9 @@ function AppRoot() {
 initWindowsPlugin();
 document.documentElement.dataset.platform = platform();
 
-const isMainWindow = getCurrentWebviewWindowLabel() === "main";
+const windowLabel = getCurrentWebviewWindowLabel();
+const isMainWindow = windowLabel === "main";
+const isRemoteNoteWindow = windowLabel.startsWith("remote-note-");
 
 if (isMainWindow) {
   void initializeAppExitFlush().catch((error) => {
@@ -126,19 +140,22 @@ async function enableReactScanInDev() {
 
 async function renderApp() {
   startPerformanceDiagnostics();
-  void initConfigStore().catch((error) => {
-    console.error("Failed to initialize the config store", error);
-  });
-  if (isMainWindow) {
-    await initializeApplicationSettings().catch((error) => {
-      console.error("Failed to initialize application settings", error);
+  const bootstrap = isRemoteNoteWindow ? null : await loadDesktopBootstrap();
+  if (!isRemoteNoteWindow) {
+    void initConfigStore().catch((error) => {
+      console.error("Failed to initialize the config store", error);
     });
+    if (isMainWindow && bootstrap?.info?.startup.selection.kind === "local") {
+      await initializeApplicationSettings().catch((error) => {
+        console.error("Failed to initialize application settings", error);
+      });
+    }
+    await Promise.all([bootstrapThemeFromSettings(), enableReactScanInDev()]);
   }
-  await Promise.all([bootstrapThemeFromSettings(), enableReactScanInDev()]);
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
-      <AppRoot />
+      <AppRoot bootstrap={bootstrap} />
     </StrictMode>,
   );
 }

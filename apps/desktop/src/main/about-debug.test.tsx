@@ -73,7 +73,9 @@ vi.mock("~/stt/capabilities", () => ({
   isFmtrLocalSttModel: () => true,
   isSupportedLanguagesBatch: async () => true,
 }));
-vi.mock("~/stt/useRunBatch", () => ({ getBatchProvider: () => "whispercpp" }));
+vi.mock("~/stt/batch-provider", () => ({
+  getBatchProvider: () => "whispercpp",
+}));
 vi.mock("@lingui/react", () => {
   const translate = ({
     message,

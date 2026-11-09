@@ -5,6 +5,2307 @@
 /** user-defined commands **/
 
 export const commands = {
+  async draftCacheGet(
+    scope: string,
+    sessionId: string,
+  ): Promise<Result<NoteDraftRecovery | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_get", { scope, sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async draftCacheInventory(
+    scope: string,
+  ): Promise<Result<RecoveryEntry[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_inventory", { scope }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async draftCacheAllInventory(): Promise<
+    Result<RecoveryScope[], ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_all_inventory"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async draftCacheRecovery(
+    scope: string,
+    id: string,
+  ): Promise<Result<NoteDraftRecovery | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_recovery", { scope, id }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async draftCachePut(
+    recovery: NoteDraftRecovery,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_put", { recovery }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async draftCacheRemove(
+    scope: string,
+    sessionId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_remove", { scope, sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationExportSession(
+    ownerId: string,
+    requestId: string,
+    input: SessionExportInput,
+  ): Promise<Result<SessionExportResult, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_export_session", {
+          ownerId,
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteExportSession(
+    connectionId: string,
+    scope: CaptureScope,
+    ownerId: string,
+    requestId: string,
+    input: SessionExportInput,
+  ): Promise<Result<SessionExportResult, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_export_session", {
+          connectionId,
+          scope,
+          ownerId,
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionExportCancel(ownerId: string, requestId: string): Promise<void> {
+    await TAURI_INVOKE("session_export_cancel", { ownerId, requestId });
+  },
+  async sessionExportOwner(): Promise<Result<string, ApplicationError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("session_export_owner") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationScope(): Promise<Result<string, ApplicationError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("application_scope") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingAvailable(): Promise<boolean> {
+    return await TAURI_INVOKE("application_processing_available");
+  },
+  async applicationLocalMediaAvailable(): Promise<boolean> {
+    return await TAURI_INVOKE("application_local_media_available");
+  },
+  async applicationLocalMediaSource(
+    sessionId: string,
+  ): Promise<Result<LocalMediaSourceSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_source", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaImportAudio(
+    requestId: string,
+    sessionId: string | null,
+    input: UploadAttachmentRequest,
+    source: DeviceAttachmentSource,
+    createdAt: string | null,
+    contentType: string | null,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_import_audio", {
+          requestId,
+          sessionId,
+          input,
+          source,
+          createdAt,
+          contentType,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaTranscribe(
+    requestId: string,
+    expected: LocalMediaSourceSnapshot,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_transcribe", {
+          requestId,
+          expected,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaImportSubtitles(
+    requestId: string,
+    sessionId: string,
+    input: UploadAttachmentRequest,
+    source: DeviceAttachmentSource,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_import_subtitles", {
+          requestId,
+          sessionId,
+          input,
+          source,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaList(
+    sessionId: string | null,
+  ): Promise<Result<LocalMediaStatus[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_list", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaStatus(
+    requestId: string,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_status", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaResult(
+    requestId: string,
+  ): Promise<Result<TranscriptWithData | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_result", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaCancel(
+    requestId: string,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_cancel", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaRecover(
+    requestId: string,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_recover", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaSummaryStatus(
+    requestId: string,
+  ): Promise<Result<ManualMediaSummaryStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_summary_status", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRecordingProcessingAvailable(): Promise<boolean> {
+    return await TAURI_INVOKE("application_recording_processing_available");
+  },
+  async applicationRecordingProcessingList(
+    sessionId: string | null,
+  ): Promise<Result<LocalCaptureStatus[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recording_processing_list", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRecordingProcessingStatus(
+    requestId: string,
+  ): Promise<Result<LocalCaptureStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recording_processing_status", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRecoverRecordingProcessing(
+    requestId: string,
+  ): Promise<Result<LocalCaptureStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recover_recording_processing", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRecordingProcessingControls(
+    sessionId: string | null,
+  ): Promise<Result<LocalCaptureControlSnapshot[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recording_processing_controls", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRecordingProcessingHistory(
+    sessionId: string | null,
+    cursor: string | null,
+    limit: number,
+  ): Promise<Result<LocalCaptureHistoryPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recording_processing_history", {
+          sessionId,
+          cursor,
+          limit,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCancelRecordingProcessing(
+    requestId: string,
+  ): Promise<Result<LocalCaptureControlSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_cancel_recording_processing", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationResolveRecordingProcessing(
+    requestId: string,
+    resolution: LocalCaptureResolution,
+  ): Promise<Result<LocalCaptureControlSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_resolve_recording_processing", {
+          requestId,
+          resolution,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptionAvailable(): Promise<boolean> {
+    return await TAURI_INVOKE("application_transcription_available");
+  },
+  async applicationTranscriptionPolicy(): Promise<
+    Result<TranscriptionPolicy, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcription_policy"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSubmitTranscription(
+    input: TranscriptionJobRequest,
+    requestId: string,
+  ): Promise<Result<TranscriptionJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_submit_transcription", {
+          input,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptionJobs(
+    input: ListTranscriptionJobsInput,
+  ): Promise<Result<TranscriptionJobPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcription_jobs", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptionJob(
+    jobId: string,
+  ): Promise<Result<TranscriptionJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcription_job", { jobId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptionJobResult(
+    jobId: string,
+  ): Promise<Result<TranscriptionJobResult | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcription_job_result", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCancelTranscriptionJob(
+    jobId: string,
+  ): Promise<Result<TranscriptionJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_cancel_transcription_job", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationResumeTranscriptionResult(
+    jobId: string,
+  ): Promise<Result<TranscriptionJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_resume_transcription_result", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingPolicy(): Promise<
+    Result<ProcessingPolicy, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_policy"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingSettings(): Promise<
+    Result<ProcessingSettingsSnapshot, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_settings"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveProcessingSettings(
+    input: SaveProcessingSettingsRequest,
+  ): Promise<Result<ProcessingSettingsSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_processing_settings", {
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSubmitSummaryJob(
+    requestId: string,
+    input: SummaryJobRequest,
+  ): Promise<Result<ProcessingJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_submit_summary_job", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingJobs(
+    input: ListProcessingJobsInput,
+  ): Promise<Result<ProcessingJobPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_jobs", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingJob(
+    jobId: string,
+  ): Promise<Result<ProcessingJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_job", { jobId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingJobResult(
+    jobId: string,
+  ): Promise<Result<ProcessingJobResult | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_job_result", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingJobPreview(
+    jobId: string,
+  ): Promise<Result<ProcessingJobPreview, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_job_preview", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCancelProcessingJob(
+    jobId: string,
+  ): Promise<Result<ProcessingJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_cancel_processing_job", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceJobSubmissionPrepare(
+    scope: string,
+    input: SummaryJobRequest,
+    createOnly: boolean | null,
+  ): Promise<Result<JobSubmissionReceipt, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submission_prepare", {
+          scope,
+          input,
+          createOnly,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissionPrepare(
+    scope: string,
+    input: TranscriptionJobRequest,
+  ): Promise<Result<TranscriptionSubmissionReceipt, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submission_prepare", {
+          scope,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissionGet(
+    scope: string,
+    requestId: string,
+  ): Promise<Result<TranscriptionSubmissionReceipt | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submission_get", {
+          scope,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissions(
+    scope: string,
+    sessionId: string | null,
+  ): Promise<Result<TranscriptionSubmissionReceipt[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submissions", {
+          scope,
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissionObserve(
+    scope: string,
+    requestId: string,
+    snapshot: TranscriptionJobSnapshot,
+  ): Promise<Result<TranscriptionSubmissionReceipt, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submission_observe", {
+          scope,
+          requestId,
+          snapshot,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissionForget(
+    scope: string,
+    requestId: string,
+  ): Promise<Result<boolean, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submission_forget", {
+          scope,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceJobSubmissionGet(
+    scope: string,
+    requestId: string,
+  ): Promise<Result<JobSubmissionReceipt | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submission_get", {
+          scope,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceJobSubmissions(
+    scope: string,
+    sessionId: string | null,
+  ): Promise<Result<JobSubmissionReceipt[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submissions", {
+          scope,
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceJobSubmissionObserve(
+    scope: string,
+    requestId: string,
+    snapshot: ProcessingJobSnapshot,
+  ): Promise<Result<JobSubmissionReceipt, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submission_observe", {
+          scope,
+          requestId,
+          snapshot,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceJobSubmissionForget(
+    scope: string,
+    requestId: string,
+  ): Promise<Result<boolean, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submission_forget", {
+          scope,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecentSessions(
+    scope: string,
+  ): Promise<Result<string[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recent_sessions", { scope }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRememberSession(
+    scope: string,
+    id: string,
+  ): Promise<Result<string[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_remember_session", { scope, id }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async devicePinnedTabs(
+    scope: string,
+  ): Promise<Result<string | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_pinned_tabs", { scope }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceSetPinnedTabs(
+    scope: string,
+    value: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_set_pinned_tabs", { scope, value }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTimelineHeaders(
+    input: TimelineQuery,
+  ): Promise<Result<TimelinePage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_timeline_headers", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTimelineFacets(
+    input: TimelineFacetsQuery,
+  ): Promise<Result<TimelineFacets, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_timeline_facets", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSessions(
+    limit: number,
+    after: string | null,
+  ): Promise<Result<SessionPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_sessions", { limit, after }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDeleteEmptySession(
+    requestId: string,
+    input: DeleteEmptySessionRequest,
+  ): Promise<Result<DeleteEmptySessionOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_delete_empty_session", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSessionLifecycle(
+    sessionId: string,
+  ): Promise<Result<SessionLifecycleSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_session_lifecycle", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDeleteSession(
+    requestId: string,
+    input: DeleteSessionRequest,
+  ): Promise<Result<DeleteSessionOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_delete_session", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRestoreSession(
+    requestId: string,
+    input: RestoreSessionRequest,
+  ): Promise<Result<RestoreSessionOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_restore_session", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationFinishLocalSessionWork(
+    sessionId: string,
+    requestId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_finish_local_session_work", {
+          sessionId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSessionSummaries(
+    input: SessionSummaryQuery,
+  ): Promise<Result<SessionSummary[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_session_summaries", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptOverview(
+    sessionId: string,
+  ): Promise<Result<TranscriptOverview, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcript_overview", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptEditor(
+    sessionId: string,
+  ): Promise<Result<TranscriptEditorSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcript_editor", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAssignTranscriptSpeakers(
+    sessionId: string,
+    input: AssignTranscriptSpeakersRequest,
+  ): Promise<Result<TranscriptEditorSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_assign_transcript_speakers", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationEnsurePerson(
+    input: EnsurePersonRequest,
+  ): Promise<Result<PersonItem, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_ensure_person", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDocuments(
+    sessionId: string,
+  ): Promise<Result<EnhancedDoc[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_documents", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentList(
+    input: ListMeetingsInput,
+  ): Promise<Result<MeetingPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_list", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentSearch(
+    input: SearchMeetingsInput,
+  ): Promise<Result<SearchPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_search", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentMeeting(
+    sessionId: string,
+  ): Promise<Result<Meeting, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_meeting", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentTranscript(
+    sessionId: string,
+  ): Promise<Result<MeetingTranscript, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_transcript", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentExport(
+    sessionId: string,
+  ): Promise<Result<MeetingExport, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_export", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentSegments(
+    sessionId: string,
+  ): Promise<Result<RenderedTranscriptSegment[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_segments", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationReadDocument(
+    sessionId: string,
+    target: DocumentTarget,
+  ): Promise<Result<DocumentSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_document", {
+          sessionId,
+          target,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveDocument(
+    sessionId: string,
+    target: DocumentTarget,
+    input: SaveDocumentRequest,
+  ): Promise<Result<DocumentSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_document", {
+          sessionId,
+          target,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscripts(
+    sessionId: string,
+  ): Promise<Result<TranscriptWithData[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcripts", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAudioMetadata(
+    sessionId: string,
+  ): Promise<Result<FileMetadata | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_audio_metadata", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAttachmentInfo(
+    sessionId: string,
+    attachmentId: string,
+  ): Promise<Result<FileInfo | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_attachment_info", {
+          sessionId,
+          attachmentId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAttachments(
+    sessionId: string,
+    limit: number,
+    after: string | null,
+  ): Promise<Result<AttachmentPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_attachments", {
+          sessionId,
+          limit,
+          after,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAttachmentMetadata(
+    sessionId: string,
+    attachmentId: string,
+  ): Promise<Result<FileMetadata | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_attachment_metadata", {
+          sessionId,
+          attachmentId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationUploadAttachmentSource(
+    requestId: string,
+    sessionId: string,
+    input: UploadAttachmentRequest,
+    source: DeviceAttachmentSource,
+  ): Promise<Result<FileMetadata, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_upload_attachment_source", {
+          requestId,
+          sessionId,
+          input,
+          source,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAttachmentUploadStatus(
+    requestId: string,
+    sessionId: string,
+    input: UploadAttachmentRequest,
+  ): Promise<Result<AttachmentUploadStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_attachment_upload_status", {
+          requestId,
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async devicePrepareAttachmentUpload(
+    sourcePath: string,
+  ): Promise<Result<UploadAttachmentRequest, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_prepare_attachment_upload", {
+          sourcePath,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceAttachmentSourceBegin(
+    sourceId: string,
+    filename: string,
+    sizeBytes: number,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_attachment_source_begin", {
+          sourceId,
+          filename,
+          sizeBytes,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceAttachmentSourceAppend(
+    sourceId: string,
+    offset: number,
+    data: number[],
+  ): Promise<Result<number, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_attachment_source_append", {
+          sourceId,
+          offset,
+          data,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceAttachmentSourceFinish(
+    sourceId: string,
+  ): Promise<Result<UploadAttachmentRequest, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_attachment_source_finish", {
+          sourceId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceAttachmentSourceClose(sourceId: string): Promise<void> {
+    await TAURI_INVOKE("device_attachment_source_close", { sourceId });
+  },
+  async applicationRemoveAttachment(
+    requestId: string,
+    sessionId: string,
+    attachmentId: string,
+    input: RemoveAttachmentRequest,
+  ): Promise<Result<boolean, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_remove_attachment", {
+          requestId,
+          sessionId,
+          attachmentId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDeleteRecording(
+    sessionId: string,
+    input: DeleteRecordingRequest,
+  ): Promise<Result<boolean, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_delete_recording", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTasks(
+    sessionId: string,
+  ): Promise<Result<TaskItem[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_tasks", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTasksSnapshot(
+    sessionId: string,
+  ): Promise<Result<TasksSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_tasks_snapshot", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationReplaceTasks(
+    sessionId: string,
+    input: ReplaceTasksRequest,
+  ): Promise<Result<TasksSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_replace_tasks", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationPeople(): Promise<Result<PersonItem[], ApplicationError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("application_people") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTags(): Promise<Result<TagItem[], ApplicationError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("application_tags") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTagSuggestions(
+    input: TagSuggestionsRequest,
+  ): Promise<Result<string[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_tag_suggestions", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationEnsureTag(
+    input: EnsureTagRequest,
+  ): Promise<Result<TagItem, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_ensure_tag", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAcceptTagSuggestion(
+    sessionId: string,
+    input: TagSuggestionActionRequest,
+  ): Promise<Result<MetadataSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_accept_tag_suggestion", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDismissTagSuggestion(
+    sessionId: string,
+    input: TagSuggestionActionRequest,
+  ): Promise<Result<MetadataSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_dismiss_tag_suggestion", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSession(
+    sessionId: string,
+  ): Promise<Result<SessionDocument, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_session", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCreateSession(
+    requestId: string,
+    input: CreateSessionRequest,
+  ): Promise<Result<SessionDocument, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_create_session", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationReadNote(
+    sessionId: string,
+  ): Promise<Result<NoteSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_note", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDesktopBootstrap(): Promise<
+    Result<DesktopBootstrapInfo, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_desktop_bootstrap"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDesktopStartup(): Promise<
+    Result<DesktopStartupSnapshot, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_desktop_startup"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDesktopConnections(): Promise<
+    Result<DesktopConnectionProfile[], ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_desktop_connections"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCreateDesktopConnection(
+    name: string,
+    server: string,
+  ): Promise<Result<DesktopConnectionProfile, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_create_desktop_connection", {
+          name,
+          server,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveDesktopStartup(
+    input: SaveDesktopStartupRequest,
+  ): Promise<Result<DesktopStartupSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_desktop_startup", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRememberDesktopDestination(
+    connectionId: string,
+    profileId: string,
+    memberId: string,
+    vaultId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_remember_desktop_destination", {
+          connectionId,
+          profileId,
+          memberId,
+          vaultId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationReadNoteEditor(
+    sessionId: string,
+  ): Promise<Result<NoteEditorSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_note_editor", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveNoteEditor(
+    sessionId: string,
+    input: SaveNoteEditorRequest,
+  ): Promise<Result<NoteEditorSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_note_editor", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationReadDocumentEditor(
+    sessionId: string,
+    target: DocumentTarget,
+  ): Promise<Result<DocumentEditorSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_document_editor", {
+          sessionId,
+          target,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveDocumentEditor(
+    sessionId: string,
+    target: DocumentTarget,
+    input: SaveDocumentEditorRequest,
+  ): Promise<Result<DocumentEditorSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_document_editor", {
+          sessionId,
+          target,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDeleteDocument(
+    sessionId: string,
+    target: DocumentTarget,
+    requestId: string,
+    input: DeleteDocumentRequest,
+  ): Promise<Result<DeleteDocumentOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_delete_document", {
+          sessionId,
+          target,
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationReadMetadata(
+    sessionId: string,
+  ): Promise<Result<MetadataSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_metadata", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveMetadata(
+    sessionId: string,
+    input: SaveMetadataRequest,
+  ): Promise<Result<MetadataSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_metadata", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveNote(
+    sessionId: string,
+    input: SaveNoteRequest,
+  ): Promise<Result<NoteSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_note", { sessionId, input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSearch(
+    input: SearchRequest,
+  ): Promise<Result<SearchResult, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_search", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteOpenNoteWindow(
+    connectionId: string,
+    requestId: string,
+    vaultId: string,
+    sessionId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_open_note_window", {
+          connectionId,
+          requestId,
+          vaultId,
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteClaimNoteWindow(): Promise<
+    Result<RemoteNoteWindowInfo, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_claim_note_window"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteConnect(
+    server: string,
+  ): Promise<Result<RemoteConnectionInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_connect", { server }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteConnectDesktopProfile(
+    name: string,
+    profileId: string,
+  ): Promise<Result<RemoteConnectionInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_connect_desktop_profile", {
+          name,
+          profileId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteLogin(
+    connectionId: string,
+  ): Promise<Result<Me, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_login", { connectionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteCancelLogin(connectionId: string): Promise<void> {
+    await TAURI_INVOKE("remote_cancel_login", { connectionId });
+  },
+  async remoteRequest(
+    connectionId: string,
+    requestId: string,
+    operation: RemoteOperation,
+  ): Promise<Result<RemoteReply, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_request", {
+          connectionId,
+          requestId,
+          operation,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaRequest(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+    query: MediaQuery,
+  ): Promise<Result<MediaReply, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_request", {
+          connectionId,
+          vaultId,
+          requestId,
+          query,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaSubmit(
+    connectionId: string,
+    vaultId: string,
+    declaration: MediaDeclaration,
+    source: DeviceAttachmentSource | null,
+  ): Promise<Result<MediaRequestStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_submit", {
+          connectionId,
+          vaultId,
+          declaration,
+          source,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaRecover(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+  ): Promise<Result<MediaRequestStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_recover", {
+          connectionId,
+          vaultId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaCancel(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+  ): Promise<Result<MediaRequestStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_cancel", {
+          connectionId,
+          vaultId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaResumeSource(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+    source: DeviceAttachmentSource,
+  ): Promise<Result<MediaRequestStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_resume_source", {
+          connectionId,
+          vaultId,
+          requestId,
+          source,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaSubmissions(
+    connectionId: string,
+    vaultId: string,
+  ): Promise<Result<MediaSubmission[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_submissions", {
+          connectionId,
+          vaultId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaExportSource(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+  ): Promise<Result<SessionExportResult, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_export_source", {
+          connectionId,
+          vaultId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaRetirementStatus(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+    controlId: string,
+  ): Promise<Result<MediaRetirementView, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_retirement_status", {
+          connectionId,
+          vaultId,
+          requestId,
+          controlId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaRetire(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+    input: MediaRetirementRequest,
+  ): Promise<Result<MediaRetirementView, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_retire", {
+          connectionId,
+          vaultId,
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteUploadAttachmentSource(
+    connectionId: string,
+    upload: AttachmentUpload,
+    source: DeviceAttachmentSource,
+  ): Promise<Result<FileMetadata, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_upload_attachment_source", {
+          connectionId,
+          upload,
+          source,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteCancelRequest(
+    connectionId: string,
+    requestId: string,
+  ): Promise<void> {
+    await TAURI_INVOKE("remote_cancel_request", { connectionId, requestId });
+  },
+  async remoteSubscribe(
+    connectionId: string,
+    vaultId: string,
+    subscriptionId: string,
+    onEvent: TAURI_CHANNEL<RemoteEvent>,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_subscribe", {
+          connectionId,
+          vaultId,
+          subscriptionId,
+          onEvent,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteSubscribeCaptureLive(
+    connectionId: string,
+    vaultId: string,
+    subscriptionId: string,
+    binding: CaptureLiveBinding,
+    after: number | null,
+    onEvent: TAURI_CHANNEL<CaptureLiveEvent>,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_subscribe_capture_live", {
+          connectionId,
+          vaultId,
+          subscriptionId,
+          binding,
+          after,
+          onEvent,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteUnsubscribe(
+    connectionId: string,
+    subscriptionId: string,
+  ): Promise<void> {
+    await TAURI_INVOKE("remote_unsubscribe", { connectionId, subscriptionId });
+  },
+  async remoteDisconnect(connectionId: string): Promise<void> {
+    await TAURI_INVOKE("remote_disconnect", { connectionId });
+  },
+  async remoteLogout(
+    connectionId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_logout", { connectionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteAudioOpen(
+    connectionId: string,
+    resourceId: string,
+    vaultId: string,
+    sessionId: string,
+  ): Promise<Result<NativeRecording | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_audio_open", {
+          connectionId,
+          resourceId,
+          vaultId,
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteAudioPeaks(
+    connectionId: string,
+    resourceId: string,
+    requestId: string,
+  ): Promise<Result<RecordingWaveform, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_audio_peaks", {
+          connectionId,
+          resourceId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteAudioClose(
+    connectionId: string,
+    resourceId: string,
+  ): Promise<void> {
+    await TAURI_INVOKE("remote_audio_close", { connectionId, resourceId });
+  },
+  async remoteAttachmentOpen(
+    connectionId: string,
+    resourceId: string,
+    target: AttachmentTarget,
+  ): Promise<Result<NativeAttachment, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_attachment_open", {
+          connectionId,
+          resourceId,
+          target,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteAttachmentClose(
+    connectionId: string,
+    resourceId: string,
+  ): Promise<void> {
+    await TAURI_INVOKE("remote_attachment_close", { connectionId, resourceId });
+  },
+  async remoteAttachmentCopy(
+    connectionId: string,
+    resourceId: string,
+    requestId: string,
+    action: AttachmentCopyAction,
+  ): Promise<Result<NativeAttachmentCopy, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_attachment_copy", {
+          connectionId,
+          resourceId,
+          requestId,
+          action,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async chatgptAccount(): Promise<Result<ChatgptAccount | null, ChatgptError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("chatgpt_account") };
@@ -105,6 +2406,223 @@ export const commands = {
   },
   async showDevtool(): Promise<boolean> {
     return await TAURI_INVOKE("show_devtool");
+  },
+  async deviceRecordingStart(
+    connectionId: string | null,
+    input: DeviceCaptureStartRequest,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_start", {
+          connectionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingAppend(
+    connectionId: string,
+    input: CaptureAppendRequest,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_append", {
+          connectionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingAppendPending(
+    connectionId: string,
+    scope: CaptureScope,
+  ): Promise<Result<CaptureAppendRequest[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_append_pending", {
+          connectionId,
+          scope,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingCancelProcessing(
+    identity: CaptureIdentity,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_cancel_processing", {
+          identity,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingRetire(
+    connectionId: string,
+    identity: CaptureIdentity,
+    cleanupRequestId: string,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_retire", {
+          connectionId,
+          identity,
+          cleanupRequestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingInventory(): Promise<
+    Result<DeviceRecordingInventory, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_inventory"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingRecoveryInventory(
+    refresh: boolean,
+  ): Promise<Result<DeviceRecordingInfo[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_recovery_inventory", {
+          refresh,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingFinishRecovery(
+    identity: CaptureIdentity,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_finish_recovery", {
+          identity,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingExport(
+    identity: CaptureIdentity,
+  ): Promise<Result<WaveExportReceipt | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_export", { identity }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingStatus(): Promise<
+    Result<DeviceRecordingInventory | null, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_status"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingTelemetry(
+    identity: CaptureIdentity,
+  ): Promise<Result<DeviceRecordingTelemetry | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_telemetry", { identity }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingStop(
+    identity: CaptureIdentity,
+  ): Promise<Result<boolean, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_stop", { identity }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingResumeUpload(
+    connectionId: string,
+    identity: CaptureIdentity,
+  ): Promise<Result<CaptureUploadProgress, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_resume_upload", {
+          connectionId,
+          identity,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingSubscribe(
+    subscriptionId: string,
+    channel: TAURI_CHANNEL<number>,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_subscribe", {
+          subscriptionId,
+          channel,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingUnsubscribe(subscriptionId: string): Promise<void> {
+    await TAURI_INVOKE("device_recording_unsubscribe", { subscriptionId });
   },
   async completeAppExit(): Promise<void> {
     await TAURI_INVOKE("complete_app_exit");
@@ -913,9 +3431,13 @@ export const commands = {
 /** user-defined events **/
 
 export const events = __makeEvents__<{
+  applicationChanged: ApplicationChanged;
+  deviceVaultStateChanged: DeviceVaultStateChanged;
   indexChanged: IndexChanged;
   startupProgress: StartupProgress;
 }>({
+  applicationChanged: "application-changed",
+  deviceVaultStateChanged: "device-vault-state-changed",
   indexChanged: "index-changed",
   startupProgress: "startup-progress",
 });
@@ -924,6 +3446,331 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
+export type AbsentTranscriptExpectation = "absent";
+export type ActionItem = {
+  id: string;
+  assignee_human_id: string;
+  status: string;
+  text: string;
+  due_at: string;
+  completed_at: string | null;
+};
+export type AgentSearchHit = {
+  session_id: string;
+  title: string;
+  created_at: number;
+  score: number;
+  title_snippet: string | null;
+  content_snippet: string | null;
+};
+export type ApplicationChanged = { event: ChangeEvent };
+export type ApplicationError = {
+  code: ErrorCode;
+  message: string;
+  request_id: string | null;
+  retryable: boolean;
+  current_revision: string | null;
+  mutation_outcome: MutationOutcome | null;
+};
+export type ArtifactChange = { session_id: string; target: ArtifactTarget };
+export type ArtifactTarget =
+  | { kind: "recording" }
+  | { kind: "attachments" }
+  | { kind: "attachment"; attachment_id: string }
+  | { kind: "all" };
+export type AssignTranscriptSpeakersRequest = {
+  expected_revision: string;
+  assignments: TranscriptSpeakerAssignment[];
+};
+export type AttachmentCopyAction = "save" | "open" | "reveal";
+export type AttachmentPage = { files: FileInfo[]; next_cursor: string | null };
+export type AttachmentTarget = {
+  vault_id: string;
+  session_id: string;
+  attachment_id: string;
+};
+export type AttachmentUpload = {
+  vault_id: string;
+  session_id: string;
+  request_id: string;
+  input: UploadAttachmentRequest;
+};
+export type AttachmentUploadStatus =
+  | { kind: "missing" }
+  | { kind: "committed"; value: FileMetadata }
+  | { kind: "rejected" }
+  | { kind: "uncertain" };
+export type AudioLayout = "mixed" | "mic_system";
+/**
+ * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
+ */
+export type AudioPeaks = { durationSec: number; channels: number[][] };
+export type AudioSource = "import" | "recording" | "unknown";
+export type Capabilities = {
+  api_major: number;
+  application_version: string;
+  features: string[];
+};
+/**
+ * A declaration is not write authority. Core must resolve the exact durable
+ * admission under its original lease and compare the entire baseline.
+ */
+export type CaptureAppendAdmission = {
+  request: CaptureAppendRequest;
+  baseline: CaptureAppendBaseline;
+};
+export type CaptureAppendBaseline = {
+  recording_selection: string;
+  recording_sha256: string;
+  transcript_present: boolean;
+  transcript_revision: string;
+  normalized_sha256: string;
+  normalized_bytes: number;
+  frames: number;
+  format: CaptureFormat;
+};
+/**
+ * Persist this identity before dispatch. Retrying preparation must use every
+ * original field, even when its first response was lost.
+ */
+export type CaptureAppendRequest = {
+  scope: CaptureScope;
+  session_id: string;
+  capture_id: string;
+  request_id: string;
+  admission_id: string;
+  processing?: CaptureProcessingOptions | null;
+};
+export type CaptureChannel = "microphone" | "system_audio" | "mixed";
+export type CaptureEncoding = "pcm_f32_le";
+export type CaptureFormat = {
+  encoding: CaptureEncoding;
+  sample_rate: number;
+  channels: CaptureChannel[];
+};
+export type CaptureIdentity = {
+  scope: CaptureScope;
+  capture_id: string;
+  request_id: string;
+  target: CaptureTarget;
+};
+export type CaptureLiveBinding = {
+  capture_id: string;
+  generation_id: string;
+  capture_fingerprint: string;
+  session_id: string;
+  format: CaptureFormat;
+};
+export type CaptureLiveCaption = {
+  generation_id: string;
+  sequence: number;
+  physical_channel: number;
+  role: CaptureChannel;
+  new_words: FinalizedWord[];
+  partials?: PartialWord[];
+  replaced_ids: string[];
+  languages: string[];
+};
+export type CaptureLiveCaptionPage = {
+  snapshot: CaptureLiveSnapshot;
+  captions: CaptureLiveCaption[];
+  next_cursor: number | null;
+};
+export type CaptureLiveEvent =
+  | {
+      kind: "connection";
+      state: ConnectionState;
+      error: ApplicationError | null;
+    }
+  | { kind: "page"; page: CaptureLiveCaptionPage };
+export type CaptureLiveFailure =
+  | "access_denied"
+  | "interrupted"
+  | "engine_unavailable"
+  | "engine_failed"
+  | "resource_limit"
+  | "invalid_output"
+  | "source_changed"
+  | "backlog"
+  | "idle"
+  | "storage";
+export type CaptureLiveRequest = {
+  capture_fingerprint: string;
+  expected_transcript: AbsentTranscriptExpectation;
+  model: string;
+  languages?: string[];
+  keywords?: string[];
+};
+export type CaptureLiveSnapshot = {
+  capture_id: string;
+  capture_fingerprint: string;
+  generation_id: string;
+  session_id: string;
+  state: CaptureLiveState;
+  failure: CaptureLiveFailure | null;
+  admitted_end_frame: number;
+  input_consumed_end_frame: number;
+  completed_through_frame: number | null;
+  next_caption_sequence: number;
+  result_available: boolean;
+  publication: TranscriptionPublication | null;
+};
+export type CaptureLiveState =
+  | "starting"
+  | "running"
+  | "finishing"
+  | "cancelling"
+  | "awaiting_recording"
+  | "publishing"
+  | "completed"
+  | "empty"
+  | "cancelled"
+  | "interrupted"
+  | "repair_required"
+  | "conflict"
+  | "uncertain";
+export type CaptureProcessingDeclaration = {
+  request: CaptureProcessingRequest;
+  cancel_requested: boolean;
+};
+export type CaptureProcessingFailure =
+  | "access_denied"
+  | "model_unavailable"
+  | "model_changed"
+  | "source_changed"
+  | "source_unavailable"
+  | "child_failed"
+  | "storage"
+  | "interrupted";
+export type CaptureProcessingOptions = {
+  model?: string | null;
+  languages?: string[];
+  keywords?: string[];
+  summary?: CaptureProcessingSummary | null;
+};
+export type CaptureProcessingRequest = {
+  capture_fingerprint: string;
+  model?: string | null;
+  languages?: string[];
+  keywords?: string[];
+  summary?: CaptureProcessingSummary | null;
+};
+export type CaptureProcessingSnapshot = {
+  capture_id: string;
+  capture_fingerprint: string;
+  intent_id: string;
+  session_id: string | null;
+  model: string;
+  request: CaptureProcessingRequest;
+  state: CaptureProcessingState;
+  live_generation_id: string | null;
+  repair_job_id: string | null;
+  summary_job_id: string | null;
+  transcript_publication: TranscriptionPublication | null;
+  failure: CaptureProcessingFailure | null;
+  created_at: string;
+  updated_at: string;
+};
+export type CaptureProcessingState =
+  | "waiting"
+  | "live"
+  | "waiting_for_publication"
+  | "repairing"
+  | "summarizing"
+  | "succeeded"
+  | "empty"
+  | "cancelled"
+  | "conflict"
+  | "interrupted"
+  | "uncertain"
+  | "failed";
+export type CaptureProcessingSummary = {
+  target: DocumentTarget;
+  title_policy?: TitlePolicy;
+};
+/**
+ * An authenticated verifier must compare the finalized service receipt with an
+ * independent canonical artifact read before supplying this observation.
+ * Recording it never authorizes deletion of the device's audio.
+ */
+export type CapturePublication = {
+  source: CaptureSeal;
+  session_id: string;
+  canonical_audio_sha256: string;
+  canonical_audio_bytes: number;
+};
+export type CaptureRetirementRequest = {
+  cleanup_request_id: string;
+  identity: CaptureIdentity;
+  format: CaptureFormat;
+  source: CaptureSeal;
+  publication: CapturePublication;
+  processing: CaptureProcessingRequest | null;
+};
+export type CaptureRetirementSnapshot = {
+  request: CaptureRetirementRequest;
+  state: CaptureRetirementState;
+  remaining_chunks: number;
+};
+export type CaptureRetirementState = "declared" | "pending" | "retired";
+export type CaptureScope = {
+  server: string;
+  member_id: string;
+  vault_id: string;
+};
+export type CaptureSeal = {
+  capture_fingerprint: string;
+  chunk_count: number;
+  frames: number;
+  pcm_bytes: number;
+  chain_digest: string;
+  source_sha256: string;
+};
+export type CaptureTarget =
+  | {
+      kind: "existing_session";
+      session_id: string;
+      expected_audio_sha256: string | null;
+    }
+  | {
+      kind: "append_session";
+      session_id: string;
+      admission: CaptureAppendAdmission;
+    }
+  | { kind: "pending_session"; create_request_id: string };
+export type CaptureUploadPhase =
+  | "queued"
+  | "waiting_for_audio"
+  | "uploading"
+  | "retrying"
+  | "authentication_required"
+  | "pending_session"
+  | "append_unsupported"
+  | "verified"
+  | "needs_review"
+  | "stopped";
+export type CaptureUploadProgress = {
+  phase: CaptureUploadPhase;
+  acknowledged_chunks: number;
+  publication: CapturePublication | null;
+  error: ApplicationError | null;
+};
+export type Change =
+  | {
+      kind: "index_changed";
+      entity: IndexEntity;
+      ids: string[];
+      artifacts?: ArtifactChange[] | null;
+    }
+  | { kind: "search_ready" }
+  | { kind: "catalog_changed" }
+  | { kind: "processing_settings_changed" }
+  | { kind: "resync_required" }
+  | { kind: "job_changed"; job_id: string }
+  | { kind: "job_preview_changed"; job_id: string }
+  | { kind: "unknown" };
+export type ChangeEvent = { vault_id: string; cursor: string; change: Change };
+export type ChannelProfile = "DirectMic" | "RemoteParty" | "MixedCapture";
 export type ChatgptAccount = { email: string; planType: string };
 export type ChatgptError = {
   code: string;
@@ -951,6 +3798,181 @@ export type ChatgptModel = {
   displayName: string;
   isDefault: boolean;
   inputModalities?: string[];
+};
+export type ConnectionState =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "login_required"
+  | "access_denied"
+  | "incompatible"
+  | "closed";
+export type CreateSessionRequest = { title: string; markdown: string };
+export type CreateSessionWithMetadataRequest = {
+  title: string;
+  markdown: string;
+  metadata: LocalInitialSessionMetadata;
+};
+export type CreateVaultRequest = { name: string };
+export type CreatedAtFilter = {
+  gte: number | null;
+  lte: number | null;
+  gt: number | null;
+  lt: number | null;
+  eq: number | null;
+};
+export type DeleteDocumentOutcome =
+  | { kind: "deleted"; revision: string; trash_token: string }
+  | { kind: "conflict"; snapshot: DocumentEditorSnapshot }
+  | { kind: "not_found" };
+export type DeleteDocumentRequest = {
+  expected_revision: string;
+  expected_session_created_at: string;
+};
+export type DeleteEmptySessionOutcome =
+  | { kind: "deleted" }
+  | { kind: "not_empty" }
+  | { kind: "not_found" };
+export type DeleteEmptySessionRequest = { session_id: string };
+export type DeleteRecordingRequest = { expected_sha256: string };
+export type DeleteSessionOutcome =
+  | { kind: "trashed"; trash_token: string; revision: string }
+  | { kind: "conflict"; snapshot: SessionLifecycleSnapshot }
+  | { kind: "not_found" };
+export type DeleteSessionRequest = {
+  session_id: string;
+  expected_revision: string;
+};
+export type DesktopBootstrapInfo = {
+  startup: DesktopStartupSnapshot;
+  connection: DesktopConnectionProfile | null;
+};
+export type DesktopConnectionProfile = {
+  id: string;
+  name: string;
+  server: string;
+  member_id: string | null;
+  vault_id: string | null;
+};
+export type DesktopStartupSaveOutcome =
+  | { kind: "saved"; snapshot: DesktopStartupSnapshot }
+  | { kind: "conflict"; snapshot: DesktopStartupSnapshot };
+export type DesktopStartupSelection =
+  | { kind: "local" }
+  | { kind: "remote"; profile_name: string; profile_id: string };
+export type DesktopStartupSnapshot = {
+  selection: DesktopStartupSelection;
+  revision: string;
+};
+export type DeviceAttachmentSource =
+  | { kind: "path"; path: string }
+  | { kind: "staged"; id: string };
+export type DeviceCaptionPreview = {
+  binding: CaptureLiveBinding;
+  connection: ConnectionState;
+  error: ApplicationError | null;
+  next_sequence: number;
+  words: DeviceCaptionWord[];
+  partials: DeviceCaptionWord[];
+};
+export type DeviceCaptionWord = {
+  id: string | null;
+  text: string;
+  start_ms: number;
+  end_ms: number;
+  channel: number;
+  role: CaptureChannel;
+};
+export type DeviceCaptureStartRequest = {
+  request_id: string;
+  scope: CaptureScope;
+  target: CaptureTarget;
+  format: CaptureFormat;
+  processing?: CaptureProcessingOptions | null;
+};
+export type DeviceHostPhase =
+  | "preparing"
+  | "starting"
+  | "capturing"
+  | "stopping"
+  | "pending"
+  | "finished"
+  | "failed"
+  | "never_started";
+export type DeviceProcessingProgress = {
+  format: CaptureFormat;
+  captions: DeviceCaptionPreview | null;
+  declaration: CaptureProcessingDeclaration;
+  status: CaptureProcessingSnapshot | null;
+  error: ApplicationError | null;
+};
+export type DeviceRecordingInfo = {
+  profile_id: string;
+  identity: CaptureIdentity;
+  phase: DeviceHostPhase | null;
+  first_audio_ms: number | null;
+  observation_durable: boolean;
+  frames: number;
+  pcm_bytes: number;
+  sealed: boolean;
+  publication: CapturePublication | null;
+  retirement: CaptureRetirementSnapshot | null;
+  upload: CaptureUploadProgress | null;
+  processing: DeviceProcessingProgress | null;
+  failure: string | null;
+};
+export type DeviceRecordingInventory = {
+  profile_id: string;
+  scope: CaptureScope;
+  ready: boolean;
+  recordings: DeviceRecordingInfo[];
+};
+export type DeviceRecordingTelemetry = {
+  identity: CaptureIdentity;
+  mic: number;
+  speaker: number;
+  device: string | null;
+};
+export type DeviceVaultStateChanged = { scope: string };
+export type Document = {
+  id: string;
+  kind: string;
+  template_id: string;
+  title: string;
+  markdown: string;
+  sort_order: number;
+  updated_at: string;
+};
+export type DocumentEditorRecovery = {
+  sessionId: string;
+  target: DocumentTarget;
+  metadata: MetadataSnapshot;
+};
+export type DocumentEditorSaveOutcome =
+  | { kind: "saved"; snapshot: DocumentEditorSnapshot }
+  | { kind: "conflict"; snapshot: DocumentEditorSnapshot };
+export type DocumentEditorSnapshot = {
+  document: DocumentSnapshot;
+  metadata: MetadataSnapshot;
+  /**
+   * Logical target coordinates only; the revision guards the complete stored tasks file.
+   */
+  tasks: TasksSnapshot;
+};
+export type DocumentSaveOutcome =
+  | { kind: "saved"; snapshot: DocumentSnapshot }
+  | { kind: "conflict"; snapshot: DocumentSnapshot };
+export type DocumentSnapshot = {
+  document: EnhancedDoc | null;
+  revision: string;
+};
+export type DocumentTarget =
+  | { kind: "summary" }
+  | { kind: "template_output"; document_id: string };
+export type DraftText = { markdown: string; title: string };
+export type EditorTaskRecovery = {
+  baseline: TasksSnapshot;
+  draft: TaskInput[];
 };
 export type EmbeddedCliState =
   | "installed"
@@ -1001,10 +4023,58 @@ export type EnhancedDocPatch = {
   expected_title?: string | null;
   expected_markdown?: string | null;
 };
+export type EnsurePersonRequest = { name: string };
+export type EnsureTagRequest = { name: string };
+export type ErrorCode =
+  | "validation"
+  | "not_found"
+  | "unauthenticated"
+  | "forbidden"
+  | "conflict"
+  | "unavailable"
+  | "incompatible_version"
+  | "resource_limit"
+  | "cancelled"
+  | "internal";
+export type ExportLabels = {
+  untitled: string;
+  created: string;
+  participants: string;
+  duration: string;
+  metadata: string;
+  note: string;
+  summary: string;
+  transcript: string;
+};
+export type FileInfo = {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+};
+export type FileMetadata = {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+};
+export type FinalizedWord = {
+  id: string;
+  text: string;
+  start_ms: number;
+  end_ms: number;
+  channel: number;
+  state: WordState;
+  speaker_index?: number | null;
+};
+export type HighlightRange = { start: number; end: number };
 /**
  * Emitted (coalesced) to every webview as the `index-changed` event.
  */
-export type IndexChanged = { entity: IndexEntity; ids: string[] };
+export type IndexChanged = {
+  entity: IndexEntity;
+  ids: string[];
+  artifacts?: ArtifactChange[] | null;
+};
 /**
  * Which index map changed. Serialized as the lowercase strings the frontend matches
  * on in the `index-changed` payload.
@@ -1025,6 +4095,13 @@ export type IndexEntity =
    * Audio or embedded attachment bytes changed independently of indexed text.
    */
   | "artifacts";
+export type JobSubmissionReceipt = {
+  scope: string;
+  request_id: string;
+  input: SummaryJobRequest;
+  created_at_ms: number;
+  job: ProcessingJobSnapshot | null;
+};
 export type JsonValue =
   | null
   | boolean
@@ -1032,12 +4109,452 @@ export type JsonValue =
   | string
   | JsonValue[]
   | Partial<{ [key in string]: JsonValue }>;
-/**
- * One person, file-canonical in the vault-root `people.json`. The id doubles as the
- * value speaker hints store, so it is generated human-readable (`bob_peters`) — a
- * transcript keeps degrading gracefully if `people.json` disappears.
- */
+export type ListMeetingsInput = {
+  query: string | null;
+  limit: number | null;
+  offset: number | null;
+  tags: string[] | null;
+  untagged: boolean | null;
+};
+export type ListProcessingJobsInput = {
+  limit: number | null;
+  after: string | null;
+  session_id: string | null;
+  active_only: boolean;
+};
+export type ListTranscriptionJobsInput = {
+  limit: number | null;
+  after: string | null;
+};
+export type LocalCaptureAction = "cancel" | "recover" | "keep_current_content";
+export type LocalCaptureControlSnapshot = {
+  status: LocalCaptureStatus;
+  revision: string;
+  actions: LocalCaptureAction[];
+  resolution: LocalCaptureResolution | null;
+};
+export type LocalCaptureDeclaration = {
+  request_id: string;
+  session_id: string;
+  append: boolean;
+  batch_requested: boolean;
+  transcription: LocalTranscriptionOptions | null;
+  summary: CaptureProcessingSummary | null;
+};
+export type LocalCaptureHistoryPage = {
+  items: LocalCaptureControlSnapshot[];
+  next_cursor: string | null;
+};
+export type LocalCaptureResolution = {
+  resolution_id: string;
+  expected_revision: string;
+  decision: LocalCaptureResolutionDecision;
+};
+export type LocalCaptureResolutionDecision = "keep_current_content";
+export type LocalCaptureState =
+  | "capturing"
+  | "waiting_for_persistence"
+  | "transcribing"
+  | "summarizing"
+  | "cancelling"
+  | "cancelled"
+  | "succeeded"
+  | "skipped"
+  | "not_started"
+  | "review"
+  | "conflict"
+  | "closed";
+export type LocalCaptureStatus = {
+  declaration: LocalCaptureDeclaration;
+  state: LocalCaptureState;
+  transcription_owner: string;
+  summary_owner: string;
+  transcript_id: string | null;
+  summary_job_id: string | null;
+  message: string | null;
+};
+export type LocalInitialSessionMetadata = {
+  created_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  tags: string[];
+  author: string | null;
+  skill: string | null;
+};
+export type LocalMediaKind = "import_audio" | "transcribe" | "import_subtitles";
+export type LocalMediaSourceSnapshot = {
+  session_id: string;
+  session_created_at: string;
+  recording_selection: string;
+  recording_sha256: string;
+  transcript_revision: string;
+  transcript_present: boolean;
+  audio: SessionAudio;
+};
+export type LocalMediaState =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "review"
+  | "cancelled";
+export type LocalMediaStatus = {
+  request_id: string;
+  session_id: string;
+  kind: LocalMediaKind;
+  state: LocalMediaState;
+  transcript_id: string | null;
+  word_count: number | null;
+  error: ApplicationError | null;
+  imported?: SessionMeta | null;
+};
+export type LocalTranscriptionOptions = {
+  model: string;
+  languages: string[];
+  keywords: string[];
+};
+export type ManualMediaSummaryState =
+  | "pending_media"
+  | "source_bound"
+  | "skipped"
+  | "child";
+export type ManualMediaSummaryStatus = {
+  request_id: string;
+  session_id: string;
+  state: ManualMediaSummaryState;
+  child_request_id: string;
+  job: ProcessingJobSnapshot | null;
+  reason: string | null;
+};
+export type Me = { member: MemberInfo; personal_vault_id: string };
+export type MediaDeclaration = {
+  request_id: string;
+  operation: MediaOperation;
+  transcription: MediaTranscriptionOptions | null;
+  summary: CaptureProcessingSummary | null;
+};
+export type MediaImportInitialMetadata = {
+  title: string | null;
+  metadata: LocalInitialSessionMetadata;
+};
+export type MediaOperation =
+  | {
+      kind: "import_audio";
+      session_id: string | null;
+      expected: MediaSessionSnapshot | null;
+      filename: string;
+      content_type: string | null;
+      created_at: string | null;
+      initial?: MediaImportInitialMetadata | null;
+      transcribe: boolean;
+      source: MediaUploadSource;
+    }
+  | { kind: "transcribe"; expected: LocalMediaSourceSnapshot }
+  | {
+      kind: "import_subtitles";
+      session_id: string;
+      expected: MediaSessionSnapshot;
+      filename: string;
+      source: MediaUploadSource;
+    };
+export type MediaPhase =
+  | "receiving"
+  | "ready"
+  | "running"
+  | "review"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+export type MediaQuery =
+  | { kind: "source"; session_id: string }
+  | { kind: "list"; session_id: string | null }
+  | { kind: "status"; request_id: string }
+  | { kind: "result"; request_id: string }
+  | { kind: "summary_status"; request_id: string };
+export type MediaReply =
+  | { kind: "source"; value: MediaSessionSnapshot }
+  | { kind: "list"; value: MediaRequestStatus[] }
+  | { kind: "status"; value: MediaRequestStatus }
+  | { kind: "result"; value: TranscriptWithData | null }
+  | { kind: "summary_status"; value: MediaSummaryStatus };
+export type MediaRequestStatus = {
+  declaration: MediaDeclaration;
+  revision: string;
+  phase: MediaPhase;
+  media: LocalMediaStatus | null;
+};
+export type MediaRetirementReceipt = {
+  request: MediaRetirementRequest;
+  retired: boolean;
+};
+export type MediaRetirementRequest = {
+  retirement_id: string;
+  expected_revision: string;
+  expected_declaration_sha256: string;
+  expected_source: MediaUploadSource | null;
+  disposition: MediaSourceDisposition;
+};
+export type MediaRetirementState =
+  | "eligible"
+  | "blocked"
+  | "retiring"
+  | "retired";
+export type MediaRetirementStatus = {
+  request_id: string;
+  revision: string;
+  declaration_sha256: string;
+  source: MediaUploadSource | null;
+  state: MediaRetirementState;
+  retirement: MediaRetirementRequest | null;
+  reason: string | null;
+  quota_released: boolean;
+  allowed_dispositions: MediaSourceDisposition[];
+};
+export type MediaRetirementView = {
+  status: MediaRetirementStatus;
+  pending: MediaRetirementRequest | null;
+  verified_export: boolean;
+};
+export type MediaScope = {
+  profile_id: string;
+  server: string;
+  member_id: string;
+  vault_id: string;
+};
+export type MediaSessionSnapshot = {
+  metadata: MetadataSnapshot;
+  transcript_revision: string;
+  transcript_present: boolean;
+  recording: LocalMediaSourceSnapshot | null;
+};
+export type MediaSourceDisposition = "exported" | "discard" | "no_upload";
+export type MediaSourceExportObservation = {
+  declaration_sha256: string;
+  source: MediaUploadSource;
+};
+export type MediaSubmission = {
+  schema_version: number;
+  scope: MediaScope;
+  declaration: MediaDeclaration;
+  admission_revision: string | null;
+  source_export?: MediaSourceExportObservation | null;
+  retirement?: MediaRetirementReceipt | null;
+};
+export type MediaSummaryState =
+  | "pending_media"
+  | "source_bound"
+  | "skipped"
+  | "child";
+export type MediaSummaryStatus = {
+  request_id: string;
+  session_id: string;
+  state: MediaSummaryState;
+  child_request_id: string;
+  job: ProcessingJobSnapshot | null;
+  reason: string | null;
+};
+export type MediaTranscriptionOptions = { model: string; languages: string[] };
+export type MediaUploadSource = { sha256: string; size_bytes: number };
+export type Meeting = {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string;
+  ended_at: string;
+  timezone: string;
+  language: string;
+  tags: string[];
+  author: string | null;
+  skill: string | null;
+  note: Document | null;
+  summaries: Document[];
+  action_items: ActionItem[];
+};
+export type MeetingExport = {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string;
+  ended_at: string;
+  timezone: string;
+  language: string;
+  tags: string[];
+  author: string | null;
+  skill: string | null;
+  note: Document | null;
+  summaries: Document[];
+  action_items: ActionItem[];
+} & { transcripts: Transcript[] };
+export type MeetingPage = {
+  meetings: SessionListItem[];
+  pagination: Pagination;
+};
+export type MeetingTranscript = { meeting_id: string; text: string };
+export type MemberInfo = { id: string; name: string };
+export type Membership = { member: MemberInfo; role: VaultRole };
+export type MetadataSaveOutcome =
+  | { kind: "saved"; snapshot: MetadataSnapshot }
+  | { kind: "conflict"; snapshot: MetadataSnapshot };
+export type MetadataSnapshot = { meta: SessionMeta; revision: string };
+export type MutationOutcome = "not_committed" | "persisted" | "unknown";
+export type NativeAttachment = { id: string; preview_limit_bytes: number };
+export type NativeAttachmentCopy = {
+  copied_filename: string;
+  metadata: FileMetadata;
+};
+export type NativeRecording = { id: string; metadata: FileMetadata };
+export type NoteDraftRecovery = {
+  scope: string;
+  sessionId: string;
+  baseline: NoteSnapshot;
+  draft: DraftText;
+  uncertain: boolean;
+  editorTasks?: EditorTaskRecovery | null;
+  documentEditor?: DocumentEditorRecovery | null;
+};
+export type NoteEditorSaveOutcome =
+  | { kind: "saved"; snapshot: NoteEditorSnapshot }
+  | { kind: "conflict"; snapshot: NoteEditorSnapshot };
+export type NoteEditorSnapshot = {
+  note: NoteSnapshot;
+  /**
+   * Raw-note tasks only; the revision guards the canonical session task file.
+   */
+  tasks: TasksSnapshot;
+};
+export type NoteSaveOutcome =
+  | { kind: "saved"; note: NoteSnapshot }
+  | { kind: "conflict"; note: NoteSnapshot };
+export type NoteSnapshot = {
+  markdown: string | null;
+  title: string;
+  revision: string;
+};
+export type Pagination = {
+  offset: number;
+  limit: number;
+  returned: number;
+  total: number | null;
+  next_offset: number | null;
+};
+export type PartialWord = {
+  text: string;
+  start_ms: number;
+  end_ms: number;
+  channel: number;
+  speaker_index?: number | null;
+};
 export type PersonItem = { id: string; name?: string };
+export type ProcessingJobFailure =
+  | "access_denied"
+  | "source_unavailable"
+  | "resource_limit"
+  | "provider_unavailable"
+  | "provider_failed"
+  | "invalid_output"
+  | "storage"
+  | "interrupted";
+export type ProcessingJobPage = {
+  items: ProcessingJobSnapshot[];
+  next_cursor: string | null;
+};
+export type ProcessingJobPreview = {
+  vault_id: string;
+  job: ProcessingJobSnapshot;
+  preview: ProcessingPreviewSnapshot | null;
+};
+export type ProcessingJobResult = {
+  vault_id: string;
+  job_id: string;
+  session_id: string;
+  target: DocumentTarget;
+  markdown: string;
+  suggested_tags?: ProcessingTagSuggestion[] | null;
+  title?: ProcessingTitleResult | null;
+};
+export type ProcessingJobSnapshot = {
+  id: string;
+  session_id: string;
+  target: DocumentTarget;
+  state: ProcessingJobState;
+  phase: ProcessingPhase | null;
+  failure: ProcessingJobFailure | null;
+  created_at: string;
+  updated_at: string;
+};
+export type ProcessingJobState =
+  | "queued"
+  | "running"
+  | "cancelling"
+  | "cancelled"
+  | "succeeded"
+  | "failed"
+  | "interrupted"
+  | "conflict";
+export type ProcessingPhase = "preparing" | "generating" | "applying";
+export type ProcessingPolicy = {
+  providers: ProcessingProviderPolicy[];
+  allow_custom_templates: boolean;
+};
+export type ProcessingPreviewSnapshot = {
+  cursor: string;
+  markdown: string;
+  truncated: boolean;
+};
+export type ProcessingProviderPolicy = {
+  id: string;
+  models: string[];
+  base_url: string;
+  allow_custom_model: boolean;
+  allow_custom_endpoint: boolean;
+  requires_key: boolean;
+};
+export type ProcessingSettings = {
+  summary_model: SummaryModelSelection | null;
+  ai_language: string;
+  summary_prompt: string;
+  auto_apply_high_confidence_tags: boolean;
+};
+export type ProcessingSettingsSaveOutcome =
+  | { kind: "saved"; snapshot: ProcessingSettingsSnapshot }
+  | { kind: "conflict"; snapshot: ProcessingSettingsSnapshot };
+export type ProcessingSettingsSnapshot = {
+  settings: ProcessingSettings;
+  revision: string;
+};
+export type ProcessingTagSuggestion = { name: string; confidence: number };
+export type ProcessingTitleResult = {
+  status: ProcessingTitleStatus;
+  candidate?: string | null;
+  failure?: ProcessingJobFailure | null;
+};
+export type ProcessingTitleStatus =
+  | "generating"
+  | "applying"
+  | "applied"
+  | "empty"
+  | "already_named"
+  | "unsupported"
+  | "failed"
+  | "cancelled"
+  | "conflict"
+  | "interrupted"
+  | "unconfirmed";
+export type ProviderCredentialSaveOutcome =
+  | { kind: "saved"; status: ProviderCredentialStatus }
+  | { kind: "conflict"; status: ProviderCredentialStatus };
+export type ProviderCredentialSource = "vault" | "operator" | "missing";
+export type ProviderCredentialStatus = {
+  provider_id: string;
+  revision: string;
+  source: ProviderCredentialSource;
+  endpoint_matches: boolean;
+};
 /**
  * Summary of a `rebuild_index`/`refresh_session` pass. Counts reflect entries *derived
  * from files* this pass, not the resulting index size. `errors` never aborts the scan --
@@ -1059,11 +4576,501 @@ export type RebuildReport = {
   ghost_sessions: string[];
   errors: string[];
 };
+export type RecordingWaveform = { recording_sha256: string; peaks: AudioPeaks };
+export type RecoveryEntry = {
+  id: string;
+  sessionId: string;
+  title: string;
+  uncertain: boolean;
+};
+export type RecoveryScope = { scope: string; entries: RecoveryEntry[] };
+export type RemoteConnectionInfo = {
+  connection_id: string;
+  server: string;
+  capabilities: Capabilities;
+};
+export type RemoteEvent =
+  | {
+      kind: "connection";
+      state: ConnectionState;
+      error: ApplicationError | null;
+    }
+  | { kind: "change"; event: ChangeEvent };
+export type RemoteNoteWindowInfo = {
+  connection: RemoteConnectionInfo;
+  member_id: string;
+  vault: VaultInfo;
+  session_id: string;
+};
+export type RemoteOperation =
+  | { kind: "transcript_editor"; vault_id: string; session_id: string }
+  | {
+      kind: "assign_transcript_speakers";
+      vault_id: string;
+      session_id: string;
+      input: AssignTranscriptSpeakersRequest;
+    }
+  | { kind: "ensure_person"; vault_id: string; input: EnsurePersonRequest }
+  | { kind: "session_lifecycle"; vault_id: string; session_id: string }
+  | { kind: "delete_session"; vault_id: string; input: DeleteSessionRequest }
+  | { kind: "restore_session"; vault_id: string; input: RestoreSessionRequest }
+  | {
+      kind: "declare_capture_processing";
+      identity: CaptureIdentity;
+      input: CaptureProcessingRequest;
+    }
+  | {
+      kind: "capture_processing_status";
+      identity: CaptureIdentity;
+      input: CaptureProcessingRequest;
+    }
+  | {
+      kind: "cancel_capture_processing";
+      identity: CaptureIdentity;
+      input: CaptureProcessingRequest;
+    }
+  | { kind: "transcription_policy"; vault_id: string }
+  | {
+      kind: "start_capture_live";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+      input: CaptureLiveRequest;
+    }
+  | {
+      kind: "capture_live_status";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+    }
+  | {
+      kind: "capture_live_captions";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+      after: number | null;
+      limit: number;
+    }
+  | {
+      kind: "capture_live_result";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+    }
+  | {
+      kind: "cancel_capture_live";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+    }
+  | { kind: "timeline_headers"; vault_id: string; input: TimelineQuery }
+  | { kind: "timeline_facets"; vault_id: string; input: TimelineFacetsQuery }
+  | {
+      kind: "delete_empty_session";
+      vault_id: string;
+      input: DeleteEmptySessionRequest;
+    }
+  | { kind: "session_summaries"; vault_id: string; input: SessionSummaryQuery }
+  | {
+      kind: "provider_credential_status";
+      vault_id: string;
+      provider_id: string;
+    }
+  | {
+      kind: "save_provider_credential";
+      vault_id: string;
+      provider_id: string;
+      input: SaveProviderCredentialRequest;
+    }
+  | { kind: "processing_policy"; vault_id: string }
+  | { kind: "processing_settings"; vault_id: string }
+  | {
+      kind: "save_processing_settings";
+      vault_id: string;
+      input: SaveProcessingSettingsRequest;
+    }
+  | { kind: "submit_summary_job"; vault_id: string; input: SummaryJobRequest }
+  | {
+      kind: "processing_jobs";
+      vault_id: string;
+      input: ListProcessingJobsInput;
+    }
+  | { kind: "processing_job"; vault_id: string; job_id: string }
+  | { kind: "processing_job_preview"; vault_id: string; job_id: string }
+  | { kind: "processing_job_result"; vault_id: string; job_id: string }
+  | { kind: "cancel_processing_job"; vault_id: string; job_id: string }
+  | {
+      kind: "submit_transcription";
+      vault_id: string;
+      input: TranscriptionJobRequest;
+    }
+  | {
+      kind: "transcription_jobs";
+      vault_id: string;
+      input: ListTranscriptionJobsInput;
+    }
+  | { kind: "transcription_job"; vault_id: string; job_id: string }
+  | { kind: "transcription_job_result"; vault_id: string; job_id: string }
+  | { kind: "cancel_transcription_job"; vault_id: string; job_id: string }
+  | { kind: "resume_transcription_result"; vault_id: string; job_id: string }
+  | { kind: "provision" }
+  | { kind: "me" }
+  | { kind: "vaults" }
+  | { kind: "directory" }
+  | { kind: "create_vault"; input: CreateVaultRequest }
+  | { kind: "vault"; vault_id: string }
+  | { kind: "rename_vault"; vault_id: string; input: UpdateVaultRequest }
+  | { kind: "delete_vault"; vault_id: string; expected_revision: string }
+  | { kind: "memberships"; vault_id: string }
+  | {
+      kind: "set_membership";
+      vault_id: string;
+      member_id: string;
+      input: SetMembershipRequest;
+    }
+  | {
+      kind: "remove_membership";
+      vault_id: string;
+      member_id: string;
+      expected_revision: string;
+    }
+  | { kind: "sessions"; vault_id: string; limit: number; after: string | null }
+  | { kind: "session"; vault_id: string; session_id: string }
+  | { kind: "documents"; vault_id: string; session_id: string }
+  | {
+      kind: "document";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+    }
+  | {
+      kind: "save_document";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+      input: SaveDocumentRequest;
+    }
+  | {
+      kind: "document_editor";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+    }
+  | {
+      kind: "delete_document";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+      input: DeleteDocumentRequest;
+    }
+  | {
+      kind: "save_document_editor";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+      input: SaveDocumentEditorRequest;
+    }
+  | { kind: "transcript_overview"; vault_id: string; session_id: string }
+  | { kind: "transcripts"; vault_id: string; session_id: string }
+  | { kind: "audio_metadata"; vault_id: string; session_id: string }
+  | {
+      kind: "attachment_info";
+      vault_id: string;
+      session_id: string;
+      attachment_id: string;
+    }
+  | {
+      kind: "attachment_metadata";
+      vault_id: string;
+      session_id: string;
+      attachment_id: string;
+    }
+  | {
+      kind: "remove_attachment";
+      vault_id: string;
+      session_id: string;
+      attachment_id: string;
+      input: RemoveAttachmentRequest;
+    }
+  | { kind: "attachment_upload_status"; upload: AttachmentUpload }
+  | {
+      kind: "attachments";
+      vault_id: string;
+      session_id: string;
+      limit: number;
+      after: string | null;
+    }
+  | {
+      kind: "delete_recording";
+      vault_id: string;
+      session_id: string;
+      input: DeleteRecordingRequest;
+    }
+  | { kind: "tasks"; vault_id: string; session_id: string }
+  | { kind: "people"; vault_id: string }
+  | { kind: "tags"; vault_id: string }
+  | { kind: "tag_suggestions"; vault_id: string; input: TagSuggestionsRequest }
+  | { kind: "ensure_tag"; vault_id: string; input: EnsureTagRequest }
+  | {
+      kind: "accept_tag_suggestion";
+      vault_id: string;
+      session_id: string;
+      input: TagSuggestionActionRequest;
+    }
+  | {
+      kind: "dismiss_tag_suggestion";
+      vault_id: string;
+      session_id: string;
+      input: TagSuggestionActionRequest;
+    }
+  | { kind: "create_session"; vault_id: string; input: CreateSessionRequest }
+  | {
+      kind: "create_session_with_metadata";
+      vault_id: string;
+      input: CreateSessionWithMetadataRequest;
+    }
+  | { kind: "note"; vault_id: string; session_id: string }
+  | { kind: "note_editor"; vault_id: string; session_id: string }
+  | {
+      kind: "save_note_editor";
+      vault_id: string;
+      session_id: string;
+      input: SaveNoteEditorRequest;
+    }
+  | { kind: "tasks_snapshot"; vault_id: string; session_id: string }
+  | {
+      kind: "replace_tasks";
+      vault_id: string;
+      session_id: string;
+      input: ReplaceTasksRequest;
+    }
+  | { kind: "metadata"; vault_id: string; session_id: string }
+  | {
+      kind: "save_metadata";
+      vault_id: string;
+      session_id: string;
+      input: SaveMetadataRequest;
+    }
+  | {
+      kind: "save_note";
+      vault_id: string;
+      session_id: string;
+      input: SaveNoteRequest;
+    }
+  | { kind: "search"; vault_id: string; input: SearchRequest }
+  | { kind: "agent_list"; vault_id: string; input: ListMeetingsInput }
+  | { kind: "agent_search"; vault_id: string; input: SearchMeetingsInput }
+  | { kind: "agent_meeting"; vault_id: string; session_id: string }
+  | { kind: "agent_transcript"; vault_id: string; session_id: string }
+  | { kind: "agent_export"; vault_id: string; session_id: string }
+  | { kind: "agent_segments"; vault_id: string; session_id: string };
+export type RemoteReply =
+  | { kind: "transcript_editor"; value: TranscriptEditorSnapshot }
+  | { kind: "transcript_editor_save"; value: TranscriptEditorSaveOutcome }
+  | { kind: "person"; value: PersonItem }
+  | { kind: "session_created"; value: SessionMeta }
+  | { kind: "session_lifecycle"; value: SessionLifecycleSnapshot }
+  | { kind: "session_delete"; value: DeleteSessionOutcome }
+  | { kind: "session_restore"; value: RestoreSessionOutcome }
+  | { kind: "transcription_policy"; value: TranscriptionPolicy }
+  | { kind: "capture_processing"; value: CaptureProcessingSnapshot }
+  | { kind: "capture_live_snapshot"; value: CaptureLiveSnapshot }
+  | { kind: "capture_live_captions"; value: CaptureLiveCaptionPage }
+  | { kind: "capture_live_result"; value: TranscriptionJobResult | null }
+  | { kind: "timeline_headers"; value: TimelinePage }
+  | { kind: "timeline_facets"; value: TimelineFacets }
+  | { kind: "session_cleanup"; value: DeleteEmptySessionOutcome }
+  | { kind: "session_summaries"; value: SessionSummary[] }
+  | { kind: "provider_credential_status"; value: ProviderCredentialStatus }
+  | { kind: "provider_credential_save"; value: ProviderCredentialSaveOutcome }
+  | { kind: "processing_policy"; value: ProcessingPolicy }
+  | { kind: "processing_settings"; value: ProcessingSettingsSnapshot }
+  | { kind: "processing_settings_save"; value: ProcessingSettingsSaveOutcome }
+  | { kind: "processing_job"; value: ProcessingJobSnapshot }
+  | { kind: "processing_jobs"; value: ProcessingJobPage }
+  | { kind: "processing_job_preview"; value: ProcessingJobPreview }
+  | { kind: "processing_job_result"; value: ProcessingJobResult | null }
+  | { kind: "transcription_job"; value: TranscriptionJobSnapshot }
+  | { kind: "transcription_jobs"; value: TranscriptionJobPage }
+  | { kind: "transcription_result"; value: TranscriptionJobResult | null }
+  | { kind: "me"; value: Me }
+  | { kind: "vaults"; value: VaultInfo[] }
+  | { kind: "directory"; value: MemberInfo[] }
+  | { kind: "vault"; value: VaultInfo }
+  | { kind: "vault_mutation"; value: VaultMutation }
+  | { kind: "memberships"; value: Membership[] }
+  | { kind: "sessions"; value: SessionPage }
+  | { kind: "session"; value: SessionDocument }
+  | { kind: "documents"; value: EnhancedDoc[] }
+  | { kind: "document"; value: DocumentSnapshot }
+  | { kind: "document_save"; value: DocumentSaveOutcome }
+  | { kind: "document_editor"; value: DocumentEditorSnapshot }
+  | { kind: "document_editor_save"; value: DocumentEditorSaveOutcome }
+  | { kind: "document_delete"; value: DeleteDocumentOutcome }
+  | { kind: "transcript_overview"; value: TranscriptOverview }
+  | { kind: "transcripts"; value: TranscriptWithData[] }
+  | { kind: "audio_metadata"; value: FileMetadata | null }
+  | { kind: "attachment_info"; value: FileInfo | null }
+  | { kind: "attachment_metadata"; value: FileMetadata | null }
+  | { kind: "attachment_removed"; value: boolean }
+  | { kind: "attachment_upload_status"; value: AttachmentUploadStatus }
+  | { kind: "attachments"; value: AttachmentPage }
+  | { kind: "recording_deleted"; value: boolean }
+  | { kind: "tasks"; value: TaskItem[] }
+  | { kind: "tasks_snapshot"; value: TasksSnapshot }
+  | { kind: "tasks_save"; value: TasksSaveOutcome }
+  | { kind: "people"; value: PersonItem[] }
+  | { kind: "tags"; value: TagItem[] }
+  | { kind: "tag_suggestions"; value: string[] }
+  | { kind: "tag"; value: TagItem }
+  | { kind: "note"; value: NoteSnapshot }
+  | { kind: "note_editor"; value: NoteEditorSnapshot }
+  | { kind: "note_editor_save"; value: NoteEditorSaveOutcome }
+  | { kind: "metadata"; value: MetadataSnapshot }
+  | { kind: "metadata_save"; value: MetadataSaveOutcome }
+  | { kind: "note_save"; value: NoteSaveOutcome }
+  | { kind: "search"; value: SearchResult }
+  | { kind: "agent_list"; value: MeetingPage }
+  | { kind: "agent_search"; value: SearchPage }
+  | { kind: "agent_meeting"; value: Meeting }
+  | { kind: "agent_transcript"; value: MeetingTranscript }
+  | { kind: "agent_export"; value: MeetingExport }
+  | { kind: "agent_segments"; value: RenderedTranscriptSegment[] };
+export type RemoveAttachmentRequest = { expected_sha256: string };
+export type RenderedTranscriptSegment = {
+  is_current_user?: boolean | null;
+  id: string;
+  key: SegmentKey;
+  speaker_label: string;
+  start_ms: number;
+  end_ms: number;
+  text: string;
+  words: SegmentWord[];
+};
+export type ReplaceTasksRequest = {
+  source: TaskSource;
+  tasks: TaskInput[];
+  expected_revision: string;
+};
+export type RestoreSessionConflictReason =
+  | "destination_occupied"
+  | "trash_changed";
+export type RestoreSessionOutcome =
+  | { kind: "restored"; session_id: string; revision: string }
+  | {
+      kind: "conflict";
+      reason: RestoreSessionConflictReason;
+      current_revision: string | null;
+    }
+  | { kind: "not_found" };
+export type RestoreSessionRequest = {
+  trash_token: string;
+  expected_revision: string;
+};
+export type SaveDesktopStartupRequest = {
+  selection: DesktopStartupSelection;
+  expected_revision: string;
+};
+export type SaveDocumentEditorRequest = {
+  markdown: string;
+  title: string | null;
+  tasks: TaskInput[];
+  expected_revision: string;
+  expected_metadata_revision: string;
+  expected_tasks_revision: string;
+};
+export type SaveDocumentRequest = {
+  markdown: string;
+  expected_revision: string;
+};
+export type SaveMetadataRequest = {
+  patch: SessionMetaPatch;
+  expected_revision: string;
+};
+export type SaveNoteEditorRequest = {
+  markdown: string;
+  title: string | null;
+  expected_revision: string;
+  expected_tasks_revision: string;
+  tasks: TaskInput[];
+};
+export type SaveNoteRequest = {
+  markdown: string;
+  title: string | null;
+  expected_revision: string;
+};
+export type SaveProcessingSettingsRequest = {
+  settings: ProcessingSettings;
+  expected_revision: string;
+};
+export type SaveProviderCredentialRequest = {
+  expected_revision: string;
+  api_key: string | null;
+};
 export type ScoredTagSuggestion = { name: string; confidence: number };
-/**
- * The slim `session_list_headers` row -- exactly what the always-mounted list
- * subscribers (timeline, summaries, tags, float) consume.
- */
+export type SearchDocument = {
+  id: string;
+  doc_type: string;
+  language: string | null;
+  title: string;
+  content: string;
+  created_at: number;
+  facets?: string[];
+};
+export type SearchFilters = {
+  created_at: CreatedAtFilter | null;
+  doc_type: string | null;
+  facet: string | null;
+};
+export type SearchHit = {
+  score: number;
+  document: SearchDocument;
+  title_snippet: Snippet | null;
+  content_snippet: Snippet | null;
+};
+export type SearchMeetingsInput = {
+  query: string;
+  limit: number | null;
+  offset: number | null;
+};
+export type SearchOptions = {
+  fuzzy: boolean | null;
+  distance: number | null;
+  snippets: boolean | null;
+  snippet_max_chars: number | null;
+  phrase_slop: number | null;
+};
+export type SearchPage = { hits: AgentSearchHit[]; pagination: Pagination };
+export type SearchRequest = {
+  query: string;
+  collection?: string | null;
+  filters?: SearchFilters;
+  limit?: number;
+  options?: SearchOptions;
+};
+export type SearchResult = { hits: SearchHit[]; count: number };
+export type SegmentKey = {
+  channel: ChannelProfile;
+  speaker_index?: number | null;
+  speaker_human_id?: string | null;
+};
+export type SegmentWord = {
+  text: string;
+  start_ms: number;
+  end_ms: number;
+  channel: ChannelProfile;
+  is_final: boolean;
+  id?: string | null;
+};
+export type SessionAudio = { source: AudioSource; layout: AudioLayout };
+export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot };
+export type SessionExportFormat = "pdf" | "txt" | "md" | "org";
+export type SessionExportInput = {
+  session_id: string;
+  target: DocumentTarget;
+  format: SessionExportFormat;
+  include_note: boolean;
+  include_summary: boolean;
+  include_transcript: boolean;
+  labels: ExportLabels;
+};
+export type SessionExportResult = { path: string };
+export type SessionLifecycleSnapshot = { session_id: string; revision: string };
 export type SessionListHeader = {
   id: string;
   title: string;
@@ -1072,6 +5079,19 @@ export type SessionListHeader = {
   tags: string[];
   author: string | null;
   has_transcript_words: boolean;
+};
+export type SessionListItem = {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string;
+  ended_at: string;
+  tags: string[];
+  author: string | null;
+  skill: string | null;
 };
 export type SessionMeta = {
   id: string;
@@ -1115,6 +5135,10 @@ export type SessionMetaPatch = {
   folder?: string | null;
   author?: string | null;
 };
+export type SessionPage = {
+  sessions: SessionMeta[];
+  next_cursor: string | null;
+};
 /**
  * What `session_get` returns: the file-canonical equivalent of the old
  * `SESSION_SELECT_SQL` (sessions row + COALESCE'd note document join). The note is
@@ -1123,17 +5147,35 @@ export type SessionMetaPatch = {
  * preferring the file loses nothing.
  */
 export type SessionRecord = { meta: SessionMeta; note_markdown: string | null };
+export type SessionSummary = { id: string; title: string; created_at: string };
+export type SessionSummaryOrder = "newest_first" | "oldest_first";
+export type SessionSummaryQuery =
+  | {
+      kind: "list";
+      limit: number;
+      order: SessionSummaryOrder;
+      titled_only?: boolean;
+    }
+  | { kind: "title"; query: string; limit: number }
+  | { kind: "ids"; ids: string[] };
 export type SessionTranscriptMetadata = {
   speaker_labels: string[];
   started_at: number | null;
   ended_at: number | null;
 };
+export type SetMembershipRequest = {
+  role: VaultRole;
+  expected_revision: string;
+};
+export type Snippet = { fragment: string; highlights: HighlightRange[] };
 export type StartupPhase =
   | { kind: "openingVault" }
   | { kind: "scanning"; sessions_found: number }
   | { kind: "indexing"; completed: number; total: number }
   | { kind: "archivingLegacyTemplates" }
   | { kind: "ready" }
+  | { kind: "stopping" }
+  | { kind: "stopped" }
   | { kind: "failed"; message: string };
 export type StartupProgress = { status: StartupStatus };
 export type StartupStatus = {
@@ -1143,20 +5185,34 @@ export type StartupStatus = {
   phase: StartupPhase;
   migrationIssues: string[];
 };
+export type SummaryJobRequest = {
+  session_id: string;
+  target: DocumentTarget;
+  expected_revision: string;
+  title_policy?: TitlePolicy;
+  only_if_empty?: boolean;
+};
+export type SummaryModelSelection = {
+  provider_id: string;
+  model_id: string;
+  base_url: string;
+};
 export type TagContext = {
   available: string[];
   attached: string[];
   dismissed: string[];
 };
-/**
- * One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
- * (lowercased) name itself — unlike people's lossy slug, two names normalizing
- * identically are by definition the same tag, so no collision suffixing is needed.
- * Sessions keep storing raw tag strings in `_meta.json` and degrade gracefully if
- * `tags.json` disappears.
- */
 export type TagItem = { id: string; name?: string };
+export type TagSuggestionActionRequest = {
+  name: string;
+  expected_revision: string;
+};
 export type TagSuggestionState = { items: string[]; dismissed: string[] };
+export type TagSuggestionsRequest = {
+  query: string;
+  excluded: string[];
+  limit: number;
+};
 /**
  * What the frontend sends on a write: source coordinates come from the command arguments,
  * timestamps and `assignee` are managed store-side (preserved from the existing entry when
@@ -1205,12 +5261,110 @@ export type TaskItem = {
   created_at: string;
   updated_at: string;
 };
+export type TaskSource =
+  | { kind: "raw_note" }
+  | { kind: "summary" }
+  | { kind: "template_output"; document_id: string };
+export type TasksSaveOutcome =
+  | { kind: "saved"; snapshot: TasksSnapshot }
+  | { kind: "conflict"; snapshot: TasksSnapshot };
+export type TasksSnapshot = { tasks: TaskItem[]; revision: string };
+export type TimelineFacets = {
+  revision: string;
+  /**
+   * Complete tree, never truncated. Clients retain locale-specific sibling
+   * ordering; only expanded nodes need their direct session pages.
+   */
+  nodes: TimelineTagFacet[];
+  untagged_count: number;
+};
+export type TimelineFacetsQuery = { expected_revision: string | null };
+export type TimelineHeader = {
+  header: SessionListHeader;
+  /**
+   * RFC3339 with an offset, or ISO date-only at UTC midnight. Other raw
+   * strings remain visible through Undated and are never rewritten.
+   */
+  timestamp_ms: number | null;
+};
+export type TimelinePage = {
+  items: TimelineHeader[];
+  next_cursor: string | null;
+  revision: string;
+  /**
+   * Exact matching count over the whole index, including preceding pages.
+   */
+  total_count: number;
+  /**
+   * Date only: all dated sessions at/after its cutoff. Zero for other views.
+   */
+  future_count: number;
+  /**
+   * All undated sessions in the index, independent of the selected view.
+   */
+  undated_count: number;
+};
+export type TimelineQuery = {
+  view: TimelineView;
+  limit: number;
+  cursor: string | null;
+  expected_revision: string | null;
+};
+export type TimelineTagFacet = {
+  path: string;
+  parent_path: string | null;
+  label: string;
+  direct_count: number;
+  subtree_count: number;
+};
+/**
+ * Date is newest-first with an exclusive upper bound. Upcoming is oldest-first
+ * with exclusive lower/optional upper bounds. Undated never substitutes server time.
+ */
+export type TimelineView =
+  | { kind: "date"; before_ms: number }
+  | { kind: "upcoming"; after_ms: number; before_ms: number | null }
+  | { kind: "tag"; path: string }
+  | { kind: "untagged" }
+  | { kind: "undated" };
+export type TitlePolicy = "preserve" | "generate_if_empty";
+export type Transcript = {
+  id: string;
+  started_at_ms: number;
+  ended_at_ms: number | null;
+  memo: string;
+  text: string;
+  words: JsonValue[];
+  speaker_hints: JsonValue[];
+};
 export type TranscriptDelta = {
   transcript_id: string;
   new_words: TranscriptWord[];
   replaced_ids: string[];
   new_hints: TranscriptSpeakerHint[];
   started_at_ms: number;
+};
+export type TranscriptEditorSaveOutcome =
+  | { kind: "saved"; snapshot: TranscriptEditorSnapshot }
+  | { kind: "conflict"; snapshot: TranscriptEditorSnapshot };
+export type TranscriptEditorSnapshot = {
+  session_id: string;
+  session_created_at: string;
+  revision: string;
+  transcripts: TranscriptWithData[];
+};
+export type TranscriptOverview = {
+  has_words: boolean;
+  speaker_labels: string[];
+  started_at: number | null;
+  ended_at: number | null;
+};
+export type TranscriptSpeakerAssignment = {
+  transcript_id: string;
+  channel: number;
+  speaker_index: number | null;
+  speaker_label: string;
+  anchor_word_id: string;
 };
 export type TranscriptSpeakerHint = {
   id?: string | null;
@@ -1238,6 +5392,104 @@ export type TranscriptWord = {
   speaker?: string | null;
   metadata?: Partial<{ [key in string]: JsonValue }> | null;
 };
+export type TranscriptionAvailability =
+  | "disabled"
+  | "loading"
+  | "ready"
+  | "in_use"
+  | "unavailable"
+  | "stopping";
+export type TranscriptionFailure =
+  | "access_denied"
+  | "source_unavailable"
+  | "resource_limit"
+  | "engine_unavailable"
+  | "engine_failed"
+  | "invalid_output"
+  | "storage"
+  | "interrupted";
+export type TranscriptionJobPage = {
+  jobs: TranscriptionJobSnapshot[];
+  next_cursor: string | null;
+};
+export type TranscriptionJobRequest = {
+  session_id: string;
+  expected_recording_sha256: string;
+  expected_transcript: AbsentTranscriptExpectation;
+  model: string;
+  languages?: string[];
+  keywords?: string[];
+};
+export type TranscriptionJobResult = {
+  job_id: string;
+  session_id: string;
+  transcript: TranscriptWithData;
+};
+export type TranscriptionJobSnapshot = {
+  id: string;
+  session_id: string;
+  state: TranscriptionJobState;
+  phase: TranscriptionPhase | null;
+  created_at: string;
+  updated_at: string;
+  result_available: boolean;
+  failure: TranscriptionFailure | null;
+  publication: TranscriptionPublication | null;
+};
+export type TranscriptionJobState =
+  | "queued"
+  | "running"
+  | "cancelling"
+  | "cancelled"
+  | "succeeded"
+  | "failed"
+  | "interrupted"
+  | "conflict"
+  | "empty"
+  | "uncertain";
+export type TranscriptionPhase = "preparing" | "transcribing" | "publishing";
+export type TranscriptionPolicy = {
+  /**
+   * Operator-facing public model alias, never a model file path.
+   */
+  model: string | null;
+  /**
+   * Advisory model state; operation admission remains authoritative.
+   */
+  availability: TranscriptionAvailability;
+  batch_enabled: boolean;
+  live_enabled: boolean;
+};
+/**
+ * A durable historical decision, not confirmation that these bytes are still current.
+ */
+export type TranscriptionPublication = {
+  revision: string;
+  transcript_id: string;
+};
+export type TranscriptionSubmissionReceipt = {
+  scope: string;
+  request_id: string;
+  input: TranscriptionJobRequest;
+  created_at_ms: number;
+  job: TranscriptionJobSnapshot | null;
+};
+export type UpdateVaultRequest = { name: string; expected_revision: string };
+export type UploadAttachmentRequest = {
+  filename: string;
+  size_bytes: number;
+  sha256: string;
+};
+export type VaultInfo = {
+  id: string;
+  name: string;
+  kind: VaultKind;
+  role: VaultRole;
+  revision: string;
+};
+export type VaultKind = "personal" | "shared";
+export type VaultMutation = { vault_id: string; revision: string };
+export type VaultRole = "reader" | "editor" | "owner";
 export type VaultStats = {
   sessions: number;
   /**
@@ -1294,6 +5546,22 @@ export type VaultYearStats = {
   enhanced_docs: number;
   duration_seconds: number;
 };
+export type WaveExportReceipt = {
+  frames: number;
+  pcm_bytes: number;
+  file_bytes: number;
+  sha256: string;
+  sealed: boolean;
+};
+/**
+ * Whether a finalized word is stable or awaiting correction.
+ *
+ * A word is `Pending` when it has been confirmed by the STT model but a
+ * correction source (cloud STT fallback, LLM postprocessor, etc.) is still
+ * processing it. The word has an ID and is persisted, but its text may be
+ * replaced when the correction resolves via `TranscriptDelta::replaced_ids`.
+ */
+export type WordState = "final" | "pending";
 
 /** tauri-specta globals **/
 

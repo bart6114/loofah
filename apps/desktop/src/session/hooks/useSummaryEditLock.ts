@@ -1,22 +1,29 @@
 import { getCurrentWebviewWindowLabel } from "@hypr/plugin-windows";
 
 import { useAITask } from "~/ai/contexts";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { useSummaryActivity } from "~/session/summary-activity";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
-import { useListener } from "~/stt/contexts";
 
 export function useSummaryEditLock(sessionId: string) {
-  const activity = useSummaryActivity((state) => state.sessions[sessionId]);
-  const remoteActivity = useSummaryActivity(
-    (state) => state.remoteSessions[sessionId],
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
+  const allowed = isAvailable("legacy_desktop_enhance");
+  const activity = useSummaryActivity((state) =>
+    allowed ? state.sessions[sessionId] : undefined,
   );
-  const remoteReady = useSummaryActivity((state) => state.remoteReady);
-  const mode = useListener((state) => state.getSessionMode(sessionId));
-  const starting = useListener(
-    (state) => state.live.sessionId === sessionId && state.live.loading,
+  const remoteActivity = useSummaryActivity((state) =>
+    allowed ? state.remoteSessions[sessionId] : undefined,
   );
+  const remoteReady = useSummaryActivity((state) =>
+    allowed ? state.remoteReady : true,
+  );
+  const mode = legacy.mode;
+  const starting = legacy.starting;
   const taskId = createTaskId(sessionId, "enhance");
-  const status = useAITask((state) => state.tasks[taskId]?.status);
+  const status = useAITask((state) =>
+    allowed ? state.tasks[taskId]?.status : undefined,
+  );
 
   if (mode === "finalizing" || mode === "running_batch") return "processing";
   if (

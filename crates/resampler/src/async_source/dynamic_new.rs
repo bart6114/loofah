@@ -140,7 +140,7 @@ where
     S: AsyncSource,
 {
     pub fn new(
-        source: S,
+        mut source: S,
         target_rate: u32,
         output_chunk_size: usize,
     ) -> Result<Self, crate::Error> {
@@ -150,8 +150,15 @@ where
             Backend::passthrough(output_chunk_size)
         } else {
             let ratio = target_rate as f64 / source_rate as f64;
+            let resampler = match Self::create_resampler(ratio, input_block_size) {
+                Ok(resampler) => resampler,
+                Err(error) => {
+                    source.request_stop();
+                    return Err(error);
+                }
+            };
             Backend::Resampler(Box::new(RubatoChunkResampler::new(
-                Self::create_resampler(ratio, input_block_size)?,
+                resampler,
                 output_chunk_size,
                 input_block_size,
             )))
@@ -166,6 +173,10 @@ where
             draining: false,
             pending_sample: None,
         })
+    }
+
+    pub fn request_stop_source(&mut self) -> bool {
+        self.source.request_stop()
     }
 
     fn rebuild_backend(&mut self, new_rate: u32) -> Result<(), crate::Error> {
@@ -278,5 +289,128 @@ where
 
             me.backend.push_sample(sample);
         }
+    }
+}
+
+#[cfg(test)]
+mod drain_tests {
+    use super::*;
+    use std::collections::VecDeque;
+    struct Source {
+        samples: VecDeque<f32>,
+        rate: u32,
+        stopped: bool,
+    }
+    impl AsyncSource for Source {
+        fn as_stream(&mut self) -> impl Stream<Item = f32> + '_ {
+            futures_util::stream::poll_fn(move |_| match self.samples.pop_front() {
+                Some(sample) => Poll::Ready(Some(sample)),
+                None if self.stopped => Poll::Ready(None),
+                None => Poll::Pending,
+            })
+        }
+        fn sample_rate(&self) -> u32 {
+            self.rate
+        }
+        fn request_stop(&mut self) -> bool {
+            self.stopped = true;
+            true
+        }
+    }
+
+    #[test]
+    fn failed_construction_requests_source_cleanup_before_drop() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        struct Acquired {
+            stopped: Arc<AtomicBool>,
+            cleanup_observed: Arc<AtomicBool>,
+        }
+        impl AsyncSource for Acquired {
+            fn as_stream(&mut self) -> impl Stream<Item = f32> + '_ {
+                futures_util::stream::pending()
+            }
+            fn sample_rate(&self) -> u32 {
+                16_000
+            }
+            fn request_stop(&mut self) -> bool {
+                self.stopped.store(true, Ordering::Release);
+                true
+            }
+        }
+        impl Drop for Acquired {
+            fn drop(&mut self) {
+                self.cleanup_observed
+                    .store(self.stopped.load(Ordering::Acquire), Ordering::Release);
+            }
+        }
+        let stopped = Arc::new(AtomicBool::new(false));
+        let cleanup_observed = Arc::new(AtomicBool::new(false));
+        assert!(
+            ResamplerDynamicNew::new(
+                Acquired {
+                    stopped: stopped.clone(),
+                    cleanup_observed: cleanup_observed.clone(),
+                },
+                0,
+                1_920
+            )
+            .is_err()
+        );
+        assert!(stopped.load(Ordering::Acquire));
+        assert!(cleanup_observed.load(Ordering::Acquire));
+    }
+    #[test]
+    fn controlled_stop_flushes_partial_tail_through_existing_eos_path() {
+        let waker = futures_util::task::noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        let expected: Vec<_> = (0..777)
+            .map(|frame| if frame % 2 == 0 { -0.0_f32 } else { 0.25_f32 })
+            .collect();
+        let source = Source {
+            samples: expected.clone().into(),
+            rate: 16_000,
+            stopped: false,
+        };
+        let mut resampler = ResamplerDynamicNew::new(source, 16_000, 1_920).unwrap();
+        assert!(Pin::new(&mut resampler).poll_next(&mut cx).is_pending());
+        assert!(resampler.request_stop_source());
+        let Poll::Ready(Some(Ok(tail))) = Pin::new(&mut resampler).poll_next(&mut cx) else {
+            panic!("missing partial tail")
+        };
+        assert_eq!(
+            tail.iter()
+                .map(|sample| sample.to_bits())
+                .collect::<Vec<_>>(),
+            expected
+                .iter()
+                .map(|sample| sample.to_bits())
+                .collect::<Vec<_>>()
+        );
+        assert!(matches!(
+            Pin::new(&mut resampler).poll_next(&mut cx),
+            Poll::Ready(None)
+        ));
+        let source = Source {
+            samples: vec![0.25; 240].into(),
+            rate: 48_000,
+            stopped: false,
+        };
+        let mut resampler = ResamplerDynamicNew::new(source, 16_000, 1_920).unwrap();
+        assert!(Pin::new(&mut resampler).poll_next(&mut cx).is_pending());
+        assert!(resampler.request_stop_source());
+        let mut output = Vec::new();
+        loop {
+            match Pin::new(&mut resampler).poll_next(&mut cx) {
+                Poll::Ready(Some(Ok(chunk))) => output.extend(chunk),
+                Poll::Ready(None) => break,
+                result => panic!("resampling did not drain: {result:?}"),
+            }
+        }
+        assert!(!output.is_empty() && output.len() <= 1_920);
+        assert!(output.iter().all(|sample| sample.is_finite()));
+        assert!(output.iter().any(|sample| sample.abs() > 0.0));
     }
 }

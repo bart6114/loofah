@@ -7,6 +7,7 @@ import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
 import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { DancingSticks } from "@hypr/ui/components/ui/dancing-sticks";
 import { Spinner } from "@hypr/ui/components/ui/spinner";
+import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn, format, getYear, safeParseDate, TZDate } from "@hypr/utils";
 
 import {
@@ -15,15 +16,22 @@ import {
   TimelinePrecision,
 } from "./utils";
 
-import { useDeleteSession } from "~/session/hooks/useDeleteSession";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
+import {
+  useDeleteSession,
+  useSessionDeletionAccess,
+} from "~/session/hooks/useDeleteSession";
 import { openStandaloneNoteWindow } from "~/session/window";
+import { openScopedNoteWindow } from "~/shared/application/open-note-window";
 import type { MenuItemDef } from "~/shared/hooks/useNativeContextMenu";
 import { writeSessionContextDragData } from "~/shared/session-drag";
 import { InteractiveButton } from "~/shared/ui/interactive-button";
 import { useSessionTitle } from "~/store/zustand/live-title";
 import { useTabs } from "~/store/zustand/tabs";
-import { useTimelineSelection } from "~/store/zustand/timeline-selection";
-import { useListener } from "~/stt/contexts";
+import {
+  useTimelineSelection,
+  useTimelineSelectionStore,
+} from "~/store/zustand/timeline-selection";
 
 const EMPTY_TIMELINE_ITEM_KEYS: string[] = [];
 
@@ -289,19 +297,23 @@ const SessionItem = memo(
   }) => {
     const { t } = useLingui();
     const openCurrent = useTabs((state) => state.openCurrent);
+    const selection = useTimelineSelectionStore();
     const deleteSession = useDeleteSession();
+    const deletion = useSessionDeletionAccess();
 
     const sessionId = item.id;
     const title = useSessionTitle(sessionId, item.data.title ?? undefined);
 
-    const { sessionMode, stop, amplitude } = useListener((state) => {
-      const sessionMode = state.getSessionMode(sessionId);
-      return {
-        sessionMode,
-        stop: state.stop,
-        amplitude: sessionMode === "active" ? state.live.amplitude : null,
-      };
+    const legacy = useLegacySessionActivity(sessionId, {
+      includeAmplitude: true,
     });
+
+    const { isAvailable } = legacy;
+    const sessionMode = legacy.mode;
+    const amplitude = legacy.amplitude;
+    const stop = () => {
+      if (isAvailable()) legacy.listener!.getState().stop();
+    };
     const isLive = sessionMode === "active";
     const isFinalizing = sessionMode === "finalizing";
     const isBatching = sessionMode === "running_batch";
@@ -309,29 +321,43 @@ const SessionItem = memo(
       !selected && !isLive && (isFinalizing || isEnhancing || isBatching);
 
     const displayTime = useMemo(
-      () => formatDisplayTime(item.data.created_at, precision, timezone),
-      [item.data.created_at, precision, timezone],
+      () =>
+        item.data.timestamp_ms === null
+          ? (item.data.created_at ?? "")
+          : formatDisplayTime(
+              item.data.timestamp_ms === undefined
+                ? item.data.created_at
+                : new Date(item.data.timestamp_ms).toISOString(),
+              precision,
+              timezone,
+            ),
+      [item.data.created_at, item.data.timestamp_ms, precision, timezone],
     );
     const muted = isTimelineItemInFuture(item);
 
     const itemKey = `session-${item.id}`;
 
     const handleClick = useCallback(() => {
-      useTimelineSelection.getState().setAnchor(itemKey);
+      selection.getState().setAnchor(itemKey);
       openCurrent({ id: sessionId, type: "sessions" });
-    }, [sessionId, openCurrent, itemKey]);
+    }, [sessionId, openCurrent, itemKey, selection]);
 
     const handleCmdClick = useCallback(() => {
-      useTimelineSelection.getState().toggleSelect(itemKey);
-    }, [itemKey]);
+      selection.getState().toggleSelect(itemKey);
+    }, [itemKey, selection]);
 
     const handleShiftClick = useCallback(() => {
-      useTimelineSelection.getState().selectRange(getFlatItemKeys(), itemKey);
-    }, [getFlatItemKeys, itemKey]);
+      selection.getState().selectRange(getFlatItemKeys(), itemKey);
+    }, [getFlatItemKeys, itemKey, selection]);
 
     const handleOpenStandaloneWindow = useCallback(() => {
-      void openStandaloneNoteWindow(sessionId);
-    }, [sessionId]);
+      if (isAvailable("legacy_desktop_session_controls"))
+        void openStandaloneNoteWindow(sessionId);
+      else if (legacy.scope?.client.openNoteWindow)
+        void openScopedNoteWindow(legacy.scope, sessionId).catch((error) =>
+          sonnerToast.error(error.message),
+        );
+    }, [sessionId, isAvailable, legacy.scope]);
 
     const handleDragStart = useCallback(
       (event: DragEvent<HTMLElement>) => {
@@ -349,11 +375,15 @@ const SessionItem = memo(
     }, [deleteSession, sessionId, title]);
 
     const handleShowInFinder = useCallback(async () => {
+      if (!isAvailable("legacy_desktop_session_controls")) return;
       const result = await fsSyncCommands.sessionDir(sessionId);
-      if (result.status === "ok") {
+      if (
+        isAvailable("legacy_desktop_session_controls") &&
+        result.status === "ok"
+      ) {
         await openerCommands.openPath(result.data, null);
       }
-    }, [sessionId]);
+    }, [sessionId, isAvailable]);
 
     const contextMenu = useMemo(
       () => [
@@ -361,6 +391,12 @@ const SessionItem = memo(
           id: "open-new-window",
           text: t`Open in New Window`,
           action: handleOpenStandaloneWindow,
+          disabled:
+            !isAvailable("legacy_desktop_session_controls") &&
+            !(
+              legacy.scope?.client.openNoteWindow &&
+              legacy.scope.getSnapshot().state === "connected"
+            ),
         },
         {
           id: "show",
@@ -369,15 +405,25 @@ const SessionItem = memo(
               ? t`Show in File Explorer`
               : t`Show in Finder`,
           action: handleShowInFinder,
+          disabled: !isAvailable("legacy_desktop_session_controls"),
         },
         { separator: true as const },
         {
           id: "delete",
           text: t`Delete Note`,
           action: handleDelete,
+          disabled: !deletion.available,
         },
       ],
-      [handleOpenStandaloneWindow, handleShowInFinder, handleDelete, t],
+      [
+        handleOpenStandaloneWindow,
+        legacy.scope,
+        handleShowInFinder,
+        handleDelete,
+        deletion.available,
+        t,
+        isAvailable,
+      ],
     );
 
     return (

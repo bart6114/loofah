@@ -19,6 +19,7 @@ export type TimelineSessionRow = {
   folder_id?: string | null;
   tags?: string[] | null;
   author?: string | null;
+  timestamp_ms?: number | null;
 };
 
 export type TimelineSessionsTable =
@@ -30,8 +31,7 @@ export type TimelineItem = {
   type: "session";
   id: string;
   data: TimelineSessionRow;
-  /** Parsed from `created_at` once at construction -- bucket sorting and the
-   * current-time indicator must never re-parse dates per comparison. */
+  /** Scoped reads supply the canonical timestamp; legacy projections parse it once. */
   timestampMs: number | null;
 };
 
@@ -43,27 +43,32 @@ export function makeTimelineItem(
     type: "session",
     id: sessionId,
     data: row,
-    timestampMs: safeParseDate(row.created_at)?.getTime() ?? null,
+    timestampMs:
+      row.timestamp_ms !== undefined
+        ? row.timestamp_ms
+        : (safeParseDate(row.created_at)?.getTime() ?? null),
   };
 }
 
 export type TimelinePrecision = "time" | "date";
 
 export type TimelineBucket = {
-  /** Stable key: full tag path for tag buckets, same as `label` for date
-   * buckets. Also the persisted expand-state key in `sidebar_expanded_tags`. */
+  /** Stable runtime identity; scoped tag and synthetic bucket IDs are distinct. */
   id: string;
   /** Display text: last path segment for tag buckets. */
   label: string;
   precision: TimelinePrecision;
   items: TimelineItem[];
-  // Absent means "date" -- only `buildTagTimelineBuckets` produces "tag".
+  // Absent means "date".
   kind?: "date" | "tag";
   // Tag-mode tree metadata; absent on date buckets and 0/absent for roots.
   depth?: number;
   parentId?: string;
   /** Own + descendant sessions, deduped by session id. */
   totalCount?: number;
+  streamKey?: string;
+  view?: import("~/shared/application/protocol.gen").TimelineView;
+  directCount?: number;
 };
 
 export type TimelineWindowData = {

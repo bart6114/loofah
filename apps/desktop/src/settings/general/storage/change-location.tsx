@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { homeDir } from "@tauri-apps/api/path";
 import { open as selectFolder } from "@tauri-apps/plugin-dialog";
 import { FolderIcon } from "lucide-react";
@@ -21,7 +21,7 @@ import { cn } from "@hypr/utils";
 
 import { displayPath } from "./path-utils";
 
-import { scheduleAutomaticRelaunch } from "~/shared/relaunch";
+import { relaunchNow } from "~/shared/relaunch";
 import { commands as tauriCommands } from "~/types/tauri.gen";
 
 const VAULT_BASE_QUERY_KEY = ["vault-base-path"] as const;
@@ -37,7 +37,6 @@ type EmptyFolderChoice = "move" | "copy" | "fresh";
 
 export function ChangeLocationRow() {
   const { t } = useLingui();
-  const queryClient = useQueryClient();
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [emptyChoice, setEmptyChoice] = useState<EmptyFolderChoice>("move");
 
@@ -79,8 +78,7 @@ export function ChangeLocationRow() {
     },
     onSuccess: async () => {
       setPendingPath(null);
-      await queryClient.invalidateQueries({ queryKey: VAULT_BASE_QUERY_KEY });
-      await scheduleAutomaticRelaunch();
+      await relaunchNow();
     },
     onError: (error) => {
       sonnerToast.error(error.message);

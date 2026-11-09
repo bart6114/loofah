@@ -1,23 +1,49 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  QueryClient,
+  QueryClientProvider,
+  onlineManager,
+} from "@tanstack/react-query";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SearchHit } from "~/search/contexts/engine";
+import type {
+  SessionSummary,
+  SessionSummaryQuery,
+} from "~/shared/application/protocol.gen";
+import type { VaultScope } from "~/shared/application/vault-scope";
 
 const mocks = vi.hoisted(() => ({
   engineSearch: vi.fn(),
   openCurrent: vi.fn(),
   onOpenChange: vi.fn(),
-  sessions: [] as { id: string; title: string; created_at: string }[],
+  sessions: [] as SessionSummary[],
+  summaries:
+    vi.fn<
+      (
+        scope: string,
+        input: SessionSummaryQuery,
+        signal?: AbortSignal,
+      ) => Promise<SessionSummary[]>
+    >(),
   recentlyOpenedSessionIds: [] as string[],
+  scope: null as VaultScope | null,
+  ready: true,
 }));
 
 vi.mock("~/search/contexts/engine", () => ({
-  useSearchEngine: () => ({ search: mocks.engineSearch }),
-}));
-
-vi.mock("~/session/queries", () => ({
-  useSessionSummaries: () => mocks.sessions,
+  useSearchEngine: () => ({
+    search: mocks.engineSearch,
+    scope: mocks.scope,
+    ready: mocks.ready,
+  }),
 }));
 
 vi.mock("~/store/zustand/tabs", () => ({
@@ -34,6 +60,61 @@ vi.mock("~/store/zustand/tabs", () => ({
 }));
 
 import { OpenNoteDialog } from "./open-note-dialog";
+
+function summaryReply(
+  _scope: string,
+  input: SessionSummaryQuery,
+): Promise<SessionSummary[]> {
+  const ordered = [...mocks.sessions].sort(
+    (left, right) =>
+      Date.parse(right.created_at) - Date.parse(left.created_at) ||
+      left.id.localeCompare(right.id),
+  );
+  if (input.kind === "ids")
+    return Promise.resolve(
+      input.ids.flatMap(
+        (id) => mocks.sessions.find((summary) => summary.id === id) ?? [],
+      ),
+    );
+  if (input.kind === "title")
+    return Promise.resolve(
+      ordered
+        .filter((summary) =>
+          summary.title
+            .toLowerCase()
+            .includes(input.query.trim().toLowerCase()),
+        )
+        .slice(0, input.limit),
+    );
+  const filtered = input.titled_only
+    ? ordered.filter((summary) => summary.title)
+    : ordered;
+  return Promise.resolve(
+    (input.order === "oldest_first" ? [...filtered].reverse() : filtered).slice(
+      0,
+      input.limit,
+    ),
+  );
+}
+
+function fixtureScope(id: string) {
+  const snapshot = { state: "connected", error: null };
+  return {
+    client: { scope: id },
+    queryClient: new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, networkMode: "always", staleTime: Infinity },
+      },
+    }),
+    getSnapshot: () => snapshot,
+    subscribe: () => () => {},
+    sessionSummariesOptions: (input: SessionSummaryQuery) => ({
+      queryKey: ["vault", id, "session_summaries", input],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        mocks.summaries(id, input, signal),
+    }),
+  } as unknown as VaultScope;
+}
 
 function sessionHit(
   id: string,
@@ -57,9 +138,7 @@ function sessionHit(
 }
 
 function renderDialog() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+  const queryClient = mocks.scope!.queryClient;
   return render(
     <QueryClientProvider client={queryClient}>
       <OpenNoteDialog open onOpenChange={mocks.onOpenChange} />
@@ -75,6 +154,9 @@ async function typeQuery(value: string) {
 
 describe("OpenNoteDialog", () => {
   beforeEach(() => {
+    mocks.scope = fixtureScope("local:fixture");
+    mocks.summaries.mockReset().mockImplementation(summaryReply);
+    mocks.ready = true;
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -100,22 +182,26 @@ describe("OpenNoteDialog", () => {
 
   afterEach(() => {
     cleanup();
+    mocks.scope?.queryClient.clear();
+    onlineManager.setOnline(true);
   });
 
-  it("shows recent and all notes when the query is empty", () => {
+  it("shows recent and all notes when the query is empty", async () => {
     renderDialog();
 
-    expect(screen.getByText("Recent")).toBeTruthy();
+    expect(await screen.findByText("Recent")).toBeTruthy();
     expect(screen.getByText("All Notes")).toBeTruthy();
     expect(screen.getByText("Weekly sync")).toBeTruthy();
     expect(screen.getByText("Planning session")).toBeTruthy();
     expect(mocks.engineSearch).not.toHaveBeenCalled();
   });
 
-  it("opens a session note from All Notes", () => {
+  it("opens a session note from All Notes", async () => {
     renderDialog();
 
-    fireEvent.click(screen.getByRole("option", { name: "Planning session" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: "Planning session" }),
+    );
 
     expect(mocks.onOpenChange).toHaveBeenCalledWith(false);
     expect(mocks.openCurrent).toHaveBeenCalledWith({
@@ -128,11 +214,16 @@ describe("OpenNoteDialog", () => {
     renderDialog();
     await typeQuery("zebra");
 
-    expect(mocks.engineSearch).toHaveBeenCalledWith("zebra", null, {
-      limit: 20,
-      snippets: true,
-      snippetMaxChars: 120,
-    });
+    expect(mocks.engineSearch).toHaveBeenCalledWith(
+      "zebra",
+      null,
+      {
+        limit: 20,
+        snippets: true,
+        snippetMaxChars: 120,
+      },
+      expect.any(AbortSignal),
+    );
   });
 
   it("shows sessions matched only by content, with a highlighted snippet", async () => {
@@ -218,7 +309,7 @@ describe("OpenNoteDialog", () => {
     expect(await screen.findByText("No notes found.")).toBeTruthy();
   });
 
-  it("caps the empty-query All Notes list to the most recent entries", () => {
+  it("caps the empty-query All Notes list to the most recent entries", async () => {
     mocks.sessions = Array.from({ length: 60 }, (_, index) => ({
       id: `s-${index}`,
       title: `Note ${index}`,
@@ -228,8 +319,261 @@ describe("OpenNoteDialog", () => {
     renderDialog();
 
     // Newest-first: the 50 most recent survive the cap, the 10 oldest don't.
-    expect(screen.getByText("Note 59")).toBeTruthy();
+    expect(await screen.findByText("Note 59")).toBeTruthy();
     expect(screen.getByText("Note 10")).toBeTruthy();
     expect(screen.queryByText("Note 9")).toBeNull();
+  });
+
+  it("uses the local scope query client while browser networking is offline", async () => {
+    onlineManager.setOnline(false);
+    renderDialog();
+    await typeQuery("zebra");
+    await waitFor(() => expect(mocks.engineSearch).toHaveBeenCalledOnce());
+  });
+
+  it("refreshes mounted search hits when the active scope invalidates its search projection", async () => {
+    mocks.engineSearch.mockResolvedValueOnce([
+      sessionHit("s2", "Weekly sync", "OLD PROJECTED CONTENT"),
+    ]);
+    renderDialog();
+    await typeQuery("zebra");
+    await screen.findByText("OLD PROJECTED CONTENT");
+    mocks.engineSearch.mockResolvedValueOnce([
+      sessionHit("s2", "Weekly sync", "UPDATED PROJECTED CONTENT"),
+    ]);
+    await act(async () => {
+      await mocks.scope!.queryClient.invalidateQueries({
+        queryKey: ["vault", mocks.scope!.client.scope, "search"],
+      });
+    });
+    await screen.findByText("UPDATED PROJECTED CONTENT");
+    expect(screen.queryByText("OLD PROJECTED CONTENT")).toBeNull();
+  });
+
+  it("does not dispatch searches while disconnected and hides private rows after access loss", async () => {
+    const view = renderDialog();
+    mocks.ready = false;
+    const reconnecting = { state: "reconnecting" as const, error: null };
+    mocks.scope!.getSnapshot = () => reconnecting;
+    view.rerender(<OpenNoteDialog open onOpenChange={mocks.onOpenChange} />);
+    await typeQuery("zebra");
+    expect(mocks.engineSearch).not.toHaveBeenCalled();
+    const denied = { state: "access_denied" as const, error: null };
+    mocks.scope!.getSnapshot = () => denied;
+    view.rerender(<OpenNoteDialog open onOpenChange={mocks.onOpenChange} />);
+    expect(screen.queryByPlaceholderText("Find a note...")).toBeNull();
+    expect(screen.queryByText("Planning session")).toBeNull();
+  });
+
+  it("never reuses results or previous-data placeholders for an identical ID in a different scope", async () => {
+    mocks.engineSearch.mockResolvedValue([
+      sessionHit("s2", "Weekly sync", "FIRST VAULT PRIVATE SNIPPET"),
+    ]);
+    const view = renderDialog();
+    await typeQuery("zebra");
+    await screen.findByText("FIRST VAULT PRIVATE SNIPPET");
+    const first = mocks.scope!;
+    mocks.scope = fixtureScope("remote:second");
+    mocks.sessions = [
+      {
+        id: "s2",
+        title: "Second vault note",
+        created_at: "2026-01-02T00:00:00Z",
+      },
+    ];
+    let finish!: (hits: SearchHit[]) => void;
+    mocks.engineSearch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    view.rerender(<OpenNoteDialog open onOpenChange={mocks.onOpenChange} />);
+    expect(screen.queryByText("FIRST VAULT PRIVATE SNIPPET")).toBeNull();
+    expect(screen.getByPlaceholderText("Find a note...")).toHaveProperty(
+      "value",
+      "",
+    );
+    await typeQuery("zebra");
+    await waitFor(() => expect(mocks.engineSearch).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("FIRST VAULT PRIVATE SNIPPET")).toBeNull();
+    await act(async () =>
+      finish([sessionHit("s2", "Second vault note", "SECOND VAULT SNIPPET")]),
+    );
+    await screen.findByText("SECOND VAULT SNIPPET");
+    expect(screen.queryByText("FIRST VAULT PRIVATE SNIPPET")).toBeNull();
+    first.queryClient.clear();
+  });
+
+  it("ignores the first scope's delayed reply after switching vaults", async () => {
+    let finish!: (hits: SearchHit[]) => void;
+    mocks.engineSearch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = renderDialog();
+    await typeQuery("zebra");
+    await waitFor(() => expect(mocks.engineSearch).toHaveBeenCalledOnce());
+    const first = mocks.scope!;
+    mocks.scope = fixtureScope("remote:second");
+    mocks.sessions = [
+      {
+        id: "s2",
+        title: "Second vault note",
+        created_at: "2026-01-02T00:00:00Z",
+      },
+    ];
+    mocks.engineSearch.mockResolvedValueOnce([
+      sessionHit("s2", "Second vault note", "SECOND VAULT SNIPPET"),
+    ]);
+    view.rerender(<OpenNoteDialog open onOpenChange={mocks.onOpenChange} />);
+    await typeQuery("zebra");
+    await screen.findByText("SECOND VAULT SNIPPET");
+    await act(async () =>
+      finish([sessionHit("s2", "Weekly sync", "LATE PRIVATE FIRST VAULT")]),
+    );
+    expect(screen.queryByText("LATE PRIVATE FIRST VAULT")).toBeNull();
+    expect(screen.getByText("SECOND VAULT SNIPPET")).toBeTruthy();
+    first.queryClient.clear();
+  });
+
+  it("shows title and full-text matches beyond the initial list without waiting for that list", async () => {
+    mocks.sessions = Array.from({ length: 1000 }, (_, index) => ({
+      id: `note-${index}`,
+      title: `Note ${index}`,
+      created_at: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+    }));
+    mocks.sessions[0].title = "Old planning note";
+    mocks.engineSearch.mockResolvedValue([
+      sessionHit("note-1", "Note 1", "zebra in the old transcript"),
+    ]);
+    let releaseList!: (rows: SessionSummary[]) => void;
+    mocks.summaries.mockImplementation((scope, input) =>
+      input.kind === "list"
+        ? new Promise((resolve) => {
+            releaseList = resolve;
+          })
+        : summaryReply(scope, input),
+    );
+    renderDialog();
+    await typeQuery("plan");
+    expect(await screen.findByText("Old planning note")).toBeTruthy();
+    expect(await screen.findByText("Note 1")).toBeTruthy();
+    expect(mocks.summaries).toHaveBeenCalledWith(
+      "local:fixture",
+      { kind: "title", query: "plan", limit: 50 },
+      expect.any(AbortSignal),
+    );
+    expect(mocks.summaries).toHaveBeenCalledWith(
+      "local:fixture",
+      { kind: "ids", ids: ["note-1"] },
+      expect.any(AbortSignal),
+    );
+    const lists = mocks.summaries.mock.calls.filter(
+      ([, input]) => input.kind === "list",
+    );
+    expect(lists).toHaveLength(1);
+    expect(lists[0][1]).toEqual({
+      kind: "list",
+      limit: 55,
+      order: "newest_first",
+      titled_only: false,
+    });
+    await act(async () => releaseList([]));
+  });
+
+  it("waits for a bounded canonical lookup before displaying projected full-text rows", async () => {
+    mocks.engineSearch.mockResolvedValue([
+      sessionHit("ghost", "Deleted note", "zebra"),
+    ]);
+    let confirm!: (rows: SessionSummary[]) => void;
+    mocks.summaries.mockImplementation((scope, input) =>
+      input.kind === "ids" && input.ids.includes("ghost")
+        ? new Promise((resolve) => {
+            confirm = resolve;
+          })
+        : summaryReply(scope, input),
+    );
+    renderDialog();
+    await typeQuery("zebra");
+    await waitFor(() =>
+      expect(
+        mocks.summaries.mock.calls.some(
+          ([, input]) => input.kind === "ids" && input.ids[0] === "ghost",
+        ),
+      ).toBe(true),
+    );
+    expect(screen.queryByText("Deleted note")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    await act(async () => confirm([]));
+    await screen.findByText("No notes found.");
+    expect(screen.queryByText("Deleted note")).toBeNull();
+  });
+
+  it("invalidates summaries independently of the full-text projection when a session disappears", async () => {
+    mocks.engineSearch.mockResolvedValue([
+      sessionHit("s2", "Weekly sync", "zebra"),
+    ]);
+    renderDialog();
+    await typeQuery("zebra");
+    await screen.findByText("Weekly sync");
+    mocks.sessions = mocks.sessions.filter((summary) => summary.id !== "s2");
+    await act(async () => {
+      await mocks.scope!.queryClient.invalidateQueries({
+        queryKey: ["vault", mocks.scope!.client.scope, "session_summaries"],
+      });
+    });
+    await screen.findByText("No notes found.");
+    expect(screen.queryByText("Weekly sync")).toBeNull();
+  });
+
+  it("reports summary-read failures without using an unscoped local list", async () => {
+    mocks.summaries.mockRejectedValue(
+      new Error("This server does not support summary queries"),
+    );
+    renderDialog();
+    await screen.findByText("This server does not support summary queries");
+    expect(screen.queryByText("Planning session")).toBeNull();
+    expect(screen.queryByText("Weekly sync")).toBeNull();
+  });
+
+  it("resolves an old recent note independently of the bounded newest list", async () => {
+    mocks.sessions = Array.from({ length: 1000 }, (_, index) => ({
+      id: `note-${index}`,
+      title: `Note ${index}`,
+      created_at: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+    }));
+    mocks.recentlyOpenedSessionIds = ["note-0"];
+    renderDialog();
+    await screen.findByText("Note 0");
+    await screen.findByText("Note 999");
+    expect(screen.getAllByRole("option")).toHaveLength(51);
+    expect(screen.queryByText("Note 949")).toBeNull();
+    expect(mocks.summaries).toHaveBeenCalledWith(
+      "local:fixture",
+      { kind: "ids", ids: ["note-0"] },
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("does not announce an empty result while a new full-text response is still pending", async () => {
+    renderDialog();
+    await typeQuery("nothing");
+    await screen.findByText("No notes found.");
+    let finish!: (hits: SearchHit[]) => void;
+    mocks.engineSearch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await typeQuery("zebra");
+    await waitFor(() => expect(mocks.engineSearch).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("No notes found.")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    await act(async () => finish([]));
+    await screen.findByText("No notes found.");
   });
 });

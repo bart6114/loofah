@@ -5,6 +5,21 @@ description: "Tools, resources, limits, and transport details exposed by Loofah 
 
 Run the server with `loof mcp`. It uses the MCP `2024-11-05` protocol over stdio. Tools do not change vault content. Every search, list, and resource-list request refreshes the shared local cache, including while the server stays running. Detail tools and resource reads use the current vault files. Startup automatically builds a missing or incompatible cache, reporting progress on stderr before the MCP connection is established. For corruption, run `loof --json init` to repair the cache.
 
+## Server connections
+
+Use `loof profiles login company --server https://notes.example.com` once, then
+start `loof --profile company mcp`. The same four read-only tools and resource
+URIs read the selected server vault through HTTPS. Tool calls never open a
+browser, and connection failures never fall back to the local vault. A remote
+MCP connection pins its profile, account, and vault; restart it after changing
+that binding. Refresh credentials stay in the OS credential store. An idle MCP
+connection holds no profile lock, so another CLI command can use the same
+profile. Oversized responses fail explicitly; transcripts are never truncated.
+
+The cache startup and `init` behavior above apply to local mode. Server mode
+uses the server's canonical files and search cache; it creates no local vault.
+See [server profiles](/reference/cli/#server-profiles).
+
 ## Tools
 
 ### `list_meetings`

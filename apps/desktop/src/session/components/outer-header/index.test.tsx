@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EditorView } from "~/store/zustand/tabs/schema";
 
 const mocks = vi.hoisted(() => ({
+  allowed: true,
   leftsidebar: {
     expanded: true,
     toggleExpanded: vi.fn(),
@@ -89,6 +90,7 @@ import { OuterHeader } from "./index";
 
 describe("OuterHeader", () => {
   beforeEach(() => {
+    mocks.allowed = true;
     mocks.leftsidebar.expanded = true;
     mocks.leftsidebar.toggleExpanded.mockClear();
     mocks.canGoBack = false;
@@ -465,4 +467,29 @@ describe("OuterHeader", () => {
     );
     expect(mocks.stopListening).toHaveBeenCalledTimes(1);
   });
+});
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { useListener } = await import("~/stt/contexts");
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  const source = (id = "") => ({
+    ...legacyActivityFixture(
+      useListener((state) => state),
+      id,
+    ),
+    available: mocks.allowed,
+    isAvailable: () => mocks.allowed,
+  });
+  return {
+    useLegacySessionActivity: source,
+    useLegacyDesktopAccess: () => source(),
+  };
+});
+
+it("does not mount local recording/model hooks for an unsupported host", () => {
+  mocks.allowed = false;
+  render(<OuterHeader sessionId="same-id" currentView={{ type: "raw" }} />);
+  expect(screen.queryByRole("button", { name: "Record" })).toBeNull();
+  expect(mocks.startListening).not.toHaveBeenCalled();
 });

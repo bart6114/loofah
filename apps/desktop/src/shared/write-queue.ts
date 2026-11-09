@@ -1,5 +1,17 @@
 const tails = new Map<string, Promise<unknown>>();
 const pending = new Set<Promise<unknown>>();
+const flushers = new Map<string, Set<() => Promise<void>>>();
+
+export function registerWriteFlusher(key: string, flush: () => Promise<void>) {
+  const listeners = flushers.get(key) ?? new Set();
+  listeners.add(flush);
+  flushers.set(key, listeners);
+  return () => {
+    listeners.delete(flush);
+    if (!listeners.size && flushers.get(key) === listeners)
+      flushers.delete(key);
+  };
+}
 
 export function enqueueDatabaseWrite<T>(
   key: string,
@@ -21,10 +33,35 @@ export function enqueueDatabaseWrite<T>(
 export async function flushDatabaseWrites(
   keys?: readonly string[],
 ): Promise<void> {
+  const selected = keys ? new Set(keys) : null;
+  // Aliases must not submit the same editor twice during a lifecycle flush.
+  const callbacks = [
+    ...new Set(
+      [...flushers]
+        .filter(([key]) => !selected || selected.has(key))
+        .flatMap(([, callbacks]) => [...callbacks]),
+    ),
+  ];
+  const started = drainDatabaseWrites(keys);
+  if (!callbacks.length) return started;
+  const results = await Promise.allSettled([
+    started,
+    ...callbacks.map((flush) => Promise.resolve().then(flush)),
+  ]);
+  const final = await Promise.allSettled([drainDatabaseWrites(keys)]);
+  const refused = [...results, ...final].find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (refused) throw refused.reason;
+}
+
+export async function drainDatabaseWrites(
+  keys?: readonly string[],
+): Promise<void> {
+  let failed = false;
+  let failure: unknown;
   if (keys) {
     const uniqueKeys = [...new Set(keys)];
-    let failed = false;
-    let failure: unknown;
     while (true) {
       const activeKeys = uniqueKeys.filter((key) => tails.has(key));
       if (activeKeys.length === 0) {
@@ -47,11 +84,15 @@ export async function flushDatabaseWrites(
 
   while (pending.size > 0) {
     const results = await Promise.allSettled(Array.from(pending));
-    const failure = results.find(
+    const rejected = results.find(
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
-    if (failure) throw failure.reason;
+    if (!failed && rejected) {
+      failed = true;
+      failure = rejected.reason;
+    }
   }
+  if (failed) throw failure;
 }
 
 export async function flushDatabaseWritesByPrefix(

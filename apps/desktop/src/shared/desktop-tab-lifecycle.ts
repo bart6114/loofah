@@ -1,53 +1,42 @@
-import { isTauri } from "@tauri-apps/api/core";
-import { useEffect, useRef } from "react";
+import { onlineManager } from "@tanstack/react-query";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
-import { isSessionEmpty, softDeleteSession } from "~/session/queries";
-import { listenerStore } from "~/store/zustand/listener/instance";
+import { captureSessionCleanupGuard } from "~/shared/application/session-cleanup-guard";
+import type { VaultScope } from "~/shared/application/vault-scope";
 import {
-  restorePinnedTabsToStore,
-  restoreRecentlyOpenedToStore,
   type Tab,
+  type ScopedTabsStore,
   useTabs,
+  useTabsStore,
 } from "~/store/zustand/tabs";
+import { useScopedTabsController } from "~/store/zustand/tabs/scoped-provider";
 
 type InitializeDesktopTabsOptions = {
   getTabs: () => Tab[];
-  setRecentlyOpenedSessionIds: (ids: string[]) => void;
-  restorePinnedTabs: () => Promise<void>;
-  restoreRecentlyOpenedSessionIds: (
-    set: (ids: string[]) => void,
-  ) => Promise<void>;
+  restore: () => Promise<void>;
+  isActive: () => boolean;
   onInitialized?: (() => void) | null;
   onZeroTabs?: (() => void) | null;
-  isTauriEnv?: boolean;
 };
 
 type SessionTabCloseHandlerOptions = {
-  invalidateSessionResource: (sessionId: string) => void;
-  getSessionMode?: (sessionId: string) => string | null | undefined;
-  isSessionEmptyFn?: typeof isSessionEmpty;
-  deleteSessionFn?: typeof softDeleteSession;
+  scope: VaultScope;
+  store: ScopedTabsStore;
+  captureState?: (sessionId: string) => string | null | undefined;
+  subscribeCapture?: (sessionId: string, changed: () => void) => () => void;
 };
 
 export async function initializeDesktopTabs({
   getTabs,
-  setRecentlyOpenedSessionIds,
-  restorePinnedTabs,
-  restoreRecentlyOpenedSessionIds,
+  restore,
+  isActive,
   onInitialized,
   onZeroTabs,
-  isTauriEnv = isTauri(),
 }: InitializeDesktopTabsOptions) {
-  if (!isTauriEnv) {
-    onZeroTabs?.();
-    return;
-  }
-
-  await restorePinnedTabs();
-  await restoreRecentlyOpenedSessionIds(setRecentlyOpenedSessionIds);
+  await restore();
+  if (!isActive()) return;
   onInitialized?.();
-
-  if (getTabs().length > 0) {
+  if (!isActive() || getTabs().length > 0) {
     return;
   }
 
@@ -55,86 +44,201 @@ export async function initializeDesktopTabs({
 }
 
 export function createSessionTabCloseHandler({
-  invalidateSessionResource,
-  getSessionMode = (sessionId) =>
-    listenerStore.getState().getSessionMode(sessionId),
-  isSessionEmptyFn = isSessionEmpty,
-  deleteSessionFn = softDeleteSession,
+  scope,
+  store,
+  captureState,
+  subscribeCapture,
 }: SessionTabCloseHandlerOptions) {
-  return (tab: Tab) => {
-    if (tab.type !== "sessions") {
-      return;
-    }
-
-    const sessionId = tab.id;
-    const sessionMode = getSessionMode(sessionId);
+  const client = scope.client;
+  const lifetime = new AbortController();
+  const pending = new Set<string>();
+  const available = () =>
+    !lifetime.signal.aborted &&
+    scope.client === client &&
+    store.scope === client.scope &&
+    scope.getSnapshot().state === "connected" &&
+    client.canEdit &&
+    client.features.includes("session_cleanup") &&
+    (client.networkMode === "always" || onlineManager.isOnline());
+  const handle = (tab: Tab) => {
     if (
-      sessionMode === "active" ||
-      sessionMode === "finalizing" ||
-      sessionMode === "running_batch"
-    ) {
+      tab.type !== "sessions" ||
+      !available() ||
+      !captureState ||
+      !subscribeCapture
+    )
+      return;
+    const sessionId = tab.id;
+    if (pending.has(sessionId) || pending.size >= 8) return;
+    const isOpen = () =>
+      store
+        .getState()
+        .tabs.some(
+          (entry) => entry.type === "sessions" && entry.id === sessionId,
+        );
+    const idle = () => {
+      try {
+        return captureState(sessionId) === "idle";
+      } catch {
+        return false;
+      }
+    };
+    if (isOpen() || !idle()) return;
+    pending.add(sessionId);
+    let invalidated = false;
+    let reopened = false;
+    const request = new AbortController();
+    let guard: ReturnType<typeof captureSessionCleanupGuard>;
+    let requestId: string;
+    try {
+      requestId = crypto.randomUUID();
+      guard = captureSessionCleanupGuard(scope, sessionId, {
+        isOpen: () => reopened || isOpen(),
+      });
+    } catch {
+      pending.delete(sessionId);
       return;
     }
-
+    const stops: (() => void)[] = [];
+    const stop = () => {
+      for (const release of stops.splice(0)) release();
+    };
+    const invalidate = () => {
+      if (invalidated) return;
+      invalidated = true;
+      guard.dispose();
+      request.abort();
+      stop();
+    };
+    const own = (release: () => void) => {
+      if (invalidated) release();
+      else stops.push(release);
+    };
+    const current = () =>
+      !invalidated && !reopened && !isOpen() && available() && idle();
+    try {
+      lifetime.signal.addEventListener("abort", invalidate, { once: true });
+      own(() => lifetime.signal.removeEventListener("abort", invalidate));
+      own(
+        store.subscribe(() => {
+          if (isOpen()) {
+            reopened = true;
+            invalidate();
+          }
+        }),
+      );
+      own(
+        scope.subscribe(() => {
+          if (!current()) invalidate();
+        }),
+      );
+      own(
+        onlineManager.subscribe(() => {
+          if (!current()) invalidate();
+        }),
+      );
+      own(
+        subscribeCapture(sessionId, () => {
+          if (!idle()) invalidate();
+        }),
+      );
+    } catch {
+      invalidate();
+      pending.delete(sessionId);
+      return;
+    }
+    if (!current()) {
+      invalidate();
+      pending.delete(sessionId);
+      return;
+    }
     void (async () => {
-      if (!(await isSessionEmptyFn(sessionId))) return;
-
-      const deleted = await deleteSessionFn(sessionId);
-      if (deleted) invalidateSessionResource(sessionId);
-    })().catch((error) => {
-      console.error("session close cleanup", error);
-    });
+      if (!(await guard.prepare()) || !current() || !guard.canDelete()) return;
+      await scope.run(() =>
+        client.deleteEmptySession(
+          { session_id: sessionId },
+          { requestId, signal: request.signal },
+        ),
+      );
+      // Replayed outcomes describe the original intent, so refetch current state.
+      if (current() && guard.canDelete()) scope.resync();
+    })()
+      .catch((error) => {
+        if (current()) console.error("session close cleanup", error);
+      })
+      .finally(() => {
+        guard.dispose();
+        stop();
+        invalidated = true;
+        pending.delete(sessionId);
+      });
   };
+  return Object.assign(handle, { dispose: () => lifetime.abort() });
 }
 
 export function useDesktopTabLifecycle({
   onEmpty,
   onInitialized,
   onZeroTabs,
+  createOnClose,
 }: {
   onEmpty?: (() => void) | null;
   onInitialized?: (() => void) | null;
   onZeroTabs?: (() => void) | null;
+  createOnClose: () => ReturnType<typeof createSessionTabCloseHandler> | null;
 }) {
-  const { registerOnEmpty, registerCanClose, registerOnClose, openNew, pin } =
-    useTabs();
+  const { registerOnEmpty, registerCanClose, registerOnClose } = useTabs();
+  const store = useTabsStore();
+  const controller = useScopedTabsController();
+  const connection = useSyncExternalStore(
+    controller.scope.subscribe,
+    controller.scope.getSnapshot,
+  );
   const hasOpenedInitialTab = useRef(false);
 
   useEffect(() => {
-    if (hasOpenedInitialTab.current) {
+    if (hasOpenedInitialTab.current || connection.state !== "connected") {
       return;
     }
 
-    hasOpenedInitialTab.current = true;
-
+    let active = true;
+    const isActive = () =>
+      active && controller.scope.getSnapshot().state === "connected";
+    const complete = (callback?: (() => void) | null) => {
+      hasOpenedInitialTab.current = true;
+      callback?.();
+    };
     void initializeDesktopTabs({
-      getTabs: () => useTabs.getState().tabs,
-      setRecentlyOpenedSessionIds: (ids) => {
-        useTabs.setState({ recentlyOpenedSessionIds: ids });
-      },
-      restorePinnedTabs: () =>
-        restorePinnedTabsToStore(openNew, pin, () => useTabs.getState().tabs),
-      restoreRecentlyOpenedSessionIds: restoreRecentlyOpenedToStore,
-      onInitialized,
-      onZeroTabs,
+      getTabs: () => store.getState().tabs,
+      restore: () => controller.start(),
+      isActive,
+      onInitialized: () => complete(onInitialized),
+      onZeroTabs: () => complete(onZeroTabs),
+    }).catch((error) => {
+      console.error("tab restoration", error);
+      if (isActive()) complete(onZeroTabs);
     });
-  }, [onInitialized, openNew, pin, onZeroTabs]);
+    return () => {
+      active = false;
+    };
+  }, [onInitialized, onZeroTabs, store, controller, connection.state]);
 
   useEffect(() => {
     registerOnEmpty(onEmpty ?? null);
+    return () => registerOnEmpty(null);
   }, [onEmpty, registerOnEmpty]);
 
   useEffect(() => {
     registerCanClose(() => true);
+    return () => registerCanClose(null);
   }, [registerCanClose]);
 
   useEffect(() => {
-    registerOnClose(
-      createSessionTabCloseHandler({
-        invalidateSessionResource: (sessionId) => {
-          useTabs.getState().invalidateResource("sessions", sessionId);
-        },
-      }),
-    );
-  }, [registerOnClose]);
+    const onClose = createOnClose();
+    registerOnClose(onClose);
+    return () => {
+      registerOnClose(null);
+      onClose?.dispose();
+    };
+  }, [registerOnClose, createOnClose]);
 }

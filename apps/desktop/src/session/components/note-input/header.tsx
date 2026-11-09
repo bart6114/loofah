@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { writeText as writeClipboardText } from "@tauri-apps/plugin-clipboard-manager";
 import { ChevronDownIcon, PaperclipIcon } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { json2md, parseJsonContent } from "@hypr/editor/markdown";
 import { DancingSticks } from "@hypr/ui/components/ui/dancing-sticks";
@@ -9,8 +9,8 @@ import { Spinner } from "@hypr/ui/components/ui/spinner";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn } from "@hypr/utils";
 
-import { useAITaskTask } from "~/ai/hooks";
 import * as AudioPlayer from "~/audio-player";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { useEnhancedNoteActions } from "~/session/components/note-input/enhanced-actions";
 import { useRegenerateTranscript } from "~/session/components/note-input/transcript/actions";
 import {
@@ -22,18 +22,23 @@ import { useCanShowTranscript } from "~/session/components/shared";
 import { useSummarySource } from "~/session/hooks/useSummarySource";
 import {
   deleteEnhancedNote,
+  useEnhancedDocumentTarget,
   useEnhancedNote,
   useEnhancedNoteRecords,
+  useEnhancedNoteTitle,
   useSession,
 } from "~/session/queries";
-import { useOpenSummaryPrompt } from "~/settings/use-open-summary-prompt";
+import { DeleteDocumentModal } from "~/shared/application/delete-document-modal";
+import {
+  mediaControlsAvailable,
+  useVaultReadScope,
+} from "~/shared/application/use-vault-read-scope";
+import { VaultProcessingSettings } from "~/shared/application/vault-processing-settings";
 import {
   type MenuItemDef,
   useNativeContextMenu,
 } from "~/shared/hooks/useNativeContextMenu";
-import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 import { type EditorView } from "~/store/zustand/tabs/schema";
-import { useListener } from "~/stt/contexts";
 
 function getStoredNoteMarkdown(content: string | undefined) {
   const trimmed = content?.trim() ?? "";
@@ -305,6 +310,7 @@ function HeaderViewEnhanced({
   enhancedNoteId,
   canRemove = false,
   onRemove,
+  onRemoved,
 }: {
   isActive: boolean;
   onClick?: () => void;
@@ -312,47 +318,77 @@ function HeaderViewEnhanced({
   enhancedNoteId: string;
   canRemove?: boolean;
   onRemove?: () => void;
+  onRemoved?: () => void;
 }) {
-  if (!isActive) {
-    return (
-      <HeaderViewEnhancedInactive
-        enhancedNoteId={enhancedNoteId}
-        onClick={onClick}
-      />
-    );
-  }
-
+  const owner = useVaultReadScope();
+  const legacy = useLegacySessionActivity(sessionId);
+  const target = useEnhancedDocumentTarget(sessionId, enhancedNoteId);
+  const [removalOpen, setRemovalOpen] = useState(false);
+  const sharedRemoval =
+    !!owner.scope.client.deleteDocument &&
+    owner.scope.client.canEdit &&
+    owner.connection.state === "connected" &&
+    owner.current() &&
+    target?.kind === "template_output";
   return (
-    <HeaderViewEnhancedActive
-      sessionId={sessionId}
-      enhancedNoteId={enhancedNoteId}
-      canRemove={canRemove}
-      onRemove={onRemove}
-    />
+    <>
+      {!isActive ? (
+        <HeaderViewEnhancedInactive
+          sessionId={sessionId}
+          enhancedNoteId={enhancedNoteId}
+          onClick={onClick}
+        />
+      ) : (
+        <HeaderViewEnhancedActive
+          sessionId={sessionId}
+          enhancedNoteId={enhancedNoteId}
+          canRemove={
+            canRemove &&
+            (sharedRemoval ||
+              legacy.isAvailable("legacy_desktop_session_controls"))
+          }
+          onRemove={() => {
+            if (sharedRemoval) setRemovalOpen(true);
+            else if (legacy.isAvailable("legacy_desktop_session_controls"))
+              onRemove?.();
+          }}
+        />
+      )}
+      {removalOpen && target?.kind === "template_output" && (
+        <DeleteDocumentModal
+          key={JSON.stringify([sessionId, target])}
+          sessionId={sessionId}
+          target={target}
+          onClose={() => setRemovalOpen(false)}
+          onDeleted={() => {
+            setRemovalOpen(false);
+            onRemoved?.();
+          }}
+        />
+      )}
+    </>
   );
 }
 
-function useEnhancedViewTitle(enhancedNoteId: string) {
-  const enhancedNote = useEnhancedNote(enhancedNoteId);
-  return { viewTitle: enhancedNote?.title?.trim() || "Summary" };
-}
-
-function useEnhancedViewGenerating(enhancedNoteId: string) {
-  const taskId = createTaskId(enhancedNoteId, "enhance");
-  const enhanceTask = useAITaskTask(taskId, "enhance");
-
-  return enhanceTask.isGenerating;
+function useEnhancedViewTitle(sessionId: string, enhancedNoteId: string) {
+  const title = useEnhancedNoteTitle(sessionId, enhancedNoteId);
+  return { viewTitle: title?.trim() || "Summary" };
 }
 
 function HeaderViewEnhancedInactive({
+  sessionId,
   onClick = () => {},
   enhancedNoteId,
 }: {
   enhancedNoteId: string;
+  sessionId: string;
   onClick?: () => void;
 }) {
-  const { viewTitle } = useEnhancedViewTitle(enhancedNoteId);
-  const isGenerating = useEnhancedViewGenerating(enhancedNoteId);
+  const { viewTitle } = useEnhancedViewTitle(sessionId, enhancedNoteId);
+  const { isGenerating } = useEnhancedNoteActions({
+    sessionId,
+    enhancedNoteId,
+  });
 
   return (
     <button
@@ -384,13 +420,21 @@ function HeaderViewEnhancedActive({
   canRemove?: boolean;
   onRemove?: () => void;
 }) {
-  const { isGenerating, isError, onRegenerate } = useEnhanceLogic(
-    sessionId,
-    enhancedNoteId,
-  );
+  const {
+    generationUnavailable,
+    canRegenerate,
+    isGenerating,
+    isError,
+    onRegenerate,
+    onCancel,
+  } = useEnhanceLogic(sessionId, enhancedNoteId);
   const hasSource = useSummarySource(sessionId);
-  const content = useEnhancedNote(enhancedNoteId)?.content;
-  const { viewTitle } = useEnhancedViewTitle(enhancedNoteId);
+  const content = useEnhancedNote(
+    enhancedNoteId,
+    undefined,
+    sessionId,
+  )?.content;
+  const { viewTitle } = useEnhancedViewTitle(sessionId, enhancedNoteId);
   const noteMarkdown = useMemo(() => getStoredNoteMarkdown(content), [content]);
 
   const handleCopy = useCallback(() => {
@@ -403,7 +447,8 @@ function HeaderViewEnhancedActive({
     void onRegenerate();
   }, [onRegenerate]);
   const { t } = useLingui();
-  const openSummaryPrompt = useOpenSummaryPrompt();
+  const owner = useVaultReadScope();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const contextMenu = useMemo<MenuItemDef[]>(() => {
     const items: MenuItemDef[] = [
       {
@@ -416,17 +461,30 @@ function HeaderViewEnhancedActive({
       },
       {
         id: `regenerate-enhanced-${enhancedNoteId}`,
-        text: "Regenerate",
+        text: generationUnavailable
+          ? "Regenerate (unsupported by this connection)"
+          : "Regenerate",
         action: handleRegenerate,
-        disabled: isGenerating || !hasSource,
+        disabled: isGenerating || !hasSource || !canRegenerate,
       },
     ];
 
-    items.push({
-      id: "edit-summary-prompt",
-      text: t`Edit summary prompt`,
-      action: openSummaryPrompt,
-    });
+    if (owner.scope.client.features.includes("processing_settings"))
+      items.push({
+        id: "edit-summary-prompt",
+        text: t`Processing settings`,
+        action: () => {
+          if (owner.current()) setSettingsOpen(true);
+        },
+      });
+    if (isGenerating)
+      items.push({
+        id: `cancel-enhanced-${enhancedNoteId}`,
+        text: t`Cancel processing`,
+        action: () => {
+          void onCancel();
+        },
+      });
 
     if (canRemove) {
       items.push({ separator: true });
@@ -434,7 +492,12 @@ function HeaderViewEnhancedActive({
         id: `remove-enhanced-${enhancedNoteId}`,
         text: "Remove",
         action: () => {
-          onRemove?.();
+          if (
+            owner.current() &&
+            owner.scope.getSnapshot().state === "connected" &&
+            owner.scope.client.canEdit
+          )
+            onRemove?.();
         },
         disabled: isGenerating || !onRemove,
       });
@@ -443,10 +506,14 @@ function HeaderViewEnhancedActive({
     return items;
   }, [
     canRemove,
+    canRegenerate,
+    generationUnavailable,
     enhancedNoteId,
     handleCopy,
     handleRegenerate,
-    openSummaryPrompt,
+    owner.scope,
+    owner.current,
+    onCancel,
     t,
     hasSource,
     isGenerating,
@@ -455,38 +522,48 @@ function HeaderViewEnhancedActive({
   ]);
   const showContextMenu = useNativeContextMenu(contextMenu);
   return (
-    <button
-      data-main-area-window-drag-region
-      data-tauri-drag-region="false"
-      type="button"
-      aria-label={viewTitle}
-      aria-current="page"
-      aria-disabled={isGenerating}
-      tabIndex={isGenerating ? -1 : 0}
-      onClick={showContextMenu}
-      onPointerDown={(event) => event.stopPropagation()}
-      onContextMenu={showContextMenu}
-      className={iconHeaderViewClassName(
-        true,
-        "tray",
-        cn([
-          "max-w-56 min-w-[62px] gap-1.5 pr-1.5 pl-2",
-          isGenerating ? "cursor-not-allowed opacity-70" : "cursor-pointer",
-          isError
-            ? [
-                "text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10",
-              ]
-            : [
-                "focus-visible:text-foreground focus-visible:bg-card",
-                "dark:focus-visible:text-foreground dark:focus-visible:bg-accent",
-              ],
-        ]),
+    <>
+      <button
+        data-main-area-window-drag-region
+        data-tauri-drag-region="false"
+        type="button"
+        aria-label={viewTitle}
+        aria-current="page"
+        onClick={showContextMenu}
+        onPointerDown={(event) => event.stopPropagation()}
+        onContextMenu={showContextMenu}
+        className={iconHeaderViewClassName(
+          true,
+          "tray",
+          cn([
+            "max-w-56 min-w-[62px] gap-1.5 pr-1.5 pl-2",
+            "cursor-pointer",
+            isError
+              ? [
+                  "text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10",
+                ]
+              : [
+                  "focus-visible:text-foreground focus-visible:bg-card",
+                  "dark:focus-visible:text-foreground dark:focus-visible:bg-accent",
+                ],
+          ]),
+        )}
+      >
+        {isGenerating ? <Spinner size={14} className="shrink-0" /> : null}
+        <span className="min-w-0 truncate text-xs font-medium">
+          {viewTitle}
+        </span>
+        <ChevronDownIcon className="size-3.5" />
+      </button>
+      {owner.current() && (
+        <VaultProcessingSettings
+          scope={owner.scope}
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          hideTrigger
+        />
       )}
-    >
-      {isGenerating ? <Spinner size={14} className="shrink-0" /> : null}
-      <span className="min-w-0 truncate text-xs font-medium">{viewTitle}</span>
-      <ChevronDownIcon className="size-3.5" />
-    </button>
+    </>
   );
 }
 
@@ -598,20 +675,15 @@ function HeaderViewTranscriptLiveIcon({
 }
 
 function useTranscriptLiveViewState(sessionId: string) {
-  const { amplitude, degraded, mode } = useListener((state) => {
-    const mode = state.getSessionMode(sessionId);
-    return {
-      amplitude: state.live.amplitude,
-      degraded: state.live.degraded,
-      mode,
-    };
+  const { amplitude, degraded, mode } = useLegacySessionActivity(sessionId, {
+    includeAmplitude: true,
   });
   return {
     live:
       mode === "active"
         ? {
             amplitude: Math.min(
-              Math.hypot(amplitude.mic, amplitude.speaker),
+              Math.hypot(amplitude?.mic ?? 0, amplitude?.speaker ?? 0),
               1,
             ),
             degraded: Boolean(degraded),
@@ -620,13 +692,47 @@ function useTranscriptLiveViewState(sessionId: string) {
   };
 }
 
-function HeaderViewTranscriptActive({
+function HeaderViewTranscriptActive(props: {
+  isActive: boolean;
+  isTranscribing: boolean;
+  onClick?: () => void;
+  sessionId: string;
+  live?: { amplitude: number; degraded: boolean };
+}) {
+  const owner = useVaultReadScope();
+  return owner.current() && mediaControlsAvailable(owner.scope) ? (
+    <MediaHeaderViewTranscriptActive {...props} />
+  ) : (
+    <ScopedHeaderViewTranscriptActive {...props} />
+  );
+}
+function MediaHeaderViewTranscriptActive(props: {
+  isActive: boolean;
+  isTranscribing: boolean;
+  onClick?: () => void;
+  sessionId: string;
+  live?: { amplitude: number; degraded: boolean };
+}) {
+  const owner = useVaultReadScope();
+  const assertCurrent = useCallback(() => {
+    if (!owner.current() || !mediaControlsAvailable(owner.scope))
+      throw new Error("Transcript controls are unavailable.");
+  }, [owner.current, owner.scope]);
+  const regenerate = useRegenerateTranscript(props.sessionId, assertCurrent);
+  return (
+    <ScopedHeaderViewTranscriptActive {...props} regenerate={regenerate} />
+  );
+}
+
+function ScopedHeaderViewTranscriptActive({
   isActive,
   isTranscribing,
   onClick,
   sessionId,
   live,
+  regenerate,
 }: {
+  regenerate?: () => Promise<void>;
   isActive: boolean;
   isTranscribing: boolean;
   onClick?: () => void;
@@ -636,7 +742,6 @@ function HeaderViewTranscriptActive({
     degraded: boolean;
   };
 }) {
-  const regenerate = useRegenerateTranscript(sessionId);
   const { request: transcriptExportRequest } =
     useSessionTranscriptRenderData(sessionId);
   const {
@@ -645,7 +750,9 @@ function HeaderViewTranscriptActive({
     deleteRecording,
     isDeletingRecording,
   } = AudioPlayer.useAudioPlayer();
-  const sessionMode = useListener((state) => state.getSessionMode(sessionId));
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
+  const sessionMode = legacy.mode;
   const canCopyTranscript = Boolean(transcriptExportRequest);
   const handleCopyTranscript = useCallback(async () => {
     if (!transcriptExportRequest) {
@@ -685,17 +792,26 @@ function HeaderViewTranscriptActive({
       },
     ];
 
-    if (audioExistsResolved && sessionMode === "inactive" && audioExists) {
+    if (
+      regenerate &&
+      audioExistsResolved &&
+      sessionMode === "inactive" &&
+      audioExists
+    ) {
       items.push({
         id: `regenerate-transcript-${sessionId}`,
         text: "Re-transcribe",
         action: () => {
-          void regenerate();
+          void regenerate().catch(() => {});
         },
       });
     }
 
-    if (audioExists) {
+    if (
+      audioExists &&
+      isAvailable("legacy_desktop_session_controls") &&
+      legacy.activity?.captureState(sessionId) === "idle"
+    ) {
       items.push({
         id: `delete-recording-${sessionId}`,
         text: "Delete recording",
@@ -715,6 +831,8 @@ function HeaderViewTranscriptActive({
     regenerate,
     sessionMode,
     sessionId,
+    isAvailable,
+    legacy.activity,
   ]);
   const showContextMenu = useNativeContextMenu(contextMenu);
 
@@ -743,6 +861,8 @@ export function Header({
   isTranscribing?: boolean;
 }) {
   const { t } = useLingui();
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
   const primaryEnhancedTabId = editorTabs.find(
     (view): view is Extract<EditorView, { type: "enhanced" }> =>
       view.type === "enhanced",
@@ -776,9 +896,28 @@ export function Header({
                     sessionId={sessionId}
                     enhancedNoteId={view.id}
                     canRemove={view.id !== primaryEnhancedTabId}
+                    onRemoved={() => {
+                      const previousView = editorTabs[index - 1];
+                      if (
+                        currentTab.type === "enhanced" &&
+                        currentTab.id === view.id &&
+                        previousView
+                      )
+                        handleTabChange(previousView);
+                    }}
                     onRemove={
                       view.id !== primaryEnhancedTabId
                         ? () => {
+                            if (!isAvailable("legacy_desktop_session_controls"))
+                              return;
+                            const assertCurrent = () => {
+                              if (
+                                !isAvailable("legacy_desktop_session_controls")
+                              )
+                                throw new Error(
+                                  "Session controls are unavailable.",
+                                );
+                            };
                             const previousView = editorTabs[index - 1];
                             if (
                               currentTab.type === "enhanced" &&
@@ -788,14 +927,16 @@ export function Header({
                               handleTabChange(previousView);
                             }
 
-                            void deleteEnhancedNote(view.id, sessionId).catch(
-                              (error) => {
-                                console.error(
-                                  "[session-header] failed to remove summary",
-                                  error,
-                                );
-                              },
-                            );
+                            void deleteEnhancedNote(
+                              view.id,
+                              sessionId,
+                              assertCurrent,
+                            ).catch((error) => {
+                              console.error(
+                                "[session-header] failed to remove summary",
+                                error,
+                              );
+                            });
                           }
                         : undefined
                     }

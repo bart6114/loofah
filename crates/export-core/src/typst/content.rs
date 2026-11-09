@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ExportInput;
+use crate::{ExportInput, ExportLabels};
 
 use super::markdown::markdown_to_typst;
 use super::utils::escape_typst_string;
@@ -63,6 +63,7 @@ fn build_cover_page(
     created_at: &str,
     participants: &[String],
     duration: Option<&str>,
+    labels: &ExportLabels,
 ) -> String {
     let mut cover = String::new();
 
@@ -97,9 +98,10 @@ fn build_cover_page(
 
     if !participants.is_empty() {
         cover.push_str("    #block(fill: light-bg, inset: 12pt, radius: 6pt, width: 80%)[\n");
-        cover.push_str(
-            "      #text(size: 11pt, fill: muted-color)[Participants:]\n      #v(0.5em)\n",
-        );
+        cover.push_str(&format!(
+            "      #text(size: 11pt, fill: muted-color)[{}:]\n      #v(0.5em)\n",
+            escape_typst_string(&labels.participants)
+        ));
         for participant in participants {
             let escaped_participant = escape_typst_string(participant);
             cover.push_str(&format!(
@@ -121,6 +123,13 @@ fn build_cover_page(
 }
 
 pub fn build_typst_content(input: &ExportInput, images: &HashMap<String, String>) -> String {
+    build_typst_content_with_labels(input, images, &ExportLabels::default())
+}
+pub fn build_typst_content_with_labels(
+    input: &ExportInput,
+    images: &HashMap<String, String>,
+    labels: &ExportLabels,
+) -> String {
     let mut content = build_preamble();
 
     if let Some(metadata) = &input.metadata {
@@ -129,6 +138,7 @@ pub fn build_typst_content(input: &ExportInput, images: &HashMap<String, String>
             &metadata.created_at,
             &metadata.participants,
             metadata.duration.as_deref(),
+            labels,
         );
         content.push_str(&cover);
     }
@@ -136,7 +146,7 @@ pub fn build_typst_content(input: &ExportInput, images: &HashMap<String, String>
     if let Some(note_md) = &input.note_md {
         let note_content = markdown_to_typst(note_md, images);
         if !note_content.trim().is_empty() {
-            content.push_str("= Note\n\n");
+            content.push_str(&format!("= {}\n\n", escape_typst_string(&labels.note)));
             content.push_str(&note_content);
             content.push_str("\n\n");
         }
@@ -147,7 +157,7 @@ pub fn build_typst_content(input: &ExportInput, images: &HashMap<String, String>
         if input.note_md.as_ref().is_some_and(|m| !m.trim().is_empty()) {
             content.push_str("\n#pagebreak()\n\n");
         }
-        content.push_str("= Summary\n\n");
+        content.push_str(&format!("= {}\n\n", escape_typst_string(&labels.summary)));
         content.push_str(&typst_content);
     }
 
@@ -160,7 +170,10 @@ pub fn build_typst_content(input: &ExportInput, images: &HashMap<String, String>
         {
             content.push_str("\n#pagebreak()\n\n");
         }
-        content.push_str("= Transcript\n\n");
+        content.push_str(&format!(
+            "= {}\n\n",
+            escape_typst_string(&labels.transcript)
+        ));
 
         for item in &transcript.items {
             let speaker = item.speaker.as_deref().unwrap_or("Unknown");
@@ -174,4 +187,50 @@ pub fn build_typst_content(input: &ExportInput, images: &HashMap<String, String>
     }
 
     content
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+    #[test]
+    fn localized_pdf_labels_are_escaped_and_match_selected_sections() {
+        let labels = ExportLabels {
+            note: "Notitie #title[unsafe]".into(),
+            summary: "Samenvatting".into(),
+            transcript: "Gesprek".into(),
+            participants: "Deelnemers".into(),
+            ..ExportLabels::default()
+        };
+        let input = ExportInput {
+            enhanced_md: "Summary body".into(),
+            note_md: Some("Note body".into()),
+            transcript: Some(crate::Transcript {
+                items: vec![crate::TranscriptItem {
+                    speaker: Some("Alice".into()),
+                    text: "Hello".into(),
+                }],
+            }),
+            metadata: Some(crate::ExportMetadata {
+                title: "Meeting".into(),
+                created_at: "2026-11-08".into(),
+                participants: vec!["Alice".into()],
+                duration: None,
+            }),
+            attachments: vec![],
+        };
+        let content = build_typst_content_with_labels(&input, &HashMap::new(), &labels);
+        for label in [
+            &labels.note,
+            &labels.summary,
+            &labels.transcript,
+            &labels.participants,
+        ] {
+            assert!(content.contains(&escape_typst_string(label)));
+        }
+        assert!(
+            crate::render_pdf_with_labels(&input, &labels)
+                .unwrap()
+                .starts_with(b"%PDF")
+        );
+    }
 }

@@ -280,17 +280,35 @@ export const ListenerProvider = ({
   store: ListenerStore;
 }) => {
   useHandleDetectEvents(store);
-
-  const storeRef = useRef<ListenerStore | null>(null);
-  if (!storeRef.current) {
-    storeRef.current = store;
-  }
-
+  const storeRef = useRef(store);
   return (
-    <ListenerContext.Provider value={storeRef.current}>
+    <ListenerContextProvider store={storeRef.current}>
+      {children}
+    </ListenerContextProvider>
+  );
+};
+
+export function ListenerContextProvider({
+  children,
+  store,
+}: {
+  children: React.ReactNode;
+  store: ListenerStore;
+}) {
+  return (
+    <ListenerContext.Provider value={store}>
       {children}
     </ListenerContext.Provider>
   );
+}
+
+export const useListenerStore = () => {
+  const store = useContext(ListenerContext);
+  if (!store)
+    throw new Error(
+      "'useListenerStore' must be used within a 'ListenerProvider'",
+    );
+  return store;
 };
 
 export const useListener = <T,>(

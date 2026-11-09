@@ -79,34 +79,49 @@ impl SessionStore {
         session_id: &str,
         source_path: &str,
     ) -> Result<String, StoreError> {
+        let store = self.clone();
+        let id = session_id.to_owned();
+        let source = source_path.to_owned();
+        tokio::spawn(async move { store.store_audio_owned(&id, &source).await })
+            .await
+            .map_err(|e| StoreError::Io(format!("audio store worker failed: {e}")))?
+    }
+
+    async fn store_audio_owned(
+        &self,
+        session_id: &str,
+        source_path: &str,
+    ) -> Result<String, StoreError> {
         validate_session_id(session_id)?;
+        let _audio = self.lock_session_audio(session_id).await?;
         let guard = self.lock_writes().await;
         let resolved_dir_abs = self
             .vault_base
             .join(self.session_dir_locked(&guard, session_id).await?);
         let source_path = PathBuf::from(source_path);
 
-        let result = tokio::task::spawn_blocking(move || -> Result<String, StoreError> {
-            let file_name = canonical_audio_file_name(&source_path)?;
-            let dest_dir = resolved_dir_abs;
-            let dest_abs = dest_dir.join(&file_name);
+        let result = self
+            .spawn_blocking(move || -> Result<String, StoreError> {
+                let file_name = canonical_audio_file_name(&source_path)?;
+                let dest_dir = resolved_dir_abs;
+                let dest_abs = dest_dir.join(&file_name);
 
-            if !is_same_file_path(&source_path, &dest_abs) {
-                std::fs::create_dir_all(&dest_dir).map_err(|e| {
-                    StoreError::Io(format!("failed to create session directory: {}", e))
-                })?;
-                move_or_copy_delete(&source_path, &dest_abs, plain_rename)?;
-            }
+                if !is_same_file_path(&source_path, &dest_abs) {
+                    std::fs::create_dir_all(&dest_dir).map_err(|e| {
+                        StoreError::Io(format!("failed to create session directory: {}", e))
+                    })?;
+                    move_or_copy_delete(&source_path, &dest_abs, plain_rename)?;
+                }
 
-            dest_abs
-                .to_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| StoreError::Io("invalid destination path".to_string()))
-        })
-        .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
+                dest_abs
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| StoreError::Io("invalid destination path".to_string()))
+            })
+            .await
+            .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
         if result.is_ok() {
-            self.notify_artifacts_changed(session_id);
+            self.notify_recording_changed(session_id);
         }
         result
     }
@@ -122,7 +137,7 @@ impl SessionStore {
         let session_dir = self.session_dir(session_id).await?;
         let vault_base = self.vault_base.clone();
 
-        tokio::task::spawn_blocking(move || -> Result<Vec<String>, StoreError> {
+        self.spawn_blocking(move || -> Result<Vec<String>, StoreError> {
             let dir = vault_base.join(paths::audio_dir_in(&session_dir));
             let entries = match std::fs::read_dir(&dir) {
                 Ok(entries) => entries,
@@ -155,38 +170,50 @@ impl SessionStore {
     /// Permanently deletes one legacy recording at the user's request.
     /// Unlike `delete_session`, this is not undo-able. Missing file is a no-op.
     pub async fn delete_audio(&self, session_id: &str, filename: &str) -> Result<(), StoreError> {
+        let store = self.clone();
+        let id = session_id.to_owned();
+        let filename = filename.to_owned();
+        tokio::spawn(async move { store.delete_audio_owned(&id, &filename).await })
+            .await
+            .map_err(|e| StoreError::Io(format!("audio deletion worker failed: {e}")))?
+    }
+
+    async fn delete_audio_owned(&self, session_id: &str, filename: &str) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
+        let _audio = self.lock_session_audio(session_id).await?;
+        let _guard = self.lock_writes().await;
         let session_dir = self.session_dir(session_id).await?;
         let vault_base = self.vault_base.clone();
         let filename = filename.to_string();
 
-        let result = tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
-            // `filename` must be a bare file name: callers only ever pass one back from
-            // `list_audio`, but reject path separators/traversal defensively so a bad
-            // filename can't escape the audio directory via this command boundary.
-            if filename.is_empty() || filename.contains(['/', '\\']) || filename == ".." {
-                return Err(StoreError::Io(format!(
-                    "invalid audio filename: {}",
-                    filename
-                )));
-            }
+        let result = self
+            .spawn_blocking(move || -> Result<(), StoreError> {
+                // `filename` must be a bare file name: callers only ever pass one back from
+                // `list_audio`, but reject path separators/traversal defensively so a bad
+                // filename can't escape the audio directory via this command boundary.
+                if filename.is_empty() || filename.contains(['/', '\\']) || filename == ".." {
+                    return Err(StoreError::Io(format!(
+                        "invalid audio filename: {}",
+                        filename
+                    )));
+                }
 
-            let path = vault_base
-                .join(paths::audio_dir_in(&session_dir))
-                .join(&filename);
-            match std::fs::remove_file(&path) {
-                Ok(()) => Ok(()),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                Err(e) => Err(StoreError::Io(format!(
-                    "failed to delete audio file: {}",
-                    e
-                ))),
-            }
-        })
-        .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
+                let path = vault_base
+                    .join(paths::audio_dir_in(&session_dir))
+                    .join(&filename);
+                match std::fs::remove_file(&path) {
+                    Ok(()) => Ok(()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                    Err(e) => Err(StoreError::Io(format!(
+                        "failed to delete audio file: {}",
+                        e
+                    ))),
+                }
+            })
+            .await
+            .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
         if result.is_ok() {
-            self.notify_artifacts_changed(session_id);
+            self.notify_recording_changed(session_id);
         }
         result
     }

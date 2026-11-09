@@ -84,6 +84,9 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, (Vec<u8>, std::time::SystemTime)> 
     ) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
+            if path == root.join(".loofah-vault.lock") {
+                continue;
+            }
             if path.is_dir() {
                 visit(root, &path, result);
             } else {

@@ -1,0 +1,440 @@
+use crate::{
+    CaptureProcessingSummary, LocalMediaSourceSnapshot, LocalMediaStatus, MetadataSnapshot,
+};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaSessionSnapshot {
+    pub metadata: MetadataSnapshot,
+    pub transcript_revision: String,
+    pub transcript_present: bool,
+    pub recording: Option<LocalMediaSourceSnapshot>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaUploadSource {
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaTranscriptionOptions {
+    pub model: String,
+    pub languages: Vec<String>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaImportInitialMetadata {
+    pub title: Option<String>,
+    pub metadata: crate::LocalInitialSessionMetadata,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum MediaOperation {
+    ImportAudio {
+        session_id: Option<String>,
+        expected: Option<MediaSessionSnapshot>,
+        filename: String,
+        content_type: Option<String>,
+        created_at: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        initial: Option<MediaImportInitialMetadata>,
+        transcribe: bool,
+        source: MediaUploadSource,
+    },
+    Transcribe {
+        expected: LocalMediaSourceSnapshot,
+    },
+    ImportSubtitles {
+        session_id: String,
+        expected: MediaSessionSnapshot,
+        filename: String,
+        source: MediaUploadSource,
+    },
+}
+impl MediaOperation {
+    pub fn session_id(&self) -> Option<&str> {
+        match self {
+            Self::ImportAudio { session_id, .. } => session_id.as_deref(),
+            Self::Transcribe { expected } => Some(&expected.session_id),
+            Self::ImportSubtitles { session_id, .. } => Some(session_id),
+        }
+    }
+    pub fn upload(&self) -> Option<(&str, &MediaUploadSource)> {
+        match self {
+            Self::ImportAudio {
+                filename, source, ..
+            }
+            | Self::ImportSubtitles {
+                filename, source, ..
+            } => Some((filename, source)),
+            Self::Transcribe { .. } => None,
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaDeclaration {
+    pub request_id: String,
+    pub operation: MediaOperation,
+    pub transcription: Option<MediaTranscriptionOptions>,
+    pub summary: Option<CaptureProcessingSummary>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaPhase {
+    Receiving,
+    Ready,
+    Running,
+    Review,
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaRequestStatus {
+    pub declaration: MediaDeclaration,
+    pub revision: String,
+    pub phase: MediaPhase,
+    pub media: Option<LocalMediaStatus>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaAdmission {
+    pub declaration: MediaDeclaration,
+    pub revision: String,
+    pub status: MediaRequestStatus,
+}
+pub fn validate_media_declaration(input: &MediaDeclaration) -> Result<(), &'static str> {
+    if !canonical_uuid(&input.request_id) {
+        return Err("Canonical media request UUID required");
+    }
+    let transcribe = match &input.operation {
+        MediaOperation::ImportAudio {
+            session_id,
+            expected,
+            filename,
+            content_type,
+            created_at,
+            initial,
+            transcribe,
+            source,
+        } => {
+            match (session_id, expected) {
+                (None, None) => {}
+                (Some(id), Some(expected)) if id == &expected.metadata.meta.id => {
+                    validate_media_session_snapshot(expected)?
+                }
+                _ => return Err("Original import session baseline required"),
+            }
+            if let Some(initial) = initial {
+                if session_id.is_some() {
+                    return Err("Initial media metadata requires a new session");
+                }
+                crate::validate_initial_session_metadata(&initial.metadata)?;
+                if initial
+                    .title
+                    .as_ref()
+                    .is_some_and(|value| value.len() > 16_384)
+                    || (created_at.is_some()
+                        && initial.metadata.created_at.is_some()
+                        && created_at != &initial.metadata.created_at)
+                {
+                    return Err("Initial media metadata disagrees with its declaration");
+                }
+            }
+            validate_upload(filename, source)?;
+            if content_type.as_ref().is_some_and(|s| !bounded(s, 256))
+                || created_at.as_ref().is_some_and(|s| !bounded(s, 128))
+            {
+                return Err("Invalid media metadata hints");
+            }
+            *transcribe
+        }
+        MediaOperation::Transcribe { expected } => {
+            validate_recording(expected)?;
+            true
+        }
+        MediaOperation::ImportSubtitles {
+            session_id,
+            expected,
+            filename,
+            source,
+        } => {
+            validate_media_session_snapshot(expected)?;
+            if session_id != &expected.metadata.meta.id {
+                return Err("Original subtitle session baseline required");
+            }
+            validate_upload(filename, source)?;
+            let extension = filename.rsplit('.').next().unwrap_or_default();
+            if !(extension.eq_ignore_ascii_case("srt") || extension.eq_ignore_ascii_case("vtt"))
+                || source.size_bytes > 32 * 1024 * 1024
+            {
+                return Err("Invalid or oversized subtitle source");
+            }
+            false
+        }
+    };
+    if transcribe != input.transcription.is_some() {
+        return Err("Freeze transcription options before media admission");
+    }
+    if let Some(options) = &input.transcription {
+        if !bounded(&options.model, 512)
+            || options.languages.len() > 16
+            || options.languages.iter().any(|s| !bounded(s, 64))
+        {
+            return Err("Invalid media transcription options");
+        }
+    }
+    if let Some(CaptureProcessingSummary {
+        target: crate::DocumentTarget::TemplateOutput { document_id },
+        ..
+    }) = &input.summary
+    {
+        crate::validate_session_id(document_id).map_err(|_| "Invalid media summary target")?;
+    }
+    Ok(())
+}
+pub fn validate_media_session_snapshot(value: &MediaSessionSnapshot) -> Result<(), &'static str> {
+    crate::validate_session_id(&value.metadata.meta.id).map_err(|_| "Invalid media session")?;
+    if !crate::is_transcription_sha256(&value.metadata.revision)
+        || !crate::is_transcription_sha256(&value.transcript_revision)
+        || !bounded(&value.metadata.meta.created_at, 128)
+    {
+        return Err("Invalid media source revision");
+    }
+    if let Some(recording) = &value.recording {
+        validate_recording(recording)?;
+        if recording.session_id != value.metadata.meta.id
+            || recording.session_created_at != value.metadata.meta.created_at
+            || recording.transcript_revision != value.transcript_revision
+            || recording.transcript_present != value.transcript_present
+        {
+            return Err("Media source coordinates disagree");
+        }
+    }
+    Ok(())
+}
+fn validate_recording(value: &LocalMediaSourceSnapshot) -> Result<(), &'static str> {
+    crate::validate_session_id(&value.session_id).map_err(|_| "Invalid media session")?;
+    if !bounded(&value.session_created_at, 128)
+        || !crate::is_transcription_sha256(&value.recording_sha256)
+        || !crate::is_transcription_sha256(&value.transcript_revision)
+        || !matches!(
+            value.recording_selection.as_str(),
+            "audio.mp3"
+                | "audio.wav"
+                | "audio.ogg"
+                | "audio/audio.mp3"
+                | "audio/audio.wav"
+                | "audio/audio.ogg"
+        )
+    {
+        return Err("Invalid original recording baseline");
+    }
+    Ok(())
+}
+fn validate_upload(filename: &str, source: &MediaUploadSource) -> Result<(), &'static str> {
+    crate::validate_upload_attachment_request(&crate::UploadAttachmentRequest {
+        filename: filename.into(),
+        sha256: source.sha256.clone(),
+        size_bytes: source.size_bytes,
+    })
+}
+fn bounded(value: &str, limit: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= limit
+        && value.trim() == value
+        && !value.chars().any(char::is_control)
+}
+fn canonical_uuid(value: &str) -> bool {
+    value.len() == 36
+        && value != "00000000-0000-0000-0000-000000000000"
+        && value.bytes().enumerate().all(|(i, c)| {
+            if [8, 13, 18, 23].contains(&i) {
+                c == b'-'
+            } else {
+                c.is_ascii_digit() || (b'a'..=b'f').contains(&c)
+            }
+        })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaSummaryState {
+    PendingMedia,
+    SourceBound,
+    Skipped,
+    Child,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaSummaryStatus {
+    pub request_id: String,
+    pub session_id: String,
+    pub state: MediaSummaryState,
+    pub child_request_id: String,
+    pub job: Option<crate::ProcessingJobSnapshot>,
+    pub reason: Option<String>,
+}
+
+#[cfg(test)]
+mod initial_tests {
+    use super::*;
+    #[test]
+    fn legacy_media_declaration_bytes_remain_unchanged_and_initial_metadata_is_fresh_only() {
+        let value = serde_json::json!({
+            "request_id":"3ee6ab27-391d-47cb-ad40-5c61b57f4181",
+            "operation":{"kind":"import_audio","session_id":null,"expected":null,
+                "filename":"a.wav","content_type":null,"created_at":null,
+                "transcribe":false,"source":{"sha256":"a".repeat(64),"size_bytes":1}},
+            "transcription":null,"summary":null
+        });
+        let mut declaration: MediaDeclaration = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&declaration).unwrap(), value);
+        let MediaOperation::ImportAudio { initial, .. } = &mut declaration.operation else {
+            unreachable!()
+        };
+        *initial = Some(MediaImportInitialMetadata {
+            title: Some("Original title".into()),
+            metadata: crate::LocalInitialSessionMetadata {
+                author: Some("agent".into()),
+                skill: Some("notes".into()),
+                ..Default::default()
+            },
+        });
+        validate_media_declaration(&declaration).unwrap();
+        let MediaOperation::ImportAudio {
+            initial,
+            created_at,
+            ..
+        } = &mut declaration.operation
+        else {
+            unreachable!()
+        };
+        *created_at = Some("2026-11-08T10:00:00Z".into());
+        initial.as_mut().unwrap().metadata.created_at = Some("2026-11-09T10:00:00Z".into());
+        assert!(validate_media_declaration(&declaration).is_err());
+        let MediaOperation::ImportAudio { initial, .. } = &mut declaration.operation else {
+            unreachable!()
+        };
+        initial.as_mut().unwrap().metadata.created_at = None;
+        initial.as_mut().unwrap().metadata.author = None;
+        assert!(validate_media_declaration(&declaration).is_err());
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaSourceDisposition {
+    Exported,
+    Discard,
+    NoUpload,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaRetirementRequest {
+    pub retirement_id: String,
+    pub expected_revision: String,
+    pub expected_declaration_sha256: String,
+    pub expected_source: Option<MediaUploadSource>,
+    pub disposition: MediaSourceDisposition,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaRetirementState {
+    Eligible,
+    Blocked,
+    Retiring,
+    Retired,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaRetirementStatus {
+    pub request_id: String,
+    pub revision: String,
+    pub declaration_sha256: String,
+    pub source: Option<MediaUploadSource>,
+    pub state: MediaRetirementState,
+    pub retirement: Option<MediaRetirementRequest>,
+    pub reason: Option<String>,
+    pub quota_released: bool,
+    pub allowed_dispositions: Vec<MediaSourceDisposition>,
+}
+
+pub fn validate_media_retirement_request(
+    input: &MediaRetirementRequest,
+) -> Result<(), &'static str> {
+    if !canonical_uuid(&input.retirement_id)
+        || !canonical_uuid(&input.expected_revision)
+        || !crate::is_transcription_sha256(&input.expected_declaration_sha256)
+        || input.expected_source.as_ref().is_some_and(|source| {
+            source.size_bytes == 0 || !crate::is_transcription_sha256(&source.sha256)
+        })
+        || (input.expected_source.is_none()
+            != (input.disposition == MediaSourceDisposition::NoUpload))
+    {
+        return Err("Invalid original media retirement identity");
+    }
+    Ok(())
+}
+
+pub fn media_declaration_sha256(input: &MediaDeclaration) -> Result<String, &'static str> {
+    use sha2::{Digest, Sha256};
+    validate_media_declaration(input)?;
+    let bytes = serde_json::to_vec(input).map_err(|_| "Invalid media declaration")?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("Media declaration exceeds its budget");
+    }
+    let mut hash = Sha256::new();
+    hash.update(b"loofah-media-declaration-v1\0");
+    hash.update(bytes);
+    Ok(hash
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+#[cfg(test)]
+mod retirement_tests {
+    use super::*;
+    #[test]
+    fn media_retirement_binds_original_declaration_revision_and_explicit_disposition() {
+        let mut declaration: MediaDeclaration = serde_json::from_value(serde_json::json!({
+            "request_id":"3ee6ab27-391d-47cb-ad40-5c61b57f4181",
+            "operation":{"kind":"import_audio","session_id":null,"expected":null,
+                "filename":"a.wav","content_type":null,"created_at":null,
+                "transcribe":false,"source":{"sha256":"a".repeat(64),"size_bytes":1}},
+            "transcription":null,"summary":null
+        }))
+        .unwrap();
+        let hash = media_declaration_sha256(&declaration).unwrap();
+        let roundtrip = serde_json::from_slice(&serde_json::to_vec(&declaration).unwrap()).unwrap();
+        assert_eq!(hash, media_declaration_sha256(&roundtrip).unwrap());
+        declaration.request_id = "2ee6ab27-391d-47cb-ad40-5c61b57f4181".into();
+        assert_ne!(hash, media_declaration_sha256(&declaration).unwrap());
+        let mut request = MediaRetirementRequest {
+            retirement_id: "1ee6ab27-391d-47cb-ad40-5c61b57f4181".into(),
+            expected_revision: "4ee6ab27-391d-47cb-ad40-5c61b57f4181".into(),
+            expected_declaration_sha256: hash,
+            expected_source: Some(MediaUploadSource {
+                sha256: "a".repeat(64),
+                size_bytes: 1,
+            }),
+            disposition: MediaSourceDisposition::Exported,
+        };
+        validate_media_retirement_request(&request).unwrap();
+        request.disposition = MediaSourceDisposition::NoUpload;
+        assert!(validate_media_retirement_request(&request).is_err());
+        request.expected_source = None;
+        validate_media_retirement_request(&request).unwrap();
+        request.retirement_id = "00000000-0000-0000-0000-000000000000".into();
+        assert!(validate_media_retirement_request(&request).is_err());
+    }
+}

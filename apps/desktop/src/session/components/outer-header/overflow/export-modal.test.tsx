@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -9,225 +8,148 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+import { createRenderCacheHost } from "../../note-input/transcript/render-cache.test-support";
 import { ExportModal } from "./export-modal";
 
 const mocks = vi.hoisted(() => ({
-  read: vi.fn(),
-  render: vi.fn(),
   export: vi.fn(),
-  download: vi.fn(),
+  reveal: vi.fn(),
+  target: vi.fn(),
 }));
-vi.mock("~/types/tauri.gen", () => ({
-  commands: {
-    sessionTranscripts: mocks.read,
-    sessionTranscriptMetadata: async () => ({
-      status: "ok",
-      data: { speaker_labels: [], started_at: 0, ended_at: 60000 },
-    }),
-  },
-  events: { indexChanged: { listen: async () => () => {} } },
-}));
+vi.mock("~/types/tauri.gen", () => ({ commands: {}, events: {} }));
 vi.mock("~/session/queries", () => ({
-  useSession: () => ({
-    title: "Meeting",
-    created_at: "2026-01-01",
-    raw_md: "",
-  }),
-  useEnhancedNote: () => null,
-}));
-vi.mock("~/people/queries", () => ({ usePeople: () => [] }));
-vi.mock("@hypr/plugin-transcription", () => ({
-  commands: { renderTranscriptSegments: mocks.render },
-}));
-vi.mock("@hypr/plugin-export", () => ({
-  commands: { export: mocks.export, exportText: mocks.export },
-}));
-vi.mock("@hypr/plugin-fs-sync", () => ({
-  commands: { attachmentList: async () => ({ status: "ok", data: [] }) },
+  useEnhancedDocumentTarget: mocks.target,
 }));
 vi.mock("@hypr/plugin-opener2", () => ({
-  commands: { revealItemInDir: vi.fn() },
-}));
-vi.mock("@tauri-apps/api/path", () => ({
-  downloadDir: mocks.download,
-  join: async (...parts: string[]) => parts.join("/"),
+  commands: { revealItemInDir: mocks.reveal },
 }));
 
-const transcript = {
-  id: "t1",
-  session_id: "s1",
-  user_id: "self",
-  started_at: 0,
-  words: [{ id: "w1", text: "hello", start_ms: 0, end_ms: 100, channel: 0 }],
-  speaker_hints: [],
-};
-let client: QueryClient;
+let host: ReturnType<typeof createRenderCacheHost>;
 beforeEach(() => {
-  vi.clearAllMocks();
-  client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  vi.resetAllMocks();
+  host = createRenderCacheHost("scope:export", "always", {
+    features: ["agent_read"],
+    exportSession: mocks.export,
   });
-  mocks.read.mockResolvedValue({ status: "ok", data: [transcript] });
-  mocks.render.mockResolvedValue({
-    status: "ok",
-    data: [
-      {
-        text: "hello",
-        speaker_label: "You",
-        start_ms: 0,
-        end_ms: 100,
-        words: [],
-      },
-    ],
-  });
-  mocks.download.mockResolvedValue("/downloads");
-  mocks.export.mockResolvedValue({ status: "ok", data: null });
+  mocks.target.mockReturnValue({ kind: "summary" });
+  mocks.export.mockResolvedValue({ path: "/downloads/Loofah/owned.pdf" });
+  mocks.reveal.mockResolvedValue({ status: "ok", data: null });
 });
 afterEach(() => {
   cleanup();
-  client.clear();
-  vi.useRealTimers();
+  host.dispose();
 });
-
-function setup() {
-  const onOpenChange = vi.fn();
+function setup(
+  view: { type: "raw" } | { type: "enhanced"; id: string } = { type: "raw" },
+) {
+  const changed = vi.fn();
   const content = (open: boolean) => (
-    <QueryClientProvider client={client}>
+    <host.Host>
       <ExportModal
         sessionId="s1"
-        currentView={{ type: "raw" }}
+        currentView={view}
         open={open}
-        onOpenChange={onOpenChange}
+        onOpenChange={changed}
       />
-    </QueryClientProvider>
+    </host.Host>
   );
-  const view = render(content(true));
-  return { ...view, setOpen: (open: boolean) => view.rerender(content(open)) };
+  const rendered = render(content(true));
+  return {
+    ...rendered,
+    changed,
+    setOpen: (open: boolean) => rendered.rerender(content(open)),
+  };
 }
 
-it("exports duration without loading words, and only subscribes to words while selected and open", async () => {
-  const view = setup();
-  await waitFor(() =>
-    expect(
-      (screen.getByRole("button", { name: "Export" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false),
-  );
-  expect(mocks.read).not.toHaveBeenCalled();
+it("delegates selected saved sections and localized labels to the original scoped exporter", async () => {
+  const value = setup();
+  fireEvent.click(screen.getByLabelText("MD"));
+  fireEvent.click(screen.getByLabelText("Transcript"));
   fireEvent.click(screen.getByRole("button", { name: "Export" }));
-  await waitFor(() => expect(mocks.export).toHaveBeenCalled());
-  expect(mocks.export.mock.calls[0][1].metadata.duration).toBe("1m");
-  fireEvent.click(screen.getByLabelText("Transcript"));
-  await waitFor(() => expect(mocks.render).toHaveBeenCalledTimes(1));
-  await waitFor(() =>
-    expect(screen.queryByText("Preparing transcript...")).toBeNull(),
+  await waitFor(() => expect(mocks.export).toHaveBeenCalledTimes(1));
+  expect(mocks.export).toHaveBeenCalledWith(
+    {
+      session_id: "s1",
+      target: { kind: "summary" },
+      format: "md",
+      include_note: true,
+      include_summary: true,
+      include_transcript: true,
+      labels: {
+        untitled: "Untitled",
+        created: "Created",
+        participants: "Participants",
+        duration: "Duration",
+        metadata: "Metadata",
+        note: "Note",
+        summary: "Summary",
+        transcript: "Transcript",
+      },
+    },
+    expect.objectContaining({
+      requestId: expect.any(String),
+      signal: expect.any(AbortSignal),
+    }),
   );
-  const raw = client
-    .getQueryCache()
-    .find({ queryKey: ["session-transcripts", "s1"] })!;
-  const rendered = client
-    .getQueryCache()
-    .findAll({ queryKey: ["transcript-export-segments", "s1"] })
-    .find((query) => query.state.data !== undefined)!;
-  expect(raw.getObserversCount()).toBe(1);
-  fireEvent.click(screen.getByLabelText("Transcript"));
-  expect(raw.getObserversCount()).toBe(0);
-  expect(rendered.getObserversCount()).toBe(0);
-  fireEvent.click(screen.getByLabelText("Transcript"));
-  view.setOpen(false);
-  expect(raw.getObserversCount()).toBe(0);
-  expect(rendered.getObserversCount()).toBe(0);
-  view.setOpen(true);
-  expect(
-    (screen.getByLabelText("Transcript") as HTMLInputElement).checked,
-  ).toBe(true);
-  expect(mocks.read).toHaveBeenCalledTimes(1);
-  expect(mocks.render).toHaveBeenCalledTimes(1);
-  view.setOpen(false);
-  vi.useFakeTimers();
-  // Remount under fake timers so the expiry timer is deterministic.
-  view.setOpen(true);
-  view.setOpen(false);
-  await act(() => vi.advanceTimersByTimeAsync(300001));
-  expect(
-    client.getQueryCache().find({ queryKey: ["session-transcripts", "s1"] }),
-  ).toBeUndefined();
-  expect(
-    client
-      .getQueryCache()
-      .findAll({ queryKey: ["transcript-export-segments", "s1"] })
-      .filter((query) => query.state.data !== undefined),
-  ).toHaveLength(0);
+  await waitFor(() => expect(value.changed).toHaveBeenCalledWith(false));
+  expect(mocks.reveal).toHaveBeenCalledWith("/downloads/Loofah/owned.pdf");
 });
 
-it("keeps preparation pending across both fetch stages and retries a failed read", async () => {
-  let resolveRead!: (value: unknown) => void;
-  let resolveRender!: (value: unknown) => void;
-  mocks.read.mockReturnValueOnce(
-    new Promise((resolve) => {
-      resolveRead = resolve;
-    }),
+it("preserves an explicitly selected template output", async () => {
+  mocks.target.mockReturnValue({
+    kind: "template_output",
+    document_id: "template-id",
+  });
+  setup({ type: "enhanced", id: "template-id" });
+  fireEvent.click(screen.getByRole("button", { name: "Export" }));
+  await waitFor(() => expect(mocks.export).toHaveBeenCalled());
+  expect(mocks.export.mock.calls[0][0].target).toEqual({
+    kind: "template_output",
+    document_id: "template-id",
+  });
+});
+
+it("refuses an unidentifiable selected output without choosing another document", () => {
+  mocks.target.mockReturnValue(null);
+  setup({ type: "enhanced", id: "missing" });
+  expect(
+    (screen.getByRole("button", { name: "Export" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(screen.getByRole("alert").textContent).toContain(
+    "cannot be identified safely",
   );
-  mocks.render.mockReturnValueOnce(
-    new Promise((resolve) => {
-      resolveRender = resolve;
-    }),
+  expect(mocks.export).not.toHaveBeenCalled();
+});
+
+it("does not repeat a failed export and retains the selected options for explicit retry", async () => {
+  mocks.export.mockRejectedValueOnce(
+    new Error("Export could not be confirmed"),
   );
   setup();
-  fireEvent.click(screen.getByLabelText("Transcript"));
-  await waitFor(() => expect(mocks.read).toHaveBeenCalled());
-  expect(
-    screen
-      .getByRole("button", { name: "Preparing transcript..." })
-      .hasAttribute("disabled"),
-  ).toBe(true);
-  await act(async () => resolveRead({ status: "error", error: "unavailable" }));
-  await waitFor(() =>
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Couldn't prepare export",
-    ),
-  );
-  expect(
-    screen.getByRole("button", { name: "Export" }).hasAttribute("disabled"),
-  ).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  await waitFor(() => expect(mocks.render).toHaveBeenCalled());
-  expect(
-    screen
-      .getByRole("button", { name: "Preparing transcript..." })
-      .hasAttribute("disabled"),
-  ).toBe(true);
-  await act(async () => resolveRender({ status: "ok", data: [] }));
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Export" }).hasAttribute("disabled"),
-    ).toBe(false),
-  );
+  fireEvent.click(screen.getByLabelText("ORG"));
+  fireEvent.click(screen.getByRole("button", { name: "Export" }));
+  await screen.findByText("Export could not be confirmed");
+  expect(mocks.export).toHaveBeenCalledTimes(1);
+  expect((screen.getByLabelText("ORG") as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Export" }));
+  await waitFor(() => expect(mocks.export).toHaveBeenCalledTimes(2));
 });
 
-it("finishes an immutable export snapshot after closing the dialog", async () => {
-  let resolveDownload!: (value: string) => void;
-  mocks.download.mockReturnValueOnce(
+it("cancels the captured request on close and never reveals a late result", async () => {
+  let release!: (value: { path: string }) => void;
+  mocks.export.mockReturnValue(
     new Promise((resolve) => {
-      resolveDownload = resolve;
+      release = resolve;
     }),
   );
-  const view = setup();
-  fireEvent.click(screen.getByLabelText("Transcript"));
-  await waitFor(() => expect(mocks.render).toHaveBeenCalled());
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Export" }).hasAttribute("disabled"),
-    ).toBe(false),
-  );
+  const value = setup();
   fireEvent.click(screen.getByRole("button", { name: "Export" }));
-  await waitFor(() => expect(mocks.download).toHaveBeenCalled());
-  fireEvent.click(screen.getByLabelText("Transcript"));
-  view.setOpen(false);
-  await act(async () => resolveDownload("/downloads"));
   await waitFor(() => expect(mocks.export).toHaveBeenCalled());
-  expect(mocks.export.mock.calls[0][1].transcript.items[0].text).toBe("hello");
-  await waitFor(() =>
-    expect(client.getMutationCache().getAll()).toHaveLength(0),
-  );
+  const signal = mocks.export.mock.calls[0][1].signal as AbortSignal;
+  value.setOpen(false);
+  expect(signal.aborted).toBe(true);
+  await act(async () => release({ path: "/downloads/old.pdf" }));
+  expect(mocks.reveal).not.toHaveBeenCalled();
+  expect(value.changed).not.toHaveBeenCalled();
 });

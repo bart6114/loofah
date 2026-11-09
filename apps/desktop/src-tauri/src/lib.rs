@@ -1,18 +1,36 @@
 mod appearance;
+mod application;
+mod application_export;
+mod application_recording_processing;
+mod application_transcription;
+mod attachment_upload;
 mod autostart;
 mod chatgpt;
 mod commands;
+mod desktop_profiles;
+mod device_capture;
+mod device_recordings;
+mod device_vault_state;
+mod draft_cache;
 mod embedded_cli;
 mod ext;
 mod identifier_migration;
+mod job_submissions;
 mod legacy_db;
 mod legacy_llm;
-mod recording_meta;
+mod local_capture;
+mod local_media;
+mod local_owner;
+mod local_transcription;
+mod processing;
+mod remote;
 mod search_index;
+mod session_lifecycle;
 mod session_store;
 mod startup;
 mod store;
 mod supervisor;
+mod transcription_submissions;
 mod vault_watch;
 
 use ext::*;
@@ -106,6 +124,25 @@ static FOCUS_RESCAN_LAST: std::sync::Mutex<Option<std::time::Instant>> =
 fn on_window_event(window: &tauri::Window<tauri::Wry>, event: &tauri::WindowEvent) {
     tauri_plugin_windows::on_window_event(window, event);
 
+    if matches!(event, tauri::WindowEvent::Destroyed) {
+        window
+            .app_handle()
+            .state::<application_export::SessionExportState>()
+            .release_window(window.label());
+        window
+            .app_handle()
+            .state::<attachment_upload::DeviceUploadIo>()
+            .release_window(window.label());
+        window
+            .app_handle()
+            .state::<device_recordings::DeviceRecordingState>()
+            .release_window(window.label());
+        window
+            .app_handle()
+            .state::<remote::RemoteState>()
+            .release_window(window.label());
+    }
+
     if !matches!(event, tauri::WindowEvent::Focused(true)) {
         return;
     }
@@ -186,8 +223,48 @@ pub async fn main() {
     legacy_db::retire_app_db(&context.config().identifier);
 
     let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default())
+        .on_page_load(|webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                if let Some(state) = webview
+                    .app_handle()
+                    .try_state::<application_export::SessionExportState>()
+                {
+                    state.release_window(webview.window().label());
+                }
+            }
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+                && let Some(io) = webview
+                    .app_handle()
+                    .try_state::<attachment_upload::DeviceUploadIo>()
+            {
+                io.release_window(webview.window().label());
+            }
+        })
         .manage(audio)
-        .manage(chatgpt::ChatgptState::default());
+        .manage(chatgpt::ChatgptState::default())
+        .manage(processing::ProcessingState::default())
+        .manage(local_transcription::LocalTranscriptionState::default())
+        .manage(std::sync::Arc::new(
+            local_capture::LocalCaptureState::default(),
+        ))
+        .manage(local_media::LocalMediaState::default())
+        .manage(application_export::SessionExportState::default())
+        .manage(local_owner::LocalOwnerState::default())
+        .manage(job_submissions::JobSubmissionState::default())
+        .manage(transcription_submissions::TranscriptionSubmissionState::default())
+        .manage(remote::media_jobs::MediaJobState::default())
+        .manage(device_vault_state::DeviceVaultState::default())
+        .manage(remote::RemoteState::default())
+        .manage(device_recordings::DeviceRecordingState::default())
+        .manage(attachment_upload::DeviceUploadIo::default())
+        .register_asynchronous_uri_scheme_protocol("loofah-media", |context, request, responder| {
+            let app = context.app_handle().clone();
+            let label = context.webview_label().to_owned();
+            tauri::async_runtime::spawn(async move {
+                responder.respond(remote::media_response(&app, &label, request).await);
+            });
+        })
+        .manage(draft_cache::DraftCacheState::default());
 
     // https://docs.crabnebula.dev/plugins/tauri-e2e-tests/#macos-support
     #[cfg(all(target_os = "macos", feature = "automation"))]
@@ -269,7 +346,7 @@ pub async fn main() {
         builder = builder.plugin(plugin);
     }
 
-    let specta_builder = make_specta_builder::<tauri::Wry>();
+    let specta_builder = make_specta_builder();
 
     let root_supervisor_ctx_for_run = root_supervisor_ctx.clone();
 
@@ -281,6 +358,9 @@ pub async fn main() {
 
             autostart::migrate(&app_handle);
 
+            if app_handle
+                .state::<tauri_plugin_settings::DesktopBootstrap>()
+                .is_local()
             {
                 use tauri_plugin_settings::SettingsPluginExt;
                 let global_base = app_handle.settings().global_base()?;
@@ -323,33 +403,82 @@ pub async fn main() {
                 });
             }
 
+            if app_handle
+                .state::<tauri_plugin_settings::DesktopBootstrap>()
+                .is_local()
             {
                 use tauri_plugin_settings::SettingsPluginExt;
                 match app_handle.settings().vault_base() {
                     Ok(base) => {
-                        let startup = startup::StartupState::new(Some(base.as_std_path()));
-                        app_handle.manage(startup);
-                        let store = std::sync::Arc::new(session_store::SessionStore::new(
-                            base.as_std_path().to_path_buf(),
-                        ));
+                        let startup = startup::state(&app_handle, Some(base.as_std_path()));
+                        app_handle.manage(startup.clone());
+                        let store =
+                            std::sync::Arc::new(session_store::SessionStore::with_content_limits(
+                                base.as_std_path().to_path_buf(),
+                                hypr_vault_write::ContentLimits::unlimited(),
+                            ));
                         store.set_startup_pending(true);
                         app_handle.manage(store.clone());
-
-                        search_index::spawn(app_handle.clone(), store.clone());
-                        session_store::spawn_dispatcher(app_handle.clone());
-                        startup::spawn(app_handle.clone(), store);
+                        let prepared = (|| -> Result<_, Box<dyn std::error::Error>> {
+                            let lease = app_handle
+                                .state::<tauri_plugin_settings::LocalVaultLease>()
+                                .0
+                                .clone();
+                            let vault_key = hypr_storage::vault::canonical_vault_key(lease.canonical_vault());
+                            let data = dirs::data_local_dir().ok_or_else(|| std::io::Error::other("Local application storage is unavailable"))?;
+                            let application = app_handle.path().app_local_data_dir()?;
+                            let operation_root = hypr_storage::vault::local_operation_root(&lease, &data, Some(&application))?;
+                            Ok(std::sync::Arc::new(
+                                hypr_loofah_core::VaultContext::new(
+                                    format!("local:{vault_key}"),
+                                    store.clone(),
+                                    startup.clone(),
+                                    app_handle
+                                        .state::<std::sync::Arc<tauri_plugin_settings::ConfigState>>()
+                                        .inner()
+                                        .clone(),
+                                    app_handle
+                                        .state::<tauri_plugin_tantivy::IndexState>()
+                                        .service
+                                        .clone(),
+                                )
+                                .with_operation_storage(operation_root)
+                                .with_vault_lease(lease)?,
+                            ))
+                        })();
+                        match prepared {
+                            Ok(context) => {
+                                application::forward_changes(&app_handle, &context);
+                                app_handle.manage(hypr_loofah_core::local_session_work::LocalSessionWorkRegistry::new(context.clone()));
+                                if let Err(error) = local_owner::configure_lifecycle(&app_handle, &context) {
+                                    tracing::error!(%error, "Local session lifecycle remains unavailable");
+                                }
+                                if let Err(error) = local_capture::configure(&app_handle, &context) {
+                                    tracing::error!(%error, "Local capture persistence remains unavailable");
+                                }
+                                app_handle.manage(context);
+                                search_index::spawn(app_handle.clone(), store.clone());
+                                session_store::spawn_dispatcher(app_handle.clone());
+                                startup::spawn(app_handle.clone(), store);
+                            }
+                            Err(error) => {
+                                tracing::error!(%error, "local backend preparation failed");
+                                startup.set_phase(startup::StartupPhase::Failed { message: error.to_string() });
+                            }
+                        }
                     }
                     Err(error) => {
-                        let startup = startup::StartupState::new(None);
+                        let startup = startup::state(&app_handle, None);
                         app_handle.manage(startup.clone());
-                        startup.update(
-                            &app_handle,
-                            startup::StartupPhase::Failed {
-                                message: error.to_string(),
-                            },
-                        );
+                        startup.set_phase(startup::StartupPhase::Failed {
+                            message: error.to_string(),
+                        });
                     }
                 }
+            } else {
+                let startup = startup::state(&app_handle, None);
+                startup.set_phase(startup::StartupPhase::Ready);
+                app_handle.manage(startup);
             }
 
             if let (Some(ctx), Some(handle)) = (&root_supervisor_ctx, root_supervisor_handle) {
@@ -419,7 +548,48 @@ pub async fn main() {
                 return;
             }
 
+            app.state::<local_media::LocalMediaState>()
+                .request_shutdown();
+            app.state::<application_export::SessionExportState>()
+                .request_shutdown();
+            app.state::<local_transcription::LocalTranscriptionState>()
+                .request_shutdown();
+            app.state::<std::sync::Arc<local_capture::LocalCaptureState>>()
+                .request_shutdown();
+            let remote = app.state::<remote::RemoteState>();
+            remote.stop_note_windows();
+            let device = app.state::<device_recordings::DeviceRecordingState>();
+            device.request_shutdown();
+            let owner = app.state::<local_owner::LocalOwnerState>();
+            owner.request_shutdown();
+            if app
+                .state::<std::sync::Arc<local_capture::LocalCaptureState>>()
+                .initialized()
+                || device.initialized()
+                || remote.note_windows_initialized()
+                || owner.initialized()
+                || app.state::<local_media::LocalMediaState>().initialized()
+                || app
+                    .state::<application_export::SessionExportState>()
+                    .pending()
+                || app
+                    .state::<local_transcription::LocalTranscriptionState>()
+                    .initialized()
+            {
+                api.prevent_exit();
+                let _ = app.emit("device-recording-exit-pending", ());
+                if should_force_quit() || app.emit_to("main", APP_EXIT_REQUESTED_EVENT, ()).is_err()
+                {
+                    device_recordings::begin_exit(app.clone());
+                } else {
+                    device_recordings::allow_frontend_exit_flush(app);
+                }
+                return;
+            }
+
             if should_force_quit() {
+                app.state::<processing::ProcessingState>()
+                    .request_shutdown();
                 // Force-quit (macOS Cmd+Q intercept) is real user intent to exit now, but
                 // the debounce buffer may still hold the only copy of recent words -- the
                 // original transcript-loss incident. Bounded best-effort flush, then let
@@ -431,6 +601,8 @@ pub async fn main() {
 
             api.prevent_exit();
             if app.emit_to("main", APP_EXIT_REQUESTED_EVENT, ()).is_err() {
+                app.state::<processing::ProcessingState>()
+                    .request_shutdown();
                 // The frontend never received the event, so complete_app_exit (and its
                 // flush_all) will never run -- flush here rather than exit with a dirty
                 // transcript buffer.
@@ -440,7 +612,21 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            app.state::<std::sync::Arc<local_capture::LocalCaptureState>>()
+                .request_shutdown();
+            app.state::<local_media::LocalMediaState>()
+                .request_shutdown();
+            app.state::<local_transcription::LocalTranscriptionState>()
+                .request_shutdown();
+            app.state::<local_owner::LocalOwnerState>()
+                .request_shutdown();
+            app.state::<device_recordings::DeviceRecordingState>()
+                .request_shutdown();
+            app.state::<processing::ProcessingState>()
+                .request_shutdown();
             app.state::<chatgpt::ChatgptState>().shutdown();
+            app.state::<remote::RemoteState>().shutdown();
+            app.state::<attachment_upload::DeviceUploadIo>().shutdown();
             // Last resort for any platform path where Exit fires without the
             // ExitRequested/complete_app_exit flush having run. flush_all is a no-op when
             // nothing is dirty, so this can never double-write.
@@ -521,9 +707,164 @@ fn get_onboarding_flag() -> Option<bool> {
         })
 }
 
-fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
-    tauri_specta::Builder::<R>::new()
+fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
+            draft_cache::draft_cache_get::<tauri::Wry>,
+            draft_cache::draft_cache_inventory::<tauri::Wry>,
+            draft_cache::draft_cache_all_inventory::<tauri::Wry>,
+            draft_cache::draft_cache_recovery::<tauri::Wry>,
+            draft_cache::draft_cache_put::<tauri::Wry>,
+            draft_cache::draft_cache_remove::<tauri::Wry>,
+            application_export::application_export_session::<tauri::Wry>,
+            application_export::remote_export_session::<tauri::Wry>,
+            application_export::session_export_cancel::<tauri::Wry>,
+            application_export::session_export_owner::<tauri::Wry>,
+            application::application_scope::<tauri::Wry>,
+            application::application_processing_available::<tauri::Wry>,
+            local_media::commands::application_local_media_available::<tauri::Wry>,
+            local_media::commands::application_local_media_source::<tauri::Wry>,
+            local_media::commands::application_local_media_import_audio::<tauri::Wry>,
+            local_media::commands::application_local_media_transcribe::<tauri::Wry>,
+            local_media::commands::application_local_media_import_subtitles::<tauri::Wry>,
+            local_media::commands::application_local_media_list::<tauri::Wry>,
+            local_media::commands::application_local_media_status::<tauri::Wry>,
+            local_media::commands::application_local_media_result::<tauri::Wry>,
+            local_media::commands::application_local_media_cancel::<tauri::Wry>,
+            local_media::commands::application_local_media_recover::<tauri::Wry>,
+            local_media::commands::application_local_media_summary_status::<tauri::Wry>,
+            application_recording_processing::application_recording_processing_available::<tauri::Wry>,
+            application_recording_processing::application_recording_processing_list::<tauri::Wry>,
+            application_recording_processing::application_recording_processing_status::<tauri::Wry>,
+            application_recording_processing::application_recover_recording_processing::<tauri::Wry>,
+            application_recording_processing::application_recording_processing_controls::<tauri::Wry>,
+            application_recording_processing::application_recording_processing_history::<tauri::Wry>,
+            application_recording_processing::application_cancel_recording_processing::<tauri::Wry>,
+            application_recording_processing::application_resolve_recording_processing::<tauri::Wry>,
+            application_transcription::application_transcription_available::<tauri::Wry>,
+            application_transcription::application_transcription_policy::<tauri::Wry>,
+            application_transcription::application_submit_transcription::<tauri::Wry>,
+            application_transcription::application_transcription_jobs::<tauri::Wry>,
+            application_transcription::application_transcription_job::<tauri::Wry>,
+            application_transcription::application_transcription_job_result::<tauri::Wry>,
+            application_transcription::application_cancel_transcription_job::<tauri::Wry>,
+            application_transcription::application_resume_transcription_result::<tauri::Wry>,
+
+            application::application_processing_policy::<tauri::Wry>,
+            application::application_processing_settings::<tauri::Wry>,
+            application::application_save_processing_settings::<tauri::Wry>,
+            application::application_submit_summary_job::<tauri::Wry>,
+            application::application_processing_jobs::<tauri::Wry>,
+            application::application_processing_job::<tauri::Wry>,
+            application::application_processing_job_result::<tauri::Wry>,
+            application::application_processing_job_preview::<tauri::Wry>,
+            application::application_cancel_processing_job::<tauri::Wry>,
+            job_submissions::device_job_submission_prepare::<tauri::Wry>,
+            transcription_submissions::device_transcription_submission_prepare::<tauri::Wry>,
+            transcription_submissions::device_transcription_submission_get::<tauri::Wry>,
+            transcription_submissions::device_transcription_submissions::<tauri::Wry>,
+            transcription_submissions::device_transcription_submission_observe::<tauri::Wry>,
+            transcription_submissions::device_transcription_submission_forget::<tauri::Wry>,
+            job_submissions::device_job_submission_get::<tauri::Wry>,
+            job_submissions::device_job_submissions::<tauri::Wry>,
+            job_submissions::device_job_submission_observe::<tauri::Wry>,
+            job_submissions::device_job_submission_forget::<tauri::Wry>,
+            device_vault_state::device_recent_sessions::<tauri::Wry>,
+            device_vault_state::device_remember_session::<tauri::Wry>,
+            device_vault_state::device_pinned_tabs::<tauri::Wry>,
+            device_vault_state::device_set_pinned_tabs::<tauri::Wry>,
+            application::application_timeline_headers::<tauri::Wry>,
+            application::application_timeline_facets::<tauri::Wry>,
+            application::application_sessions::<tauri::Wry>,
+            application::application_delete_empty_session::<tauri::Wry>,
+            session_lifecycle::application_session_lifecycle::<tauri::Wry>,
+            session_lifecycle::application_delete_session::<tauri::Wry>,
+            session_lifecycle::application_restore_session::<tauri::Wry>,
+            session_lifecycle::application_finish_local_session_work::<tauri::Wry>,
+            application::application_session_summaries::<tauri::Wry>,
+            application::application_transcript_overview::<tauri::Wry>,
+            application::application_transcript_editor::<tauri::Wry>,
+            application::application_assign_transcript_speakers::<tauri::Wry>,
+            application::application_ensure_person::<tauri::Wry>,
+            application::application_documents::<tauri::Wry>,
+            application::application_agent_list::<tauri::Wry>,
+            application::application_agent_search::<tauri::Wry>,
+            application::application_agent_meeting::<tauri::Wry>,
+            application::application_agent_transcript::<tauri::Wry>,
+            application::application_agent_export::<tauri::Wry>,
+            application::application_agent_segments::<tauri::Wry>,
+            application::application_read_document::<tauri::Wry>,
+            application::application_save_document::<tauri::Wry>,
+            application::application_transcripts::<tauri::Wry>,
+            application::application_audio_metadata::<tauri::Wry>,
+            application::application_attachment_info::<tauri::Wry>,
+            application::application_attachments::<tauri::Wry>,
+            application::application_attachment_metadata::<tauri::Wry>,
+            application::application_upload_attachment_source::<tauri::Wry>,
+            application::application_attachment_upload_status::<tauri::Wry>,
+            attachment_upload::device_prepare_attachment_upload::<tauri::Wry>,
+            attachment_upload::staging::device_attachment_source_begin::<tauri::Wry>,
+            attachment_upload::staging::device_attachment_source_append::<tauri::Wry>,
+            attachment_upload::staging::device_attachment_source_finish::<tauri::Wry>,
+            attachment_upload::staging::device_attachment_source_close::<tauri::Wry>,
+            application::application_remove_attachment::<tauri::Wry>,
+            application::application_delete_recording::<tauri::Wry>,
+            application::application_tasks::<tauri::Wry>,
+            application::application_tasks_snapshot::<tauri::Wry>,
+            application::application_replace_tasks::<tauri::Wry>,
+            application::application_people::<tauri::Wry>,
+            application::application_tags::<tauri::Wry>,
+            application::application_tag_suggestions::<tauri::Wry>,
+            application::application_ensure_tag::<tauri::Wry>,
+            application::application_accept_tag_suggestion::<tauri::Wry>,
+            application::application_dismiss_tag_suggestion::<tauri::Wry>,
+            application::application_session::<tauri::Wry>,
+            application::application_create_session::<tauri::Wry>,
+            application::application_read_note::<tauri::Wry>,
+            desktop_profiles::application_desktop_bootstrap::<tauri::Wry>,
+            desktop_profiles::application_desktop_startup::<tauri::Wry>,
+            desktop_profiles::application_desktop_connections::<tauri::Wry>,
+            desktop_profiles::application_create_desktop_connection::<tauri::Wry>,
+            desktop_profiles::application_save_desktop_startup::<tauri::Wry>,
+            desktop_profiles::application_remember_desktop_destination::<tauri::Wry>,
+            application::application_read_note_editor::<tauri::Wry>,
+            application::application_save_note_editor::<tauri::Wry>,
+            application::application_read_document_editor::<tauri::Wry>,
+            application::application_save_document_editor::<tauri::Wry>,
+            application::application_delete_document::<tauri::Wry>,
+            application::application_read_metadata::<tauri::Wry>,
+            application::application_save_metadata::<tauri::Wry>,
+            application::application_save_note::<tauri::Wry>,
+            application::application_search::<tauri::Wry>,
+            remote::note_windows::remote_open_note_window,
+            remote::note_windows::remote_claim_note_window::<tauri::Wry>,
+            remote::remote_connect::<tauri::Wry>,
+            remote::remote_connect_desktop_profile::<tauri::Wry>,
+            remote::remote_login::<tauri::Wry>,
+            remote::remote_cancel_login::<tauri::Wry>,
+            remote::remote_request::<tauri::Wry>,
+            remote::media_jobs::remote_media_request::<tauri::Wry>,
+            remote::media_jobs::remote_media_submit::<tauri::Wry>,
+            remote::media_jobs::remote_media_recover::<tauri::Wry>,
+            remote::media_jobs::remote_media_cancel::<tauri::Wry>,
+            remote::media_jobs::remote_media_resume_source::<tauri::Wry>,
+            remote::media_jobs::remote_media_submissions::<tauri::Wry>,
+            remote::media_jobs::remote_media_export_source::<tauri::Wry>,
+            remote::media_jobs::remote_media_retirement_status::<tauri::Wry>,
+            remote::media_jobs::remote_media_retire::<tauri::Wry>,
+            remote::remote_upload_attachment_source::<tauri::Wry>,
+            remote::remote_cancel_request::<tauri::Wry>,
+            remote::remote_subscribe::<tauri::Wry>,
+            remote::remote_subscribe_capture_live::<tauri::Wry>,
+            remote::remote_unsubscribe::<tauri::Wry>,
+            remote::remote_disconnect::<tauri::Wry>,
+            remote::remote_logout::<tauri::Wry>,
+            remote::media::remote_audio_open::<tauri::Wry>,
+            remote::media::remote_audio_peaks::<tauri::Wry>,
+            remote::media::remote_audio_close::<tauri::Wry>,
+            remote::attachments::remote_attachment_open::<tauri::Wry>,
+            remote::attachments::remote_attachment_close::<tauri::Wry>,
+            remote::attachments::remote_attachment_copy::<tauri::Wry>,
             chatgpt::chatgpt_account::<tauri::Wry>,
             chatgpt::chatgpt_login::<tauri::Wry>,
             chatgpt::chatgpt_cancel_login::<tauri::Wry>,
@@ -536,6 +877,21 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::get_dismissed_toasts::<tauri::Wry>,
             commands::set_dismissed_toasts::<tauri::Wry>,
             commands::show_devtool::<tauri::Wry>,
+            device_recordings::device_recording_start::<tauri::Wry>,
+            device_recordings::device_recording_append::<tauri::Wry>,
+            device_recordings::device_recording_append_pending::<tauri::Wry>,
+            device_recordings::device_recording_cancel_processing::<tauri::Wry>,
+            device_recordings::device_recording_retire::<tauri::Wry>,
+            device_recordings::device_recording_inventory::<tauri::Wry>,
+            device_recordings::device_recording_recovery_inventory::<tauri::Wry>,
+            device_recordings::device_recording_finish_recovery::<tauri::Wry>,
+            device_recordings::device_recording_export::<tauri::Wry>,
+            device_recordings::device_recording_status::<tauri::Wry>,
+            device_recordings::device_recording_telemetry::<tauri::Wry>,
+            device_recordings::device_recording_stop::<tauri::Wry>,
+            device_recordings::device_recording_resume_upload::<tauri::Wry>,
+            device_recordings::device_recording_subscribe::<tauri::Wry>,
+            device_recordings::device_recording_unsubscribe::<tauri::Wry>,
             commands::complete_app_exit::<tauri::Wry>,
             commands::get_pinned_tabs::<tauri::Wry>,
             commands::set_pinned_tabs::<tauri::Wry>,
@@ -597,6 +953,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_find_by_tracking_id::<tauri::Wry>,
         ])
         .events(tauri_specta::collect_events![
+            application::ApplicationChanged,
+            device_vault_state::DeviceVaultStateChanged,
             session_store::IndexChanged,
             startup::StartupProgress
         ])
@@ -658,9 +1016,9 @@ mod test {
 
     #[test]
     fn export_types() {
-        const OUTPUT_FILE: &str = "../src/types/tauri.gen.ts";
+        const OUTPUT_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/types/tauri.gen.ts");
 
-        make_specta_builder::<tauri::Wry>()
+        make_specta_builder()
             .export(
                 specta_typescript::Typescript::default()
                     .formatter(specta_typescript::formatter::prettier)

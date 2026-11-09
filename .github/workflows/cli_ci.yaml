@@ -17,6 +17,15 @@ on:
       - crates/search-cache/**
       - crates/export-core/**
       - crates/cli-docs/**
+      - crates/capture-store/**
+      - crates/loofah-client/**
+      - crates/loofah-core/**
+      - crates/loofah-protocol/**
+      - crates/loofah-local-owner/**
+      - crates/loofah-local-media/**
+      - crates/vault-read/**
+      - crates/vault-write/**
+      - crates/storage/**
       - crates/tiptap/**
       - docs/**
       - skills/**
@@ -38,6 +47,15 @@ on:
       - crates/search-cache/**
       - crates/export-core/**
       - crates/cli-docs/**
+      - crates/capture-store/**
+      - crates/loofah-client/**
+      - crates/loofah-core/**
+      - crates/loofah-protocol/**
+      - crates/loofah-local-owner/**
+      - crates/loofah-local-media/**
+      - crates/vault-read/**
+      - crates/vault-write/**
+      - crates/storage/**
       - crates/tiptap/**
       - docs/**
       - skills/**
@@ -75,6 +93,7 @@ jobs:
           cargo test --locked -p export-core
           cargo test --locked -p search-cache
           cargo test --locked -p agent-access
+          cargo test --locked -p loofah-local-owner
           cargo test --locked -p loof-cli
           cargo test --locked -p tiptap
       - run: |

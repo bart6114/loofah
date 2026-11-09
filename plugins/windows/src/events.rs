@@ -87,7 +87,10 @@ common_event_derives! {
 }
 
 common_event_derives! {
-    pub struct FloatingBarStop {}
+    pub struct FloatingBarStop {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub capture_key: Option<String>,
+    }
 }
 
 common_event_derives! {

@@ -81,6 +81,13 @@ vi.mock("~/store/zustand/live-title", () => ({
 }));
 
 vi.mock("~/store/zustand/tabs", () => ({
+  useTabsStore: () => ({
+    getState: () => ({
+      tabs: [],
+      openCurrent: mocks.openCurrent,
+      invalidateResource: mocks.invalidateResource,
+    }),
+  }),
   useTabs: (
     selector: (state: {
       invalidateResource: typeof mocks.invalidateResource;
@@ -96,13 +103,13 @@ vi.mock("~/store/zustand/tabs", () => ({
 }));
 
 vi.mock("~/store/zustand/timeline-selection", () => ({
-  useTimelineSelection: Object.assign(
-    (selector: (state: typeof mocks.timelineSelection) => unknown) =>
-      selector(mocks.timelineSelection),
-    {
-      getState: () => mocks.timelineSelection,
-    },
-  ),
+  useTimelineSelection: (
+    selector: (state: typeof mocks.timelineSelection) => unknown,
+  ) => selector(mocks.timelineSelection),
+  useTimelineSelectionStore: () => {
+    const captured = mocks.timelineSelection;
+    return { getState: () => captured };
+  },
 }));
 
 vi.mock("~/store/zustand/undo-delete", () => ({
@@ -364,6 +371,38 @@ describe("TimelineItemComponent", () => {
     });
   });
 
+  it.each([{ metaKey: true }, { ctrlKey: true }])(
+    "uses its captured selection for modifier clicks %j and current range keys",
+    (modifier) => {
+      const keys = ["session-first", "session-session-note"];
+      render(
+        <TimelineItemComponent
+          item={makeTimelineItem("session-note", {
+            title: "Note",
+            created_at: "2024-01-15T10:30:00.000Z",
+          })}
+          precision="time"
+          selected={false}
+          multiSelected={false}
+          getFlatItemKeys={() => keys}
+        />,
+      );
+      const row = screen.getByText("Live Note").closest("button")!;
+      fireEvent.click(row, { ...modifier, detail: 1 });
+      expect(mocks.timelineSelection.toggleSelect).toHaveBeenCalledWith(
+        "session-session-note",
+      );
+      keys.unshift("session-new-first");
+      fireEvent.click(row, { shiftKey: true, detail: 1 });
+      expect(mocks.timelineSelection.selectRange).toHaveBeenCalledWith(
+        keys,
+        "session-session-note",
+      );
+      expect(mocks.timelineSelection.setAnchor).not.toHaveBeenCalled();
+      expect(mocks.openCurrent).not.toHaveBeenCalled();
+    },
+  );
+
   it("opens a standalone note window when a session row is double-clicked", () => {
     render(
       <TimelineItemComponent
@@ -433,3 +472,26 @@ describe("TimelineItemComponent", () => {
     });
   });
 });
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { useListener } = await import("~/stt/contexts");
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  const source = (id = "") =>
+    legacyActivityFixture(
+      useListener((state) => state),
+      id,
+    );
+  return {
+    useLegacySessionActivity: source,
+    useLegacyDesktopAccess: () => source(),
+  };
+});
+
+vi.mock("~/session/hooks/useDeleteSession", () => ({
+  useDeleteSession: () => vi.fn(),
+  useSessionDeletionAccess: () => ({
+    available: true,
+    isAvailable: () => true,
+  }),
+}));

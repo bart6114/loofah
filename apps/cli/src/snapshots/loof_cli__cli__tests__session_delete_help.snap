@@ -1,5 +1,6 @@
 ---
 source: apps/cli/src/cli.rs
+assertion_line: 943
 expression: help
 ---
 Move the complete session directory to recoverable vault trash. The exact ID is the confirmation: no prompt or confirmation flag, including with --json. Missing or already-deleted IDs fail with not_found (exit 2). No permanent purge.
@@ -16,6 +17,9 @@ Options:
 
       --vault-path <DIR>
           [env: LOOFAH_VAULT_PATH]
+
+      --profile <NAME>
+          Use a saved HTTPS server profile instead of the local vault
 
       --json
 

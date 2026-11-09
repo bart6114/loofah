@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { EventListeners } from "./event-listeners";
+import { DeviceEventListeners, EventListeners } from "./event-listeners";
 
 import { useAudioImport } from "~/store/zustand/audio-import";
 import { AUDIO_IMPORT_COMPLETED_NOTIFICATION_KEY } from "~/stt/audio-import-notification";
@@ -20,6 +20,7 @@ const {
   useConfigValuesMock,
   setSettingValueMock,
   openNewMock,
+  readTabsMock,
   createSessionMock,
   setTriggerAppIdsMock,
   stopMock,
@@ -37,6 +38,7 @@ const {
   useConfigValuesMock: vi.fn(),
   setSettingValueMock: vi.fn(async () => {}),
   openNewMock: vi.fn(),
+  readTabsMock: vi.fn(),
   createSessionMock: vi.fn(async () => "session-new"),
   setTriggerAppIdsMock: vi.fn(),
   stopMock: vi.fn(),
@@ -91,8 +93,10 @@ vi.mock("~/session/queries", () => ({
 }));
 
 vi.mock("~/store/zustand/tabs", () => ({
-  useTabs: (selector: (state: { openNew: typeof openNewMock }) => unknown) =>
-    selector({ openNew: openNewMock }),
+  useTabs: (selector: (state: { openNew: typeof openNewMock }) => unknown) => {
+    readTabsMock();
+    return selector({ openNew: openNewMock });
+  },
 }));
 
 vi.mock("~/store/zustand/listener/instance", () => ({
@@ -115,6 +119,7 @@ describe("EventListeners notification events", () => {
     useConfigValuesMock.mockReset();
     setSettingValueMock.mockReset();
     openNewMock.mockReset();
+    readTabsMock.mockReset();
     createSessionMock.mockReset();
     setTriggerAppIdsMock.mockReset();
     stopMock.mockReset();
@@ -181,7 +186,8 @@ describe("EventListeners notification events", () => {
   });
 
   test("notification_accept with auto-stop prompt stops the active session", async () => {
-    render(<EventListeners />);
+    render(<DeviceEventListeners />);
+    expect(readTabsMock).not.toHaveBeenCalled();
 
     await vi.waitFor(() =>
       expect(notificationListenMock).toHaveBeenCalledTimes(1),
@@ -213,7 +219,8 @@ describe("EventListeners notification events", () => {
     });
     sessionIdsMock.mockResolvedValue({ status: "ok", data: ["session-1"] });
 
-    render(<EventListeners />);
+    render(<DeviceEventListeners />);
+    expect(readTabsMock).not.toHaveBeenCalled();
 
     await vi.waitFor(() => expect(sessionIdsMock).toHaveBeenCalledTimes(1));
     expect(subscribeIndexChangedMock).toHaveBeenCalledWith(
@@ -240,7 +247,8 @@ describe("EventListeners notification events", () => {
   });
 
   test("notification_confirm with auto-stop prompt ignores collapsed body click", async () => {
-    render(<EventListeners />);
+    render(<DeviceEventListeners />);
+    expect(readTabsMock).not.toHaveBeenCalled();
 
     await vi.waitFor(() =>
       expect(notificationListenMock).toHaveBeenCalledTimes(1),
@@ -539,6 +547,53 @@ describe("EventListeners notification events", () => {
         state: { view: null, autoStart: null },
       }),
     );
+    expect(setTriggerAppIdsMock).not.toHaveBeenCalled();
+  });
+  test("ignores queued notification navigation after its scoped host unmounts", async () => {
+    const { unmount } = render(<EventListeners />);
+    await vi.waitFor(() =>
+      expect(notificationListenMock).toHaveBeenCalledOnce(),
+    );
+    const handler = notificationListenMock.mock.calls[0][0];
+    unmount();
+    handler({
+      payload: {
+        type: "notification_accept",
+        source: { type: "mic_detected", app_ids: ["us.zoom.xos"] },
+      },
+    });
+    expect(createSessionMock).not.toHaveBeenCalled();
+    expect(openNewMock).not.toHaveBeenCalled();
+    expect(setTriggerAppIdsMock).not.toHaveBeenCalled();
+  });
+
+  test("does not start recording from a notification creation reply after its scoped host retires", async () => {
+    getListenerStateMock.mockReturnValue({
+      ...getListenerStateMock(),
+      live: { status: "inactive", loading: false, sessionId: null },
+    });
+    let finish!: (id: string) => void;
+    createSessionMock.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { unmount } = render(<EventListeners />);
+    await vi.waitFor(() =>
+      expect(notificationListenMock).toHaveBeenCalledOnce(),
+    );
+    notificationListenMock.mock.calls[0][0]({
+      payload: {
+        type: "notification_accept",
+        source: { type: "mic_detected", app_ids: ["us.zoom.xos"] },
+      },
+    });
+    expect(createSessionMock).toHaveBeenCalledOnce();
+    unmount();
+    finish("created-before-retirement");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(openNewMock).not.toHaveBeenCalled();
     expect(setTriggerAppIdsMock).not.toHaveBeenCalled();
   });
 });

@@ -139,3 +139,34 @@ it("keeps newer streamed state when an initial snapshot arrives late", async () 
   expect(screen.getByRole("button", { name: "Current meeting" })).toBeTruthy();
   expect(screen.queryByText("Project meeting")).toBeNull();
 });
+
+it("sends the original rendered capture key with a floating stop action", async () => {
+  mocks.snapshot.mockResolvedValue({
+    revision: 1,
+    state: {
+      type: "floatingBar",
+      state: { ...recording, captureKey: "original-capture" },
+    },
+  });
+  mount();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Stop recording" }),
+  );
+  act(() =>
+    mocks.listener?.({
+      payload: {
+        revision: 2,
+        state: {
+          type: "floatingBar",
+          state: { ...recording, captureKey: "new-capture" },
+        },
+      },
+    }),
+  );
+  await waitFor(() =>
+    expect(mocks.stop).toHaveBeenCalledWith({
+      capture_key: "original-capture",
+    }),
+  );
+  expect(mocks.stop).toHaveBeenCalledOnce();
+});

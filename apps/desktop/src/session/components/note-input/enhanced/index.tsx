@@ -1,17 +1,15 @@
 import type { EditorView } from "prosemirror-view";
-import { forwardRef, useMemo } from "react";
+import { forwardRef } from "react";
 
 import type { FileHandlerConfig, NoteEditorRef } from "@hypr/editor/note";
 
 import { EnhancedEditor } from "./editor";
-import { EmptySummary } from "./empty-summary";
-import { EnhanceError } from "./enhance-error";
-import { StreamingView } from "./streaming";
 
-import { useAITaskTask } from "~/ai/hooks";
 import { hasStoredNoteContent } from "~/session/components/shared";
-import { useEnhancedNote } from "~/session/queries";
-import { createTaskId } from "~/store/zustand/ai-task/task-configs";
+import { useSummarySource } from "~/session/hooks/useSummarySource";
+import { useEnhancedNote, useEnhancedDocumentTarget } from "~/session/queries";
+import { VaultProcessing } from "~/shared/application/vault-processing";
+import { useVaultHost } from "~/shared/application/vault-provider";
 
 export const Enhanced = forwardRef<
   NoteEditorRef,
@@ -41,81 +39,52 @@ export const Enhanced = forwardRef<
     },
     ref,
   ) => {
-    const taskId = createTaskId(enhancedNoteId, "enhance");
-    const { status, error, streamedText } = useAITaskTask(taskId, "enhance");
-    // The task can finish before the coalesced index event refreshes the old summary cache.
-    const generationId = useMemo(
-      () => (status === "success" ? crypto.randomUUID() : undefined),
-      [status, enhancedNoteId],
-    );
-    const enhancedNote = useEnhancedNote(
-      enhancedNoteId,
-      generationId,
-      sessionId,
-    );
+    const { scope } = useVaultHost();
+    const hasSource = useSummarySource(sessionId);
+    const enhancedNote = useEnhancedNote(enhancedNoteId, undefined, sessionId);
+    const target = useEnhancedDocumentTarget(sessionId, enhancedNoteId);
     const content = enhancedNote?.content;
-
-    const hasContent = hasStoredNoteContent(content);
-    const isAwaitingPersistedContent =
-      status === "success" && streamedText.trim().length > 0 && !hasContent;
-    const showStreaming = status === "generating" || isAwaitingPersistedContent;
-
-    if (status === "error") {
+    if (target === null)
       return (
-        <EnhanceError
-          sessionId={sessionId}
-          enhancedNoteId={enhancedNoteId}
-          error={error}
-        />
+        <p role="alert">
+          This document cannot be identified safely. Editing and regeneration
+          are unavailable.
+        </p>
       );
-    }
-
-    if (!enhancedNote) {
-      return showStreaming ? (
-        <StreamingView
-          sessionId={sessionId}
-          sessionTitle={sessionTitle}
-          enhancedNoteId={enhancedNoteId}
-        />
-      ) : null;
-    }
-
-    if (showStreaming) {
-      return (
-        <StreamingView
-          sessionId={sessionId}
-          sessionTitle={sessionTitle}
-          enhancedNoteId={enhancedNoteId}
-        />
-      );
-    }
-
-    if (!hasContent) {
-      return (
-        <EmptySummary
-          titleTrailerElement={titleTrailerElement}
-          sessionId={sessionId}
-          sessionTitle={sessionTitle}
-          enhancedNoteId={enhancedNoteId}
-        />
-      );
-    }
 
     return (
-      <EnhancedEditor
-        ref={ref}
-        readOnly={readOnly}
-        sessionId={sessionId}
-        sessionTitle={sessionTitle}
-        enhancedNoteId={enhancedNoteId}
-        fileHandlerConfig={fileHandlerConfig}
-        content={enhancedNote.content}
-        generationId={generationId}
-        onNavigateToTitle={onNavigateToTitle}
-        onViewReady={onViewReady}
-        onViewDisposed={onViewDisposed}
-        titleTrailerElement={titleTrailerElement}
-      />
+      <div className="flex min-h-0 flex-1 flex-col">
+        {scope && target && (
+          <div className="shrink-0 px-3 pt-3">
+            <VaultProcessing
+              scope={scope}
+              sessionId={sessionId}
+              target={target}
+              defaultTitlePolicy="generate_if_empty"
+              sourceAvailable={hasSource}
+            />
+            {enhancedNote && !hasStoredNoteContent(content) && (
+              <p className="text-muted-foreground mt-2 text-sm">
+                Generate a summary from your saved notes or transcript, or write
+                here.
+              </p>
+            )}
+          </div>
+        )}
+        <EnhancedEditor
+          ref={ref}
+          readOnly={readOnly}
+          sessionId={sessionId}
+          sessionTitle={sessionTitle}
+          enhancedNoteId={enhancedNoteId}
+          fileHandlerConfig={fileHandlerConfig}
+          content={enhancedNote?.content ?? ""}
+          onNavigateToTitle={onNavigateToTitle}
+          onViewReady={onViewReady}
+          onViewDisposed={onViewDisposed}
+          titleTrailerElement={titleTrailerElement}
+        />
+      </div>
     );
   },
 );

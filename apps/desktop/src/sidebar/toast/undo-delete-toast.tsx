@@ -1,22 +1,27 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, useCallback, useMemo } from "react";
 
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
-import { restoreDeletedSession } from "~/session/queries";
+import { useSessionDeletionAccess } from "~/session/hooks/useDeleteSession";
 import { useMountEffect } from "~/shared/hooks/useMountEffect";
 import { useTabs } from "~/store/zustand/tabs";
-import { UNDO_TIMEOUT_MS, useUndoDelete } from "~/store/zustand/undo-delete";
+import {
+  UNDO_TIMEOUT_MS,
+  useUndoDelete,
+  useScopedPendingDeletions,
+} from "~/store/zustand/undo-delete";
 
 type ToastGroup = {
+  scope: string;
   key: string;
   sessionIds: string[];
+  tokens: string[];
   isBatch: boolean;
   addedAt: number;
 };
 
-function useToastGroups(): ToastGroup[] {
-  const pendingDeletions = useUndoDelete((state) => state.pendingDeletions);
+function useToastGroups(scope: string, owner: object): ToastGroup[] {
+  const pendingDeletions = useScopedPendingDeletions(scope, owner);
 
   return useMemo(() => {
     const batchMap = new Map<string, string[]>();
@@ -33,16 +38,20 @@ function useToastGroups(): ToastGroup[] {
     }
 
     const groups: ToastGroup[] = singles.map(({ sessionId, addedAt }) => ({
-      key: sessionId,
+      scope,
+      key: JSON.stringify([scope, "session", sessionId]),
       sessionIds: [sessionId],
+      tokens: [pendingDeletions[sessionId].token],
       isBatch: false,
       addedAt,
     }));
 
     for (const [batchId, sessionIds] of batchMap) {
       groups.push({
-        key: batchId,
+        scope,
+        key: JSON.stringify([scope, "batch", batchId]),
         sessionIds,
+        tokens: sessionIds.map((id) => pendingDeletions[id].token),
         isBatch: true,
         addedAt: Math.min(
           ...sessionIds.map((id) => pendingDeletions[id].addedAt),
@@ -51,31 +60,52 @@ function useToastGroups(): ToastGroup[] {
     }
 
     return groups.sort((a, b) => a.addedAt - b.addedAt);
-  }, [pendingDeletions]);
+  }, [pendingDeletions, scope]);
 }
 
 function useRestoreGroup() {
-  const queryClient = useQueryClient();
-  const pendingDeletions = useUndoDelete((state) => state.pendingDeletions);
+  const access = useSessionDeletionAccess();
+  const { isAvailable } = access;
+  const scope = access.scope.client.scope;
+  const queryClient = access.scope.queryClient;
+  const pendingDeletions = useScopedPendingDeletions(scope, access.scope);
   const addDeletion = useUndoDelete((state) => state.addDeletion);
   const clearDeletion = useUndoDelete((state) => state.clearDeletion);
-  const clearBatch = useUndoDelete((state) => state.clearBatch);
   const openCurrent = useTabs((state) => state.openCurrent);
   const invalidateResource = useTabs((state) => state.invalidateResource);
 
   return useCallback(
     (group: ToastGroup) => {
-      const entries = group.sessionIds
-        .map((sessionId) => pendingDeletions[sessionId])
-        .filter((pending) => pending !== undefined);
+      if (group.scope !== scope || !isAvailable()) return;
+      const assertCurrent = () => {
+        if (!isAvailable() || group.scope !== scope)
+          throw new Error("Session controls are unavailable.");
+      };
+      const currentEntries = useUndoDelete.getState().pendingDeletions;
+      const entries = group.sessionIds.map((id) => pendingDeletions[id]);
+      if (
+        entries.some(
+          (entry, index) =>
+            !entry ||
+            entry.token !== group.tokens[index] ||
+            currentEntries[JSON.stringify([scope, entry.data.session.id])] !==
+              entry,
+        )
+      )
+        return;
+
+      const superseded = new Set<string>();
+      const stop = useUndoDelete.subscribe((next) => {
+        for (const entry of entries) {
+          const key = JSON.stringify([scope, entry.data.session.id]);
+          const replacement = next.pendingDeletions[key];
+          if (replacement && replacement !== entry) superseded.add(key);
+        }
+      });
 
       // Optimistic: dismiss the toast (also cancelling the finalize timers)
       // and reopen the tab before the restore writes commit.
-      if (group.isBatch) {
-        clearBatch(group.key);
-      } else {
-        clearDeletion(group.sessionIds[0]);
-      }
+      for (const entry of entries) clearDeletion(scope, entry.data.session.id);
       if (group.sessionIds.length > 0) {
         openCurrent({ type: "sessions", id: group.sessionIds[0] });
       }
@@ -85,31 +115,66 @@ function useRestoreGroup() {
         try {
           while (remaining.length > 0) {
             const pending = remaining[0];
-            await restoreDeletedSession(pending.data);
+            const key = JSON.stringify([scope, pending.data.session.id]);
+            const assertOwned = () => {
+              assertCurrent();
+              if (superseded.has(key))
+                throw new Error(
+                  "This undo was superseded by a newer deletion.",
+                );
+            };
+            assertOwned();
+            await pending.restore(assertOwned);
             remaining.shift();
             const sessionId = pending.data.session.id;
-            void queryClient.invalidateQueries({
-              predicate: (query) =>
-                query.queryKey.length >= 2 &&
-                query.queryKey[0] === "audio" &&
-                query.queryKey[1] === sessionId,
-            });
+            if (!isAvailable() || superseded.has(key)) continue;
+            for (const kind of [
+              "audio_resource",
+              "audio_peaks",
+              "audio_metadata",
+            ])
+              void queryClient.invalidateQueries({
+                queryKey: ["vault", scope, kind, sessionId],
+              });
           }
         } catch (error) {
           console.error("[undo-delete] failed to restore session", error);
-          sonnerToast.error("Could not restore deleted note");
+          if (
+            isAvailable() &&
+            remaining.some(
+              (entry) =>
+                !superseded.has(JSON.stringify([scope, entry.data.session.id])),
+            )
+          )
+            sonnerToast.error("Could not restore deleted note");
           // Re-add the unrestored deletions so their undo toast (and the
           // finalize path) comes back instead of leaving them tombstoned,
           // and close the optimistically reopened tab — it still points at
           // a tombstoned note.
           for (const pending of remaining) {
-            addDeletion(
-              pending.data,
-              pending.onDeleteConfirm ?? undefined,
-              pending.batchId ?? undefined,
-            );
-            invalidateResource("sessions", pending.data.session.id);
+            const existing =
+              useUndoDelete.getState().pendingDeletions[
+                JSON.stringify([scope, pending.data.session.id])
+              ];
+            if (
+              !existing &&
+              !superseded.has(JSON.stringify([scope, pending.data.session.id]))
+            )
+              addDeletion(scope, pending.data, {
+                owner: pending.owner,
+                restore: pending.restore,
+                onConfirm: pending.onDeleteConfirm ?? undefined,
+                batchId: pending.batchId ?? undefined,
+              });
+            if (
+              isAvailable() &&
+              !pending.data.receipt &&
+              !superseded.has(JSON.stringify([scope, pending.data.session.id]))
+            )
+              invalidateResource("sessions", pending.data.session.id);
           }
+        } finally {
+          stop();
         }
       })();
     },
@@ -119,18 +184,27 @@ function useRestoreGroup() {
       invalidateResource,
       addDeletion,
       clearDeletion,
-      clearBatch,
       queryClient,
+      isAvailable,
+      scope,
     ],
   );
 }
 
 export function UndoDeleteToast() {
-  const groups = useToastGroups();
+  const access = useSessionDeletionAccess();
+  const { isAvailable } = access;
+  if (!isAvailable()) return null;
+  return <ScopedUndoDeleteToast />;
+}
+
+function ScopedUndoDeleteToast() {
+  const access = useSessionDeletionAccess();
+  const groups = useToastGroups(access.scope.client.scope, access.scope);
 
   return groups.map((group) => (
     <UndoDeleteSonnerToast
-      key={`${group.key}:${group.sessionIds.join(":")}`}
+      key={JSON.stringify([group.key, group.tokens])}
       group={group}
     />
   ));
@@ -138,14 +212,20 @@ export function UndoDeleteToast() {
 
 function UndoDeleteSonnerToast({ group }: { group: ToastGroup }) {
   const restoreGroup = useRestoreGroup();
-  const pendingDeletions = useUndoDelete((state) => state.pendingDeletions);
+  const access = useSessionDeletionAccess();
+  const pendingDeletions = useScopedPendingDeletions(group.scope, access.scope);
   const title = group.isBatch
     ? null
     : pendingDeletions[group.sessionIds[0]]?.data.session.title || "Untitled";
   const noteLabel = group.sessionIds.length === 1 ? "note" : "notes";
-  const label = group.isBatch
-    ? `${group.sessionIds.length} ${noteLabel} deleted`
-    : `${title} deleted`;
+  const confirmed = group.sessionIds.every(
+    (id) => pendingDeletions[id]?.data.confirmedAbsent !== false,
+  );
+  const label = !confirmed
+    ? "Deletion request completed"
+    : group.isBatch
+      ? `${group.sessionIds.length} ${noteLabel} deleted`
+      : `${title} deleted`;
   const remainingDuration = Math.max(
     0,
     group.addedAt + UNDO_TIMEOUT_MS - Date.now(),

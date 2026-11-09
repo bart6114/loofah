@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   selectFolder: vi.fn(),
   message: vi.fn(),
   openPath: vi.fn(),
-  scheduleAutomaticRelaunch: vi.fn(),
+  relaunchNow: vi.fn(),
   toastError: vi.fn(),
   homeDir: vi.fn(),
 }));
@@ -53,7 +53,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 
 vi.mock("~/shared/relaunch", () => ({
-  scheduleAutomaticRelaunch: mocks.scheduleAutomaticRelaunch,
+  relaunchNow: mocks.relaunchNow,
 }));
 
 vi.mock("@lingui/react/macro", () => ({
@@ -107,7 +107,7 @@ describe("ChangeLocationRow", () => {
       data: "empty_or_missing",
     });
     mocks.homeDir.mockResolvedValue("/Users/x");
-    mocks.scheduleAutomaticRelaunch.mockResolvedValue("scheduled");
+    mocks.relaunchNow.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -141,9 +141,7 @@ describe("ChangeLocationRow", () => {
         false,
       ),
     );
-    await waitFor(() =>
-      expect(mocks.scheduleAutomaticRelaunch).toHaveBeenCalledTimes(1),
-    );
+    await waitFor(() => expect(mocks.relaunchNow).toHaveBeenCalledTimes(1));
   });
 
   it("copies when the copy choice is selected", async () => {
@@ -182,9 +180,7 @@ describe("ChangeLocationRow", () => {
       ),
     );
     expect(mocks.relocateVault).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(mocks.scheduleAutomaticRelaunch).toHaveBeenCalledTimes(1),
-    );
+    await waitFor(() => expect(mocks.relaunchNow).toHaveBeenCalledTimes(1));
   });
 
   it("offers a plain switch when the folder already contains a vault", async () => {
@@ -261,6 +257,6 @@ describe("ChangeLocationRow", () => {
     expect(mocks.toastError).toHaveBeenCalledWith(
       "New location is a subdirectory of the current vault",
     );
-    expect(mocks.scheduleAutomaticRelaunch).not.toHaveBeenCalled();
+    expect(mocks.relaunchNow).not.toHaveBeenCalled();
   });
 });

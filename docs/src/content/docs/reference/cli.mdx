@@ -11,20 +11,80 @@ Windows 11 installers are available for Intel/AMD x64 and ARM64. See the [Window
 ## Global syntax
 
 ```text
-loof [--base DIR] [--vault-path DIR] [--json] <command>
+loof [--base DIR] [--vault-path DIR] [--profile NAME] [--json] <command>
 ```
 
 | Option | Environment variable | Behavior |
 | --- | --- | --- |
 | `--base DIR` | `LOOFAH_BASE` | Use `DIR` as the vault directory. |
 | `--vault-path DIR` | `LOOFAH_VAULT_PATH` | Use an explicit vault directory. |
+| `--profile NAME` | None | Use a saved HTTPS server connection for supported commands. |
 | `--json` | None | Emit a versioned JSON response or machine-readable JSON error. |
 
 `--vault-path` takes precedence over `--base`. Without either option, the CLI uses Loofah's platform application-data directory, following the `vault_path` redirect in its `global.json` when the vault has been relocated.
 
+## Server profiles
+
+Local use stays offline and needs no login. Select a server explicitly for each
+remote invocation; no server profile becomes the default local vault.
+
+```bash
+loof profiles login company --server https://notes.example.com
+loof profiles list
+loof --profile company --json sessions list
+loof --profile company mcp
+loof profiles logout company
+```
+
+`profiles login NAME` uses the server's company browser sign-in. `--server
+HTTPS_ORIGIN` is required for a new profile and must have no path or query. Use
+`--vault VAULT_ID` to select an accessible shared vault; otherwise the saved or
+personal vault is selected. `--no-browser` prints the sign-in URL on stderr for
+you to open on the same computer. Run login again to refresh access or change
+the selected vault; use another profile name for another server or account.
+
+`profiles list` reads only saved connection metadata. Refresh credentials stay
+in the operating system credential store, separate from desktop credentials.
+`profiles logout NAME` works without the server and removes this CLI profile's
+credentials and metadata; vault files stay intact. Set
+`LOOFAH_CLI_PROFILE_DIR` to an absolute path to relocate CLI connection metadata.
+This directory contains no tokens and is separate from the vault.
+
+`--profile NAME` supports session listing, search, reads, creation, rename, note
+set/append, tags, soft deletion, attachment uploads, exports, audio import, and
+transcription. Media commands require `media_jobs`; custom import titles and initial
+metadata require `media_initial_metadata`. Initial session creation
+flags require the server's `session_initial_metadata` capability and are committed
+together with the initial note. Writes check the original revision; a concurrent
+edit is reported without overwriting it. The command keeps its original profile,
+member, and vault throughout dispatch. Unknown write outcomes are never retried
+automatically. MCP tools and resources remain read-only.
+
+The `meetings` alias and JSON schema version `2` remain available. Transcripts
+and exports are complete; oversized responses fail explicitly rather than
+truncating. Remote delete replies include `trash_token` and `revision`; local
+filesystem fields (`path`, `trash_path`, `deleted_at`) are `null`. Remote attachment
+replies provide the attachment ID and portable Markdown source with `path: null`.
+PDF exports download only referenced managed attachments and verify their bytes
+before rendering.
+
+Remote import, transcription, `doctor`, `init`, recovery of Local media requests,
+and filesystem paths are not available through profiles yet.
+Unsupported commands and connection/authentication failures return errors and
+never fall back to the local vault. `--profile` conflicts with `--base` and
+`--vault-path`, including their environment variables. Profile management does
+not accept local vault overrides or `--profile`.
+
+For MCP, sign in before starting `loof --profile company mcp`. Tool calls never
+open a browser. Each connection stays bound to its original profile, account,
+and vault. Restart MCP after changing that binding. Concurrent CLI processes
+serialize credential refresh for the same profile; an idle MCP connection does
+not hold the profile lock. Loss of access returns an error without cached vault
+content.
+
 ## Local search cache
 
-Vault commands automatically build a missing or incompatible local Tantivy cache before running; desktop shares the same cache. First use may take longer, with progress on stderr. `loof --json init` explicitly builds, repairs, or refreshes the cache for an existing vault; it does not create a vault. Help, version, and `doctor` do not initialize the cache.
+List/search commands and writes automatically build a missing or incompatible local Tantivy cache before running; desktop shares the same cache. Per-session reads, `sessions rename`, and `sessions delete` do not initialize global search or migrate settings. They reconcile only an affected session when a ready projection already exists. Idle MCP startup waits until a query needs the vault. First use may take longer, with progress on stderr. `loof --json init` explicitly builds, repairs, or refreshes the cache for an existing vault; it does not create a vault. Help, version, and `doctor` do not initialize the cache.
 
 With `--json`, initialization streams NDJSON progress on stderr; stdout contains only the requested command's response. Explicit `init` returns one final JSON response. Search and lists reconcile changes before querying; writes finish reconciliation before reporting success. A `write_persisted` error means the write was saved: do not repeat it; resolve the reported issue and run `init`. A `cache_busy` error is retryable.
 
@@ -88,6 +148,14 @@ With `--into MEETING_ID`, the audio is imported into that existing meeting inste
 
 With `--transcribe`, the imported audio is transcribed immediately (see the transcribe command below). When transcription fails after a successful import, the command still reports the meeting id and exits non-zero. Plain output prints the id, while `--json` adds a `transcript_error` object to `data`.
 
+With `--profile NAME`, the source is uploaded to that server using an immutable
+request ID, SHA-256, and byte length. Transcription uses the server's configured
+public model alias; no local model or vault is opened. The initial title and
+metadata are committed with the import, and `--into` binds the original empty
+recording and transcript revisions. JSON retains schema `2`; `audio` is `null`
+for a remote recording and `request_id` identifies its durable receipt. A saved
+import still reports its ID and `transcript_error` if optional transcription fails.
+
 ## Transcribe command
 
 ```bash
@@ -99,6 +167,40 @@ Transcribes the meeting's audio recording on-device with the speech-to-text mode
 Supported models include **Soniqo Parakeet Streaming**, **Soniqo Parakeet Batch**, and **Nemotron 3.5 ASR (Multilingual)**. Download and select the model in the desktop app first. Nemotron uses your configured meeting languages to guide recognition, including automatic language detection when multiple languages are selected.
 
 The command fails with a clear message and a non-zero exit code when the meeting or its audio is missing, when no speech-to-text model is configured, when the configured provider or model is not supported by the CLI (on-device Soniqo models on macOS and Parakeet ONNX models on Windows), or when the model has not been downloaded yet. The CLI never downloads models, so open the desktop app once to download it. On-device transcription supports Apple Silicon macOS and Windows 11 with their platform-specific models.
+
+With `--profile NAME`, transcription uses the selected server's batch policy and
+checks the original recording SHA and raw transcript revision. Current speaker
+edits or replaced audio cause a conflict. Optional automatic summaries use the
+server's configured summary policy. No local credentials, models, or settings are
+used for the operation.
+
+## Recover retained media publication
+
+```bash
+loof --json sessions recover REQUEST_ID
+```
+
+Use the original `request_id` from an uncertain import or transcription error. Recovery checks the original private journal and retained publication against the current recording SHA and raw transcript revision. It never runs inference or reopens the imported source. Changed speaker edits and deleted sessions are preserved. A completed historical request reports its original result without recreating content.
+
+JSON uses `command: "sessions.recover"` with `data.request_id` and `data.result`, the original import or transcription reply. An unresolved optional transcription retains the import result and exits nonzero. If no result was durably retained, the error says so; recovery does not silently begin another transcription. Local recovery requires no downloaded model or login.
+
+For a server profile, inspect original requests and saved device declarations:
+
+```bash
+loof --profile company --json sessions media
+loof --profile company --json sessions media REQUEST_ID
+loof --profile company --json sessions recover REQUEST_ID
+loof --profile company --json sessions recover REQUEST_ID --source recording.m4a
+```
+
+Remote recovery uses the original saved declaration, member, vault, revisions,
+and options. It may dispatch work explicitly when the verified source was retained
+before inference began; uncertain dispatched inference is never repeated. Supply
+`--source` only when the original request still awaits bytes. The selected file
+must match its saved SHA-256 and length, and cannot change the original filename
+or metadata. Ordinary retries never perform recovery automatically. `sessions
+media` is read-only and also shows device declarations whose server reply was lost.
+Remote `sessions.recover` returns the shared media status as `data.result`.
 
 ## JSON response contract
 

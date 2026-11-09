@@ -1,51 +1,47 @@
-import { useQuery } from "@tanstack/react-query";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { useCallback, useMemo } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef } from "react";
 
-import type { AttachmentResolver } from "@hypr/editor/node-views";
-import {
-  type AttachmentInfo,
-  commands as fsSyncCommands,
-} from "@hypr/plugin-fs-sync";
-
-export function sessionAttachmentPathsQueryKey(sessionId: string) {
-  return ["session", sessionId, "attachment-paths"] as const;
-}
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 
 export function useSessionAttachments(sessionId: string) {
-  return useQuery({
-    queryKey: sessionAttachmentPathsQueryKey(sessionId),
-    queryFn: async () => {
-      const result = await fsSyncCommands.attachmentList(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return result.data;
+  const { scope, current: ownsScope, readable } = useVaultReadScope();
+  const session = useRef(sessionId);
+  session.current = sessionId;
+  const supported = scope.client.features.includes("attachment_list");
+  const query = useInfiniteQuery(
+    {
+      ...scope.attachmentsOptions(sessionId),
+      enabled: !!sessionId && supported && readable,
     },
-    retry: false,
-  });
-}
-
-export function useAttachmentResolver(sessionId: string): AttachmentResolver {
-  const { data = EMPTY_ATTACHMENTS } = useSessionAttachments(sessionId);
-  const attachments = useMemo(
+    scope.queryClient,
+  );
+  const { refetch: refresh, fetchNextPage: next } = query;
+  const current = useCallback(
     () =>
-      new Map(
-        data.map((attachment) => [
-          attachment.attachmentId,
-          {
-            path: attachment.path,
-            src: convertFileSrc(attachment.path),
-          },
-        ]),
-      ),
-    [data],
+      ownsScope() && session.current === sessionId && supported && !!sessionId,
+    [ownsScope, sessionId, supported],
   );
-
-  return useCallback(
-    (attachmentId: string) => attachments.get(attachmentId) ?? null,
-    [attachments],
+  const refetch = useCallback(
+    () => (current() ? refresh() : Promise.resolve()),
+    [current, refresh],
   );
+  const fetchNextPage = useCallback(
+    () => (current() ? next() : Promise.resolve()),
+    [current, next],
+  );
+  const data = useMemo(
+    () =>
+      readable && supported
+        ? query.data?.pages.flatMap((page) => page.files)
+        : undefined,
+    [readable, supported, query.data],
+  );
+  return {
+    ...query,
+    data,
+    refetch,
+    fetchNextPage,
+    supported,
+    isError: query.isError || !supported,
+  };
 }
-
-const EMPTY_ATTACHMENTS: AttachmentInfo[] = [];

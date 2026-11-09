@@ -211,11 +211,32 @@ vi.mock("~/ai/hooks/useEnhancingSessions", () => ({
   useEnhancingSessionIds: () => [],
 }));
 
-vi.mock("./queries", () => ({
-  useTimelineSessionsTable: () => mocks.timelineSessionsTable,
-}));
+vi.mock("./queries", async () => {
+  const { useMemo } = await import("react");
+  const { viewFixture } = await import("./view-test-fixture");
+  return {
+    usePagedTimeline: () => {
+      const groupBy =
+        mocks.configValues.sidebar_group_by === "tag" ? "tag" : "date";
+      const expanded = JSON.stringify(
+        mocks.configValues.sidebar_expanded_tags ?? [],
+      );
+      const table = mocks.timelineSessionsTable;
+      const timezone = mocks.configValue;
+      return useMemo(
+        () => viewFixture(table, timezone, groupBy, JSON.parse(expanded)),
+        [table, timezone, groupBy, expanded],
+      );
+    },
+  };
+});
+vi.mock("./stream-control", () => ({ TimelineStreamControl: () => null }));
 
 vi.mock("~/session/hooks/useDeleteSession", () => ({
+  useSessionDeletionAccess: () => ({
+    available: true,
+    isAvailable: () => true,
+  }),
   useDeleteSession: () => mocks.deleteSession,
 }));
 
@@ -237,6 +258,7 @@ vi.mock("~/store/zustand/timeline-selection", () => ({
     selector({
       anchorId: mocks.timelineSelectionAnchorId,
       clear: mocks.clearSelection,
+      reconcile: () => {},
       selectAll: mocks.selectAll,
       selectedIds: mocks.timelineSelectionSelectedIds,
     }),
@@ -309,6 +331,13 @@ function sessionRow({
 describe("TimelineView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
     mocks.anchorNode = null;
     mocks.configValue = undefined;
     mocks.configValues = {};
@@ -329,6 +358,7 @@ describe("TimelineView", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("does not render sidebar action tabs inside the timeline chrome", () => {
@@ -1386,3 +1416,18 @@ function isBefore(first: Element, second: Element) {
     first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
   );
 }
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { useListener } = await import("~/stt/contexts");
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  const source = (id = "") =>
+    legacyActivityFixture(
+      useListener((state) => state),
+      id,
+    );
+  return {
+    useLegacySessionActivity: source,
+    useLegacyDesktopAccess: () => source(),
+  };
+});

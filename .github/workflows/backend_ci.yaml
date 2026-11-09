@@ -1,0 +1,295 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  headless:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: linux-x86_64
+      - run: cargo test --locked --features loofah-client/dev-fixtures -p loofah-server -p loofah-client -p capture-store -p loofah-core -p loofah-protocol -p vault-read -p vault-write -p search-cache
+      - run: cargo run --locked -p loofah-server -- --version
+      - run: cargo run --locked -p loofah-protocol --bin export-types -- --check
+      - run: |
+          cargo tree --locked -p loofah-core -p loofah-server --edges normal --prefix none > backend-dependencies.txt
+          if grep -E '^(tauri[ -]|tauri-|wry |cpal |audio-actual |device-monitor )' backend-dependencies.txt; then
+            echo 'Headless application core acquired a desktop or device-capture dependency' >&2
+            exit 1
+          fi
+
+  linux-cpu-stt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: "2"
+      RUST_TEST_THREADS: "1"
+      LOOFAH_WHISPER_CPU: "1"
+      GGML_NATIVE: "OFF"
+      CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source
+      CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake clang autoconf automake libtool pkg-config
+      - uses: ./.github/actions/cli_native_setup
+        with:
+          target: x86_64-unknown-linux-gnu
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: linux-x86_64
+          shared-key: linux-cpu-stt
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/loofah-cpu-stt/ggml-base-q8_0.bin
+          key: whisper-base-q8_0-c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/loofah-cpu-stt/onnx
+          key: onnx-cpu-${{ hashFiles('crates/transcribe-onnx/src/models.rs') }}
+      - run: |
+          python3 .github/scripts/test_backend_cpu_artifact.py
+          python3 .github/scripts/test_backend_kernel_selection.py
+          python3 .github/scripts/test_backend_onnx_models.py
+      - run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/loofah-cpu-stt"
+          stt_model_path="$RUNNER_TEMP/loofah-cpu-stt/ggml-base-q8_0.bin"
+          if ! test -s "$stt_model_path"; then
+            curl --proto '=https' --tlsv1.2 --location --fail --retry 5 \
+              https://hyprnote.s3.us-east-1.amazonaws.com/v0/ggerganov/whisper.cpp/main/ggml-base-q8_0.bin \
+              --output "$stt_model_path"
+          fi
+          printf '%s  %s\n' \
+            c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9 \
+            "$stt_model_path" | tee "$RUNNER_TEMP/loofah-cpu-stt/model.sha256" | sha256sum --check --strict
+          printf 'LOOFAH_WHISPER_MODEL=%s\n' "$stt_model_path" >> "$GITHUB_ENV"
+          python3 .github/scripts/backend_onnx_models.py \
+            --root "$RUNNER_TEMP/loofah-cpu-stt/onnx" \
+            --proof "$RUNNER_TEMP/loofah-cpu-stt/onnx-models.json"
+          printf 'LOOFAH_ONNX_MODELS=%s\n' "$RUNNER_TEMP/loofah-cpu-stt/onnx" >> "$GITHUB_ENV"
+      - run: |
+          set -euo pipefail
+          cargo tree --locked -p transcribe-whisper-local -p loofah-server --features loofah-server/cpu-transcription --edges normal --prefix none > "$RUNNER_TEMP/loofah-cpu-stt/dependencies.txt"
+          if grep -E '^(tauri[ -]|tauri-|wry |cpal |audio |audio-actual |audio-device |device-monitor |listener-core |transcription-core |host )' "$RUNNER_TEMP/loofah-cpu-stt/dependencies.txt"; then
+            echo 'Headless CPU inference acquired a desktop or device-capture dependency' >&2
+            exit 1
+          fi
+      - run: |
+          set -euo pipefail
+          cargo test --locked --release -p transcribe-whisper-local --lib -- --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/default.log"
+          stt_native_cache_found=false
+          for stt_native_cache in target/release/build/whisper-rs-sys-*/out/build/CMakeCache.txt; do
+            test -f "$stt_native_cache" || continue
+            stt_native_cache_found=true
+            printf '%s\n' "$stt_native_cache" >> "$RUNNER_TEMP/loofah-cpu-stt/native-config.txt"
+            grep -E '^GGML_NATIVE:' "$stt_native_cache" | tee -a "$RUNNER_TEMP/loofah-cpu-stt/native-config.txt"
+            grep -Eq '^GGML_NATIVE:[^=]+=OFF$' "$stt_native_cache"
+          done
+          test "$stt_native_cache_found" = true
+      - run: |
+          set -euo pipefail
+          kernel_inventory="$RUNNER_TEMP/loofah-cpu-stt/kernel-inventory.txt"
+          cargo test --locked --release -p transcribe-whisper-local --lib -- --list | tee "$kernel_inventory"
+          for kernel_case in \
+            service::recorded::tests::cpu_http_json_and_sse_keep_existing_wire_shapes_and_terminal_order \
+            service::recorded::tests::cpu_kernel_cancellation_reaches_preparation_vad_and_native_inference \
+            service::recorded::tests::cpu_kernel_preserves_channels_timestamps_progress_and_rejects_failed_emitters; do
+            test "$(grep -Fxc -- "$kernel_case: test" "$kernel_inventory")" = 1
+            kernel_log="$RUNNER_TEMP/loofah-cpu-stt/kernel-${kernel_case##*::}.log"
+            cargo test --locked --release -p transcribe-whisper-local --lib "$kernel_case" -- --exact --ignored --nocapture --test-threads=1 2>&1 | tee "$kernel_log"
+            test "$(grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' "$kernel_log")" = 1
+          done
+      - run: |
+          set -euo pipefail
+          typed_live_case=resources::live::tests::real_cpu_two_typed_sessions_emit_before_finish_and_drain_independently
+          cargo test --locked --release -p transcribe-whisper-local --lib -- --list | tee "$RUNNER_TEMP/loofah-cpu-stt/typed-live-inventory.txt"
+          grep -Fx -- "$typed_live_case: test" "$RUNNER_TEMP/loofah-cpu-stt/typed-live-inventory.txt"
+          cargo test --locked --release -p transcribe-whisper-local --lib "$typed_live_case" -- --exact --ignored --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/typed-live-cpu.log"
+      - run: |
+          set -euo pipefail
+          cargo test --locked --release -p transcribe-whisper-local --test inference -- --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log"
+          grep -F 'test result: ok. 9 passed; 0 failed; 2 ignored' "$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log"
+          cargo test --locked --release -p transcribe-whisper-local --test inference -- --ignored --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/http-live-cpu.log"
+          for websocket_rtt in 50 150 500; do
+            test "$(grep -c "^websocket shaped profile: rtt_ms=$websocket_rtt " "$RUNNER_TEMP/loofah-cpu-stt/http-live-cpu.log")" = 1
+          done
+      - id: cpu_artifact
+        run: |
+          set -euo pipefail
+          cargo test --locked --release -p loofah-server --features cpu-transcription --lib --no-run --message-format=json > "$RUNNER_TEMP/loofah-cpu-stt/server-build.jsonl"
+          python3 .github/scripts/backend_cpu_artifact.py \
+            --messages "$RUNNER_TEMP/loofah-cpu-stt/server-build.jsonl" \
+            --output "$RUNNER_TEMP/loofah-cpu-stt/server-test-proof.json" \
+            --case "$CPU_SERVICE_CASE" --model "$LOOFAH_WHISPER_MODEL" \
+            --onnx-models "$LOOFAH_ONNX_MODELS" \
+            --github-output "$GITHUB_OUTPUT"
+      - env:
+          CPU_TEST_BINARY: ${{ steps.cpu_artifact.outputs.test_binary }}
+        run: |
+          set -euo pipefail
+          "$CPU_TEST_BINARY" speech_admission::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-admission.log"
+          "$CPU_TEST_BINARY" transcription_host::policy_tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-admission-policy.log"
+          "$CPU_TEST_BINARY" transcription_cpu::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-adapter.log"
+          "$CPU_TEST_BINARY" transcription_onnx::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-onnx-adapter.log"
+          "$CPU_TEST_BINARY" tests::transcription_host:: --skip "$CPU_SERVICE_CASE" --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-activation.log"
+          "$CPU_TEST_BINARY" config::tests:: --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-config.log"
+          sha256sum "$CPU_TEST_BINARY" > "$RUNNER_TEMP/loofah-cpu-stt/server-tests.sha256"
+      - env:
+          CPU_TEST_BINARY: ${{ steps.cpu_artifact.outputs.test_binary }}
+        run: |
+          set -euo pipefail
+          cargo build --locked --release -p loofah-server --features cpu-transcription 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/server-release.log"
+          readelf --dynamic target/release/loofah-server > "$RUNNER_TEMP/loofah-cpu-stt/server-needed.txt"
+          readelf --version-info target/release/loofah-server > "$RUNNER_TEMP/loofah-cpu-stt/server-versions.txt"
+          sha256sum target/release/loofah-server > "$RUNNER_TEMP/loofah-cpu-stt/server-release.sha256"
+          mkdir -p "$RUNNER_TEMP/loofah-cpu-stt/image"
+          cp target/release/loofah-server "$RUNNER_TEMP/loofah-cpu-stt/image/loofah-server"
+          cp "$CPU_TEST_BINARY" "$RUNNER_TEMP/loofah-cpu-stt/image/server-tests"
+          DOCKER_BUILDKIT=1 docker build --platform linux/amd64 --target ci-tests --file apps/server/Dockerfile.cpu --tag loofah-server:cpu-ci "$RUNNER_TEMP/loofah-cpu-stt/image"
+          docker run --rm --platform linux/amd64 loofah-server:cpu-ci --version
+          docker run --rm --platform linux/amd64 --entrypoint ldd loofah-server:cpu-ci /usr/local/bin/loofah-server | tee "$RUNNER_TEMP/loofah-cpu-stt/server-runtime-ldd.txt"
+          if grep -F 'not found' "$RUNNER_TEMP/loofah-cpu-stt/server-runtime-ldd.txt"; then exit 1; fi
+          docker run --rm --platform linux/amd64 --entrypoint ldd loofah-server:cpu-ci /opt/loofah-tests/server-tests | tee "$RUNNER_TEMP/loofah-cpu-stt/server-tests-runtime-ldd.txt"
+          if grep -E 'not found|libonnxruntime' "$RUNNER_TEMP/loofah-cpu-stt/server-tests-runtime-ldd.txt" "$RUNNER_TEMP/loofah-cpu-stt/server-runtime-ldd.txt"; then exit 1; fi
+          docker run --rm --platform linux/amd64 --entrypoint sha256sum loofah-server:cpu-ci /opt/loofah-tests/server-tests > "$RUNNER_TEMP/loofah-cpu-stt/server-tests-runtime.sha256"
+          test "$(awk '{print $1}' "$RUNNER_TEMP/loofah-cpu-stt/server-tests.sha256")" = "$(awk '{print $1}' "$RUNNER_TEMP/loofah-cpu-stt/server-tests-runtime.sha256")"
+          docker run --rm --platform linux/amd64 --entrypoint sha256sum loofah-server:cpu-ci /usr/local/bin/loofah-server > "$RUNNER_TEMP/loofah-cpu-stt/server-runtime.sha256"
+          test "$(awk '{print $1}' "$RUNNER_TEMP/loofah-cpu-stt/server-release.sha256")" = "$(awk '{print $1}' "$RUNNER_TEMP/loofah-cpu-stt/server-runtime.sha256")"
+      - env:
+          CPU_TEST_BINARY: ${{ steps.cpu_artifact.outputs.test_binary }}
+        run: |
+          set -euo pipefail
+          for runtime_case in \
+            "$CPU_SERVICE_CASE" \
+            tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication \
+            transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join \
+            "$CPU_RESERVED_CASE"; do
+            case_log="$RUNNER_TEMP/loofah-cpu-stt/runtime-${runtime_case//:/_}.log"
+            runtime_limits=()
+            if test "$runtime_case" = "$CPU_RESERVED_CASE"; then
+              runtime_limits=(--cpus 2 --memory 6g)
+            fi
+            docker run --rm --platform linux/amd64 --network none --read-only "${runtime_limits[@]}" \
+              --tmpfs /tmp:rw,noexec,nosuid,size=3g \
+              --tmpfs "$PWD/apps/server:rw,noexec,nosuid,size=1m" \
+              --mount "type=bind,source=$PWD/crates/data,target=$PWD/crates/data,readonly" \
+              --mount "type=bind,source=$LOOFAH_WHISPER_MODEL,target=/models/ggml-base-q8_0.bin,readonly" \
+              --mount "type=bind,source=$LOOFAH_ONNX_MODELS,target=/models/onnx,readonly" \
+              --env LOOFAH_WHISPER_MODEL=/models/ggml-base-q8_0.bin --env TMPDIR=/tmp \
+              --env LOOFAH_ONNX_MODELS=/models/onnx --env LD_LIBRARY_PATH=/nonexistent \
+              --env ORT_DYLIB_PATH=/nonexistent/onnxruntime.so \
+              --entrypoint /opt/loofah-tests/server-tests loofah-server:cpu-ci \
+              "$runtime_case" --exact --ignored --nocapture 2>&1 | tee "$case_log"
+            grep -F '1 passed; 0 failed; 0 ignored' "$case_log"
+          done
+          python3 .github/scripts/backend_onnx_models.py --root "$LOOFAH_ONNX_MODELS" --check
+          sha256sum --check --strict "$RUNNER_TEMP/loofah-cpu-stt/server-tests.sha256"
+          sha256sum --check --strict "$RUNNER_TEMP/loofah-cpu-stt/model.sha256"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-cpu-stt
+          path: |
+            ${{ runner.temp }}/loofah-cpu-stt/*.log
+            ${{ runner.temp }}/loofah-cpu-stt/*.txt
+            ${{ runner.temp }}/loofah-cpu-stt/*.sha256
+            ${{ runner.temp }}/loofah-cpu-stt/*.json
+            ${{ runner.temp }}/loofah-cpu-stt/*.jsonl
+          if-no-files-found: ignore
+          retention-days: 7
+
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: docker build --platform linux/amd64 --file apps/server/Dockerfile --tag loofah-server:test .
+      - run: docker run --rm --platform linux/amd64 loofah-server:test --version
+      - run: docker run --rm --env LOOFAH_DOMAIN=loofah.company.example --volume "$PWD/apps/server/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: linux-x86_64
+          shared-key: deployment-acceptance
+      - id: deployment_driver
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/loofah-deployment"
+          cargo test --locked -p loofah-server --test deployment --no-run --message-format=json > "$RUNNER_TEMP/loofah-deployment/build.jsonl"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          messages = Path(os.environ["RUNNER_TEMP"]) / "loofah-deployment/build.jsonl"
+          artifacts = [value for line in messages.read_text().splitlines()
+                       if (value := json.loads(line)).get("reason") == "compiler-artifact"
+                       and value["target"]["name"] == "deployment" and value.get("executable")]
+          assert len(artifacts) == 1, "expected exactly one compiled deployment driver"
+          executable = Path(artifacts[0]["executable"]).resolve(strict=True)
+          assert executable.is_file() and os.access(executable, os.X_OK)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"executable={executable}\n")
+          PY
+      - env:
+          DEPLOYMENT_DRIVER: ${{ steps.deployment_driver.outputs.executable }}
+        run: |
+          set -euo pipefail
+          sudo python3 .github/scripts/backend_deployment_acceptance.py \
+            --source-root "$PWD" --driver "$DEPLOYMENT_DRIVER" \
+            --server-image loofah-server:test --caddy-image caddy:2.10 \
+            2>&1 | tee "$RUNNER_TEMP/loofah-deployment/console.log"
+      - if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          output = Path(os.environ["RUNNER_TEMP"]) / "loofah-deployment"
+          console = output / "console.log"
+          if console.is_file():
+              roots = re.findall(r"^LOOFAH_DEPLOYMENT_EVIDENCE=(/opt/loofah-deployment-[a-f0-9]{12})$",
+                                 console.read_text(), re.MULTILINE)
+              assert len(roots) == 1, "expected exactly one owned deployment evidence root"
+              root = Path(roots[0])
+              assert root.is_dir() and not root.is_symlink()
+              owned = [root]
+              for parent in (Path("/var/lib"), Path("/var/cache")):
+                  path = parent / root.name
+                  if path.exists():
+                      assert path.is_dir() and not path.is_symlink()
+                      owned.append(path)
+              subprocess.run(["sudo", "tar", "-czf", str(output / "evidence.tar.gz"),
+                              "-C", "/", *[str(path.relative_to("/")) for path in owned]], check=True)
+              subprocess.run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}",
+                              str(output / "evidence.tar.gz")], check=True)
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-deployment-acceptance
+          path: ${{ runner.temp }}/loofah-deployment/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -17,11 +17,12 @@ impl SessionStore {
     ) -> MigrationReport {
         let vault = self.vault_base.clone();
         let mut snapshot = std::mem::take(scan);
-        let result = tokio::task::spawn_blocking(move || {
-            let report = migrate_snapshot(&vault, &mut snapshot);
-            (snapshot, report)
-        })
-        .await;
+        let result = self
+            .spawn_blocking(move || {
+                let report = migrate_snapshot(&vault, &mut snapshot);
+                (snapshot, report)
+            })
+            .await;
         match result {
             Ok((snapshot, report)) => {
                 *scan = snapshot;

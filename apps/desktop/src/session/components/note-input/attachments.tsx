@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useMutation } from "@tanstack/react-query";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as selectFile } from "@tauri-apps/plugin-dialog";
 import { platform } from "@tauri-apps/plugin-os";
@@ -10,6 +10,7 @@ import {
   FileTextIcon,
   FolderOpenIcon,
   ImageIcon,
+  MoreHorizontalIcon,
   PaperclipIcon,
   PlusIcon,
   PresentationIcon,
@@ -20,6 +21,8 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
+  useLayoutEffect,
+  useSyncExternalStore,
   useMemo,
   useRef,
   useState,
@@ -27,28 +30,27 @@ import {
 import { createPortal } from "react-dom";
 
 import {
-  type AttachmentInfo,
-  commands as fsSyncCommands,
-} from "@hypr/plugin-fs-sync";
-import { commands as openerCommands } from "@hypr/plugin-opener2";
+  AttachmentActions,
+  AttachmentFeedback,
+  AttachmentResource,
+} from "@hypr/editor/node-views";
 import { Button } from "@hypr/ui/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@hypr/ui/components/ui/dialog";
 import { Spinner } from "@hypr/ui/components/ui/spinner";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn } from "@hypr/utils";
 
+import { useSessionAttachments } from "~/session/hooks/useAttachmentResolver";
+import { deviceFileName } from "~/shared/application/device-attachment-source";
 import {
-  sessionAttachmentPathsQueryKey,
-  useSessionAttachments,
-} from "~/session/hooks/useAttachmentResolver";
+  ApplicationRequestError,
+  connectionClosed,
+} from "~/shared/application/errors";
+import type { FileInfo } from "~/shared/application/protocol.gen";
+import { RemoveAttachmentDialog } from "~/shared/application/remove-attachment-dialog";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
+import { VaultAttachmentProvider } from "~/shared/application/vault-attachment-provider";
+import type { VaultScope } from "~/shared/application/vault-scope";
+import { formatFileSize } from "~/shared/format-file-size";
 import {
   type FileUploadCandidate,
   type FileUploadState,
@@ -100,20 +102,83 @@ export function Attachments({
   children?: ReactNode;
   dropTargetRef?: RefObject<HTMLDivElement | null>;
 }) {
+  const owner = useVaultReadScope();
+  return owner.readable ? (
+    <ScopedAttachments
+      key={sessionId}
+      sessionId={sessionId}
+      scope={owner.scope}
+      current={owner.current}
+      dropTargetRef={dropTargetRef}
+    >
+      {children}
+    </ScopedAttachments>
+  ) : (
+    <p role="alert">
+      Attachment access is unavailable. Reconnect or sign in again.
+    </p>
+  );
+}
+function ScopedAttachments({
+  sessionId,
+  scope,
+  current,
+  children,
+  dropTargetRef,
+}: {
+  sessionId: string;
+  scope: VaultScope;
+  current: () => boolean;
+  children?: ReactNode;
+  dropTargetRef?: RefObject<HTMLDivElement | null>;
+}) {
   const { t } = useLingui();
-  const queryClient = useQueryClient();
+  const queryClient = scope.queryClient;
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const online = useSyncExternalStore(
+    (changed) => onlineManager.subscribe(changed),
+    () => onlineManager.isOnline(),
+  );
+  const active = () => mounted.current && current();
+  const requestable = () =>
+    active() &&
+    scope.getSnapshot().state === "connected" &&
+    (scope.client.networkMode === "always" || onlineManager.isOnline());
+  const canUpload = () =>
+    requestable() &&
+    scope.client.canEdit &&
+    scope.client.features.includes("attachment_upload");
+  const canRemove =
+    scope.getSnapshot().state === "connected" &&
+    scope.client.canEdit &&
+    scope.client.features.includes("attachment_remove") &&
+    scope.client.features.includes("attachment_metadata");
+  const blocked =
+    scope.getSnapshot().state !== "connected" ||
+    (scope.client.networkMode === "online" && !online);
+  const uploadDisabled =
+    blocked ||
+    !scope.client.canEdit ||
+    !scope.client.features.includes("attachment_upload");
   const attachmentsQuery = useSessionAttachments(sessionId);
   const uploadFile = useFileUpload(sessionId);
   const uploadStates = useFileUploadStates(sessionId);
   const localTargetRef = useRef<HTMLDivElement>(null);
   const targetRef = dropTargetRef ?? localTargetRef;
-  const [attachmentToDelete, setAttachmentToDelete] =
-    useState<AttachmentInfo | null>(null);
+  const [attachmentToDelete, setAttachmentToDelete] = useState<FileInfo | null>(
+    null,
+  );
 
   const attachments = useMemo(
     () =>
       [...(attachmentsQuery.data ?? [])].sort((left, right) =>
-        left.attachmentId.localeCompare(right.attachmentId, undefined, {
+        left.filename.localeCompare(right.filename, undefined, {
           sensitivity: "base",
           numeric: true,
         }),
@@ -122,7 +187,7 @@ export function Attachments({
   );
 
   const addCandidates = (candidates: FileUploadCandidate[]) => {
-    if (candidates.length === 0) return;
+    if (candidates.length === 0 || !canUpload()) return;
     void Promise.allSettled(
       candidates.map((candidate) => uploadFile(candidate)),
     )
@@ -135,6 +200,7 @@ export function Attachments({
         };
       })
       .then(({ added, failed }) => {
+        if (!active()) return;
         if (added > 0) {
           sonnerToast.success(
             added === 1 ? t`Attachment added` : t`${added} attachments added`,
@@ -151,99 +217,103 @@ export function Attachments({
   };
 
   const { isHovering: isDraggingFiles } = useNativeFileDrop(targetRef, {
+    enabled: !uploadDisabled,
     onDrop: (paths) =>
       addCandidates(
         paths.map((path) => ({
           kind: "path",
           path,
-          name: fileNameFromPath(path),
+          name: deviceFileName(path),
         })),
       ),
   });
 
-  const pickerMutation = useMutation({
-    mutationFn: async () => {
-      const selection = await selectFile({
-        title: t`Add attachments`,
-        multiple: true,
-        directory: false,
-      });
-      return Array.isArray(selection)
-        ? selection
-        : selection
-          ? [selection]
-          : [];
+  const pickerMutation = useMutation(
+    {
+      networkMode: "always",
+      retry: false,
+      mutationFn: async () => {
+        if (!canUpload()) throw connectionClosed();
+        const selection = await selectFile({
+          title: t`Add attachments`,
+          multiple: true,
+          directory: false,
+        });
+        if (!canUpload()) throw connectionClosed();
+        return Array.isArray(selection)
+          ? selection
+          : selection
+            ? [selection]
+            : [];
+      },
+      onSuccess: (paths) =>
+        addCandidates(
+          paths.map((path) => ({
+            kind: "path",
+            path,
+            name: deviceFileName(path),
+          })),
+        ),
+      onError: (error) => {
+        if (!active()) return;
+        console.error("[attachments] file dialog failed", error);
+        sonnerToast.error(t`Couldn’t choose attachments`);
+      },
     },
-    onSuccess: (paths) =>
-      addCandidates(
-        paths.map((path) => ({
-          kind: "path",
-          path,
-          name: fileNameFromPath(path),
-        })),
-      ),
-    onError: (error) => {
-      console.error("[attachments] file dialog failed", error);
-      sonnerToast.error(t`Couldn’t choose attachments`);
-    },
-  });
+    queryClient,
+  );
 
-  const deleteMutation = useMutation({
-    mutationFn: async (attachment: AttachmentInfo) => {
-      const result = await fsSyncCommands.attachmentRemove(
-        sessionId,
-        attachment.attachmentId,
-      );
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return attachment;
+  const directoryController = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      directoryController.current?.abort();
     },
-    onSuccess: (attachment) => {
-      void queryClient.invalidateQueries({
-        queryKey: sessionAttachmentPathsQueryKey(sessionId),
-      });
-      setAttachmentToDelete(null);
-      sonnerToast.success(t`“${attachment.attachmentId}” moved to Trash`);
+    [],
+  );
+  const finderMutation = useMutation(
+    {
+      networkMode: "always",
+      retry: false,
+      mutationFn: async () => {
+        const open = scope.client.openAttachmentDirectory;
+        if (!requestable() || !open) throw connectionClosed();
+        const controller = new AbortController();
+        directoryController.current = controller;
+        const stop = scope.subscribe(() => {
+          if (!current()) controller.abort();
+        });
+        try {
+          await scope.run(() => open(sessionId, { signal: controller.signal }));
+          if (!requestable()) throw connectionClosed();
+        } finally {
+          stop();
+          directoryController.current = null;
+        }
+      },
+      onError: (error) => {
+        if (!active()) return;
+        console.error(
+          "[attachments] failed to open attachment directory",
+          error,
+        );
+        sonnerToast.error(
+          platform() === "windows"
+            ? t`Couldn’t open attachments in File Explorer`
+            : t`Couldn’t open attachments in Finder`,
+        );
+      },
     },
-    onError: (error) => {
-      console.error("[attachments] failed to remove attachment", error);
-      sonnerToast.error(t`Couldn’t remove attachment`);
-    },
-  });
-
-  const finderMutation = useMutation({
-    mutationFn: async () => {
-      const dirResult = await fsSyncCommands.attachmentDir(sessionId);
-      if (dirResult.status === "error") {
-        throw new Error(dirResult.error);
-      }
-      const openResult = await openerCommands.openPath(dirResult.data, null);
-      if (openResult.status === "error") {
-        throw new Error(openResult.error);
-      }
-    },
-    onError: (error) => {
-      console.error(
-        "[attachments] failed to open attachments directory",
-        error,
-      );
-      sonnerToast.error(
-        platform() === "windows"
-          ? t`Couldn’t open attachments in File Explorer`
-          : t`Couldn’t open attachments in Finder`,
-      );
-    },
-  });
+    queryClient,
+  );
 
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | null = null;
     void getCurrentWindow()
       .onFocusChanged(({ payload: focused }) => {
-        if (focused) {
+        if (focused && mounted.current && current()) {
           void queryClient.invalidateQueries({
-            queryKey: sessionAttachmentPathsQueryKey(sessionId),
+            queryKey: scope.attachmentsOptions(sessionId).queryKey,
           });
         }
       })
@@ -262,7 +332,7 @@ export function Attachments({
       disposed = true;
       unlisten?.();
     };
-  }, [queryClient, sessionId]);
+  }, [queryClient, scope, sessionId, current]);
 
   const dropOverlay = (
     <div className="border-primary bg-background/85 pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-lg border border-dashed backdrop-blur-[1px]">
@@ -288,33 +358,37 @@ export function Attachments({
           <h2 className="text-sm font-semibold">{t`Attachments`}</h2>
           {!attachmentsQuery.isLoading && !attachmentsQuery.isError ? (
             <p className="text-muted-foreground text-xs">
-              {attachments.length + uploadStates.states.length === 1
-                ? t`1 file`
-                : t`${attachments.length + uploadStates.states.length} files`}
+              {attachmentsQuery.hasNextPage
+                ? t`More files are available`
+                : attachments.length + uploadStates.states.length === 1
+                  ? t`1 file`
+                  : t`${attachments.length + uploadStates.states.length} files`}
             </p>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          {scope.client.openAttachmentDirectory && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={blocked || finderMutation.isPending}
+              onClick={() => finderMutation.mutate()}
+            >
+              {finderMutation.isPending ? (
+                <Spinner size={14} />
+              ) : (
+                <FolderOpenIcon className="size-3.5" />
+              )}
+              {platform() === "windows"
+                ? t`Show in File Explorer`
+                : t`Show in Finder`}
+            </Button>
+          )}
           <Button
             type="button"
-            variant="outline"
             size="sm"
-            disabled={finderMutation.isPending}
-            onClick={() => finderMutation.mutate()}
-          >
-            {finderMutation.isPending ? (
-              <Spinner size={14} />
-            ) : (
-              <FolderOpenIcon className="size-3.5" />
-            )}
-            {platform() === "windows"
-              ? t`Show in File Explorer`
-              : t`Show in Finder`}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={pickerMutation.isPending}
+            disabled={uploadDisabled || pickerMutation.isPending}
             onClick={() => pickerMutation.mutate()}
           >
             {pickerMutation.isPending ? (
@@ -342,6 +416,7 @@ export function Attachments({
             type="button"
             variant="outline"
             size="sm"
+            disabled={blocked || !attachmentsQuery.supported}
             onClick={() => void attachmentsQuery.refetch()}
           >
             {t`Try again`}
@@ -357,7 +432,7 @@ export function Attachments({
         </div>
       ) : (
         <div className="border-border overflow-hidden rounded-lg border">
-          <div className="text-muted-foreground grid grid-cols-[minmax(0,1fr)_7rem_6rem_2rem] items-center gap-3 border-b px-3 py-2 text-[11px] font-medium uppercase">
+          <div className="text-muted-foreground grid grid-cols-[minmax(0,1fr)_7rem_6rem_4rem] items-center gap-3 border-b px-3 py-2 text-[11px] font-medium uppercase">
             <span>{t`Name`}</span>
             <span>{t`Type`}</span>
             <span className="text-right">{t`Size`}</span>
@@ -377,12 +452,30 @@ export function Attachments({
           ))}
           {attachments.map((attachment) => (
             <AttachmentRow
-              key={attachment.attachmentId}
+              key={attachment.filename}
               attachment={attachment}
-              onDelete={() => setAttachmentToDelete(attachment)}
+              sessionId={sessionId}
+              scope={scope}
+              current={active}
+              blocked={blocked}
+              onDelete={
+                canRemove && !blocked
+                  ? () => setAttachmentToDelete(attachment)
+                  : undefined
+              }
             />
           ))}
         </div>
+      )}
+
+      {attachmentsQuery.hasNextPage && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={blocked || attachmentsQuery.isFetching}
+          onClick={() => void attachmentsQuery.fetchNextPage()}
+        >{t`Load more`}</Button>
       )}
 
       {isDraggingFiles
@@ -391,113 +484,170 @@ export function Attachments({
           : dropOverlay
         : null}
 
-      <Dialog
-        open={attachmentToDelete !== null}
-        onOpenChange={(open) => {
-          if (!open && !deleteMutation.isPending) {
+      {attachmentToDelete && scope && (
+        <RemoveAttachmentDialog
+          key={attachmentToDelete.filename}
+          scope={scope}
+          sessionId={sessionId}
+          attachmentId={attachmentToDelete.filename}
+          onClose={() => setAttachmentToDelete(null)}
+          onRemoved={() => {
+            if (!active()) return;
+            void queryClient.invalidateQueries({
+              queryKey: scope.attachmentsOptions(sessionId).queryKey,
+            });
+            sonnerToast.success(
+              t`“${attachmentToDelete.filename}” moved to Trash`,
+            );
             setAttachmentToDelete(null);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t`Remove attachment?`}</DialogTitle>
-            <DialogDescription>
-              {attachmentToDelete
-                ? t`“${attachmentToDelete.attachmentId}” will be moved to the vault Trash. Links to this file in notes or summaries may stop working.`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={deleteMutation.isPending}
-              >
-                {t`Cancel`}
-              </Button>
-            </DialogClose>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={!attachmentToDelete || deleteMutation.isPending}
-              onClick={() => {
-                if (attachmentToDelete) {
-                  deleteMutation.mutate(attachmentToDelete);
-                }
-              }}
-            >
-              {deleteMutation.isPending ? <Spinner size={14} /> : null}
-              {deleteMutation.isPending ? t`Removing…` : t`Move to Trash`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function AttachmentRow({
   attachment,
+  sessionId,
+  scope,
+  current,
+  blocked,
   onDelete,
 }: {
-  attachment: AttachmentInfo;
-  onDelete: () => void;
+  attachment: FileInfo;
+  sessionId: string;
+  scope: VaultScope;
+  current: () => boolean;
+  blocked: boolean;
+  onDelete?: () => void;
 }) {
   const { t } = useLingui();
-  const Icon = getFileIcon(attachment.extension);
+  const [actions, setActions] = useState(false);
+  const Icon = getFileIcon(extensionOfName(attachment.filename));
 
-  const openMutation = useMutation({
-    mutationFn: async () => {
-      const result = await openerCommands.openPath(attachment.path, null);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
+  const controller = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      controller.current?.abort();
     },
-    onError: (error) => {
-      console.error("[attachments] failed to open attachment", error);
-      sonnerToast.error(t`Couldn’t open “${attachment.attachmentId}”`);
+    [],
+  );
+  const openMutation = useMutation(
+    {
+      networkMode: "always",
+      retry: false,
+      mutationFn: async () => {
+        if (
+          !current() ||
+          scope.getSnapshot().state !== "connected" ||
+          (scope.client.networkMode === "online" && !onlineManager.isOnline())
+        )
+          throw connectionClosed();
+        const active = new AbortController();
+        controller.current = active;
+        const stop = scope.subscribe(() => {
+          if (!current()) active.abort();
+        });
+        let resource: Awaited<ReturnType<typeof scope.client.openAttachment>> =
+          null;
+        try {
+          resource = await scope.run(() =>
+            scope.client.openAttachment(sessionId, attachment.filename, {
+              signal: active.signal,
+            }),
+          );
+          active.signal.throwIfAborted();
+          if (!current() || !resource) throw connectionClosed();
+          await resource.open({ signal: active.signal });
+        } finally {
+          stop();
+          controller.current = null;
+          await resource?.close().catch(() => {});
+        }
+      },
+      onError: (error) => {
+        if (!current()) return;
+        console.error("[attachments] failed to open attachment", error);
+        sonnerToast.error(
+          error instanceof ApplicationRequestError &&
+            error.detail.mutation_outcome === "unknown"
+            ? t`Could not confirm the file action. A copy may already be in Downloads/Loofah.`
+            : t`Couldn’t open “${attachment.filename}”`,
+        );
+      },
     },
-  });
+    scope.queryClient,
+  );
 
   return (
-    <div className="border-border hover:bg-accent/50 flex items-center border-b last:border-b-0">
-      <button
-        type="button"
-        className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_7rem_6rem] items-center gap-3 px-3 py-2.5 text-left"
-        disabled={openMutation.isPending}
-        onClick={() => openMutation.mutate()}
-        title={t`Open ${attachment.attachmentId}`}
-      >
-        <span className="flex min-w-0 items-center gap-2.5">
-          {openMutation.isPending ? (
-            <Spinner size={16} className="shrink-0" />
-          ) : (
-            <Icon className="text-muted-foreground size-4 shrink-0" />
-          )}
-          <span className="truncate text-sm font-medium">
-            {attachment.attachmentId}
+    <div className="border-border border-b last:border-b-0">
+      <div className="hover:bg-accent/50 flex items-center">
+        <button
+          type="button"
+          className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_7rem_6rem] items-center gap-3 px-3 py-2.5 text-left"
+          disabled={blocked || openMutation.isPending}
+          onClick={() => openMutation.mutate()}
+          title={t`Open ${attachment.filename}`}
+        >
+          <span className="flex min-w-0 items-center gap-2.5">
+            {openMutation.isPending ? (
+              <Spinner size={16} className="shrink-0" />
+            ) : (
+              <Icon className="text-muted-foreground size-4 shrink-0" />
+            )}
+            <span className="truncate text-sm font-medium">
+              {attachment.filename}
+            </span>
           </span>
-        </span>
-        <span className="text-muted-foreground truncate text-xs">
-          {formatFileType(attachment.extension)}
-        </span>
-        <span className="text-muted-foreground text-right text-xs tabular-nums">
-          {formatFileSize(attachment.size)}
-        </span>
-      </button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="text-muted-foreground mr-1 size-7"
-        aria-label={t`Remove ${attachment.attachmentId}`}
-        title={t`Remove attachment`}
-        onClick={onDelete}
-      >
-        <Trash2Icon className="size-3.5" />
-      </Button>
+          <span className="text-muted-foreground truncate text-xs">
+            {formatFileType(extensionOfName(attachment.filename))}
+          </span>
+          <span className="text-muted-foreground text-right text-xs tabular-nums">
+            {formatFileSize(attachment.sizeBytes)}
+          </span>
+        </button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground size-7"
+          disabled={blocked}
+          aria-expanded={actions}
+          aria-label={t`Actions for ${attachment.filename}`}
+          onClick={() => setActions((value) => !value)}
+        >
+          <MoreHorizontalIcon className="size-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground mr-1 size-7"
+          aria-label={t`Remove ${attachment.filename}`}
+          title={t`Remove attachment`}
+          disabled={!onDelete}
+          onClick={onDelete}
+        >
+          <Trash2Icon className="size-3.5" />
+        </Button>
+      </div>
+      {actions && (
+        <VaultAttachmentProvider scope={scope} sessionId={sessionId}>
+          <AttachmentResource attachmentId={attachment.filename}>
+            {(resource) =>
+              resource && (
+                <div className="px-3 pb-2">
+                  <div className="flex gap-1">
+                    <AttachmentActions resource={resource} />
+                  </div>
+                  <AttachmentFeedback resource={resource} />
+                </div>
+              )
+            }
+          </AttachmentResource>
+        </VaultAttachmentProvider>
+      )}
     </div>
   );
 }
@@ -512,6 +662,10 @@ function PendingAttachmentRow({
   onRemove: () => void;
 }) {
   const { t } = useLingui();
+  const uncertain =
+    upload.status === "error" &&
+    (!(upload.error instanceof ApplicationRequestError) ||
+      upload.error.detail.mutation_outcome !== "not_committed");
   const extension = extensionOfName(upload.candidate.name);
   const Icon = getFileIcon(extension);
   const size =
@@ -543,7 +697,11 @@ function PendingAttachmentRow({
                   : undefined
               }
             >
-              {upload.status === "pending" ? t`Copying…` : t`Copy failed`}
+              {upload.status === "pending"
+                ? t`Copying…`
+                : uncertain
+                  ? t`Upload could not be confirmed`
+                  : t`Copy failed`}
             </span>
           </span>
         </span>
@@ -597,18 +755,7 @@ export function formatFileType(extension: string) {
   return extension ? extension.toLocaleUpperCase() : "File";
 }
 
-export function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-function fileNameFromPath(path: string) {
-  return path.split("/").pop() ?? path;
-}
+export { formatFileSize } from "~/shared/format-file-size";
 
 function extensionOfName(name: string) {
   const index = name.lastIndexOf(".");

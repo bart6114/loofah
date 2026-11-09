@@ -6,6 +6,8 @@ import { forwardRef, useCallback } from "react";
 
 import { cn } from "@hypr/utils";
 
+import { useMentionNavigation } from "./mention-navigation";
+
 export const mentionNodeSpec: NodeSpec = {
   group: "inline",
   inline: true,
@@ -43,8 +45,6 @@ export const mentionNodeSpec: NodeSpec = {
     ];
   },
 };
-
-const GLOBAL_NAVIGATE_FUNCTION = "__HYPR_NAVIGATE__";
 
 const FACEHASH_BG_CLASSES = [
   "bg-amber-50 dark:bg-amber-950",
@@ -111,20 +111,19 @@ export const MentionNodeView = forwardRef<HTMLElement, NodeViewComponentProps>(
     const mentionId = String(id ?? "");
     const mentionType = String(type ?? "");
     const mentionLabel = String(label ?? "");
+    const navigate = useMentionNavigation();
     const MAX_MENTION_LENGTH = 20;
     const displayLabel =
       mentionLabel.length > MAX_MENTION_LENGTH
         ? mentionLabel.slice(0, MAX_MENTION_LENGTH) + "\u2026"
         : mentionLabel;
-    const path = `/app/${mentionType}/${mentionId}`;
-
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
         e.preventDefault();
-        const navigate = (window as any)[GLOBAL_NAVIGATE_FUNCTION];
-        if (navigate) navigate(path);
+        e.stopPropagation();
+        navigate({ id: mentionId, type: mentionType, label: mentionLabel });
       },
-      [path],
+      [navigate, mentionId, mentionType, mentionLabel],
     );
 
     return (

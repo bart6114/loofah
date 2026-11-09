@@ -10,6 +10,7 @@ import { Button } from "@hypr/ui/components/ui/button";
 import { Spinner } from "@hypr/ui/components/ui/spinner";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
+import { DesktopStartupPreferences } from "./application/desktop-startup-preferences";
 import { relaunchNow } from "./relaunch";
 
 import {
@@ -204,6 +205,7 @@ function StartupScreen({ status }: { status: StartupStatus | null }) {
               )}
               {switchVault.isPending ? t`Switching…` : t`Switch vault`}
             </Button>
+            <DesktopStartupPreferences />
           </div>
         ) : null}
 

@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Command as CommandPrimitive } from "cmdk";
 import { FileTextIcon, SearchIcon, XIcon } from "lucide-react";
 import {
@@ -17,16 +17,15 @@ import { cn } from "@hypr/utils";
 import { useSearchEngine } from "~/search/contexts/engine";
 import type { SearchSnippet } from "~/search/contexts/engine";
 import { snippetSegments } from "~/search/snippet";
-import { useSessionSummaries } from "~/session/queries";
+import { useSessionSummaries } from "~/session/summary-queries";
+import type { VaultScope } from "~/shared/application/vault-scope";
 import { useMainContentCenterOffset } from "~/shared/main/content-offset";
 import { useTabs } from "~/store/zustand/tabs";
 
 const MAX_RECENT_DISPLAY = 5;
 const SEARCH_LIMIT = 20;
 const SNIPPET_MAX_CHARS = 120;
-// cmdk mounts (and registers) a DOM item per row, so the empty-query list and the
-// per-keystroke title scan are capped -- typing a query is the path to older
-// notes, and everything beyond a cap is unreachable by scrolling anyway.
+// cmdk registers a DOM item per row, so bounded lists keep the palette responsive.
 const MAX_ALL_NOTES_DISPLAY = 50;
 const MAX_TITLE_MATCHES = 50;
 
@@ -117,114 +116,177 @@ function SnippetLine({ snippet }: { snippet: SearchSnippet }) {
   );
 }
 
-export function OpenNoteDialog({
+export function OpenNoteDialog(props: OpenNoteDialogProps) {
+  const { scope } = useSearchEngine();
+  if (
+    !scope ||
+    !["connected", "reconnecting"].includes(scope.getSnapshot().state)
+  )
+    return null;
+  return (
+    <ScopedOpenNoteDialog key={scope.client.scope} scope={scope} {...props} />
+  );
+}
+
+function ScopedOpenNoteDialog({
+  scope,
   open,
   onOpenChange,
   mainContentCenterOffset = 0,
-}: OpenNoteDialogProps) {
+}: OpenNoteDialogProps & { scope: VaultScope }) {
   const { t } = useLingui();
   const [query, setQuery] = useState("");
   const openCurrent = useTabs((state) => state.openCurrent);
   const recentlyOpenedSessionIds = useTabs(
     (state) => state.recentlyOpenedSessionIds,
   );
-  const { search } = useSearchEngine();
-
-  const sessions = useSessionSummaries(open);
+  const { search, ready } = useSearchEngine();
 
   const trimmedQuery = query.trim();
+  const recentIds = useMemo(
+    () => recentlyOpenedSessionIds.slice(0, MAX_RECENT_DISPLAY),
+    [recentlyOpenedSessionIds],
+  );
+  const latest = useSessionSummaries(
+    scope,
+    {
+      kind: "list",
+      limit: MAX_ALL_NOTES_DISPLAY + MAX_RECENT_DISPLAY,
+      order: "newest_first",
+      titled_only: false,
+    },
+    open && ready && !trimmedQuery,
+  );
+  const recent = useSessionSummaries(
+    scope,
+    { kind: "ids", ids: recentIds },
+    open && ready && !trimmedQuery && recentIds.length > 0,
+  );
+  const titles = useSessionSummaries(
+    scope,
+    { kind: "title", query: trimmedQuery, limit: MAX_TITLE_MATCHES },
+    open && ready && !!trimmedQuery,
+  );
 
-  const { data: contentHits } = useQuery({
-    queryKey: ["open-note-dialog-search", trimmedQuery, search],
-    queryFn: () =>
-      search(trimmedQuery, null, {
-        limit: SEARCH_LIMIT,
-        snippets: true,
-        snippetMaxChars: SNIPPET_MAX_CHARS,
-      }),
-    enabled: open && trimmedQuery.length > 0,
-    placeholderData: keepPreviousData,
-  });
-
-  const sessionsMap = useMemo(() => {
-    return new Map<string, NoteResult>(
-      sessions.map((session) => [
-        session.id,
-        {
-          id: session.id,
-          title: session.title || t`Untitled`,
-          createdAt: session.created_at,
-        },
-      ]),
-    );
-  }, [sessions, t]);
-
-  const allNotesSortedByDate = useMemo(() => {
-    // Precompute sort keys: at 1,000+ notes a Date-parsing comparator dominates
-    // the dialog-open cost.
-    return [...sessionsMap.values()]
-      .map((note) => ({
-        note,
-        sortKey: note.createdAt ? Date.parse(note.createdAt) || 0 : 0,
-      }))
-      .sort((a, b) => b.sortKey - a.sortKey)
-      .map(({ note }) => note);
-  }, [sessionsMap]);
+  const content = useQuery(
+    {
+      queryKey: [
+        "vault",
+        scope.client.scope,
+        "search",
+        "open-note-dialog",
+        trimmedQuery,
+      ],
+      queryFn: ({ signal }) =>
+        search(
+          trimmedQuery,
+          null,
+          {
+            limit: SEARCH_LIMIT,
+            snippets: true,
+            snippetMaxChars: SNIPPET_MAX_CHARS,
+          },
+          signal,
+        ),
+      enabled: open && ready && trimmedQuery.length > 0,
+      placeholderData: (previous, previousQuery) =>
+        previousQuery?.queryKey[1] === scope.client.scope
+          ? previous
+          : undefined,
+    },
+    scope.queryClient,
+  );
+  const sessionHits = useMemo(
+    () =>
+      (content.data ?? [])
+        .filter((hit) => hit.document.type === "session")
+        .slice(0, SEARCH_LIMIT),
+    [content.data],
+  );
+  const hitIds = useMemo(
+    () => [...new Set(sessionHits.map((hit) => hit.document.id))],
+    [sessionHits],
+  );
+  const confirmed = useSessionSummaries(
+    scope,
+    { kind: "ids", ids: hitIds },
+    open && ready && !!trimmedQuery && hitIds.length > 0,
+  );
 
   const recentSessions = useMemo(() => {
-    return recentlyOpenedSessionIds
-      .slice(0, MAX_RECENT_DISPLAY)
-      .map((id) => sessionsMap.get(id))
-      .filter((s): s is NoteResult => s !== undefined);
-  }, [recentlyOpenedSessionIds, sessionsMap]);
-
-  const recentSessionIdSet = useMemo(() => {
-    return new Set(recentSessions.map((s) => s.id));
-  }, [recentSessions]);
-
+    const summaries = new Map(
+      (recent.data ?? []).map((summary) => [summary.id, summary]),
+    );
+    return recentIds.flatMap((id) => {
+      const summary = summaries.get(id);
+      return summary
+        ? [
+            {
+              id: summary.id,
+              title: summary.title || t`Untitled`,
+              createdAt: summary.created_at,
+            },
+          ]
+        : [];
+    });
+  }, [recent.data, recentIds, t]);
   const otherNotes = useMemo(() => {
-    return allNotesSortedByDate
-      .filter((note) => !recentSessionIdSet.has(note.id))
-      .slice(0, MAX_ALL_NOTES_DISPLAY);
-  }, [allNotesSortedByDate, recentSessionIdSet]);
-
-  // Full-text hits (memo, summaries, transcripts) merged with client-side
-  // title substring matches: Tantivy only matches whole tokens, so substring
-  // matching keeps prefix typing ("plan" -> "Planning session") working.
+    const recentSet = new Set(recentSessions.map((note) => note.id));
+    return (latest.data ?? [])
+      .filter((summary) => !recentSet.has(summary.id))
+      .slice(0, MAX_ALL_NOTES_DISPLAY)
+      .map((summary) => ({
+        id: summary.id,
+        title: summary.title || t`Untitled`,
+        createdAt: summary.created_at,
+      }));
+  }, [latest.data, recentSessions, t]);
   const searchResults = useMemo(() => {
     if (!trimmedQuery) return [];
-
-    const sessionHits = (contentHits ?? []).filter(
-      (hit) => hit.document.type === "session",
-    );
-    const snippetsById = new Map(
+    const snippets = new Map(
       sessionHits.map((hit) => [hit.document.id, hit.contentSnippet]),
     );
-
-    const lowerQuery = trimmedQuery.toLowerCase();
+    const summaries = new Map(
+      (confirmed.data ?? []).map((summary) => [summary.id, summary]),
+    );
     const results: NoteResult[] = [];
     const seen = new Set<string>();
-
-    for (const note of allNotesSortedByDate) {
-      if (results.length >= MAX_TITLE_MATCHES) {
-        break;
-      }
-      if (note.title.toLowerCase().includes(lowerQuery)) {
-        seen.add(note.id);
-        results.push({ ...note, snippet: snippetsById.get(note.id) ?? null });
-      }
+    for (const summary of (titles.data ?? []).slice(0, MAX_TITLE_MATCHES)) {
+      seen.add(summary.id);
+      results.push({
+        id: summary.id,
+        title: summary.title || t`Untitled`,
+        createdAt: summary.created_at,
+        snippet: snippets.get(summary.id) ?? null,
+      });
     }
-
     for (const hit of sessionHits) {
-      if (seen.has(hit.document.id)) continue;
-      const note = sessionsMap.get(hit.document.id);
-      if (!note) continue;
-      seen.add(note.id);
-      results.push({ ...note, snippet: hit.contentSnippet });
+      const summary = summaries.get(hit.document.id);
+      if (!summary || seen.has(summary.id)) continue;
+      seen.add(summary.id);
+      results.push({
+        id: summary.id,
+        title: summary.title || t`Untitled`,
+        createdAt: summary.created_at,
+        snippet: hit.contentSnippet,
+      });
     }
-
     return results;
-  }, [trimmedQuery, contentHits, allNotesSortedByDate, sessionsMap]);
+  }, [trimmedQuery, sessionHits, confirmed.data, titles.data, t]);
+  const pending =
+    ready &&
+    (trimmedQuery
+      ? titles.isPending ||
+        titles.isFetching ||
+        content.isPending ||
+        content.isFetching ||
+        (hitIds.length > 0 && (confirmed.isPending || confirmed.isFetching))
+      : latest.isPending ||
+        latest.isFetching ||
+        (recentIds.length > 0 && (recent.isPending || recent.isFetching)));
+  const error = trimmedQuery
+    ? (titles.error ?? content.error ?? confirmed.error)
+    : (latest.error ?? recent.error);
 
   const hasAnyResults = trimmedQuery
     ? searchResults.length > 0
@@ -313,10 +375,29 @@ export function OpenNoteDialog({
             </div>
 
             <CommandPrimitive.List className="max-h-80 overflow-y-auto p-2">
+              {error && (
+                <p
+                  role="alert"
+                  className="text-muted-foreground px-2 py-3 text-sm"
+                >
+                  {error.message}
+                </p>
+              )}
               {!hasAnyResults ? (
-                <CommandPrimitive.Empty className="text-muted-foreground py-6 text-center text-sm">
-                  <Trans>No notes found.</Trans>
-                </CommandPrimitive.Empty>
+                pending ? (
+                  <p
+                    role="status"
+                    className="text-muted-foreground py-6 text-center text-sm"
+                  >
+                    <Trans>Loading…</Trans>
+                  </p>
+                ) : (
+                  !error && (
+                    <CommandPrimitive.Empty className="text-muted-foreground py-6 text-center text-sm">
+                      <Trans>No notes found.</Trans>
+                    </CommandPrimitive.Empty>
+                  )
+                )
               ) : trimmedQuery ? (
                 <CommandPrimitive.Group>
                   {searchResults.map((note) => (

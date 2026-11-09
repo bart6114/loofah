@@ -408,3 +408,93 @@ mod exclusive_rename_tests {
         assert_eq!(std::fs::read(to.join("payload")).unwrap(), b"keep source");
     }
 }
+
+#[cfg(unix)]
+pub fn sync_directory(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    let file = {
+        use std::os::unix::fs::OpenOptionsExt;
+        // A search-only handle supports fsync without granting directory enumeration.
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_SEARCH | libc::O_NOFOLLOW)
+            .open(path)?
+    };
+    #[cfg(not(target_os = "macos"))]
+    let file = std::fs::File::open(path)?;
+    file.sync_all()
+}
+
+#[cfg(unix)]
+pub fn sync_directory_with_anchor(
+    path: &std::path::Path,
+    anchor: &std::path::Path,
+) -> std::io::Result<()> {
+    #[cfg(not(target_os = "linux"))]
+    let _ = anchor;
+    match sync_directory(path) {
+        #[cfg(target_os = "linux")]
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            use std::os::{
+                fd::AsRawFd,
+                unix::fs::{MetadataExt, OpenOptionsExt},
+            };
+            let directory = path.symlink_metadata()?;
+            if !directory.is_dir() || directory.file_type().is_symlink() {
+                return Err(error);
+            }
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(anchor)?;
+            if file.metadata()?.dev() != directory.dev() {
+                return Err(error);
+            }
+            // Linux cannot fsync an O_PATH directory. A same-filesystem anchor lets
+            // syncfs persist the rename without requiring directory-listing access.
+            if unsafe { libc::syncfs(file.as_raw_fd()) } != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        }
+        result => result,
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod directory_sync_linux_tests {
+    #[test]
+    fn searchable_parent_uses_same_filesystem_anchor_before_and_after_rename() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let parent = root.path().join("sessions");
+        std::fs::create_dir(&parent).unwrap();
+        let original = parent.join("note");
+        std::fs::create_dir(&original).unwrap();
+        let moved = root.path().join("retained");
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o300)).unwrap();
+        let preflight = super::sync_directory_with_anchor(&parent, &original);
+        let rename = std::fs::rename(&original, &moved);
+        let committed = super::sync_directory_with_anchor(&parent, &moved);
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(preflight.is_ok(), "{preflight:?}");
+        assert!(rename.is_ok(), "{rename:?}");
+        assert!(committed.is_ok(), "{committed:?}");
+        assert!(moved.is_dir());
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod directory_sync_tests {
+    #[test]
+    fn syncing_a_searchable_directory_does_not_require_listing_permission() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o300)).unwrap();
+        let sync = super::sync_directory(root.path());
+        let listing = std::fs::read_dir(root.path());
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(sync.is_ok(), "{sync:?}");
+        assert!(listing.is_err());
+    }
+}

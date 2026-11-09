@@ -2,7 +2,7 @@ import { MicIcon, MicOffIcon } from "lucide-react";
 
 import { DropdownMenuItem } from "@hypr/ui/components/ui/dropdown-menu";
 
-import { useListener } from "~/stt/contexts";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { useStartListening } from "~/stt/useStartListening";
 import {
   isMainWebviewWindow,
@@ -18,17 +18,38 @@ export function Listening({
   resume: boolean;
   onStartRecording?: () => void;
 }) {
-  const { mode, stop } = useListener((state) => ({
-    mode: state.getSessionMode(sessionId),
-    stop: state.stop,
-  }));
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
+  if (!isAvailable()) return null;
+  return (
+    <LegacyListening
+      sessionId={sessionId}
+      resume={resume}
+      onStartRecording={onStartRecording}
+    />
+  );
+}
+
+function LegacyListening({
+  sessionId,
+  resume,
+  onStartRecording,
+}: {
+  sessionId: string;
+  resume: boolean;
+  onStartRecording?: () => void;
+}) {
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
+  const mode = legacy.mode;
+  const stop = () => legacy.listener!.getState().stop();
   const isListening = mode === "active" || mode === "finalizing";
   const isFinalizing = mode === "finalizing";
   const isBatching = mode === "running_batch";
-  const startListening = useStartListening(sessionId);
+  const startListening = useStartListening(sessionId, isAvailable);
 
   const handleToggleListening = () => {
-    if (isBatching) {
+    if (!isAvailable() || isBatching) {
       return;
     }
 

@@ -1,3 +1,5 @@
+mod build_git;
+
 const COMMANDS: &[&str] = &[
     "get_git_hash",
     "get_fingerprint",
@@ -13,6 +15,9 @@ const COMMANDS: &[&str] = &[
 ];
 
 fn main() {
+    for path in build_git::watched_paths(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))) {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
     let gitcl = vergen_gix::GixBuilder::default()
         .sha(false)
         .build()

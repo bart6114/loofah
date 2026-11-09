@@ -6,6 +6,7 @@ const hoisted = vi.hoisted(() => {
     setNodeMarkup: vi.fn(),
   };
   const view = {
+    editable: true,
     state: { tr: transaction },
     dispatch: vi.fn(),
   };
@@ -25,6 +26,7 @@ import { TaskItemView } from "./task-item-view";
 describe("TaskItemView", () => {
   beforeEach(() => {
     hoisted.isNodeSelected = false;
+    hoisted.view.editable = true;
     hoisted.transaction.setNodeMarkup.mockClear();
     hoisted.view.dispatch.mockClear();
   });
@@ -109,6 +111,32 @@ describe("TaskItemView", () => {
 
     fireEvent.click(screen.getByRole("checkbox"));
 
+    expect(hoisted.transaction.setNodeMarkup).not.toHaveBeenCalled();
+    expect(hoisted.view.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch checkbox changes when the editor is read-only", () => {
+    hoisted.view.editable = false;
+    render(
+      <TaskItemView
+        nodeProps={
+          {
+            node: {
+              attrs: {
+                status: "todo",
+                checked: false,
+                taskId: "task",
+                taskItemId: "item",
+              },
+            },
+            getPos: () => 4,
+          } as any
+        }
+      >
+        <p>Read-only task</p>
+      </TaskItemView>,
+    );
+    fireEvent.click(screen.getByRole("checkbox"));
     expect(hoisted.transaction.setNodeMarkup).not.toHaveBeenCalled();
     expect(hoisted.view.dispatch).not.toHaveBeenCalled();
   });

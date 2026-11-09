@@ -1,14 +1,18 @@
 use std::path::Path;
 
-use hypr_agent_access::{get_meeting_export, get_meeting_export_segments};
 use hypr_export_core::{
     ExportInput, ExportLabels, ExportMetadata, TextFormat, Transcript, TranscriptItem,
 };
+use hypr_loofah_protocol::{LocalCliOperation as Operation, LocalCliReply as Reply};
 
 use crate::cli::{ExportContent, ExportFormat, MeetingCommand};
 use crate::{Error, Result, output};
 
-pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()> {
+pub async fn run(
+    reader: &crate::agent_reader::AgentReader,
+    command: MeetingCommand,
+    json: bool,
+) -> Result<()> {
     let MeetingCommand::Export {
         id,
         format,
@@ -26,32 +30,45 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
         ));
     }
     if let Some(path) = &path {
-        let vault = vault
-            .canonicalize()
-            .map_err(|e| Error::operation("resolve vault", e.to_string()))?;
-        let parent = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        let destination = path
-            .canonicalize()
-            .or_else(|_| {
-                parent
-                    .canonicalize()
-                    .map(|p| p.join(path.file_name().unwrap_or_default()))
-            })
-            .map_err(|e| Error::operation("resolve output", e.to_string()))?;
-        if destination.starts_with(&vault) {
-            return Err(Error::operation(
-                "export session",
-                "output must be outside the source vault",
-            ));
+        if let crate::agent_reader::AgentReader::Local(gateway) = reader {
+            let vault = gateway
+                .vault()
+                .canonicalize()
+                .map_err(|e| Error::operation("resolve vault", e.to_string()))?;
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            let destination = path
+                .canonicalize()
+                .or_else(|_| {
+                    parent
+                        .canonicalize()
+                        .map(|p| p.join(path.file_name().unwrap_or_default()))
+                })
+                .map_err(|e| Error::operation("resolve output", e.to_string()))?;
+            if destination.starts_with(&vault) {
+                return Err(Error::operation(
+                    "export session",
+                    "output must be outside the source vault",
+                ));
+            }
         }
         if !force && path.symlink_metadata().is_ok() {
             return Err(Error::OutputExists(path.clone()));
         }
     }
-    let mut meeting = get_meeting_export(vault, id.clone()).await?;
+    let gateway = reader.command_gateway().await?;
+    let Reply::AgentExport {
+        export: mut meeting,
+    } = gateway
+        .execute(Operation::AgentExport {
+            session_id: id.clone(),
+        })
+        .await?
+    else {
+        return Err(crate::profiles::unexpected());
+    };
     // Preserve the pre-existing Markdown/JSON artifact and envelope contract.
     if include.is_empty() && matches!(format, ExportFormat::Markdown | ExportFormat::Json) {
         let content = match (format, json) {
@@ -101,13 +118,21 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
     if !include.contains(&ExportContent::Transcript) {
         meeting.transcripts.clear();
     }
+    let mut attachment_owners = Vec::new();
     let input = if format == ExportFormat::Json {
         None
     } else {
         let transcript = if include.contains(&ExportContent::Transcript) {
+            let Reply::AgentSegments { segments } = gateway
+                .execute(Operation::AgentSegments {
+                    session_id: id.clone(),
+                })
+                .await?
+            else {
+                return Err(crate::profiles::unexpected());
+            };
             Some(Transcript {
-                items: get_meeting_export_segments(vault, id.clone())
-                    .await?
+                items: segments
                     .into_iter()
                     .map(|s| TranscriptItem {
                         speaker: Some(s.speaker_label),
@@ -140,8 +165,9 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
             attachments: vec![],
         };
         if format == ExportFormat::Pdf {
-            let session_dir = super::meetings::session_path(vault, &id).await?;
-            input.attachments = collect_attachments(&session_dir, &input);
+            let (files, owners) = collect_owned_attachments(&gateway, &id, &input).await?;
+            input.attachments = files;
+            attachment_owners = owners;
         }
         Some(input)
     };
@@ -154,6 +180,7 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
     };
     let bytes = if let Some(input) = input {
         tokio::task::spawn_blocking(move || {
+            let _attachment_owners = attachment_owners;
             if format == ExportFormat::Pdf {
                 hypr_export_core::render_pdf(&input)
                     .map_err(|e| Error::operation("render PDF", e.to_string()))
@@ -210,79 +237,130 @@ fn format_date(value: &str) -> String {
         .unwrap_or_else(|_| value.to_string())
 }
 
-fn collect_attachments(
-    session_dir: &Path,
+async fn collect_owned_attachments(
+    gateway: &crate::command_gateway::CommandGateway,
+    session_id: &str,
     input: &ExportInput,
-) -> Vec<hypr_export_core::ExportAttachment> {
-    let Ok(root) = session_dir.join("attachments").canonicalize() else {
-        return vec![];
-    };
-    let Ok(session) = session_dir.canonicalize() else {
-        return vec![];
-    };
-    if !root.starts_with(session) {
-        return vec![];
-    }
-    let Ok(entries) = std::fs::read_dir(&root) else {
-        return vec![];
-    };
+) -> Result<(
+    Vec<hypr_export_core::ExportAttachment>,
+    Vec<tempfile::NamedTempFile>,
+)> {
     let markdown = format!(
         "{}\n{}",
         input.note_md.as_deref().unwrap_or_default(),
         input.enhanced_md
     );
-    let mut attachments = entries
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let name = entry.file_name().into_string().ok()?;
-            if name.starts_with('.') {
-                return None;
-            }
-            let src = super::meetings::to_portable_attachment_src(&name);
-            if !markdown.contains(&format!("]({src}")) {
-                return None;
-            }
-            let path = entry.path().canonicalize().ok()?;
-            if !path.starts_with(&root) || !path.is_file() {
-                return None;
-            }
-            Some(hypr_export_core::ExportAttachment {
-                src,
-                path: path.to_string_lossy().into_owned(),
+    let mut after = None;
+    let mut files = Vec::new();
+    let mut owners = Vec::new();
+    loop {
+        let page = match gateway
+            .execute(Operation::AttachmentPage {
+                session_id: session_id.to_owned(),
+                limit: 200,
+                after: after.clone(),
             })
-        })
-        .collect::<Vec<_>>();
-    attachments.sort_by(|a, b| a.src.cmp(&b.src));
-    attachments
+            .await?
+        {
+            Reply::AttachmentPage { page } => page,
+            _ => return Err(crate::profiles::unexpected()),
+        };
+        for file in page.files {
+            if file.filename.starts_with('.') {
+                continue;
+            }
+            let src = super::meetings::to_portable_attachment_src(&file.filename);
+            if !markdown.contains(&format!("]({src}")) {
+                continue;
+            }
+            let Some(staged) = gateway.attachment_file(session_id, &file.filename).await? else {
+                continue;
+            };
+            files.push(hypr_export_core::ExportAttachment {
+                src,
+                path: staged.path().to_string_lossy().into_owned(),
+            });
+            owners.push(staged);
+        }
+        match page.next_cursor {
+            Some(next) if after.as_ref() != Some(&next) => after = Some(next),
+            Some(_) => {
+                return Err(Error::operation(
+                    "read export attachments",
+                    "Attachment cursor did not advance",
+                ));
+            }
+            None => break,
+        }
+    }
+    files.sort_by(|a, b| a.src.cmp(&b.src));
+    Ok((files, owners))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn attachments_only_include_referenced_managed_files() {
-        let session = tempfile::tempdir().unwrap();
-        let other = tempfile::tempdir().unwrap();
-        std::fs::create_dir(session.path().join("attachments")).unwrap();
-        for name in ["photo é.png", "unused.png", ".hidden.png"] {
-            std::fs::write(session.path().join("attachments").join(name), "image").unwrap();
-        }
-        std::fs::write(session.path().join("unknown.png"), "user attachment").unwrap();
-        std::fs::write(other.path().join("outside.png"), "outside").unwrap();
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(
-            other.path().join("outside.png"),
-            session.path().join("attachments/link.png"),
+    #[tokio::test]
+    async fn owner_export_only_stages_referenced_managed_images_with_original_extensions() {
+        const PNG: &[u8] = &[
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+            8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 218, 99, 252, 207,
+            192, 80, 15, 0, 4, 133, 1, 128, 132, 169, 140, 33, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66,
+            96, 130,
+        ];
+        let root = tempfile::tempdir().unwrap();
+        let vault = root.path().join("vault");
+        let session = vault.join("sessions/session");
+        std::fs::create_dir_all(session.join("attachments")).unwrap();
+        std::fs::write(
+            session.join("_meta.json"),
+            br#"{"id":"session","title":"Export","created_at":"2026-11-05T00:00:00Z","tags":[]}"#,
         )
         .unwrap();
-        let input = ExportInput {
-            note_md: Some("![photo](attachments/photo%20%C3%A9.png)\n![hidden](attachments/.hidden.png)\n![unknown](unknown.png)\n![link](attachments/link.png)".into()),
-            enhanced_md: String::new(), transcript: None, metadata: None, attachments: vec![],
-        };
-        let attachments = collect_attachments(session.path(), &input);
+        for name in ["photo é.PNG", "unused.png", ".hidden.png"] {
+            std::fs::write(session.join("attachments").join(name), PNG).unwrap();
+        }
+        std::fs::write(session.join("unknown.png"), b"User-owned attachment").unwrap();
+        let outside = root.path().join("outside.png");
+        std::fs::write(&outside, b"Outside bytes").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, session.join("attachments/link.png")).unwrap();
+        let mut input = ExportInput { note_md: Some("![Photo](attachments/photo%20%C3%A9.PNG)\n![Hidden](attachments/.hidden.png)\n![Unknown](unknown.png)\n![Link](attachments/link.png)".into()), enhanced_md:String::new(), transcript:None, metadata:None, attachments:vec![] };
+        let reader = crate::agent_reader::AgentReader::local(
+            vault.clone(),
+            hypr_search_cache::Cache::new(&root.path().join("cache"), &vault).unwrap(),
+        );
+        let (attachments, owners) =
+            collect_owned_attachments(&reader.command_gateway().await.unwrap(), "session", &input)
+                .await
+                .unwrap();
         assert_eq!(attachments.len(), 1);
-        assert_eq!(attachments[0].src, "attachments/photo%20%C3%A9.png");
-        assert_eq!(std::fs::read(&attachments[0].path).unwrap(), b"image");
+        assert_eq!(attachments[0].src, "attachments/photo%20%C3%A9.PNG");
+        assert_eq!(
+            Path::new(&attachments[0].path).extension(),
+            Some(std::ffi::OsStr::new("PNG"))
+        );
+        assert_eq!(std::fs::read(&attachments[0].path).unwrap(), PNG);
+        std::fs::write(
+            session.join("attachments/photo é.PNG"),
+            b"Concurrent source edit",
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(&attachments[0].path).unwrap(), PNG);
+        input.attachments = attachments;
+        let pdf = tokio::task::spawn_blocking(move || {
+            let _owners = owners;
+            hypr_export_core::render_pdf(&input).unwrap()
+        })
+        .await
+        .unwrap();
+        assert!(pdf.starts_with(b"%PDF"));
+        assert_eq!(
+            std::fs::read(session.join("unknown.png")).unwrap(),
+            b"User-owned attachment"
+        );
+        assert_eq!(std::fs::read(outside).unwrap(), b"Outside bytes");
+        assert!(!vault.join("config.json").exists());
     }
 }

@@ -2,7 +2,7 @@ import "./test-matchers";
 
 import { beforeEach, describe, expect, test } from "vitest";
 
-import { useTabs } from ".";
+import { tabsTestStore as useTabs } from "./test-utils";
 import { createSessionTab, resetTabsStore } from "./test-utils";
 
 describe("navigation", () => {

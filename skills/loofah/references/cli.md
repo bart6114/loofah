@@ -12,7 +12,7 @@ loof --json sessions note MEETING_ID --kind note
 loof --json sessions note MEETING_ID --kind summary
 ```
 
-Vault commands automatically initialize a missing or incompatible cache. JSON progress streams on stderr; stdout contains only the requested command's response. Search/lists refresh changes automatically. Use `loof --json init` for explicit setup or repair.
+List/search and writes automatically initialize a missing or incompatible cache. Per-session reads, rename, and delete do not initialize global search or migrate settings; idle MCP does not open the vault. JSON progress streams on stderr; stdout contains only the requested command's response. Search/lists refresh changes automatically. Use `loof --json init` for explicit setup or repair.
 
 `doctor` exits with status 1 when its response contains `ready: false`. Inside a vault it also restores the root `AGENTS.md` agent guide when missing or stale (reported as `agents_md`).
 
@@ -96,6 +96,25 @@ loof --json transcribe MEETING_ID
 
 If `import --transcribe` exits non-zero but prints a meeting id, the import succeeded and only the transcription failed — fix the reported problem (usually a missing model or configuration) and run `loof transcribe MEETING_ID`.
 
+For an import or transcription error with `mutation_outcome: "unknown"`, use the original `request_id`:
+
+```bash
+loof --json sessions recover REQUEST_ID
+```
+
+In Local mode this command inspects or finishes the original retained publication without rerunning a model or reading the source file again. It preserves changed transcripts and deleted sessions. Confirmed historical requests return their original result without recreating content. If the result was never durably retained, report that outcome before starting any new transcription.
+
+For an explicitly selected server profile, inspect original media requests and saved device declarations without starting inference:
+
+```bash
+loof --profile company --json sessions media
+loof --profile company --json sessions media REQUEST_ID
+loof --profile company --json sessions recover REQUEST_ID
+loof --profile company --json sessions recover REQUEST_ID --source recording.m4a
+```
+
+Server recovery uses the original request, destination, options and source descriptor. Supply `--source` only when that request is still awaiting its original upload; the bytes must match the retained SHA and size. Never create a new request to retry an unknown model outcome, and never substitute a Local vault for an unavailable server.
+
 Export is intended for an explicit user request to save or transfer a complete meeting:
 
 ```bash
@@ -145,3 +164,50 @@ Run `loof --json sessions rename SESSION_ID "New title"` to change only the titl
 Titles are stored verbatim, including empty strings. The id, directory, other metadata,
 and content stay unchanged. JSON returns `command: "sessions.rename"` with `data` fields
 `id` and `title`. Missing sessions return `not_found` (exit 2). The `meetings` alias works too.
+
+## Server profiles
+
+Local use stays offline and needs no login. Select a server explicitly for each
+remote invocation; no server profile becomes the default local vault.
+
+```bash
+loof profiles login company --server https://notes.example.com
+loof profiles list
+loof --profile company --json sessions list
+loof --profile company mcp
+loof profiles logout company
+```
+
+`profiles login NAME` uses the server's company browser sign-in. `--server
+HTTPS_ORIGIN` is required for a new profile and must have no path or query. Use
+`--vault VAULT_ID` to select an accessible shared vault; otherwise the saved or
+personal vault is selected. `--no-browser` prints the sign-in URL on stderr for
+you to open on the same computer. Run login again to refresh access or change
+the selected vault; use another profile name for another server or account.
+
+`profiles list` reads only saved connection metadata. Refresh credentials stay
+in the operating system credential store, separate from desktop credentials.
+`profiles logout NAME` works without the server and removes this CLI profile's
+credentials and metadata; vault files stay intact. Set
+`LOOFAH_CLI_PROFILE_DIR` to an absolute path to relocate CLI connection metadata.
+This directory contains no tokens and is separate from the vault.
+
+The initial `--profile NAME` support covers `sessions list`, `sessions search`,
+`sessions get`, read-only `sessions note` (including `--kind`),
+`sessions transcript`, and all existing read-only MCP tools and resources.
+The `meetings` alias and JSON schema version `2` remain available. Transcripts
+are complete; oversized responses fail explicitly rather than truncating.
+
+Remote writes, export, attachment operations, import, transcription, tag listing,
+`doctor`, `init`, and filesystem paths are not available through profiles yet.
+Unsupported commands and connection/authentication failures return errors and
+never fall back to the local vault. `--profile` conflicts with `--base` and
+`--vault-path`, including their environment variables. Profile management does
+not accept local vault overrides or `--profile`.
+
+For MCP, sign in before starting `loof --profile company mcp`. Tool calls never
+open a browser. Each connection stays bound to its original profile, account,
+and vault. Restart MCP after changing that binding. Concurrent CLI processes
+serialize credential refresh for the same profile; an idle MCP connection does
+not hold the profile lock. Loss of access returns an error without cached vault
+content.

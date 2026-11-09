@@ -1,26 +1,12 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { downloadDir } from "@tauri-apps/api/path";
 import { open as selectFile } from "@tauri-apps/plugin-dialog";
-import { Effect, pipe } from "effect";
 import { useCallback } from "react";
 
-import {
-  commands as fsSyncCommands,
-  events as fsSyncEvents,
-} from "@hypr/plugin-fs-sync";
-import { commands as listener2Commands } from "@hypr/plugin-transcription";
+import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
-import { estimateUploadedAudioSessionCreatedAt } from "./audio-note-date";
-import { useListener } from "./contexts";
-import { fromResult } from "./fromResult";
-import { ChannelProfile } from "./segment";
-import { isStoppedTranscriptionError, useRunBatch } from "./useRunBatch";
-
-import { getEnhancerService } from "~/services/enhancer";
-import { enqueueSessionAudioOperation } from "~/session/audio-operations";
-import { useSession, useUpdateSession } from "~/session/queries";
-import { type Tab, useTabs } from "~/store/zustand/tabs";
-import { createTranscript } from "~/stt/queries";
+import { deviceFileName } from "~/shared/application/device-attachment-source";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 
 export const AUDIO_EXTENSIONS = [
   "wav",
@@ -34,12 +20,10 @@ export const AUDIO_EXTENSIONS = [
 ];
 const AUDIO_TRANSFER_EXTENSIONS = [...AUDIO_EXTENSIONS, "qta"];
 const TRANSCRIPT_EXTENSIONS = ["vtt", "srt"];
-
 function fileExtension(value: string) {
   const extension = value.toLowerCase().split(".").pop();
   return extension && extension !== value.toLowerCase() ? extension : "";
 }
-
 export function isAudioUploadFile(file: Pick<File, "name" | "type">) {
   return (
     AUDIO_TRANSFER_EXTENSIONS.includes(fileExtension(file.name)) ||
@@ -47,387 +31,141 @@ export function isAudioUploadFile(file: Pick<File, "name" | "type">) {
   );
 }
 
-function isAudioUploadPath(path: string) {
-  return AUDIO_EXTENSIONS.includes(fileExtension(path));
-}
-
-export function useUploadFile(sessionId: string) {
-  const runBatch = useRunBatch(sessionId);
-  const queryClient = useQueryClient();
-  const handleBatchStarted = useListener((state) => state.handleBatchStarted);
-  const handleBatchFailed = useListener((state) => state.handleBatchFailed);
-  const updateBatchProgress = useListener((state) => state.updateBatchProgress);
-  const clearBatchSession = useListener((state) => state.clearBatchSession);
-
-  const session = useSession(sessionId);
-  const updateSession = useUpdateSession(sessionId);
-  const updateSessionTabState = useTabs((state) => state.updateSessionTabState);
-  const sessionTab = useTabs((state) => {
-    const found = state.tabs.find(
-      (tab): tab is Extract<Tab, { type: "sessions" }> =>
-        tab.type === "sessions" && tab.id === sessionId,
-    );
-    return found ?? null;
-  });
-
-  const triggerEnhance = useCallback(() => {
-    const service = getEnhancerService();
-    if (!service) return;
-
-    void Promise.resolve(service.enhance(sessionId))
-      .then((result) => {
-        if (
-          (result.type === "started" || result.type === "already_active") &&
-          sessionTab
-        ) {
-          updateSessionTabState(sessionTab, {
-            ...sessionTab.state,
-            view: { type: "enhanced", id: result.noteId },
-          });
-        }
-      })
-      .catch((error) => {
-        console.error("[enhancer] failed to enhance uploaded file", error);
-      });
-  }, [sessionId, sessionTab, updateSessionTabState]);
-
-  const triggerEnhanceIfSummaryEmpty = useCallback(() => {
-    void Promise.resolve(
-      getEnhancerService()?.queueAutoEnhanceIfSummaryEmpty(sessionId),
-    ).catch((error) => {
-      console.error("[enhancer] failed to queue uploaded file", error);
-    });
-  }, [sessionId]);
-
-  const applyEstimatedAudioNoteDate = useCallback(
-    async (filePath: string) => {
+export function useUploadFile(
+  sessionId: string,
+  assertCurrent?: () => void,
+  enabled = true,
+) {
+  const owner = useVaultReadScope();
+  const check = useCallback(() => {
+    assertCurrent?.();
+    if (
+      !enabled ||
+      !owner.current() ||
+      owner.scope.getSnapshot().state !== "connected" ||
+      !owner.scope.client.media
+    )
+      throw new Error("Media import is unavailable for this vault.");
+  }, [assertCurrent, enabled, owner.current, owner.scope]);
+  const mutation = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: async (input: {
+      kind: "audio" | "transcript";
+      source:
+        | { kind: "path"; path: string; name: string }
+        | { kind: "file"; file: File; name: string };
+      createdAt?: string;
+      contentType?: string;
+    }) => {
+      check();
+      const media = owner.scope.client.media!;
+      const requestId = crypto.randomUUID();
+      const prepared = await owner.scope.prepareAttachmentSource(input.source);
       try {
-        const result = await fsSyncCommands.audioSourceMetadata(filePath);
-        if (result.status === "error") {
-          return;
-        }
-
-        const estimatedCreatedAt = estimateUploadedAudioSessionCreatedAt(
-          result.data,
-        );
-        if (!estimatedCreatedAt) {
-          return;
-        }
-
-        await updateSession({ created_at: estimatedCreatedAt });
-      } catch (error) {
-        console.error("[upload] audio metadata inspection failed:", error);
-      }
-    },
-    [updateSession],
-  );
-
-  const applyDroppedAudioNoteDate = useCallback(
-    async (file: File) => {
-      try {
-        if (!Number.isFinite(file.lastModified) || file.lastModified <= 0) {
-          return;
-        }
-
-        await updateSession({
-          created_at: new Date(file.lastModified).toISOString(),
-        });
-      } catch (error) {
-        console.error("[upload] dropped audio date inspection failed:", error);
-      }
-    },
-    [updateSession],
-  );
-
-  const importWithProgress = useCallback(
-    async (
-      runImport: () => Promise<
-        | { status: "ok"; data: string }
-        | {
-            status: "error";
-            error: string;
-          }
-      >,
-    ) =>
-      enqueueSessionAudioOperation(sessionId, async () => {
-        const unlisten = await fsSyncEvents.audioImportEvent.listen((e) => {
-          if (
-            e.payload.type === "audioImportProgress" &&
-            e.payload.session_id === sessionId
-          ) {
-            updateBatchProgress(sessionId, e.payload.percentage);
-          }
-        });
-
-        try {
-          const result = await runImport();
-          if (result.status === "error") {
-            throw new Error(result.error);
-          }
-          // Unlike a finished recording, an uploaded/imported file is already placed by
-          // `fsSyncCommands.audioImport*` in its final location (the legacy flat
-          // `sessions/<id>/<file>` layout that import owns) -- there's nothing left to move
-          // into the store's `audio/` folder, so `catalogLocalSessionAudio` doesn't apply here.
-          return result.data;
-        } finally {
-          unlisten();
-        }
-      }),
-    [sessionId, updateBatchProgress],
-  );
-
-  const runAudioImport = useCallback(
-    (
-      importAudio: () => Promise<string>,
-      inspectAudioDate: () => Promise<void>,
-    ) => {
-      const program = pipe(
-        Effect.promise(inspectAudioDate),
-        Effect.tap(() =>
-          Effect.sync(() => {
-            handleBatchStarted(sessionId, "importing");
-          }),
-        ),
-        Effect.flatMap(() =>
-          Effect.tryPromise({
-            try: importAudio,
-            catch: (error) =>
-              error instanceof Error ? error : new Error(String(error)),
-          }),
-        ),
-        Effect.tap(() =>
-          Effect.sync(() => {
-            void queryClient.invalidateQueries({
-              queryKey: ["audio", sessionId],
-            });
-          }),
-        ),
-        Effect.tap(() => Effect.sync(() => clearBatchSession(sessionId))),
-        Effect.flatMap((importedPath) =>
-          Effect.tryPromise({
-            try: () => runBatch(importedPath, { imported: true }),
-            catch: (error) => error,
-          }),
-        ),
-        Effect.tap(() => Effect.sync(() => triggerEnhanceIfSummaryEmpty())),
-        Effect.catchAll((error: unknown) =>
-          Effect.sync(() => {
-            if (isStoppedTranscriptionError(error)) {
-              return;
-            }
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error("[upload] audio import failed:", error);
-            handleBatchFailed(sessionId, msg);
-          }),
-        ),
-      );
-
-      Effect.runPromise(program).catch((error) => {
-        console.error("[upload] audio failed:", error);
-      });
-    },
-    [
-      clearBatchSession,
-      handleBatchFailed,
-      handleBatchStarted,
-      queryClient,
-      runBatch,
-      sessionId,
-      triggerEnhanceIfSummaryEmpty,
-    ],
-  );
-
-  const processFile = useCallback(
-    (filePath: string, kind: "audio" | "transcript") => {
-      const normalizedPath = filePath.toLowerCase();
-
-      if (kind === "transcript") {
-        if (
-          !normalizedPath.endsWith(".vtt") &&
-          !normalizedPath.endsWith(".srt")
-        ) {
-          return;
-        }
-
-        const program = pipe(
-          fromResult(listener2Commands.parseSubtitle(filePath)),
-          Effect.tap((subtitle) => {
-            if (subtitle.tokens.length === 0) {
-              return Effect.void;
-            }
-
-            const transcriptId = crypto.randomUUID();
-            const createdAt = new Date().toISOString();
-
-            const words = subtitle.tokens.map((token) => ({
-              id: crypto.randomUUID(),
-              transcript_id: transcriptId,
-              text: token.text,
-              start_ms: token.start_time,
-              end_ms: token.end_time,
-              channel: ChannelProfile.MixedCapture,
-              user_id: session?.user_id ?? "",
-              created_at: new Date().toISOString(),
-            }));
-
-            return Effect.tryPromise({
-              try: () =>
-                createTranscript({
-                  id: transcriptId,
+        check();
+        const result = await owner.scope.run(() =>
+          input.kind === "audio"
+            ? media.importAudio(
+                {
                   sessionId,
-                  ownerUserId: session?.user_id ?? "",
-                  createdAt,
-                  startedAt: Date.now(),
-                  memo: session?.raw_md ?? "",
-                  source: "subtitle_import",
-                  words,
-                }),
-              catch: (error) =>
-                error instanceof Error ? error : new Error(String(error)),
-            }).pipe(
-              Effect.tap(() =>
-                Effect.sync(() => {
-                  triggerEnhance();
-                }),
-              ),
-            );
-          }),
+                  prepared,
+                  createdAt: input.createdAt,
+                  contentType: input.contentType,
+                },
+                { requestId },
+              )
+            : media.importSubtitles(sessionId, prepared, { requestId }),
         );
-
-        Effect.runPromise(program).catch((error) => {
-          console.error("[upload] transcript failed:", error);
-        });
-        return;
+        check();
+        return result;
+      } finally {
+        await prepared.close();
       }
-
-      if (!isAudioUploadPath(normalizedPath)) {
-        return;
-      }
-
-      runAudioImport(
-        () =>
-          importWithProgress(() =>
-            fsSyncCommands.audioImport(sessionId, filePath),
-          ),
-        () => applyEstimatedAudioNoteDate(filePath),
-      );
     },
-    [
-      sessionId,
-      session,
-      triggerEnhance,
-      applyEstimatedAudioNoteDate,
-      importWithProgress,
-      runAudioImport,
-    ],
+    onError: (error) => {
+      if (owner.current())
+        sonnerToast.error("Media import failed", {
+          description: error instanceof Error ? error.message : String(error),
+        });
+    },
+  });
+  const submit = mutation.mutateAsync;
+  const processFile = useCallback(
+    (path: string, kind: "audio" | "transcript") => {
+      check();
+      if (
+        !(
+          kind === "audio" ? AUDIO_TRANSFER_EXTENSIONS : TRANSCRIPT_EXTENSIONS
+        ).includes(fileExtension(path))
+      )
+        return;
+      return submit({
+        kind,
+        source: { kind: "path", path, name: deviceFileName(path) },
+      });
+    },
+    [check, submit],
   );
-
   const processAudioFile = useCallback(
     (
       file: File,
       options?: { allowUnknownAudio?: boolean; contentType?: string },
     ) => {
-      if (!options?.allowUnknownAudio && !isAudioUploadFile(file)) {
-        return;
-      }
-
-      const filePath = audioUploadFilePath(file);
-      runAudioImport(
-        async () => {
-          if (filePath) {
-            return importWithProgress(() =>
-              fsSyncCommands.audioImport(sessionId, filePath),
-            );
-          }
-
-          const data = Array.from(new Uint8Array(await file.arrayBuffer()));
-          return importWithProgress(() =>
-            fsSyncCommands.audioImportData(
-              sessionId,
-              data,
-              file.name,
-              options?.contentType || file.type || null,
-            ),
-          );
-        },
-        () => applyDroppedAudioNoteDate(file),
-      );
+      check();
+      if (!options?.allowUnknownAudio && !isAudioUploadFile(file)) return;
+      const path = (file as { path?: unknown }).path;
+      return submit({
+        kind: "audio",
+        source:
+          typeof path === "string" && path.trim()
+            ? { kind: "path", path, name: deviceFileName(path) }
+            : { kind: "file", file, name: file.name },
+        createdAt:
+          Number.isFinite(file.lastModified) && file.lastModified > 0
+            ? new Date(file.lastModified).toISOString()
+            : undefined,
+        contentType: options?.contentType || file.type || undefined,
+      });
     },
-    [applyDroppedAudioNoteDate, importWithProgress, runAudioImport, sessionId],
+    [check, submit],
   );
-
   const processAudioPath = useCallback(
-    (path: string) => {
-      if (!isAudioUploadFile({ name: path, type: "" })) return;
-      runAudioImport(
-        () =>
-          importWithProgress(() => fsSyncCommands.audioImport(sessionId, path)),
-        () => applyEstimatedAudioNoteDate(path),
-      );
-    },
-    [
-      applyEstimatedAudioNoteDate,
-      importWithProgress,
-      runAudioImport,
-      sessionId,
-    ],
-  );
-
-  const selectAndUpload = useCallback(
-    (kind: "audio" | "transcript") => {
-      const filters =
-        kind === "audio"
-          ? [{ name: "Audio", extensions: AUDIO_EXTENSIONS }]
-          : [{ name: "Transcript", extensions: TRANSCRIPT_EXTENSIONS }];
-
-      const program = pipe(
-        Effect.promise(() => downloadDir()),
-        Effect.flatMap((defaultPath) =>
-          Effect.promise(() =>
-            selectFile({
-              title: kind === "audio" ? "Upload Audio" : "Upload Transcript",
-              multiple: false,
-              directory: false,
-              defaultPath,
-              filters,
-            }),
-          ),
-        ),
-      );
-
-      Effect.runPromise(program)
-        .then((selection) => {
-          const path = Array.isArray(selection) ? selection[0] : selection;
-          if (path) {
-            processFile(path, kind);
-          }
-        })
-        .catch((error) => {
-          console.error("[upload] dialog failed:", error);
-        });
-    },
+    (path: string) => processFile(path, "audio"),
     [processFile],
   );
-
-  const uploadAudio = useCallback(
-    () => selectAndUpload("audio"),
-    [selectAndUpload],
+  const selectAndUpload = useCallback(
+    async (kind: "audio" | "transcript") => {
+      check();
+      const defaultPath = await downloadDir();
+      check();
+      const selection = await selectFile({
+        title: kind === "audio" ? "Upload Audio" : "Upload Transcript",
+        multiple: false,
+        directory: false,
+        defaultPath,
+        filters: [
+          {
+            name: kind === "audio" ? "Audio" : "Transcript",
+            extensions:
+              kind === "audio" ? AUDIO_EXTENSIONS : TRANSCRIPT_EXTENSIONS,
+          },
+        ],
+      });
+      check();
+      const path = Array.isArray(selection) ? selection[0] : selection;
+      if (path) return processFile(path, kind);
+    },
+    [check, processFile],
   );
-  const uploadTranscript = useCallback(
-    () => selectAndUpload("transcript"),
-    [selectAndUpload],
-  );
-
   return {
-    uploadAudio,
-    uploadTranscript,
+    uploadAudio: useCallback(() => selectAndUpload("audio"), [selectAndUpload]),
+    uploadTranscript: useCallback(
+      () => selectAndUpload("transcript"),
+      [selectAndUpload],
+    ),
     processFile,
     processAudioFile,
     processAudioPath,
   };
-}
-
-function audioUploadFilePath(file: File) {
-  const value = (file as { path?: unknown }).path;
-  return typeof value === "string" && value.trim() ? value : null;
 }

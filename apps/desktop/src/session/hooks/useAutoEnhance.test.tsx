@@ -17,7 +17,7 @@ vi.mock("~/services/enhancer", () => ({
 }));
 
 vi.mock("~/store/zustand/tabs", () => ({
-  useTabs: { getState: mocks.tabsGetState },
+  useTabsStore: () => ({ getState: mocks.tabsGetState }),
 }));
 
 import { useAutoEnhance } from "./useAutoEnhance";
@@ -56,4 +56,13 @@ describe("useAutoEnhance", () => {
       },
     );
   });
+});
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  return {
+    useLegacySessionActivity: () => legacyActivityFixture(),
+    useLegacyDesktopAccess: () => legacyActivityFixture(),
+  };
 });

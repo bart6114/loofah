@@ -1,34 +1,24 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect } from "react";
 
-import {
-  commands as fsSyncCommands,
-  events as fsSyncEvents,
-} from "@hypr/plugin-fs-sync";
 import { commands as notificationCommands } from "@hypr/plugin-notification";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { AUDIO_IMPORT_COMPLETED_NOTIFICATION_KEY } from "./audio-import-notification";
-import { estimateUploadedAudioSessionCreatedAt } from "./audio-note-date";
-import { useListener } from "./contexts";
-import { isStoppedTranscriptionError, useRunBatch } from "./useRunBatch";
 
-import { getEnhancerService } from "~/services/enhancer";
-import { enqueueSessionAudioOperation } from "~/session/audio-operations";
-import { createSession, updateSession, useSession } from "~/session/queries";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
+import { mediaPending } from "~/shared/application/vault-client";
+import type { VaultScope } from "~/shared/application/vault-scope";
 import {
   type AudioImportItem,
-  type AudioImportSource,
   isFinishedAudioImportStatus,
   useAudioImport,
 } from "~/store/zustand/audio-import";
 
-// Effect-run guards keyed by item+attempt so StrictMode remounts (and later
-// re-renders with changed hook identities) never double-run a pipeline step.
-const startedSteps = new Set<string>();
-
+const startedSteps = new WeakMap<VaultScope, Set<string>>();
 export function AudioImportWorker() {
+  const owner = useVaultReadScope();
   const activeItem = useAudioImport(
     (state) =>
       state.items.find((item) => item.id === state.activeItemId) ?? null,
@@ -36,239 +26,199 @@ export function AudioImportWorker() {
   const hasPending = useAudioImport((state) =>
     state.items.some((item) => item.status === "pending"),
   );
-  const shouldAnnounceCompletion = useAudioImport(
+  const announce = useAudioImport(
     (state) =>
       !state.completionAnnounced &&
       state.activeItemId === null &&
       state.items.length > 0 &&
       state.items.every((item) => isFinishedAudioImportStatus(item.status)),
   );
-
   useEffect(() => {
-    if (!activeItem && hasPending) {
-      useAudioImport.getState().claimNext();
-    }
+    if (!activeItem && hasPending) useAudioImport.getState().claimNext();
   }, [activeItem, hasPending]);
-
   useEffect(() => {
-    if (!shouldAnnounceCompletion) {
-      return;
-    }
-
+    if (!announce) return;
     useAudioImport.getState().markCompletionAnnounced();
-    const items = useAudioImport.getState().items;
+    const items = useAudioImport
+      .getState()
+      .items.filter((item) => item.owner === owner.scope);
+    if (!items.length || !owner.current()) return;
     const done = items.filter((item) => item.status === "done").length;
     const failed = items.filter((item) => item.status === "failed").length;
-    const lastImportedSessionId =
+    const last =
       [...items].reverse().find((item) => item.status === "done")?.sessionId ??
       null;
-    void announceImportCompleted(done, failed, lastImportedSessionId);
-  }, [shouldAnnounceCompletion]);
-
-  if (!activeItem) {
-    return null;
-  }
-
-  return (
-    <ItemSessionCreator
+    void announceImportCompleted(done, failed, last);
+  }, [announce, owner.current, owner.scope]);
+  return activeItem ? (
+    <ItemPipeline
       key={`${activeItem.id}:${activeItem.attempt}`}
       item={activeItem}
     />
-  );
+  ) : null;
 }
-
-function ItemSessionCreator({ item }: { item: AudioImportItem }) {
-  const sessionId = item.sessionId;
-
-  useEffect(() => {
-    if (sessionId || !acquireStep(`create:${item.id}:${item.attempt}`)) {
-      return;
-    }
-
-    void prepareSession(item.source).then(
-      (createdSessionId) =>
-        useAudioImport.getState().setItemSession(item.id, createdSessionId),
-      (error) => {
-        console.error("[audio-import] failed to create session:", error);
-        useAudioImport.getState().finishItem(item.id, errorMessage(error));
-      },
-    );
-  }, [item, sessionId]);
-
-  if (!sessionId) {
-    return null;
-  }
-
-  return <ItemPipeline item={item} sessionId={sessionId} />;
-}
-
-function ItemPipeline({
-  item,
-  sessionId,
-}: {
-  item: AudioImportItem;
-  sessionId: string;
-}) {
-  const queryClient = useQueryClient();
-  const session = useSession(sessionId);
-  const runBatch = useRunBatch(sessionId);
-  const handleBatchStarted = useListener((state) => state.handleBatchStarted);
-  const handleBatchFailed = useListener((state) => state.handleBatchFailed);
-  const updateBatchProgress = useListener((state) => state.updateBatchProgress);
-  const clearBatchSession = useListener((state) => state.clearBatchSession);
-  const batchPercentage = useListener(
-    (state) => state.batch[sessionId]?.percentage ?? null,
-  );
-
-  useEffect(() => {
-    if (batchPercentage != null) {
-      useAudioImport.getState().setItemProgress(item.id, batchPercentage);
-    }
-  }, [batchPercentage, item.id]);
-
-  const sessionReady = session != null;
-
-  useEffect(() => {
-    if (!sessionReady || !acquireStep(`run:${item.id}:${item.attempt}`)) {
-      return;
-    }
-
-    const run = async () => {
-      const store = useAudioImport.getState();
-      store.setItemStatus(item.id, "importing");
-      handleBatchStarted(sessionId, "importing");
-
-      const importedPath = await importAudioToSession(
-        sessionId,
-        item.source,
-        (percentage) => updateBatchProgress(sessionId, percentage),
+function ItemPipeline({ item }: { item: AudioImportItem }) {
+  const owner = useVaultReadScope();
+  const check = () => {
+    if (
+      !owner.current() ||
+      owner.scope !== item.owner ||
+      owner.scope.getSnapshot().state !== "connected" ||
+      !owner.scope.client.media
+    )
+      throw new Error(
+        "The original vault is no longer available. Open its media status to recover this request.",
       );
-
-      void queryClient.invalidateQueries({
-        queryKey: ["audio", sessionId],
-      });
-
-      clearBatchSession(sessionId);
-      store.setItemStatus(item.id, "transcribing");
-      await runBatch(importedPath, { imported: true });
-
-      // Summarization intentionally overlaps the next item's transcription:
-      // auto-enhance is fire-and-forget, matching the single-file upload flow.
-      void Promise.resolve(
-        getEnhancerService()?.queueAutoEnhanceIfSummaryEmpty(sessionId),
-      ).catch((error) => {
-        console.error("[audio-import] failed to queue enhance:", error);
-      });
-    };
-
-    run().then(
-      () => useAudioImport.getState().finishItem(item.id),
-      (error: unknown) => {
-        console.error("[audio-import] item failed:", error);
-        if (!isStoppedTranscriptionError(error)) {
-          handleBatchFailed(sessionId, errorMessage(error));
+  };
+  const mutation = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: async () => {
+      check();
+      const media = owner.scope.client.media!;
+      if (item.attempt > 0) {
+        const status = await owner.scope.run(() => media.recover(item.id));
+        if (status.state !== "receiving" || !media.resumeSource) return status;
+        check();
+        const prepared = await owner.scope.prepareAttachmentSource(item.source);
+        try {
+          check();
+          return await owner.scope.run(() =>
+            media.resumeSource!(item.id, prepared),
+          );
+        } finally {
+          await prepared.close();
         }
-        useAudioImport.getState().finishItem(item.id, errorMessage(error));
-      },
-    );
-  }, [
-    clearBatchSession,
-    handleBatchFailed,
-    handleBatchStarted,
-    item.attempt,
-    item.id,
-    item.source,
-    queryClient,
-    runBatch,
-    sessionId,
-    sessionReady,
-    updateBatchProgress,
-  ]);
-
-  return null;
-}
-
-function acquireStep(key: string) {
-  if (startedSteps.has(key)) {
-    return false;
-  }
-
-  startedSteps.add(key);
-  return true;
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function sessionTitleFromFileName(name: string) {
-  return name.replace(/\.[^.]+$/, "");
-}
-
-async function prepareSession(source: AudioImportSource) {
-  const sessionId = await createSession(sessionTitleFromFileName(source.name));
-
-  try {
-    const createdAt = await estimateImportedAudioCreatedAt(source);
-    if (createdAt) {
-      await updateSession(sessionId, { created_at: createdAt });
-    }
-  } catch (error) {
-    console.error("[audio-import] audio date inspection failed:", error);
-  }
-
-  return sessionId;
-}
-
-async function estimateImportedAudioCreatedAt(source: AudioImportSource) {
-  if (source.kind === "path") {
-    const result = await fsSyncCommands.audioSourceMetadata(source.path);
-    if (result.status === "error") {
-      return null;
-    }
-    return estimateUploadedAudioSessionCreatedAt(result.data);
-  }
-
-  const lastModified = source.file.lastModified;
-  if (!Number.isFinite(lastModified) || lastModified <= 0) {
-    return null;
-  }
-  return new Date(lastModified).toISOString();
-}
-
-function importAudioToSession(
-  sessionId: string,
-  source: AudioImportSource,
-  onProgress: (percentage: number) => void,
-): Promise<string> {
-  return enqueueSessionAudioOperation(sessionId, async () => {
-    const unlisten = await fsSyncEvents.audioImportEvent.listen((event) => {
-      if (
-        event.payload.type === "audioImportProgress" &&
-        event.payload.session_id === sessionId
-      ) {
-        onProgress(event.payload.percentage);
       }
-    });
-
-    try {
-      const result =
+      const source = item.source;
+      const prepared = await owner.scope.prepareAttachmentSource(
         source.kind === "path"
-          ? await fsSyncCommands.audioImport(sessionId, source.path)
-          : await fsSyncCommands.audioImportData(
-              sessionId,
-              Array.from(new Uint8Array(await source.file.arrayBuffer())),
-              source.file.name,
-              source.file.type || null,
-            );
-      if (result.status === "error") {
-        throw new Error(result.error);
+          ? { kind: "path", path: source.path, name: source.name }
+          : { kind: "file", file: source.file, name: source.name },
+      );
+      try {
+        check();
+        useAudioImport.getState().setItemStatus(item.id, "importing");
+        const createdAt =
+          source.kind === "file" &&
+          Number.isFinite(source.file.lastModified) &&
+          source.file.lastModified > 0
+            ? new Date(source.file.lastModified).toISOString()
+            : undefined;
+        return await owner.scope.run(() =>
+          media.importAudio(
+            {
+              sessionId: null,
+              prepared,
+              createdAt,
+              contentType:
+                source.kind === "file" ? source.file.type : undefined,
+            },
+            { requestId: item.id },
+          ),
+        );
+      } finally {
+        await prepared.close();
       }
-      return result.data;
-    } finally {
-      unlisten();
-    }
+    },
+    onSuccess: (status) => {
+      if (!owner.current() || owner.scope !== item.owner) {
+        useAudioImport
+          .getState()
+          .finishItem(
+            item.id,
+            "The original vault is no longer available. Recover this request from its media status.",
+          );
+        return;
+      }
+      useAudioImport.getState().setItemSession(item.id, status.session_id);
+      if (mediaPending(status))
+        useAudioImport.getState().setItemStatus(item.id, "transcribing");
+      else
+        useAudioImport
+          .getState()
+          .finishItem(
+            item.id,
+            status.state === "succeeded"
+              ? undefined
+              : (status.error?.message ?? "Media processing requires review."),
+          );
+    },
+    onError: (error) =>
+      useAudioImport
+        .getState()
+        .finishItem(
+          item.id,
+          error instanceof Error ? error.message : String(error),
+        ),
   });
+  useEffect(() => {
+    if (!owner.current() || owner.scope !== item.owner) {
+      useAudioImport
+        .getState()
+        .finishItem(
+          item.id,
+          "The original vault is no longer available. Recover this request from its media status.",
+        );
+    }
+  }, [owner.current, owner.scope, owner.connection.state, item.id, item.owner]);
+  const mutate = mutation.mutate;
+  useEffect(() => {
+    let steps = startedSteps.get(item.owner);
+    if (!steps) {
+      steps = new Set();
+      startedSteps.set(item.owner, steps);
+    }
+    const key = `${item.id}:${item.attempt}`;
+    if (steps.has(key)) return;
+    steps.add(key);
+    mutate();
+  }, [item.owner, item.id, item.attempt, mutate]);
+  const status = useQuery(
+    {
+      queryKey: ["vault", owner.scope.client.scope, "media-import", item.id],
+      queryFn: ({ signal }) => {
+        check();
+        return owner.scope.run(() =>
+          owner.scope.client.media!.status(item.id, { signal }),
+        );
+      },
+      enabled:
+        owner.scope === item.owner &&
+        owner.current() &&
+        !!owner.scope.client.media &&
+        !!mutation.data &&
+        mediaPending(mutation.data),
+      retry: false,
+      networkMode: "always",
+      refetchInterval: (query) =>
+        !query.state.data || mediaPending(query.state.data) ? 500 : false,
+    },
+    owner.scope.queryClient,
+  );
+  useEffect(() => {
+    if (!status.data || mediaPending(status.data)) return;
+    useAudioImport
+      .getState()
+      .finishItem(
+        item.id,
+        status.data.state === "succeeded"
+          ? undefined
+          : (status.data.error?.message ?? "Media processing requires review."),
+      );
+  }, [status.data, item.id]);
+  useEffect(() => {
+    if (status.error)
+      useAudioImport
+        .getState()
+        .finishItem(
+          item.id,
+          status.error instanceof Error
+            ? status.error.message
+            : String(status.error),
+        );
+  }, [status.error, item.id]);
+  return null;
 }
 
 async function announceImportCompleted(

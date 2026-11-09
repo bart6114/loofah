@@ -514,3 +514,26 @@ describe("OverflowButton", () => {
     expect(screen.getByRole("button", { name: "Delete note" })).not.toBeNull();
   });
 });
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { useListener } = await import("~/stt/contexts");
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  const source = (id = "") =>
+    legacyActivityFixture(
+      useListener((state) => state),
+      id,
+    );
+  return {
+    useLegacySessionActivity: source,
+    useLegacyDesktopAccess: () => source(),
+  };
+});
+
+vi.mock("~/session/hooks/useDeleteSession", () => ({
+  useSessionDeletionAccess: () => ({
+    available: true,
+    isAvailable: () => true,
+    shared: false,
+  }),
+}));

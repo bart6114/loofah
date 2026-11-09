@@ -2,22 +2,20 @@ use serde::{Deserialize, Serialize};
 
 use super::{SessionStore, StoreError, WriteGuard, paths};
 
+mod checked;
+mod lookup;
+
 /// One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
 /// (lowercased) name itself — unlike people's lossy slug, two names normalizing
 /// identically are by definition the same tag, so no collision suffixing is needed.
 /// Sessions keep storing raw tag strings in `_meta.json` and degrade gracefully if
 /// `tags.json` disappears.
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
-pub struct TagItem {
-    pub id: String,
-    #[serde(default)]
-    pub name: String,
-}
+pub use hypr_vault_read::TagItem;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct TagsFile {
+pub(super) struct TagsFile {
     #[serde(default)]
-    tags: Vec<TagItem>,
+    pub(super) tags: Vec<TagItem>,
 }
 
 /// Trim, strip a leading `#`, lowercase. `None` when nothing is left — the strict
@@ -107,12 +105,139 @@ pub(crate) fn apply_suggested_tags(
 }
 
 impl SessionStore {
+    pub(super) async fn validate_generated_tag_registration(
+        &self,
+        names: &[String],
+    ) -> Result<(), StoreError> {
+        self.generated_tag_registration(names).await.map(|_| ())
+    }
+
+    pub(super) async fn register_generated_tags_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        names: &[String],
+    ) -> Result<(), StoreError> {
+        let Some((bytes, added)) = self.generated_tag_registration(names).await? else {
+            return Ok(());
+        };
+        self.write_file_locked(guard, paths::tags_path(), bytes)
+            .await?;
+        for tag in &added {
+            self.index_upsert_tag(tag);
+        }
+        self.notify_index_changed(
+            super::IndexEntity::Tags,
+            added.into_iter().map(|tag| tag.id).collect(),
+        );
+        Ok(())
+    }
+
+    async fn generated_tag_registration(
+        &self,
+        names: &[String],
+    ) -> Result<Option<(Vec<u8>, Vec<TagItem>)>, StoreError> {
+        if names.is_empty() {
+            return Ok(None);
+        }
+        let path = self.vault_base.join(paths::tags_path());
+        let names = names.to_vec();
+        let limit = self.content_limits.metadata_bytes;
+        self.spawn_blocking(move || {
+            use std::io::Read;
+            let mut value = match std::fs::symlink_metadata(&path) {
+                Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
+                    return Err(StoreError::Io("tag registry is not a regular file".into()));
+                }
+                Ok(meta) if meta.len() > limit as u64 => {
+                    return Err(StoreError::ResourceLimit(
+                        "Tag registry exceeds its size limit".into(),
+                    ));
+                }
+                Ok(_) => {
+                    let mut bytes = Vec::new();
+                    std::fs::File::open(&path)
+                        .map_err(|error| StoreError::Io(error.to_string()))?
+                        .take(limit.saturating_add(1) as u64)
+                        .read_to_end(&mut bytes)
+                        .map_err(|error| StoreError::Io(error.to_string()))?;
+                    if bytes.len() > limit {
+                        return Err(StoreError::ResourceLimit(
+                            "Tag registry exceeds its size limit".into(),
+                        ));
+                    }
+                    serde_json::from_slice::<serde_json::Value>(&bytes)
+                        .map_err(|_| StoreError::Serialize("Cannot parse tag registry".into()))?
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    serde_json::json!({"tags":[]})
+                }
+                Err(error) => return Err(StoreError::Io(error.to_string())),
+            };
+            let object = value
+                .as_object_mut()
+                .ok_or_else(|| StoreError::Serialize("Tag registry must be an object".into()))?;
+            let tags = object
+                .entry("tags")
+                .or_insert_with(|| serde_json::json!([]))
+                .as_array_mut()
+                .ok_or_else(|| {
+                    StoreError::Serialize("Tag registry entries must be an array".into())
+                })?;
+            let mut ids = std::collections::HashSet::new();
+            for raw in tags.iter() {
+                let tag: TagItem = serde_json::from_value(raw.clone())
+                    .map_err(|_| StoreError::Serialize("Cannot parse tag registry entry".into()))?;
+                ids.insert(tag.id);
+            }
+            let mut added = Vec::new();
+            for name in names {
+                let normalized = normalize_tag_name(&name)
+                    .filter(|normalized| normalized == &name && is_suggestible_tag(normalized))
+                    .ok_or_else(|| {
+                        StoreError::Serialize("Invalid generated tag registration".into())
+                    })?;
+                if ids.insert(normalized.clone()) {
+                    let tag = TagItem {
+                        id: normalized.clone(),
+                        name: normalized,
+                    };
+                    tags.push(
+                        serde_json::to_value(&tag)
+                            .map_err(|error| StoreError::Serialize(error.to_string()))?,
+                    );
+                    added.push(tag);
+                }
+            }
+            if added.is_empty() {
+                return Ok(None);
+            }
+            let bytes = serde_json::to_vec_pretty(&value)
+                .map_err(|error| StoreError::Serialize(error.to_string()))?;
+            if bytes.len() > limit {
+                return Err(StoreError::ResourceLimit(
+                    "Tag registry exceeds its size limit".into(),
+                ));
+            }
+            Ok(Some((bytes, added)))
+        })
+        .await
+        .map_err(|error| StoreError::Io(error.to_string()))?
+    }
+
     pub async fn session_tag_context(&self, session_id: &str) -> Result<TagContext, StoreError> {
         let meta = self
             .read_meta(session_id)
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {session_id} has no _meta.json")))?;
         let registry = self.list_tags().await?;
+        Ok(self.tag_context_from_meta(&meta, registry))
+    }
+
+    pub(super) fn tag_context_from_meta(
+        &self,
+        meta: &super::SessionMeta,
+        registry: Vec<TagItem>,
+    ) -> TagContext {
         let mut names: Vec<_> = registry.into_iter().map(|tag| tag.name).collect();
         {
             let index = self.index.read().unwrap();
@@ -124,25 +249,26 @@ impl SessionStore {
             );
         }
         names.extend(meta.tags.iter().cloned());
-        Ok(TagContext {
+        TagContext {
             available: normalized_tags(names)
                 .into_iter()
                 .filter(|name| is_suggestible_tag(name))
                 .collect(),
-            attached: normalized_tags(meta.tags),
+            attached: normalized_tags(meta.tags.clone()),
             dismissed: normalized_tags(
                 meta.tag_suggestions
-                    .map(|state| state.dismissed)
+                    .as_ref()
+                    .map(|state| state.dismissed.clone())
                     .unwrap_or_default(),
             ),
-        })
+        }
     }
 
     /// A missing `tags.json` is an empty registry, and an unparseable one must never
     /// take the typeahead down with it — sessions keep their raw tag strings either way.
     async fn read_tags(&self) -> Result<Vec<TagItem>, StoreError> {
         let path = self.vault_base.join(paths::tags_path());
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let raw = match std::fs::read(&path) {
                 Ok(raw) => raw,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),

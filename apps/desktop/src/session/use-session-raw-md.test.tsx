@@ -1,220 +1,245 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { onlineManager, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode, type ReactNode } from "react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { md2json } from "@hypr/editor/markdown";
+
+import { useSession, useSessionMetadata, useSessionRawMd } from "./queries";
 import {
-  TaskStorageProvider,
-  createInMemoryTaskStorage,
-} from "@hypr/editor/task-storage";
-import { extractTasksFromContent } from "@hypr/editor/tasks";
+  createSessionSourceHost,
+  sessionMetadata,
+  sessionNote,
+} from "./session-source.test-support";
 
-import type { IndexChanged } from "~/types/tauri.gen";
+import { VaultHostContext } from "~/shared/application/vault-provider";
 
-const mocks = vi.hoisted(() => ({
-  sessionGet: vi.fn(),
-  sessionReadNote: vi.fn(),
-  indexListeners: [] as Array<(event: { payload: IndexChanged }) => void>,
+const native = vi.hoisted(() => ({
+  get: vi.fn(),
+  read: vi.fn(),
+  loadSource: vi.fn(),
 }));
-
 vi.mock("~/types/tauri.gen", () => ({
-  commands: {
-    sessionGet: mocks.sessionGet,
-    // Still exported by the bindings; nothing in the note-load path may call it.
-    sessionReadNote: mocks.sessionReadNote,
-  },
-  events: {
-    indexChanged: {
-      listen: vi.fn((handler: (event: { payload: IndexChanged }) => void) => {
-        mocks.indexListeners.push(handler);
-        return Promise.resolve(() => {});
-      }),
-    },
-  },
+  commands: { sessionGet: native.get, sessionReadNote: native.read },
+  events: {},
 }));
-
-import { useSessionRawMd } from "./queries";
-
-function sessionRecord(noteMarkdown: string | null) {
-  return {
-    meta: {
-      id: "session-1",
-      title: "Standup",
-      started_at: null,
-      ended_at: null,
-      created_at: "2026-07-10T10:00:00.000Z",
-      tags: [],
-      event: null,
-      folder: null,
-    },
-    note_markdown: noteMarkdown,
-  };
+vi.mock("@hypr/editor/task-storage", () => ({
+  useTaskStorageOptional: () => ({ loadSource: native.loadSource }),
+}));
+const hosts: ReturnType<typeof createSessionSourceHost>[] = [];
+function host(mode: "always" | "online" = "always", scope?: string) {
+  const value = createSessionSourceHost(mode, scope ? { scope } : {});
+  hosts.push(value);
+  return value;
 }
-
-function emitIndexChanged(payload: IndexChanged) {
-  for (const listener of mocks.indexListeners) {
-    listener({ payload });
-  }
-}
-
-function createWrapper(queryClient: QueryClient) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
-  };
-}
-
-const ORIGINAL = "Notes I already typed";
-const EDITED = "Notes I already typed, plus a new line";
-
-describe("useSessionRawMd", () => {
-  afterEach(cleanup);
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.sessionGet.mockResolvedValue({
-      status: "ok",
-      data: sessionRecord(ORIGINAL),
-    });
-    mocks.sessionReadNote.mockResolvedValue({ status: "ok", data: ORIGINAL });
-  });
-
-  it("returns null until the session has loaded", async () => {
-    mocks.sessionGet.mockResolvedValue({ status: "ok", data: null });
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-
-    const { result } = renderHook(() => useSessionRawMd("session-1"), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    expect(result.current).toBeNull();
-    await waitFor(() => expect(mocks.sessionGet).toHaveBeenCalled());
-    expect(result.current).toBeNull();
-  });
-
-  // Regression: the note body used to come from a second `session_read_note` query cached
-  // under `["session-note-file", id]` with `staleTime: Infinity`. Nothing ever invalidated
-  // that key, and it was *preferred* over the index value the bus does refresh -- so an
-  // edit made in Obsidian (or in a second window) never reached the editor, and the next
-  // keystroke's `persistChange` wrote the frozen content back over `notes.md`.
-  it("picks up an external edit when the index bus fires", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-
-    const { result } = renderHook(() => useSessionRawMd("session-1"), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await waitFor(() =>
-      expect(result.current).toBe(JSON.stringify(md2json(ORIGINAL))),
-    );
-
-    // Obsidian writes `notes.md`; the vault watcher refreshes the index and emits.
-    mocks.sessionGet.mockResolvedValue({
-      status: "ok",
-      data: sessionRecord(EDITED),
-    });
-    act(() => {
-      emitIndexChanged({ entity: "sessions", ids: ["session-1"] });
-    });
-
-    await waitFor(() =>
-      expect(result.current).toBe(JSON.stringify(md2json(EDITED))),
-    );
-  });
-
-  // Regression: non-active tabs unmount (see main/body.tsx), so switching away and back
-  // remounts the editor. With the immortal file-read cache, the remount re-seeded the
-  // editor with pre-edit content and the next keystroke reverted the user's typing on disk.
-  it("re-reads the note on remount instead of serving a cached body", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    const wrapper = createWrapper(queryClient);
-
-    const first = renderHook(() => useSessionRawMd("session-1"), { wrapper });
-    await waitFor(() =>
-      expect(first.result.current).toBe(JSON.stringify(md2json(ORIGINAL))),
-    );
-
-    // Tab switched away; the note changes while this surface is unmounted.
-    first.unmount();
-    mocks.sessionGet.mockResolvedValue({
-      status: "ok",
-      data: sessionRecord(EDITED),
-    });
-
-    const second = renderHook(() => useSessionRawMd("session-1"), { wrapper });
-    await waitFor(() =>
-      expect(second.result.current).toBe(JSON.stringify(md2json(EDITED))),
-    );
-  });
-
-  it("never reads the note file behind the bus's back", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-
-    const { result } = renderHook(() => useSessionRawMd("session-1"), {
-      wrapper: createWrapper(queryClient),
-    });
-    await waitFor(() => expect(result.current).not.toBeNull());
-
-    expect(mocks.sessionReadNote).not.toHaveBeenCalled();
-    expect(
-      queryClient.getQueryCache().findAll({ queryKey: ["session-note-file"] }),
-    ).toEqual([]);
-  });
+beforeEach(() => {
+  vi.clearAllMocks();
+  onlineManager.setOnline(true);
+});
+afterEach(() => {
+  cleanup();
+  hosts.splice(0).forEach((value) => value.dispose());
+  onlineManager.setOnline(true);
 });
 
-it("refreshes canonical task status when task persistence completes after the note event", async () => {
-  const source = { type: "session_raw_note", id: "session-1" };
-  const storage = createInMemoryTaskStorage();
-  let status: "todo" | "done" = "todo";
-  storage.loadSource = async () => [
-    {
-      taskId: "saved-task",
-      sourceType: source.type,
-      sourceId: source.id,
-      sourceOrder: 0,
-      status,
-      textPreview: "Send proposal",
-      dueDate: "2026-10-01",
-      body: [
-        {
-          type: "paragraph",
-          content: [{ type: "text", text: "Send proposal" }],
-        },
-      ],
-    },
-  ];
-  mocks.sessionGet.mockResolvedValue({
-    status: "ok",
-    data: sessionRecord("- [x] Send proposal"),
+it.each(["always", "online"] as const)(
+  "deduplicates scoped raw/session/editor reads in %s mode without global hydration",
+  async (mode) => {
+    const value = host(mode);
+    const view = renderHook(
+      () => ({
+        session: useSession("session-1"),
+        raw: useSessionRawMd("session-1"),
+        metadata: useSessionMetadata("session-1"),
+      }),
+      { wrapper: value.Host },
+    );
+    await waitFor(() =>
+      expect(view.result.current.raw).toBe(
+        JSON.stringify(md2json("Original body")),
+      ),
+    );
+    expect(view.result.current.session).toMatchObject({
+      id: "session-1",
+      title: "Original title",
+      raw_md: view.result.current.raw,
+      tags: ["keep"],
+      author: "writer",
+      folder_id: "folder",
+    });
+    expect(value.readNoteEditor).toHaveBeenCalledOnce();
+    expect(value.readMetadata).toHaveBeenCalledOnce();
+    expect(value.rootClient.getQueryCache().getAll()).toEqual([]);
+    expect(
+      value.scope.queryClient.getQueryData(
+        value.scope.noteEditorOptions("session-1").queryKey,
+      ),
+    ).toEqual(sessionNote());
+    expect(native.get).not.toHaveBeenCalled();
+    expect(native.read).not.toHaveBeenCalled();
+    expect(native.loadSource).not.toHaveBeenCalled();
+  },
+);
+it("uses only metadata for a metadata-only reader", async () => {
+  const value = host();
+  const view = renderHook(() => useSessionMetadata("session-1"), {
+    wrapper: value.Host,
   });
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>
-      <TaskStorageProvider storage={storage}>{children}</TaskStorageProvider>
-    </QueryClientProvider>
+  await waitFor(() =>
+    expect(view.result.current?.meta.title).toBe("Original title"),
   );
-  const taskStatus = (content: string | null) =>
-    content && extractTasksFromContent(JSON.parse(content), source)[0]?.status;
-  const first = renderHook(() => useSessionRawMd(source.id), { wrapper });
-  await waitFor(() => expect(taskStatus(first.result.current)).toBe("todo"));
-  status = "done";
-  act(() => emitIndexChanged({ entity: "tasks", ids: [source.id] }));
-  await waitFor(() => expect(taskStatus(first.result.current)).toBe("done"));
+  expect(value.readNoteEditor).not.toHaveBeenCalled();
+});
+it("returns null while missing or pending, and an empty string for an absent note in an existing session", async () => {
+  const value = host();
+  let finish!: () => void;
+  value.readNoteEditor.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        finish = () => done(sessionNote(null));
+      }),
+  );
+  const view = renderHook(() => useSessionRawMd("session-1"), {
+    wrapper: value.Host,
+  });
+  expect(view.result.current).toBeNull();
+  await waitFor(() => expect(value.readNoteEditor).toHaveBeenCalledOnce());
+  await act(async () => finish());
+  await waitFor(() => expect(view.result.current).toBe(""));
+});
+it("revalidates source on remount and session/task change events, scoped to the selected session", async () => {
+  const value = host();
+  const first = renderHook(() => useSessionRawMd("session-1"), {
+    wrapper: value.Host,
+  });
+  await waitFor(() => expect(first.result.current).toContain("Original body"));
   first.unmount();
-  const reopened = renderHook(() => useSessionRawMd(source.id), { wrapper });
-  expect(taskStatus(reopened.result.current)).toBe("done");
-  reopened.unmount();
-  client.clear();
+  value.setNote(sessionNote("External body", "Original title", "n1"));
+  const reopened = renderHook(() => useSessionRawMd("session-1"), {
+    wrapper: value.Host,
+  });
+  await waitFor(() =>
+    expect(reopened.result.current).toContain("External body"),
+  );
+  value.setNote(sessionNote("Task event body", "Original title", "n2"));
+  act(() =>
+    value.emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "tasks", ids: ["session-1"] },
+    }),
+  );
+  await waitFor(() =>
+    expect(reopened.result.current).toContain("Task event body"),
+  );
+  const count = value.readNoteEditor.mock.calls.length;
+  act(() =>
+    value.emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "sessions", ids: ["another"] },
+    }),
+  );
+  expect(value.readNoteEditor).toHaveBeenCalledTimes(count);
+});
+it("preserves local offline reads and resumes remote reads without a global client mount", async () => {
+  onlineManager.setOnline(false);
+  const local = host();
+  const view = renderHook(() => useSessionRawMd("session-1"), {
+    wrapper: local.Host,
+  });
+  await waitFor(() => expect(view.result.current).toContain("Original body"));
+  const remote = host("online");
+  const paused = renderHook(() => useSessionRawMd("session-1"), {
+    wrapper: remote.Host,
+  });
+  expect(remote.readNoteEditor).not.toHaveBeenCalled();
+  expect(paused.result.current).toBeNull();
+  act(() => onlineManager.setOnline(true));
+  await waitFor(() => expect(paused.result.current).toContain("Original body"));
+  expect(remote.readNoteEditor).toHaveBeenCalledOnce();
+});
+it.each([50, 150, 500])(
+  "rejects late %ims source replies across same-ID and same-string Scope replacement",
+  async (delay) => {
+    const old = host("online", "identical");
+    const next = host("online", "identical");
+    old.readNoteEditor.mockImplementation(
+      () =>
+        new Promise((done) =>
+          setTimeout(() => done(sessionNote("Old private body")), delay),
+        ),
+    );
+    old.readMetadata.mockImplementation(
+      () =>
+        new Promise((done) =>
+          setTimeout(() => done(sessionMetadata("Old private title")), delay),
+        ),
+    );
+    next.setNote(sessionNote("Replacement body"));
+    next.setMetadata(sessionMetadata("Replacement title"));
+    function Host({
+      value,
+      children,
+    }: {
+      value: typeof old;
+      children?: ReactNode;
+    }) {
+      return (
+        <QueryClientProvider client={value.rootClient}>
+          <VaultHostContext.Provider
+            value={{ scope: value.scope, error: null, retry: () => {} }}
+          >
+            <StrictMode>
+              <Reader key={value.scope === old.scope ? "old" : "new"} />
+              {children}
+            </StrictMode>
+          </VaultHostContext.Provider>
+        </QueryClientProvider>
+      );
+    }
+    function Reader() {
+      const session = useSession("session-1");
+      return (
+        <output>
+          {session?.title}|{session?.raw_md}
+        </output>
+      );
+    }
+    const { render, screen } = await import("@testing-library/react");
+    const view = render(<Host value={old} />);
+    await waitFor(() => expect(old.readNoteEditor).toHaveBeenCalled());
+    old.scope.dispose();
+    view.rerender(<Host value={next} />);
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toContain(
+        "Replacement body",
+      ),
+    );
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, delay + 10));
+    });
+    expect(screen.getByRole("status").textContent).not.toContain("Old private");
+    expect(
+      old.scope.queryClient.getQueryData(
+        old.scope.noteEditorOptions("session-1").queryKey,
+      ),
+    ).toBeUndefined();
+  },
+);
+it("hides source on terminal access loss and never falls back to native or revives the same host", async () => {
+  const value = host();
+  const view = renderHook(() => useSession("session-1"), {
+    wrapper: value.Host,
+  });
+  await waitFor(() =>
+    expect(view.result.current?.title).toBe("Original title"),
+  );
+  act(() =>
+    value.emit({ kind: "connection", state: "access_denied", error: null }),
+  );
+  await waitFor(() => expect(view.result.current).toBeNull());
+  act(() =>
+    value.emit({ kind: "connection", state: "connected", error: null }),
+  );
+  expect(view.result.current).toBeNull();
+  expect(native.get).not.toHaveBeenCalled();
 });

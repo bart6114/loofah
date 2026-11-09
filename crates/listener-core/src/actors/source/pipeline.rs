@@ -8,7 +8,7 @@ use ractor::ActorRef;
 
 use crate::{
     ListenerRuntime, SessionDataEvent,
-    actors::{ChannelMode, ListenerMsg, RecMsg, SAMPLE_RATE},
+    actors::{ChannelMode, DeviceFrameCredit, ListenerMsg, RecMsg, SAMPLE_RATE},
 };
 use hypr_audio::CaptureFrame;
 use hypr_audio_utils::f32_to_i16_bytes;
@@ -74,7 +74,29 @@ impl Pipeline {
         listener_routing: &ListenerRouting,
         recorder: Option<&ActorRef<RecMsg>>,
     ) {
-        self.dispatch(frame, mode, listener_routing, recorder);
+        self.dispatch(frame, mode, listener_routing, recorder, None);
+    }
+
+    pub(super) fn dispatch_device_frame(
+        &mut self,
+        frame: CaptureFrame,
+        mode: ChannelMode,
+        recorder: Option<&ActorRef<RecMsg>>,
+        credit: DeviceFrameCredit,
+    ) -> Result<(), crate::actors::DeviceSinkError> {
+        if recorder.is_none() {
+            return Err(crate::actors::DeviceSinkError(
+                "Device recorder is unavailable".into(),
+            ));
+        }
+        self.dispatch(
+            frame,
+            mode,
+            &ListenerRouting::Dropped,
+            recorder,
+            Some(credit),
+        );
+        Ok(())
     }
 
     pub(super) fn on_listener_routing_changed(&mut self, listener_routing: &ListenerRouting) {
@@ -112,25 +134,39 @@ impl Pipeline {
         mode: ChannelMode,
         listener_routing: &ListenerRouting,
         recorder: Option<&ActorRef<RecMsg>>,
+        credit: Option<DeviceFrameCredit>,
     ) {
         let (mut processed_mic, processed_spk) = Self::select_tracks(frame, mode);
         self.vad_mask.process(&mut processed_mic);
         let processed_mic = Arc::<[f32]>::from(processed_mic);
         let item = BufferedAudio::new(processed_mic, processed_spk, mode);
 
-        self.replay_history.push(item.clone());
+        let device = credit.is_some();
+        if !device {
+            self.replay_history.push(item.clone());
+        }
 
         self.amplitude.observe_mic(&item.mic);
         self.amplitude.observe_spk(&item.spk);
 
         if let Some(actor) = recorder {
-            let result = match mode {
-                ChannelMode::MicOnly => actor.cast(RecMsg::AudioSingle(Arc::clone(&item.mic))),
-                ChannelMode::SpeakerOnly => actor.cast(RecMsg::AudioSingle(Arc::clone(&item.spk))),
-                ChannelMode::MicAndSpeaker => actor.cast(RecMsg::AudioDual(
-                    Arc::clone(&item.mic),
-                    Arc::clone(&item.spk),
-                )),
+            let result = if let Some(credit) = credit {
+                actor.cast(RecMsg::DeviceAudio {
+                    mic: Arc::clone(&item.mic),
+                    speaker: Arc::clone(&item.spk),
+                    credit,
+                })
+            } else {
+                match mode {
+                    ChannelMode::MicOnly => actor.cast(RecMsg::AudioSingle(Arc::clone(&item.mic))),
+                    ChannelMode::SpeakerOnly => {
+                        actor.cast(RecMsg::AudioSingle(Arc::clone(&item.spk)))
+                    }
+                    ChannelMode::MicAndSpeaker => actor.cast(RecMsg::AudioDual(
+                        Arc::clone(&item.mic),
+                        Arc::clone(&item.spk),
+                    )),
+                }
             };
             if let Err(e) = result {
                 tracing::error!(error.message = ?e, "failed_to_send_audio_to_recorder");
@@ -500,6 +536,7 @@ mod tests {
                     let _ = (mic.len(), spk.len());
                     let _ = self.0.send(ProbeEvent::RecorderDual);
                 }
+                _ => {}
             }
             Ok(())
         }

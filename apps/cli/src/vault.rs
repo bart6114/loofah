@@ -3,6 +3,23 @@ use std::path::{Path, PathBuf};
 
 use crate::{Args, Error, Result};
 
+pub(crate) fn cache_for_vault(path: &Path) -> Result<hypr_search_cache::Cache> {
+    #[cfg(test)]
+    {
+        let parent = path
+            .parent()
+            .ok_or_else(|| Error::operation("resolve test cache", "Vault has no parent"))?;
+        Ok(hypr_search_cache::Cache::new(
+            &parent.join("loofah-cli-test-cache"),
+            path,
+        )?)
+    }
+    #[cfg(not(test))]
+    {
+        Ok(hypr_search_cache::Cache::for_vault(path)?)
+    }
+}
+
 pub fn open(args: &Args) -> Result<PathBuf> {
     let path = resolve_path(args)?;
     if !path.is_dir() {

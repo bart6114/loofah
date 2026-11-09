@@ -317,7 +317,10 @@ struct FloatingBarView: View {
         color: accentColor,
         hoverFill: accentColor.opacity(0.16),
         size: FloatingBarLayout.compactControlSize,
-        action: { performClick(RustBridge.stopListening) }
+        action: {
+          let captureKey = model.captureKey
+          performClick { RustBridge.stopListening(captureKey: captureKey) }
+        }
       )
 
       if model.liveCaptionToggleVisible {

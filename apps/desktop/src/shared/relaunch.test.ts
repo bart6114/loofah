@@ -70,6 +70,16 @@ describe("automatic relaunch", () => {
     expect(relaunchMock).not.toHaveBeenCalled();
   });
 
+  test("an explicit settings restart does not defer against the newly selected vault onboarding state", async () => {
+    getOnboardingNeededMock.mockResolvedValue({ status: "ok", data: true });
+    const { relaunchNow } = await import("./relaunch");
+    await relaunchNow();
+    expect(flushDatabaseWritesWithinMock).toHaveBeenCalledWith(5000);
+    expect(saveMock).toHaveBeenCalledOnce();
+    expect(relaunchMock).toHaveBeenCalledOnce();
+    expect(getOnboardingNeededMock).not.toHaveBeenCalled();
+  });
+
   test("still relaunches when flushing application state fails", async () => {
     const error = new Error("flush timed out");
     const consoleError = vi

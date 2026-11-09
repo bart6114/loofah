@@ -11,6 +11,7 @@ import type { Segment } from "~/stt/live-segment";
 
 export function SegmentHeader({
   segment,
+  sessionId,
   transcriptId,
   label,
   people,
@@ -18,6 +19,7 @@ export function SegmentHeader({
   recording,
 }: {
   segment: Segment;
+  sessionId: string;
   transcriptId: string;
   label: string;
   people: readonly Person[];
@@ -37,6 +39,7 @@ export function SegmentHeader({
   return (
     <div className={headerClassName} style={colorVars}>
       <SpeakerRenameControl
+        sessionId={sessionId}
         segment={segment}
         transcriptId={transcriptId}
         color="var(--segment-color)"

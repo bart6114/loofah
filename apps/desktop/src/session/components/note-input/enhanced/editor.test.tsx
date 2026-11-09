@@ -1,281 +1,149 @@
-import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { EnhancedEditor as SessionEnhancedEditor } from "./editor";
-
-const hoisted = vi.hoisted(() => ({
-  content: JSON.stringify({ type: "doc", content: [] }),
-  sessionTitle: "Weekly sync",
-  persistContent: vi.fn(() => Promise.resolve()),
-  noteEditorProps: [] as Record<string, unknown>[],
-  sonnerToastError: vi.fn(),
-}));
-
-vi.mock("@hypr/editor/markdown", () => ({
-  parseJsonContent: (value: string) => JSON.parse(value),
-}));
-
-vi.mock("@hypr/editor/note", () => ({
-  areEquivalentEditorContents: (left: unknown, right: unknown) =>
-    JSON.stringify(left) === JSON.stringify(right),
-  normalizePortableAttachmentUrls: (value: unknown) => value,
-  NoteEditor: (props: Record<string, unknown>) => {
-    hoisted.noteEditorProps.push(props);
-
-    return <div>Note editor</div>;
+const state = vi.hoisted(() => ({
+  target: { kind: "summary" } as
+    | import("~/shared/application/protocol.gen").DocumentTarget
+    | null
+    | undefined,
+  documentProps: [] as Record<string, unknown>[],
+  previewProps: [] as Record<string, unknown>[],
+  toast: vi.fn(),
+  snapshot: { state: "connected", error: null },
+  scope: {
+    client: { scope: "scope", attachmentPresentation: () => ({}) },
+    getSnapshot: () => state.snapshot,
+    subscribe: () => () => {},
   },
 }));
-
+vi.mock("~/shared/application/vault-provider", () => ({
+  useVaultHost: () => ({ scope: state.scope, error: null }),
+}));
+vi.mock("~/shared/application/vault-document-editor", () => ({
+  VaultDocumentEditor: (props: Record<string, unknown>) => {
+    state.documentProps.push(props);
+    return <div>Compound document editor</div>;
+  },
+}));
+vi.mock("~/session/queries", () => ({
+  useEnhancedDocumentTarget: () => state.target,
+}));
+vi.mock("@hypr/editor/note", () => ({
+  NoteEditor: (props: Record<string, unknown>) => {
+    state.previewProps.push(props);
+    return <div>Preview editor</div>;
+  },
+  useMentionNavigation: () => vi.fn(),
+}));
 vi.mock("@hypr/ui/components/ui/toast", () => ({
-  sonnerToast: { error: hoisted.sonnerToastError },
+  sonnerToast: { error: state.toast },
 }));
-
 vi.mock("~/session/hooks/useAttachmentResolver", () => ({
-  useAttachmentResolver: () => () => null,
+  useAttachmentResolver: () => vi.fn(),
 }));
-
-vi.mock("~/editor-bridge/app-link-view", () => ({
-  AppLinkView: () => null,
-}));
-
 vi.mock("~/editor-bridge/mention-config", () => ({
-  useMentionConfig: () => ({ users: [] }),
+  useMentionConfig: () => ({}),
 }));
-
+vi.mock("~/editor-bridge/app-link-view", () => ({ AppLinkView: () => null }));
+vi.mock("~/editor-bridge/session-view", () => ({
+  SessionNodeView: () => null,
+}));
+vi.mock("~/editor-bridge/session-mention-drop", () => ({
+  sessionMentionDropConfig: {},
+}));
 vi.mock("~/editor-bridge/open-editor-link", () => ({
   openEditorLink: vi.fn(),
 }));
 
-vi.mock("~/editor-bridge/session-mention-drop", () => ({
-  sessionMentionDropConfig: { read: () => null },
-}));
+import { EnhancedEditor } from "./editor";
 
-vi.mock("~/editor-bridge/session-view", () => ({
-  SessionNodeView: () => null,
-}));
-
-vi.mock("~/session/queries", () => ({
-  useRefreshEnhancedNote: () => () => Promise.resolve(),
-  useEnhancedNote: () => ({ content: hoisted.content }),
-  useUpdateEnhancedNoteContent: () => hoisted.persistContent,
-}));
-
-function EnhancedEditor(
-  props: Omit<
-    React.ComponentProps<typeof SessionEnhancedEditor>,
-    "sessionTitle"
-  >,
-) {
-  return (
-    <SessionEnhancedEditor {...props} sessionTitle={hoisted.sessionTitle} />
-  );
-}
-
-function readInitialDraft() {
-  return (
-    hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1]
-      ?.initialDraft as (() => unknown) | undefined
-  )?.();
-}
-
-describe("EnhancedEditor", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
-  beforeEach(() => {
-    hoisted.noteEditorProps = [];
-    hoisted.sonnerToastError.mockClear();
-    hoisted.content = JSON.stringify({ type: "doc", content: [] });
-    hoisted.sessionTitle = "Weekly sync";
-    hoisted.persistContent = vi.fn(() => Promise.resolve());
-  });
-
-  it("shows the session title as the first line for persisted notes", () => {
-    hoisted.content = JSON.stringify({
-      type: "doc",
-      content: [
-        {
-          type: "heading",
-          attrs: { level: 1 },
-          content: [{ type: "text", text: "Summary Section" }],
-        },
-      ],
-    });
-
-    render(
-      <EnhancedEditor
-        sessionId="session-1"
-        enhancedNoteId="note-1"
-        content={hoisted.content}
-      />,
-    );
-
-    const props = hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1];
-
-    expect(props?.className).toContain("session-note-editor");
-    expect(props?.className).toContain("enhanced-summary-editor");
-    expect(props?.placeholderComponent).toEqual(expect.any(Function));
-    expect(props?.syncContentWhenFocused).toBe(false);
-    expect(props?.handleChange).not.toBe(hoisted.persistContent);
-    expect(props?.taskSource).toEqual({ type: "enhanced_note", id: "note-1" });
-    expect(props?.initialContent).toMatchObject({
-      type: "doc",
-      content: [
-        {
-          type: "heading",
-          attrs: { level: 1 },
-          content: [{ type: "text", text: "Weekly sync" }],
-        },
-        {
-          type: "heading",
-          attrs: { level: 1 },
-          content: [{ type: "text", text: "Summary Section" }],
-        },
-      ],
-    });
-  });
-
-  it("does not rerender the editor when its props are unchanged", () => {
-    const view = render(
-      <EnhancedEditor
-        sessionId="session-1"
-        enhancedNoteId="note-1"
-        content={hoisted.content}
-      />,
-    );
-
-    view.rerender(
-      <EnhancedEditor
-        sessionId="session-1"
-        enhancedNoteId="note-1"
-        content={hoisted.content}
-      />,
-    );
-
-    expect(hoisted.noteEditorProps).toHaveLength(1);
-  });
-
-  it("persists content and updates the session title from the first line", async () => {
-    render(
-      <EnhancedEditor
-        sessionId="session-1"
-        enhancedNoteId="note-1"
-        content={hoisted.content}
-      />,
-    );
-
-    const props = hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1];
-    const input = {
-      type: "doc",
-      content: [
-        {
-          type: "heading",
-          attrs: { level: 1 },
-          content: [{ type: "text", text: "Edited title" }],
-        },
-      ],
-    };
-
-    await act(async () => {
-      await (props?.handleChange as (input: unknown) => Promise<void>)(input);
-    });
-
-    expect(hoisted.persistContent).toHaveBeenCalledWith(
-      JSON.stringify(input),
-      "Edited title",
-    );
-  });
-
-  it("keeps streamed previews syncing while focused", () => {
-    const contentOverride = {
-      type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "Generating" }] },
-      ],
-    };
-
-    render(
-      <EnhancedEditor
-        sessionId="session-1"
-        enhancedNoteId="note-1"
-        content={hoisted.content}
-        contentOverride={contentOverride}
-      />,
-    );
-
-    const props = hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1];
-
-    expect(props?.syncContentWhenFocused).toBe(true);
-    expect(props?.handleChange).toBeUndefined();
-    expect(props?.taskSource).toBeUndefined();
-    expect(props?.initialContent).toMatchObject({
-      type: "doc",
-      content: [
-        {
-          type: "heading",
-          attrs: { level: 1 },
-          content: [{ type: "text", text: "Weekly sync" }],
-        },
-        {
-          type: "paragraph",
-          content: [{ type: "text", text: "Generating" }],
-        },
-      ],
-    });
-  });
-
-  it("retains a failed summary draft when reopened without affecting preview content", async () => {
-    hoisted.persistContent.mockRejectedValue(new Error("disk full"));
-    const props = {
-      sessionId: "failed-session",
-      enhancedNoteId: "failed-summary",
-      content: hoisted.content,
-    };
-    const input = {
-      type: "doc",
-      content: [
-        {
-          type: "paragraph",
-          content: [{ type: "text", text: "Unsaved summary" }],
-        },
-      ],
-    };
-    const mounted = render(<EnhancedEditor {...props} />);
-    const handleChange = hoisted.noteEditorProps[
-      hoisted.noteEditorProps.length - 1
-    ]?.handleChange as (input: unknown) => Promise<void>;
-    await act(async () => {
-      await expect(handleChange(input)).rejects.toThrow("disk full");
-    });
-    expect(hoisted.sonnerToastError).toHaveBeenCalledWith(
-      expect.stringContaining("Summary is NOT being saved"),
-      { id: "summary-save-failed:failed-summary" },
-    );
-    mounted.unmount();
-    const reopened = render(<EnhancedEditor {...props} />);
-    expect(readInitialDraft()).toEqual(input);
-    reopened.rerender(<EnhancedEditor {...props} contentOverride={input} />);
-    expect(readInitialDraft()).toBeUndefined();
-    expect(
-      hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1]?.handleChange,
-    ).toBeUndefined();
-  });
+const props = {
+  sessionId: "same",
+  sessionTitle: "Session title",
+  enhancedNoteId: "same",
+  content: "{}",
+};
+beforeEach(() => {
+  state.target = { kind: "summary" };
+  state.documentProps = [];
+  state.previewProps = [];
+  state.toast.mockReset();
 });
-
-it("passes read-only to the editor and removes attachment drop configuration", () => {
-  render(
-    <EnhancedEditor
-      sessionId="locked"
-      enhancedNoteId="locked"
-      content='{"type":"doc","content":[]}'
-      readOnly
-      fileHandlerConfig={{ onFileUpload: vi.fn() }}
-    />,
+afterEach(cleanup);
+it.each([
+  { kind: "summary" },
+  { kind: "template_output", document_id: "portable-output" },
+] as const)(
+  "delegates actual $kind edits to the captured compound editor and preserves host callbacks",
+  (target) => {
+    state.target = target;
+    const onViewReady = vi.fn();
+    const onNavigateToTitle = vi.fn();
+    const fileHandlerConfig = { onFileUpload: vi.fn() };
+    render(
+      <EnhancedEditor
+        {...props}
+        onViewReady={onViewReady}
+        onNavigateToTitle={onNavigateToTitle}
+        fileHandlerConfig={fileHandlerConfig}
+      />,
+    );
+    expect(screen.getByText("Compound document editor")).toBeDefined();
+    expect(state.documentProps[state.documentProps.length - 1]).toMatchObject({
+      scope: state.scope,
+      sessionId: "same",
+      target,
+      layout: "document",
+      editorOptions: { onViewReady, onNavigateToTitle, fileHandlerConfig },
+    });
+    expect(state.previewProps).toHaveLength(0);
+  },
+);
+it("blocks ambiguous bare IDs without starting an editor or assuming Summary", () => {
+  state.target = null;
+  render(<EnhancedEditor {...props} />);
+  expect(screen.getByRole("alert").textContent).toContain(
+    "cannot be identified safely",
   );
-  const props = hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1];
-  expect(props?.readOnly).toBe(true);
-  expect(props?.fileHandlerConfig).toBeUndefined();
-  expect(props?.sessionMentionDropConfig).toBeUndefined();
-  cleanup();
+  expect(state.documentProps).toHaveLength(0);
+});
+it("keeps loading distinct from a missing/ambiguous document", () => {
+  state.target = undefined;
+  render(<EnhancedEditor {...props} />);
+  expect(screen.getByRole("status").textContent).toContain("Loading");
+  expect(state.documentProps).toHaveLength(0);
+});
+it("passes an external generation/edit lock to the compound wrapper", () => {
+  render(<EnhancedEditor {...props} readOnly />);
+  expect(state.documentProps[state.documentProps.length - 1]?.readOnly).toBe(
+    true,
+  );
+});
+it("keeps a content override read-only and syncing without draft/task persistence", () => {
+  const preview = {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Streamed" }] },
+    ],
+  };
+  const mounted = render(
+    <EnhancedEditor {...props} contentOverride={preview} />,
+  );
+  expect(state.previewProps[state.previewProps.length - 1]).toMatchObject({
+    readOnly: true,
+    syncContentWhenFocused: true,
+  });
+  expect(
+    state.previewProps[state.previewProps.length - 1]?.handleChange,
+  ).toBeUndefined();
+  expect(
+    state.previewProps[state.previewProps.length - 1]?.taskSource,
+  ).toBeUndefined();
+  expect(state.documentProps).toHaveLength(0);
+  mounted.rerender(
+    <EnhancedEditor {...props} contentOverride={{ ...preview, content: [] }} />,
+  );
+  expect(
+    state.previewProps[state.previewProps.length - 1]?.initialContent,
+  ).not.toEqual(state.previewProps[0].initialContent);
 });

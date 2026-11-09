@@ -7,6 +7,9 @@ import {
   captureNoteDraft,
   persistNoteDraft,
   usePendingNoteDraft,
+  enhancedNoteDraftKey,
+  hasUnsavedSessionNoteDrafts,
+  discardNoteDraft,
 } from "./pending-note-drafts";
 
 vi.mock("@hypr/editor/note", () => ({
@@ -34,6 +37,38 @@ function deferred() {
 }
 
 describe("pending note drafts", () => {
+  it("keeps raw and enhanced dirty guards scoped across identical note IDs and prefix-like IDs", async () => {
+    const raw = JSON.stringify(["vault-note", "guard:first", "same-id"]);
+    const enhanced = enhancedNoteDraftKey("guard:second", "same-id", "doc");
+    const otherId = enhancedNoteDraftKey(
+      "guard:first",
+      "same-id-longer",
+      "doc",
+    );
+    captureNoteDraft(raw, () => doc("Raw unsent"));
+    captureNoteDraft(enhanced, () => doc("Other vault unsent"));
+    captureNoteDraft(otherId, () => doc("Other note unsent"));
+    expect(hasUnsavedSessionNoteDrafts("guard:first", "same-id")).toBe(true);
+    expect(hasUnsavedSessionNoteDrafts("guard:second", "same-id")).toBe(true);
+    expect(hasUnsavedSessionNoteDrafts("guard:third", "same-id")).toBe(false);
+    await persistNoteDraft(raw, doc("Raw saved"), async () => undefined);
+    expect(hasUnsavedSessionNoteDrafts("guard:first", "same-id")).toBe(false);
+    expect(hasUnsavedSessionNoteDrafts("guard:second", "same-id")).toBe(true);
+    for (const key of [raw, enhanced, otherId]) discardNoteDraft(key);
+  });
+
+  it("retains scoped summary ownership after a rejected save and handles escaped scope identifiers", async () => {
+    const scope = 'account,"vault"';
+    const key = enhancedNoteDraftKey(scope, "scoped-note", "output");
+    await expect(
+      persistNoteDraft(key, doc("Private unsaved summary"), async () => {
+        throw new Error("write failed");
+      }),
+    ).rejects.toThrow("write failed");
+    expect(hasUnsavedSessionNoteDrafts(scope, "scoped-note")).toBe(true);
+    expect(hasUnsavedSessionNoteDrafts("account", "scoped-note")).toBe(false);
+    discardNoteDraft(key);
+  });
   it("survives remount and waits for both save completion and query acknowledgment", async () => {
     const key = "remount";
     const original = doc("old");

@@ -8,7 +8,7 @@ use hypr_agent_access::{DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT};
 #[command(
     name = "loof",
     version = env!("LOOFAH_VERSION"),
-    about = "Query and edit local Loofah meeting data",
+    about = "Query and edit Loofah meeting data",
     after_help = "Agent guidance lives in AGENTS.md at the vault root; run 'loof doctor' to see the vault path and restore the file if stale."
 )]
 pub struct Args {
@@ -30,6 +30,9 @@ pub struct Args {
     )]
     pub vault_path: Option<PathBuf>,
 
+    #[arg(long, global = true, value_name = "NAME", conflicts_with_all = ["base", "vault_path"], help = "Use a saved HTTPS server profile instead of the local vault")]
+    pub profile: Option<String>,
+
     #[arg(long, global = true)]
     pub json: bool,
 
@@ -39,6 +42,11 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Manage explicit server connections; local commands do not require a login
+    Profiles {
+        #[command(subcommand)]
+        command: ProfileCommand,
+    },
     /// Build or repair the local search cache for the existing vault
     Init,
     /// Check vault access and layout; refresh the vault guide. Open desktop to migrate.
@@ -64,7 +72,7 @@ pub enum Command {
         into: Option<String>,
         #[arg(
             long,
-            help = "Transcribe the audio with the configured on-device model after importing"
+            help = "Transcribe after importing with the configured Local model or selected server model"
         )]
         transcribe: bool,
         #[arg(
@@ -107,7 +115,7 @@ pub enum Command {
         )]
         skill: Option<String>,
     },
-    /// Transcribe a meeting's audio with the configured on-device model
+    /// Transcribe a meeting's audio with its configured Local or server model
     Transcribe {
         /// Meeting id whose audio should be transcribed
         id: String,
@@ -119,6 +127,35 @@ pub enum Command {
         #[command(subcommand)]
         command: TagsCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProfileCommand {
+    /// List saved connection metadata without contacting a server
+    List,
+    /// Sign in through the server's company browser flow
+    Login {
+        name: String,
+        #[arg(
+            long,
+            value_name = "HTTPS_ORIGIN",
+            help = "Required when creating a profile; existing profiles keep their server"
+        )]
+        server: Option<String>,
+        #[arg(
+            long,
+            value_name = "VAULT_ID",
+            help = "Select an accessible vault; defaults to the saved or personal vault"
+        )]
+        vault: Option<String>,
+        #[arg(
+            long,
+            help = "Print the login URL on stderr instead of opening the browser on this computer"
+        )]
+        no_browser: bool,
+    },
+    /// Remove this device's CLI credentials and saved profile; vault files stay intact
+    Logout { name: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -250,6 +287,15 @@ pub enum MeetingCommand {
         long_about = "Move the complete session directory to recoverable vault trash. The exact ID is the confirmation: no prompt or confirmation flag, including with --json. Missing or already-deleted IDs fail with not_found (exit 2). No permanent purge."
     )]
     Delete { id: String },
+    /// Inspect or finish the original retained media publication without repeating transcription
+    Recover {
+        request_id: String,
+        /// Explicitly upload the original matching source to a server request still awaiting bytes
+        #[arg(long)]
+        source: Option<PathBuf>,
+    },
+    /// Inspect original media requests and device receipts for the selected server profile
+    Media { request_id: Option<String> },
     /// Store a file as a note attachment of a meeting and print its attachment id
     Attach {
         id: String,
@@ -352,6 +398,51 @@ mod tests {
 
     use super::*;
     use clap::CommandFactory;
+
+    #[test]
+    fn server_connections_are_explicit_and_conflict_with_local_vault_options() {
+        let local = Args::try_parse_from(["loof", "sessions", "list"]).unwrap();
+        assert!(local.profile.is_none());
+        let remote =
+            Args::try_parse_from(["loof", "sessions", "list", "--profile", "company"]).unwrap();
+        assert_eq!(remote.profile.as_deref(), Some("company"));
+        for option in ["--base", "--vault-path"] {
+            assert!(
+                Args::try_parse_from([
+                    "loof",
+                    "--profile",
+                    "company",
+                    option,
+                    "/vault",
+                    "sessions",
+                    "list"
+                ])
+                .is_err()
+            );
+        }
+        let login = Args::try_parse_from([
+            "loof",
+            "profiles",
+            "login",
+            "company",
+            "--server",
+            "https://notes.example",
+            "--vault",
+            "shared",
+            "--no-browser",
+        ])
+        .unwrap();
+        assert!(matches!(
+            login.command,
+            Command::Profiles {
+                command: ProfileCommand::Login {
+                    no_browser: true,
+                    vault: Some(_),
+                    ..
+                }
+            }
+        ));
+    }
 
     #[test]
     fn parses_meeting_list_filters() {
@@ -918,5 +1009,30 @@ mod tests {
         for subcommand in command.get_subcommands() {
             assert_options_are_documented(subcommand, docs);
         }
+    }
+    #[test]
+    fn recovery_accepts_only_an_original_request_identifier() {
+        let args = Args::try_parse_from([
+            "loof",
+            "sessions",
+            "recover",
+            "3ee6ab27-391d-47cb-ad40-5c61b57f4181",
+        ])
+        .unwrap();
+        assert!(
+            matches!(args.command, Command::Sessions { command: MeetingCommand::Recover { request_id, source: None } } if request_id == "3ee6ab27-391d-47cb-ad40-5c61b57f4181")
+        );
+        assert!(Args::try_parse_from(["loof", "sessions", "recover"]).is_err());
+        assert!(
+            Args::try_parse_from([
+                "loof",
+                "sessions",
+                "recover",
+                "request",
+                "--into",
+                "new-session"
+            ])
+            .is_err()
+        );
     }
 }

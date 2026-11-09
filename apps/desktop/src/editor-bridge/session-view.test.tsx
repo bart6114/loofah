@@ -23,7 +23,7 @@ vi.mock("@handlewithcare/react-prosemirror", () => ({
 }));
 
 vi.mock("~/session/queries", () => ({
-  useSession: () => ({
+  useSessionSummary: () => ({
     created_at: "2026-04-06T00:00:00.000Z",
   }),
 }));

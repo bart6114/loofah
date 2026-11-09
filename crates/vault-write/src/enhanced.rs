@@ -9,6 +9,16 @@ use super::{
 // read-only vault consumers (loof CLI/MCP) and lives in `hypr-vault-read`.
 pub use hypr_vault_read::{ENHANCED_KINDS, EnhancedDoc};
 
+mod generated;
+
+pub(super) fn replace_body_preserving_frontmatter(
+    raw: &str,
+    document: &EnhancedDoc,
+    markdown: &str,
+) -> Result<String, StoreError> {
+    generated::replace_body(raw, document, markdown)
+}
+
 /// Partial update for an existing enhanced doc: `None` means "leave as-is". The `expected_*`
 /// fields are compare-and-swap guards against the *current file content* -- a mismatch
 /// returns `StoreError::Conflict` and changes nothing, which is the store-level equivalent
@@ -136,6 +146,42 @@ impl SessionStore {
         session_title: Option<&str>,
         auto_apply_high_confidence_tags: bool,
     ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_checked_impl(
+            session_id,
+            doc_id,
+            patch,
+            session_title,
+            auto_apply_high_confidence_tags,
+            None,
+            super::document_revision::DocumentWriteMode::Generated,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub(super) async fn update_enhanced_doc_checked_impl(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        session_title: Option<&str>,
+        auto_apply_high_confidence_tags: bool,
+        expected_revision: Option<(&str, &std::path::Path)>,
+        mode: super::document_revision::DocumentWriteMode,
+    ) -> Result<Option<hypr_loofah_protocol::DocumentSaveOutcome>, StoreError> {
+        if expected_revision.is_some()
+            && (session_title.is_some()
+                || patch.suggested_tags.is_some()
+                || patch.title.is_some()
+                || patch.kind.is_some()
+                || patch.template_id.is_some()
+                || patch.sort_order.is_some()
+                || patch.reconcile_tasks != Some(true))
+        {
+            return Err(StoreError::Serialize(
+                "checked body replacement cannot update document metadata".into(),
+            ));
+        }
         validate_session_id(session_id)?;
         validate_doc_id(doc_id)?;
 
@@ -144,7 +190,7 @@ impl SessionStore {
                 StoreError::Serialize("task reconciliation requires Markdown".into())
             })?;
             Some(
-                tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
+                self.spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
                     .await
                     .map_err(|error| StoreError::Io(format!("task parse failed: {error}")))?
                     .map_err(StoreError::Serialize)?,
@@ -156,6 +202,22 @@ impl SessionStore {
         // Held across the read-modify-write so a concurrent patch of the same doc can't be
         // computed from bytes this call is about to replace.
         let guard = self.lock_writes().await;
+        let target = hypr_loofah_protocol::DocumentTarget::TemplateOutput {
+            document_id: doc_id.into(),
+        };
+        if let Some((expected, operation_root)) = expected_revision {
+            self.recover_document_write_locked(&guard, operation_root, session_id)
+                .await?;
+            let current = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+            if current.revision != expected {
+                return Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Conflict(
+                    current,
+                )));
+            }
+        }
 
         let mut doc = self
             .read_enhanced_doc(session_id, doc_id)
@@ -186,6 +248,9 @@ impl SessionStore {
             }
         }
 
+        let previous_markdown = expected_revision
+            .filter(|_| matches!(mode, super::document_revision::DocumentWriteMode::Edited))
+            .map(|_| doc.markdown.clone());
         let EnhancedDocPatch {
             suggested_tags,
             reconcile_tasks: _,
@@ -216,14 +281,40 @@ impl SessionStore {
         }
 
         let tasks = if let Some(content) = task_content {
-            Some(
+            Some(if let Some(previous_markdown) = previous_markdown {
+                self.prepare_edited_tasks(
+                    session_id,
+                    "enhanced_note",
+                    doc_id,
+                    &previous_markdown,
+                    &content,
+                )
+                .await?
+            } else {
                 self.prepare_generated_tasks(session_id, "enhanced_note", doc_id, &content)
-                    .await?,
+                    .await?
+            })
+        } else {
+            None
+        };
+        let pending = if let Some((_, operation_root)) = expected_revision {
+            Some(
+                self.begin_document_write_locked(
+                    &guard,
+                    operation_root,
+                    session_id,
+                    &target,
+                    render_enhanced_file(&doc)?.as_bytes(),
+                    tasks.as_deref().ok_or_else(|| {
+                        StoreError::Io("checked document save requires tasks".into())
+                    })?,
+                )
+                .await?,
             )
         } else {
             None
         };
-        if session_title.is_some() || suggested_tags.is_some() {
+        let result = if session_title.is_some() || suggested_tags.is_some() {
             let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
                 StoreError::Io(format!("session {session_id} has no _meta.json to update"))
             })?;
@@ -255,6 +346,21 @@ impl SessionStore {
         } else {
             self.persist_enhanced_doc_locked(&guard, &doc, tasks.as_deref())
                 .await
+        };
+        result?;
+        if let Some(pending) = pending {
+            pending.finish().await?;
+        }
+        if expected_revision.is_some() {
+            let snapshot = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Io("session disappeared after save".into()))?;
+            Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Saved(
+                snapshot,
+            )))
+        } else {
+            Ok(None)
         }
     }
 
@@ -270,7 +376,7 @@ impl SessionStore {
         let doc_id = doc_id.to_string();
 
         let session_dir = self.session_dir(&session_id).await?;
-        tokio::task::spawn_blocking(move || -> Result<Option<EnhancedDoc>, StoreError> {
+        self.spawn_blocking(move || -> Result<Option<EnhancedDoc>, StoreError> {
             let path = vault_base.join(paths::enhanced_doc_path_in(&session_dir, &doc_id));
             // Attempt-then-match, same rationale as read_meta: never mistake a transient
             // read failure for "doc doesn't exist".
@@ -308,7 +414,7 @@ impl SessionStore {
         let vault_base = self.vault_base.clone();
         let relative = paths::enhanced_doc_path_in(&session_dir, doc_id);
 
-        tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+        self.spawn_blocking(move || -> Result<(), StoreError> {
             let abs = vault_base.join(relative);
             hypr_fs_sync_core::export::move_to_trash(&vault_base, &abs).map_err(|e| {
                 StoreError::Io(format!("failed to move enhanced doc to trash: {e}"))
@@ -388,7 +494,7 @@ impl SessionStore {
             Ok(())
         };
         if changed_meta {
-            if let Err(error) = self.write_session_title_file_locked(guard, meta).await {
+            if let Err(error) = self.write_session_metadata_file_locked(guard, meta).await {
                 if let (Ok(Some(actual_meta)), Ok(Some(actual_doc))) = (
                     self.read_meta(&doc.session_id).await,
                     self.read_enhanced_doc(&doc.session_id, &doc.id).await,

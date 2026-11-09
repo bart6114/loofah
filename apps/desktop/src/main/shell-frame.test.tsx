@@ -45,6 +45,16 @@ vi.mock("~/sidebar/toast", () => ({
   ToastNotifications: () => <div data-testid="toast-notifications" />,
 }));
 
+vi.mock("./about-dialog", () => ({
+  AboutDialog: () => <div data-testid="legacy-about" />,
+}));
+vi.mock("./audio-import-dialog", () => ({
+  AudioImportDialog: () => <div data-testid="audio-import" />,
+}));
+vi.mock("~/stt/audio-import-worker", () => ({
+  AudioImportWorker: () => <div data-testid="audio-import-worker" />,
+}));
+
 vi.mock("./sync-status", () => ({
   SyncStatusIndicator: () => <div data-testid="sync-status-indicator" />,
 }));
@@ -55,7 +65,7 @@ vi.mock("~/store/zustand/tabs", () => ({
   ) => selector({ currentTab: mocks.currentTab }),
 }));
 
-import { ClassicMainShellFrame } from "./shell-frame";
+import { CapturedMainShellFrame, ClassicMainShellFrame } from "./shell-frame";
 
 describe("ClassicMainShellFrame", () => {
   afterEach(() => {
@@ -125,4 +135,27 @@ describe("ClassicMainShellFrame", () => {
     expect(scaffold.getAttribute("data-edge-to-edge")).toBe("true");
     expect(scaffold.getAttribute("data-main-surface-chrome")).toBeNull();
   });
+});
+
+it("renders the existing main shell body without local import, model toasts or vault stats in the captured frame", () => {
+  render(<CapturedMainShellFrame />);
+  expect(screen.getByTestId("classic-main-body")).not.toBeNull();
+  for (const id of [
+    "toast-notifications",
+    "legacy-about",
+    "audio-import",
+    "audio-import-worker",
+  ])
+    expect(screen.queryByTestId(id)).toBeNull();
+});
+
+it("preserves all local shell auxiliary services through the Classic wrapper", () => {
+  render(<ClassicMainShellFrame />);
+  for (const id of [
+    "toast-notifications",
+    "legacy-about",
+    "audio-import",
+    "audio-import-worker",
+  ])
+    expect(screen.getByTestId(id)).not.toBeNull();
 });

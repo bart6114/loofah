@@ -103,8 +103,8 @@ function beginAttempt<T extends LiveStore>(
   };
 }
 
-const startSessionEffect = (params: CaptureParams) =>
-  fromResult(listenerCommands.startCapture(params));
+const startSessionEffect = (params: CaptureParams, requestId: string) =>
+  fromResult(listenerCommands.startCapture(params, requestId));
 
 const stopSessionEffect = () => fromResult(listenerCommands.stopCapture());
 
@@ -322,13 +322,24 @@ export const startLiveSession = <T extends LiveStore>(
   get: StoreApi<T>["getState"],
   targetSessionId: string,
   params: CaptureParams,
+  isAvailable?: () => boolean,
+  requestId: string = crypto.randomUUID(),
 ): Promise<boolean> => {
   const attempt = beginAttempt(set, get, targetSessionId);
   const handlers = createSessionEventHandlers(set, get, targetSessionId);
 
+  const admitted = () => {
+    if (!isAvailable || isAvailable()) return true;
+    if (attempt.owns())
+      setLiveState(set, (live) => {
+        markLiveStartFailed(live);
+      });
+    attempt.clear();
+    return false;
+  };
   const program = Effect.gen(function* () {
     yield* listenToAllSessionEvents(handlers, attempt.scope);
-    if (!attempt.active()) return;
+    if (!attempt.active() || !admitted()) return;
 
     const [micUsingApps, bundleId] = yield* Effect.tryPromise({
       try: () =>
@@ -343,7 +354,7 @@ export const startLiveSession = <T extends LiveStore>(
       catch: (error) => error,
     });
 
-    if (!attempt.active()) return;
+    if (!attempt.active() || !admitted()) return;
     const triggerAppIds = getAutoStopTriggerAppIds(micUsingApps, bundleId);
 
     if (triggerAppIds.length > 0) {
@@ -354,7 +365,7 @@ export const startLiveSession = <T extends LiveStore>(
       });
     }
 
-    yield* startSessionEffect(params);
+    yield* startSessionEffect(params, requestId);
     if (!attempt.active()) return;
 
     setLiveState(set, (live) => {

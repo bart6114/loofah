@@ -16,6 +16,15 @@ pub fn render_pdf(input: &ExportInput) -> Result<Vec<u8>, Error> {
     crate::typst::compile_to_pdf(&typst_content, files)
 }
 
+pub fn render_pdf_with_labels(
+    input: &ExportInput,
+    labels: &crate::ExportLabels,
+) -> Result<Vec<u8>, Error> {
+    let (images, files) = load_attachment_images(input);
+    let content = crate::typst::build_typst_content_with_labels(input, &images, labels);
+    crate::typst::compile_to_pdf(&content, files)
+}
+
 // Maps each readable image attachment to a virtual path served to the typst
 // compiler. Unreadable files and formats typst can't render are skipped so a
 // broken attachment never fails the whole export.

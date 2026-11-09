@@ -1,0 +1,24 @@
+[package]
+name = "capture-store"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hound = { workspace = true }
+hypr-loofah-protocol = { workspace = true }
+hypr-storage = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+specta = { workspace = true, features = ["derive"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt"] }
+tracing = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[target.'cfg(windows)'.dependencies]
+winapi-util = "0.1.11"

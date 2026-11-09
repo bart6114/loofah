@@ -33,39 +33,15 @@ pub async fn get_current_microphone_device<R: tauri::Runtime>(
 pub async fn start_capture<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     params: CaptureParams,
+    request_id: String,
 ) -> Result<(), String> {
     use tauri::Manager;
-
-    // Acquire before capture opens files so whole-vault relocation cannot race it.
-    let store = app
-        .try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>()
-        .map(|state| state.inner().clone());
-    let session_id = params.session_id.clone();
-    let leased = match &store {
-        Some(store) => {
-            store
-                .prepare_recording(&session_id)
-                .await
-                .map_err(|e| e.to_string())?;
-            true
-        }
-        None => false,
-    };
-
-    let result = app
-        .listener()
-        .start_capture(params)
-        .await
-        .map_err(|e| e.to_string());
-    // Release only this command's own lease on startup failure: a concurrent
-    // recording's reservation must stay intact.
-    if result.is_err()
-        && leased
-        && let Some(store) = &store
-    {
-        let _ = store.release_recording_prepare(&session_id).await;
-    }
-    result
+    let host = app
+        .try_state::<std::sync::Arc<dyn crate::LocalCaptureHost>>()
+        .ok_or_else(|| "Local capture persistence is unavailable".to_string())?
+        .inner()
+        .clone();
+    host.start(params, request_id).await
 }
 
 #[tauri::command]

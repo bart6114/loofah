@@ -13,6 +13,18 @@ use crate::{
 
 const BATCH_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
+struct PendingLocalWork(Option<hypr_loofah_core::local_session_work::LocalSessionWork>);
+
+impl Drop for PendingLocalWork {
+    fn drop(&mut self) {
+        if !std::thread::panicking()
+            && let Some(work) = &self.0
+        {
+            let _ = work.not_started();
+        }
+    }
+}
+
 pub struct Listener2<'a, R: tauri::Runtime, M: tauri::Manager<R>> {
     manager: &'a M,
     _runtime: std::marker::PhantomData<fn() -> R>,
@@ -23,6 +35,22 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
         &self,
         params: TranscriptionParams,
     ) -> Result<(), core::Error> {
+        self.start_transcription_owned(params, None).await
+    }
+
+    pub async fn start_transcription_owned(
+        &self,
+        params: TranscriptionParams,
+        work: Option<hypr_loofah_core::local_session_work::LocalSessionWork>,
+    ) -> Result<(), core::Error> {
+        let mut admission = PendingLocalWork(work);
+        let registry = self
+            .manager
+            .try_state::<Arc<BatchSessionRegistry>>()
+            .ok_or_else(|| core::Error::BatchError("Batch ownership is unavailable".into()))?
+            .inner()
+            .clone();
+        let maintenance = registry.start()?;
         let state = self.manager.state::<crate::SharedState>();
         let guard = state.lock().await;
         let app = guard.app.clone();
@@ -45,11 +73,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
                 .await
                 .map_err(|e| core::Error::BatchError(e.to_string()))?;
         }
-        let registry = self
-            .manager
-            .state::<Arc<BatchSessionRegistry>>()
-            .inner()
-            .clone();
         let session_id = params.session_id.clone();
         let idle_timeout = batch_idle_timeout(&params);
 
@@ -98,7 +121,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
         }
 
         let runtime = Arc::new(TauriBatchRuntime {
+            _maintenance: maintenance,
             _audio_guard: audio_guard,
+            work: admission.0.take(),
             app: app.clone(),
             control: control.clone(),
         });
@@ -204,9 +229,20 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> Listener2PluginExt<R> for T {
 }
 
 struct TauriBatchRuntime {
+    _maintenance: tokio::sync::OwnedRwLockReadGuard<()>,
     _audio_guard: Option<tokio::sync::OwnedMutexGuard<()>>,
+    work: Option<hypr_loofah_core::local_session_work::LocalSessionWork>,
     app: tauri::AppHandle,
     control: Arc<BatchSessionControl>,
+}
+
+impl Drop for TauriBatchRuntime {
+    fn drop(&mut self) {
+        // Prepared audio, diarization and native ASR each retain this runtime until actual I/O ends.
+        if let Some(work) = &self.work {
+            let _ = work.producer_finished();
+        }
+    }
 }
 
 impl core::BatchRuntime for TauriBatchRuntime {
@@ -421,6 +457,7 @@ mod tests {
 
     fn make_registry(control: Arc<BatchSessionControl>) -> Arc<BatchSessionRegistry> {
         Arc::new(BatchSessionRegistry {
+            maintenance: Default::default(),
             sessions: std::sync::Mutex::new(std::collections::HashMap::from([(
                 "session-1".to_string(),
                 BatchSessionEntry {

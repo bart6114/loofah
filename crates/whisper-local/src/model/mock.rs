@@ -74,6 +74,9 @@ impl Whisper {
     pub fn select_language(&mut self, _language: Option<&str>) {
         self.dynamic_prompt.clear();
     }
+    pub fn reset_dynamic_prompt(&mut self) {
+        self.dynamic_prompt.clear();
+    }
     pub fn set_cancellation(&mut self, _cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>) {}
     pub fn detect_language(&mut self, _audio: &[f32]) -> Result<crate::Observation, crate::Error> {
         Ok(crate::Observation {

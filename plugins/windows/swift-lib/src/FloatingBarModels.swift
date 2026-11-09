@@ -23,6 +23,7 @@ struct FloatingTranscriptBubblePayload: Codable, Identifiable {
 }
 
 struct FloatingBarStatePayload: Codable {
+  let captureKey: String?
   let amplitude: Double
   let title: String
   let status: FloatingBarStatus

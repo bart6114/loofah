@@ -1,6 +1,6 @@
 export {
   AudioPlayerProvider as Provider,
-  useAudioExists,
+  AudioPlayerStatus as Status,
   useAudioPlayer,
 } from "./provider";
 export { CompactPlayButton, Timeline } from "./timeline";

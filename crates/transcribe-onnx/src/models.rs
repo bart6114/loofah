@@ -111,6 +111,23 @@ impl Model {
         }
     }
 
+    pub fn fingerprint(self) -> String {
+        let mut digest = Sha256::new();
+        digest.update(b"loofah-onnx-manifest-v1\0");
+        digest.update(self.id().as_bytes());
+        for asset in self.assets() {
+            digest.update((asset.name.len() as u64).to_le_bytes());
+            digest.update(asset.name.as_bytes());
+            digest.update(asset.bytes.to_le_bytes());
+            digest.update(asset.sha256.as_bytes());
+        }
+        digest
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
     pub fn size_bytes(self) -> u64 {
         self.assets().iter().map(|asset| asset.bytes).sum()
     }
@@ -127,12 +144,75 @@ impl Model {
             }))
     }
 
+    pub fn snapshot(self, source: &Path, scratch: &Path) -> Result<VerifiedModel> {
+        Ok(VerifiedModel {
+            model: self,
+            directory: snapshot_assets(self.assets(), source, scratch)?,
+        })
+    }
+
     pub fn verify(self) -> Result<PathBuf> {
         let dir = self.cache_dir()?;
         for asset in self.assets() {
             verify_asset(&dir.join(asset.name), asset)?;
         }
         Ok(dir)
+    }
+}
+
+fn snapshot_assets(assets: &[Asset], source: &Path, scratch: &Path) -> Result<tempfile::TempDir> {
+    anyhow::ensure!(
+        source.is_absolute() && scratch.is_absolute(),
+        "Model directories must be absolute"
+    );
+    anyhow::ensure!(
+        fs::symlink_metadata(source)?.is_dir(),
+        "Model directory must be a real directory"
+    );
+    let directory = tempfile::Builder::new()
+        .prefix("loofah-verified-model-")
+        .tempdir_in(scratch)?;
+    for asset in assets {
+        let original = source.join(asset.name);
+        anyhow::ensure!(
+            fs::symlink_metadata(&original)?.is_file(),
+            "Model asset must be a regular file"
+        );
+        let mut input = File::open(original)?;
+        anyhow::ensure!(
+            input.metadata()?.len() == asset.bytes,
+            "Incorrect model asset size"
+        );
+        let path = directory.path().join(asset.name);
+        let mut output = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&path)?;
+        let copied = std::io::copy(
+            &mut Read::by_ref(&mut input).take(asset.bytes + 1),
+            &mut output,
+        )?;
+        anyhow::ensure!(
+            copied == asset.bytes,
+            "Model asset changed while retaining it"
+        );
+        output.sync_all()?;
+        drop(output);
+        verify_asset(&path, asset)?;
+    }
+    Ok(directory)
+}
+
+// Sessions retain this private, verified copy so an operator replacing the source
+// files cannot change the model between verification and a later native load.
+pub struct VerifiedModel {
+    model: Model,
+    directory: tempfile::TempDir,
+}
+impl VerifiedModel {
+    pub(crate) fn path_for(&self, model: Model) -> Result<&Path> {
+        anyhow::ensure!(self.model == model, "Incorrect model kind");
+        Ok(self.directory.path())
     }
 }
 
@@ -369,6 +449,28 @@ async fn download(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retained_models_do_not_follow_operator_replacement_or_keep_failed_snapshots() {
+        let source = tempfile::tempdir().unwrap();
+        let scratch = tempfile::tempdir().unwrap();
+        let asset = Asset {
+            name: "model.onnx",
+            url: None,
+            bytes: 3,
+            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        };
+        fs::write(source.path().join(asset.name), b"abc").unwrap();
+        let retained =
+            snapshot_assets(std::slice::from_ref(&asset), source.path(), scratch.path()).unwrap();
+        fs::write(source.path().join(asset.name), b"abd").unwrap();
+        assert_eq!(fs::read(retained.path().join(asset.name)).unwrap(), b"abc");
+        assert!(snapshot_assets(&[asset], source.path(), scratch.path()).is_err());
+        assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 1);
+        let path = retained.path().to_owned();
+        drop(retained);
+        assert!(!path.exists());
+    }
 
     #[test]
     fn corruption_and_truncation_are_rejected() {

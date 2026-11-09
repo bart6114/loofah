@@ -1,7 +1,7 @@
 import Foundation
 
 @_silgen_name("rust_on_floating_bar_stop")
-private func rustOnFloatingBarStop()
+private func rustOnFloatingBarStop(_ capturePtr: UnsafePointer<CChar>)
 
 @_silgen_name("rust_on_floating_bar_open_main")
 private func rustOnFloatingBarOpenMain()
@@ -13,8 +13,8 @@ private func rustOnFloatingBarSettingsChange(_ settingsPtr: UnsafePointer<CChar>
 private func rustOnDevtoolsPanelAction(_ actionPtr: UnsafePointer<CChar>)
 
 enum RustBridge {
-  static func stopListening() {
-    rustOnFloatingBarStop()
+  static func stopListening(captureKey: String?) {
+    (captureKey ?? "").withCString { key in rustOnFloatingBarStop(key) }
   }
 
   static func openMainWindow() {

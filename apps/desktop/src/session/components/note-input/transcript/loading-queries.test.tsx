@@ -1,8 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+import { createRenderCacheHost } from "./render-cache.test-support";
 import { useRenderedTranscriptData } from "./renderer/data-hooks";
 
 import { useSessionTranscriptsQuery } from "~/stt/queries";
@@ -24,17 +24,20 @@ const transcript = {
   speaker_hints: [],
 };
 const people: [] = [];
-let client: QueryClient;
+let host: ReturnType<typeof createRenderCacheHost>;
 beforeEach(() => {
   vi.resetAllMocks();
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  host = createRenderCacheHost(undefined, undefined, {
+    features: ["content_read"],
+    transcripts: mocks.read,
+  });
 });
 afterEach(() => {
   cleanup();
-  client.clear();
+  host.dispose();
 });
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return <host.Host>{children}</host.Host>;
 }
 
 it("distinguishes fetching from rendering, retries rendering, and clears removed words", async () => {
@@ -64,7 +67,7 @@ it("distinguishes fetching from rendering, retries rendering, and clears removed
   );
   expect(view.result.current.raw.isPending).toBe(true);
   await waitFor(() => expect(mocks.read).toHaveBeenCalled());
-  await act(async () => resolveRead({ status: "ok", data: [transcript] }));
+  await act(async () => resolveRead([transcript]));
   await waitFor(() => expect(mocks.render).toHaveBeenCalledOnce());
   expect(view.result.current.raw.isSuccess).toBe(true);
   expect(view.result.current.rendered.isLoading).toBe(true);
@@ -86,10 +89,7 @@ it("distinguishes fetching from rendering, retries rendering, and clears removed
   });
   await waitFor(() => expect(view.result.current.rendered.isError).toBe(true));
   expect(view.result.current.rendered.segments).toEqual(segments);
-  mocks.read.mockResolvedValue({
-    status: "ok",
-    data: [{ ...transcript, words: [] }],
-  });
+  mocks.read.mockResolvedValue([{ ...transcript, words: [] }]);
   await act(async () => {
     await view.result.current.raw.refetch();
   });
@@ -105,26 +105,30 @@ it("never replaces the selected session with a late response from another sessio
       ? new Promise((resolve) => {
           resolveFirst = resolve;
         })
-      : Promise.resolve({
-          status: "ok",
-          data: [{ ...transcript, id: "second-transcript", session_id: id }],
-        }),
+      : Promise.resolve([
+          { ...transcript, id: "second-transcript", session_id: id },
+        ]),
   );
   const view = renderHook(({ id }) => useSessionTranscriptsQuery(id), {
     wrapper,
     initialProps: { id: "first" },
   });
-  await waitFor(() => expect(mocks.read).toHaveBeenCalledWith("first"));
+  await waitFor(() =>
+    expect(mocks.read).toHaveBeenCalledWith(
+      "first",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    ),
+  );
   view.rerender({ id: "second" });
   await waitFor(() =>
     expect(view.result.current.data?.[0].id).toBe("second-transcript"),
   );
-  await act(async () => resolveFirst({ status: "ok", data: [transcript] }));
+  await act(async () => resolveFirst([{ ...transcript, session_id: "first" }]));
   expect(view.result.current.data?.[0].id).toBe("second-transcript");
   expect(
-    client
+    host.scope.queryClient
       .getQueryCache()
-      .find({ queryKey: ["session-transcripts", "first"] })
+      .find({ queryKey: host.scope.transcriptsOptions("first").queryKey })
       ?.getObserversCount(),
   ).toBe(0);
 });

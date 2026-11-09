@@ -3,9 +3,7 @@ import {
   useEditorEventCallback,
 } from "@handlewithcare/react-prosemirror";
 import {
-  ExternalLinkIcon,
   FileIcon,
-  FolderIcon,
   FileSpreadsheetIcon,
   FileTextIcon,
   ImageIcon,
@@ -14,12 +12,14 @@ import {
 import type { NodeSpec } from "prosemirror-model";
 import { forwardRef } from "react";
 
-import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { cn } from "@hypr/utils";
 
+import { AttachmentActions, AttachmentFeedback } from "./attachment-feedback";
 import {
   useAttachmentEditingEnabled,
-  useAttachmentResolver,
+  useAttachmentPresentation,
+  AttachmentResource,
+  type AttachmentResolution,
 } from "./attachment-resolver";
 import { getSafeNodePos } from "./error-boundary";
 
@@ -101,18 +101,48 @@ export const FileAttachmentView = forwardRef<
   HTMLDivElement,
   NodeViewComponentProps
 >(function FileAttachmentView({ nodeProps, ...htmlAttrs }, ref) {
+  const attachmentId =
+    typeof nodeProps.node.attrs.sharedAttachmentId === "string"
+      ? nodeProps.node.attrs.sharedAttachmentId
+      : nodeProps.node.attrs.attachmentId;
+  return (
+    <div
+      ref={ref}
+      {...htmlAttrs}
+      className="select-none [&_*::selection]:bg-transparent [&::selection]:bg-transparent"
+    >
+      <AttachmentResource attachmentId={attachmentId}>
+        {(resolved) => (
+          <ResolvedFileAttachmentView
+            nodeProps={nodeProps}
+            resolved={resolved}
+          />
+        )}
+      </AttachmentResource>
+    </div>
+  );
+});
+
+function ResolvedFileAttachmentView({
+  nodeProps,
+  resolved,
+}: {
+  nodeProps: NodeViewComponentProps["nodeProps"];
+  resolved: AttachmentResolution | null;
+}) {
   const { node, getPos } = nodeProps;
-  const resolveAttachment = useAttachmentResolver();
   const attachmentEditingEnabled = useAttachmentEditingEnabled();
   const attachmentId =
     typeof node.attrs.sharedAttachmentId === "string"
       ? node.attrs.sharedAttachmentId
       : node.attrs.attachmentId;
-  const resolvedAttachment =
-    typeof attachmentId === "string" ? resolveAttachment?.(attachmentId) : null;
   const { name, mimeType, size } = node.attrs;
-  const src = resolvedAttachment?.src ?? node.attrs.src;
-  const path = resolvedAttachment?.path ?? node.attrs.path;
+  const resource = useAttachmentPresentation()({
+    src: node.attrs.src,
+    path: node.attrs.path,
+    resolved,
+    attachmentId: typeof attachmentId === "string" ? attachmentId : undefined,
+  });
 
   const Icon = getFileIcon(mimeType ?? "");
   const sizeLabel = formatFileSize(size);
@@ -128,32 +158,10 @@ export const FileAttachmentView = forwardRef<
     view.focus();
   });
 
-  const handleOpen = () => {
-    if (path) {
-      if (path.startsWith("https://")) {
-        openerCommands.openUrl(path, null);
-      } else {
-        openerCommands.openPath(path, null);
-      }
-    }
-  };
-
-  const isLocalFile = typeof path === "string" && !path.startsWith("https://");
-
-  const handleReveal = () => {
-    if (isLocalFile) {
-      openerCommands.revealItemInDir(path);
-    }
-  };
-
   const isImage = typeof mimeType === "string" && mimeType.startsWith("image/");
 
   return (
-    <div
-      ref={ref}
-      {...htmlAttrs}
-      className="select-none [&_*::selection]:bg-transparent [&::selection]:bg-transparent"
-    >
+    <>
       <div
         contentEditable={false}
         suppressContentEditableWarning
@@ -163,9 +171,9 @@ export const FileAttachmentView = forwardRef<
           "transition-colors",
         ])}
       >
-        {isImage && src ? (
+        {isImage && resource.src ? (
           <img
-            src={src}
+            src={resource.src}
             alt={name}
             className="h-10 w-10 shrink-0 rounded object-cover"
           />
@@ -184,35 +192,8 @@ export const FileAttachmentView = forwardRef<
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          {src && (
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleOpen();
-              }}
-              className="hover:bg-accent rounded p-1"
-              title="Open file"
-            >
-              <ExternalLinkIcon size={14} className="text-muted-foreground" />
-            </button>
-          )}
-          {isLocalFile && (
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleReveal();
-              }}
-              className="hover:bg-accent rounded p-1"
-              title="Show in Finder"
-            >
-              <FolderIcon size={14} className="text-muted-foreground" />
-            </button>
-          )}
+        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+          <AttachmentActions resource={resource} />
           {attachmentEditingEnabled ? (
             <button
               type="button"
@@ -229,6 +210,7 @@ export const FileAttachmentView = forwardRef<
           ) : null}
         </div>
       </div>
-    </div>
+      <AttachmentFeedback resource={resource} />
+    </>
   );
-});
+}

@@ -3,10 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getCurrentWebviewWindowLabel } from "@hypr/plugin-windows";
 
-import { useListener } from "./contexts";
 import { useStartListening } from "./useStartListening";
 
-import { listenerStore } from "~/store/zustand/listener/instance";
+import {
+  useLegacyDesktopAccess,
+  useLegacySessionActivity,
+} from "~/main/use-legacy-activity";
 
 const LISTENER_CONTROL_EVENT = "hypr:listener-control";
 
@@ -34,14 +36,17 @@ export async function requestMainListenerControl(
 }
 
 export function MainListenerControlBridge() {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable, available } = legacy;
   const [requests, setRequests] = useState<ListenerControlRequest[]>([]);
 
   useEffect(() => {
+    if (!available) return;
     let active = true;
     let unlisten: (() => void) | undefined;
 
     void listen<ListenerControlRequest>(LISTENER_CONTROL_EVENT, (event) => {
-      if (!active) {
+      if (!active || !isAvailable()) {
         return;
       }
 
@@ -58,7 +63,7 @@ export function MainListenerControlBridge() {
       active = false;
       unlisten?.();
     };
-  }, []);
+  }, [isAvailable, available]);
 
   const handleRequestHandled = useCallback((requestId: string) => {
     setRequests((current) => {
@@ -71,7 +76,7 @@ export function MainListenerControlBridge() {
   }, []);
 
   const request = requests[0];
-  if (!request) {
+  if (!request || !isAvailable()) {
     return null;
   }
 
@@ -90,21 +95,27 @@ function MainListenerControlRequestRunner({
   onHandled: (requestId: string) => void;
   request: ListenerControlRequest;
 }) {
-  const startListening = useStartListening(request.sessionId);
-  const stop = useListener((state) => state.stop);
+  const legacy = useLegacySessionActivity(request.sessionId);
+  const { isAvailable } = legacy;
+  const startListening = useStartListening(request.sessionId, isAvailable);
+  const stop = () => {
+    if (isAvailable()) legacy.listener!.getState().stop();
+  };
   const startListeningRef = useRef(startListening);
   startListeningRef.current = startListening;
   const stopRef = useRef(stop);
   stopRef.current = stop;
 
-  // Keyed on the request only: guard state is read imperatively at arrival
-  // time, so the effect never re-runs (and never advances the queue) while
-  // the requested start is still in flight.
+  // Capture progress must not re-run the request while its start is in flight.
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
-      const live = listenerStore.getState().live;
+      if (!isAvailable()) {
+        if (!cancelled) onHandled(request.requestId);
+        return;
+      }
+      const live = legacy.listener!.getState().live;
       const isStartingOrActive = live.loading || live.status === "active";
 
       if (request.action === "start") {
@@ -127,7 +138,14 @@ function MainListenerControlRequestRunner({
     return () => {
       cancelled = true;
     };
-  }, [onHandled, request.action, request.requestId, request.sessionId]);
+  }, [
+    onHandled,
+    request.action,
+    request.requestId,
+    request.sessionId,
+    isAvailable,
+    legacy.listener,
+  ]);
 
   return null;
 }

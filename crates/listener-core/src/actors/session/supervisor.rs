@@ -25,6 +25,7 @@ const LISTENER_RETRY_DELAYS: [Duration; 5] = [
 
 pub struct SessionState {
     ctx: SessionContext,
+    child_joins: children::ChildJoins,
     source_cell: Option<ActorCell>,
     listener_cell: Option<ActorCell>,
     recorder_cell: Option<ActorCell>,
@@ -63,8 +64,9 @@ impl Actor for SessionActor {
                 ctx.requested_transcription_mode,
                 ctx.params.transcription_mode,
             );
+            let child_joins = children::ChildJoins::default();
             let recorder_cell = Some(
-                children::spawn_recorder(myself.get_cell(), &ctx)
+                children::spawn_recorder(myself.get_cell(), &ctx, child_joins.clone())
                     .await
                     .map_err(|e| -> ActorProcessingErr { Box::new(e) })?,
             );
@@ -73,12 +75,14 @@ impl Actor for SessionActor {
                 &ctx,
                 recorder_cell.as_ref().cloned(),
                 mode.listener_routing(None),
+                child_joins.clone(),
             )
             .await
             .map_err(|e| -> ActorProcessingErr { Box::new(e) })?;
 
             Ok(SessionState {
                 ctx,
+                child_joins,
                 source_cell: Some(source_ref.get_cell()),
                 listener_cell: None,
                 recorder_cell,
@@ -107,7 +111,14 @@ impl Actor for SessionActor {
                 return Ok(());
             }
 
-            match children::spawn_listener(myself.get_cell(), &state.ctx, None).await {
+            match children::spawn_listener(
+                myself.get_cell(),
+                &state.ctx,
+                None,
+                state.child_joins.clone(),
+            )
+            .await
+            {
                 Ok(listener_cell) => {
                     state.listener_cell = Some(listener_cell);
                     state.mode.on_listener_attached();
@@ -136,13 +147,40 @@ impl Actor for SessionActor {
         match message {
             SessionMsg::Shutdown => {
                 state.shutting_down = true;
-                children::shutdown_children(state, "session_stop").await;
-                myself.stop(None);
+                let failure = if state.ctx.recording.is_device() {
+                    children::drain_device(state)
+                        .await
+                        .err()
+                        .map(|error| error.to_string())
+                } else {
+                    None
+                };
+                let local_stopped = if state.ctx.local_completion.is_some() {
+                    children::drain_local(state).await
+                } else {
+                    false
+                };
+                let stopped = children::shutdown_children(state, "session_stop").await;
+                if stopped
+                    && local_stopped
+                    && let Some(completion) = &state.ctx.local_completion
+                {
+                    completion.resources_released();
+                    if let Some(root) = &state.ctx.device_root {
+                        let _ = root.cast(crate::actors::RootMsg::LocalResourcesStopped(
+                            myself.get_id(),
+                        ));
+                    }
+                }
+                myself.stop(failure);
             }
             SessionMsg::RetryListener => {
                 retry_listener(myself, state).await;
             }
             SessionMsg::UpdateConfig(update) => {
+                if state.ctx.recording.is_device() {
+                    return Ok(());
+                }
                 update_config(myself, state, update).await;
             }
         }
@@ -165,10 +203,52 @@ impl Actor for SessionActor {
             return Ok(());
         }
 
+        if state.ctx.recording.is_device() {
+            let terminal = match &message {
+                SupervisionEvent::ActorTerminated(cell, _, reason)
+                    if children::identify_child(state, cell).is_some() =>
+                {
+                    Some(
+                        reason
+                            .clone()
+                            .unwrap_or_else(|| "Device capture child stopped".into()),
+                    )
+                }
+                SupervisionEvent::ActorFailed(cell, error)
+                    if children::identify_child(state, cell).is_some() =>
+                {
+                    Some(format!("Device capture child failed: {error:?}"))
+                }
+                _ => None,
+            };
+            if let Some(reason) = terminal {
+                // Restarting after a recorder/source gap would falsely present discontinuous audio as complete.
+                state.shutting_down = true;
+                if let Some(source) = &state.source_cell {
+                    let actor: ActorRef<crate::actors::SourceMsg> = source.clone().into();
+                    let _ = actor.cast(crate::actors::SourceMsg::DeviceHalt(reason.clone()));
+                    if children::drain_device(state).await.is_err() {
+                        children::finish_interrupted_recorder(state).await;
+                    }
+                } else {
+                    children::finish_interrupted_recorder(state).await;
+                }
+                children::shutdown_children(state, "device_interrupted").await;
+                myself.stop(Some(reason));
+                return Ok(());
+            }
+        }
+
         match message {
             SupervisionEvent::ActorStarted(_) | SupervisionEvent::ProcessGroupChanged(_) => {}
 
             SupervisionEvent::ActorTerminated(cell, _, reason) => {
+                if children::identify_child(state, &cell).is_some()
+                    && !children::join_child(&state.child_joins, cell.get_id()).await
+                {
+                    meltdown(myself, state).await;
+                    return Ok(());
+                }
                 match children::identify_child(state, &cell) {
                     Some(ChildKind::Listener) => {
                         tracing::info!(?reason, "listener_terminated");
@@ -211,6 +291,12 @@ impl Actor for SessionActor {
             }
 
             SupervisionEvent::ActorFailed(cell, error) => {
+                if children::identify_child(state, &cell).is_some()
+                    && !children::join_child(&state.child_joins, cell.get_id()).await
+                {
+                    meltdown(myself, state).await;
+                    return Ok(());
+                }
                 match children::identify_child(state, &cell) {
                     Some(ChildKind::Listener) => {
                         tracing::info!(?error, "listener_failed");
@@ -316,7 +402,14 @@ async fn refresh_listener(myself: ActorRef<SessionMsg>, state: &mut SessionState
     let replay_offset_secs =
         (state.ctx.started_at_instant.elapsed().as_secs_f64() - replay_duration_secs).max(0.0);
 
-    match children::spawn_listener(myself.get_cell(), &state.ctx, Some(replay_offset_secs)).await {
+    match children::spawn_listener(
+        myself.get_cell(),
+        &state.ctx,
+        Some(replay_offset_secs),
+        state.child_joins.clone(),
+    )
+    .await
+    {
         Ok(listener_cell) => {
             state.listener_cell = Some(listener_cell);
             state.mode.on_listener_attached();
@@ -434,7 +527,14 @@ async fn retry_listener(myself: ActorRef<SessionMsg>, state: &mut SessionState) 
     let replay_offset_secs =
         (state.ctx.started_at_instant.elapsed().as_secs_f64() - replay_duration_secs).max(0.0);
 
-    match children::spawn_listener(myself.get_cell(), &state.ctx, Some(replay_offset_secs)).await {
+    match children::spawn_listener(
+        myself.get_cell(),
+        &state.ctx,
+        Some(replay_offset_secs),
+        state.child_joins.clone(),
+    )
+    .await
+    {
         Ok(listener_cell) => {
             tracing::info!(
                 attempts = state.listener_retry_attempt,
@@ -657,7 +757,13 @@ mod tests {
                 participant_human_ids: vec![],
                 self_human_id: None,
             },
-            vault_dir: std::env::temp_dir(),
+            recording: crate::actors::RecordingDestination::LocalDisk {
+                vault_dir: std::env::temp_dir(),
+                session_id: "session".into(),
+            },
+            device_ingress: None,
+            local_completion: None,
+            device_root: None,
             started_at_instant: Instant::now(),
             started_at_system: SystemTime::now(),
         }
@@ -665,6 +771,7 @@ mod tests {
 
     fn test_state(ctx: SessionContext) -> SessionState {
         SessionState {
+            child_joins: Default::default(),
             ctx,
             source_cell: None,
             listener_cell: None,
@@ -993,6 +1100,7 @@ mod tests {
         .unwrap();
 
         let mut state = SessionState {
+            child_joins: Default::default(),
             ctx: test_ctx(),
             source_cell: Some(source_ref.get_cell()),
             listener_cell: Some(listener_ref.get_cell()),

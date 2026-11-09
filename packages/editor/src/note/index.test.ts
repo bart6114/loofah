@@ -14,6 +14,8 @@ import { createElement, createRef, StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { md2json } from "../markdown";
+import { scopedAttachmentPresentation } from "../node-views/attachment-presentation";
+import { AttachmentPresentationContext } from "../node-views/attachment-resolver";
 import {
   TaskStorageProvider,
   createInMemoryTaskStorage,
@@ -37,6 +39,43 @@ const nextDoc: JSONContent = {
   type: "doc",
   content: [{ type: "paragraph", content: [{ type: "text", text: "new" }] }],
 };
+
+it("inherits scoped attachment presentation through an editor mount without enabling raw device sources", async () => {
+  const ref = createRef<NoteEditorRef>();
+  const rendered = render(
+    createElement(
+      AttachmentPresentationContext.Provider,
+      { value: scopedAttachmentPresentation },
+      createElement(NoteEditor, {
+        ref,
+        initialContent: {
+          type: "doc",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Title" }] },
+            {
+              type: "image",
+              attrs: { src: "asset://localhost/private/image.png" },
+            },
+          ],
+        },
+        readOnly: true,
+        showFormatToolbar: false,
+        showSlashCommand: false,
+      }),
+    ),
+  );
+  await waitFor(() =>
+    expect(rendered.container.querySelector("img")).not.toBeNull(),
+  );
+  expect(
+    rendered.container.querySelector("img")!.getAttribute("src"),
+  ).toBeNull();
+  let savedSource: unknown;
+  ref.current!.view!.state.doc.descendants((node) => {
+    if (node.type.name === "image") savedSource = node.attrs.src;
+  });
+  expect(savedSource).toBe("asset://localhost/private/image.png");
+});
 
 afterEach(() => {
   cleanup();

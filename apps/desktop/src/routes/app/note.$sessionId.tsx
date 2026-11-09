@@ -2,10 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useLayoutEffect, useMemo } from "react";
 
+import { getCurrentWebviewWindowLabel } from "@hypr/plugin-windows";
+
 import { ClassicMainLayout } from "~/main/layout";
 import { TabContentNote } from "~/session";
+import { RemoteNoteWindow } from "~/shared/application/remote-note-window";
 import { StandaloneWindowShell } from "~/shared/window-shell";
-import { type Tab, useTabs } from "~/store/zustand/tabs";
+import { type Tab, useTabs, useTabsStore } from "~/store/zustand/tabs";
 import { useListener } from "~/stt/contexts";
 
 export const Route = createFileRoute("/app/note/$sessionId")({
@@ -15,17 +18,30 @@ export const Route = createFileRoute("/app/note/$sessionId")({
 function Component() {
   const { sessionId } = Route.useParams();
   useCloseStandaloneNoteWindowOnEscape();
-  useAttachStandaloneNoteToLiveSession(sessionId);
-  const tab = useStandaloneNoteTab(sessionId);
+
+  if (getCurrentWebviewWindowLabel().startsWith("remote-note-"))
+    return <RemoteNoteWindow />;
 
   return (
     <ClassicMainLayout includeServices={false}>
-      <StandaloneWindowShell topDragRegion={false}>
-        <div className="bg-background h-screen w-screen">
-          <TabContentNote tab={tab} standaloneWindow />
-        </div>
-      </StandaloneWindowShell>
+      <StandaloneNote sessionId={sessionId} />
     </ClassicMainLayout>
+  );
+}
+
+function StandaloneNote({ sessionId }: { sessionId: string }) {
+  useAttachStandaloneNoteToLiveSession(sessionId);
+  return <StandaloneNoteContent sessionId={sessionId} />;
+}
+
+export function StandaloneNoteContent({ sessionId }: { sessionId: string }) {
+  const tab = useStandaloneNoteTab(sessionId);
+  return (
+    <StandaloneWindowShell topDragRegion={false}>
+      <div className="bg-background h-screen w-screen">
+        <TabContentNote tab={tab} standaloneWindow />
+      </div>
+    </StandaloneWindowShell>
   );
 }
 
@@ -45,6 +61,7 @@ export function useAttachStandaloneNoteToLiveSession(sessionId: string) {
 }
 
 export function useStandaloneNoteTab(sessionId: string) {
+  const tabsStore = useTabsStore();
   const tab = useMemo(
     () =>
       ({
@@ -66,7 +83,7 @@ export function useStandaloneNoteTab(sessionId: string) {
   );
 
   useLayoutEffect(() => {
-    const state = useTabs.getState();
+    const state = tabsStore.getState();
     const existingTab = state.tabs.find(
       (candidate): candidate is Extract<Tab, { type: "sessions" }> =>
         candidate.type === "sessions" && candidate.id === sessionId,
@@ -78,7 +95,7 @@ export function useStandaloneNoteTab(sessionId: string) {
     }
 
     state.openCurrent(tab);
-  }, [sessionId, tab]);
+  }, [sessionId, tab, tabsStore]);
 
   return storeTab ?? tab;
 }

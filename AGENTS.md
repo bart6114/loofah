@@ -1,8 +1,12 @@
 # Overview
 
-Tauri desktop note-taking app (`apps/desktop/`) and a CLI (`apps/cli/`).
+Tauri desktop note-taking app (`apps/desktop/`), CLI (`apps/cli/`) and experimental headless backend (`apps/server/`).
 Uses pnpm workspaces.
-Files in the user's vault directory are the only source of truth — there is no database. The vault format lives in `crates/vault-read/`; the desktop write path and in-memory index are `apps/desktop/src-tauri/src/session_store/`. App settings are a `config.json` in the vault, not rows. Zustand is used for UI state, and ProseMirror powers the editor. Sessions are the core entity — all notes are backed by sessions, stored under `sessions/<id>/`.
+Files in the user's vault directory are the only source of truth — there is no canonical-content database. The vault format and read types live in `crates/vault-read/`; the shared write path and in-memory index live in `crates/vault-write/`. `crates/loofah-core/` contains extracted application operations, and `crates/loofah-protocol/` supplies generated transport contracts. Desktop session-store commands remain thin IPC wrappers; other desktop feature paths still require migration. Portable file/media helpers also live in `crates/fs-sync-core/`. App settings are a `config.json` in the vault, not rows. Zustand is used for UI state, and ProseMirror powers the editor. Sessions are the core entity — all notes are backed by sessions, stored under `sessions/<id>/`.
+
+Durable capture staging lives in `crates/capture-store/`; `loofah-client::capture_spool` preserves its previous import path. Capture wire types and hashing rules live in `loofah-protocol`. The experimental saved-server workspace offers device audio capture and queued uploads for existing unrecorded notes. Full recording/live-processing parity and sustained platform acceptance remain gated.
+
+The default desktop remains standalone, offline and login-free. Explicit remote profiles authenticate to a company/self-hosted service. Remote failures must never fall back to a local vault. See `apps/server/README.md` for the implemented experimental surface and `docs/plans/frontend-backend-separation.md` for remaining migration and validation gates.
 
 ## Supported platform
 
@@ -40,7 +44,7 @@ Inside `sessions/<id>/` the app owns a fixed set of names (canonical list: `crat
 - For `apps/desktop/` TypeScript changes, prefer `pnpm -F desktop typecheck` to match CI.
 - After edits, run `pnpm exec dprint fmt`.
 - Use `useForm` (tanstack-form) and `useQuery`/`useMutation` (tanstack-query) for form/mutation state. Avoid manual state management (e.g. `setError`).
-- Keep file I/O, atomic writes, and index maintenance on the Rust side. TypeScript reads through the typed store commands and subscribes to changes via `useIndexQuery` (`src/shared/index-query.ts`), which fans out the coalesced `index-changed` event — never read or write vault files directly from the frontend.
+- Keep file I/O, atomic writes, and index maintenance on the Rust side. Existing desktop queries use the typed store commands and `useIndexQuery` (`src/shared/index-query.ts`), which fans out the coalesced `index-changed` event. Extracted features use `VaultClient` and `VaultScope` (`src/shared/application/`) for scoped requests, subscriptions and cache invalidation across IPC and HTTPS. Keep transport selection in adapters; UI components must not branch on local versus remote. Never read or write vault files directly from the frontend.
 - Branch naming: `fix/`, `chore/`, `refactor/` prefixes.
 
 ## Releases & Versioning

@@ -58,9 +58,21 @@ vi.mock("~/shared/config", () => ({
   useConfigValue: () => undefined,
 }));
 
-vi.mock("./queries", () => ({
-  useTimelineSessionsTable: () => mocks.timelineSessionsTable,
-}));
+vi.mock("./queries", async () => {
+  const { useCurrentDay } = await import("~/shared/hooks/useCurrentDay");
+  const { buildTimelineBuckets, deriveTimelineWindowData } =
+    await import("./utils");
+  return {
+    useNearestTimelineBuckets: () => {
+      useCurrentDay();
+      return buildTimelineBuckets({
+        timelineSessionsTable: deriveTimelineWindowData({
+          timelineSessionsTable: mocks.timelineSessionsTable,
+        }).timelineSessionsTable,
+      });
+    },
+  };
+});
 
 import { useSidebarUpcomingMeetingStatus } from "./upcoming-meeting";
 

@@ -4,6 +4,10 @@ const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(),
   setConfigValues: vi.fn(),
   getPreferredLanguages: vi.fn(),
+  respectDnd: vi.fn(async () => {}),
+  ignored: vi.fn(async () => {}),
+  startStt: vi.fn(async () => {}),
+  stopStt: vi.fn(async () => {}),
 }));
 
 vi.mock("@hypr/plugin-settings", () => ({
@@ -16,11 +20,18 @@ vi.mock("@hypr/plugin-settings", () => ({
 vi.mock("@hypr/plugin-detect", () => ({
   commands: {
     getPreferredLanguages: mocks.getPreferredLanguages,
+    setRespectDoNotDisturb: mocks.respectDnd,
+    setIgnoredBundleIds: mocks.ignored,
   },
+}));
+
+vi.mock("@hypr/plugin-local-stt", () => ({
+  commands: { startServer: mocks.startStt, stopServer: mocks.stopStt },
 }));
 
 import {
   getStoredSettingValues,
+  initializeDeviceSettings,
   initializeApplicationSettings,
   setSettingValues,
   updateSettingValue,
@@ -67,6 +78,25 @@ describe("config-backed settings", () => {
       status: "error",
       error: "unavailable",
     });
+  });
+
+  it("initializes only device preferences without local inference or language/config writes", async () => {
+    mocks.getConfig.mockResolvedValue({
+      status: "ok",
+      data: appConfig({
+        respect_dnd: true,
+        ignored_platforms: ["meeting"],
+        current_stt_provider: "fmtr",
+        current_stt_model: "whisper-large-v3-turbo",
+      }),
+    });
+    await initializeDeviceSettings();
+    expect(mocks.respectDnd).toHaveBeenCalledWith(true);
+    expect(mocks.ignored).toHaveBeenCalledWith(["meeting"]);
+    expect(mocks.startStt).not.toHaveBeenCalled();
+    expect(mocks.stopStt).not.toHaveBeenCalled();
+    expect(mocks.getPreferredLanguages).not.toHaveBeenCalled();
+    expect(mocks.setConfigValues).not.toHaveBeenCalled();
   });
 
   it("treats config defaults as unset values", async () => {

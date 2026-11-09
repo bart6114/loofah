@@ -5,17 +5,12 @@ use super::{SessionStore, StoreError, paths};
 /// One person, file-canonical in the vault-root `people.json`. The id doubles as the
 /// value speaker hints store, so it is generated human-readable (`bob_peters`) — a
 /// transcript keeps degrading gracefully if `people.json` disappears.
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
-pub struct PersonItem {
-    pub id: String,
-    #[serde(default)]
-    pub name: String,
-}
+pub use hypr_vault_read::PersonItem;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct PeopleFile {
+pub(super) struct PeopleFile {
     #[serde(default)]
-    people: Vec<PersonItem>,
+    pub(super) people: Vec<PersonItem>,
 }
 
 fn person_id_slug(name: &str) -> String {
@@ -40,7 +35,7 @@ fn person_id_slug(name: &str) -> String {
     }
 }
 
-fn unique_person_id(existing: &[PersonItem], name: &str) -> String {
+pub(super) fn unique_person_id(existing: &[PersonItem], name: &str) -> String {
     let base = person_id_slug(name);
     if !existing.iter().any(|p| p.id == base) {
         return base;
@@ -61,7 +56,7 @@ impl SessionStore {
     /// take rendering down with it — labels fall back to the raw hint value either way.
     async fn read_people(&self) -> Result<Vec<PersonItem>, StoreError> {
         let path = self.vault_base.join(paths::people_path());
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let raw = match std::fs::read(&path) {
                 Ok(raw) => raw,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),

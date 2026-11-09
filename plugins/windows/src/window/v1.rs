@@ -21,6 +21,8 @@ pub enum AppWindow {
     Main,
     #[serde(rename = "note")]
     Note(String),
+    #[serde(rename = "remote_note")]
+    RemoteNote(String),
 }
 
 impl std::fmt::Display for AppWindow {
@@ -28,6 +30,7 @@ impl std::fmt::Display for AppWindow {
         match self {
             Self::Main => write!(f, "main"),
             Self::Note(id) => write!(f, "note-{id}"),
+            Self::RemoteNote(id) => write!(f, "remote-note-{id}"),
         }
     }
 }
@@ -38,6 +41,10 @@ impl std::str::FromStr for AppWindow {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "main" {
             return Ok(Self::Main);
+        }
+
+        if let Some(id) = s.strip_prefix("remote-note-").filter(|id| !id.is_empty()) {
+            return Ok(Self::RemoteNote(id.to_string()));
         }
 
         if let Some(id) = s.strip_prefix("note-").filter(|id| !id.is_empty()) {
@@ -120,7 +127,7 @@ impl WindowImpl for AppWindow {
     fn title(&self) -> String {
         match self {
             Self::Main => "Loofah".into(),
-            Self::Note(_) => "Note".into(),
+            Self::Note(_) | Self::RemoteNote(_) => "Note".into(),
         }
     }
 
@@ -141,7 +148,7 @@ impl WindowImpl for AppWindow {
                 window.set_size(LogicalSize::new(910.0, 600.0))?;
                 window
             }
-            Self::Note(id) => {
+            Self::Note(id) | Self::RemoteNote(id) => {
                 let encoded_id: String =
                     url::form_urlencoded::byte_serialize(id.as_bytes()).collect();
                 let builder = self
@@ -163,7 +170,7 @@ impl WindowImpl for AppWindow {
         app: &tauri::AppHandle<tauri::Wry>,
         window: &tauri::WebviewWindow<tauri::Wry>,
     ) -> Result<(), crate::Error> {
-        let Self::Note(_) = self else {
+        if !matches!(self, Self::Note(_) | Self::RemoteNote(_)) {
             return Ok(());
         };
 
@@ -190,7 +197,12 @@ impl WindowImpl for AppWindow {
         let note_windows = app
             .webview_windows()
             .into_iter()
-            .filter(|(label, _)| matches!(label.parse::<Self>(), Ok(Self::Note(_))))
+            .filter(|(label, _)| {
+                matches!(
+                    label.parse::<Self>(),
+                    Ok(Self::Note(_) | Self::RemoteNote(_))
+                )
+            })
             .collect::<Vec<_>>();
         let mut note_labels = note_windows
             .iter()

@@ -120,6 +120,8 @@ describe("runBatchSession", () => {
           }),
       );
 
+      const requestId = crypto.randomUUID();
+      const onTerminal = vi.fn();
       const runPromise = runBatchSession(
         () => ({
           batch: {},
@@ -144,11 +146,14 @@ describe("runBatchSession", () => {
           base_url: "",
           api_key: "",
         },
+        { requestId, onTerminal },
       );
 
       await Promise.resolve();
       await Promise.resolve();
 
+      expect(startTranscriptionMock.mock.calls[0][1]).toBe(requestId);
+      expect(onTerminal).not.toHaveBeenCalled();
       expect(updateBatchProgress).toHaveBeenCalledWith("session-1", 0.06);
 
       vi.advanceTimersByTime(1_600);
@@ -174,6 +179,7 @@ describe("runBatchSession", () => {
 
       await runPromise;
 
+      expect(onTerminal).toHaveBeenCalledOnce();
       const callCount = updateBatchProgress.mock.calls.length;
       vi.advanceTimersByTime(1_600);
       expect(updateBatchProgress).toHaveBeenCalledTimes(callCount);

@@ -1,7 +1,11 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef } from "react";
 
 import { TRANSCRIPT_RENDER_CACHE_TIME_MS } from "../cache";
+import {
+  renderedTranscriptPrefix,
+  useTranscriptCacheOwner,
+} from "../render-cache";
 import { useTranscriptRenderData } from "../render-request-hooks";
 
 import type { Person } from "~/people/queries";
@@ -21,6 +25,11 @@ export function useRenderedTranscriptData(
   transcript: TranscriptRecord | null,
   people: readonly Person[],
 ) {
+  const owner = useTranscriptCacheOwner();
+  const sessionId = transcript?.sessionId ?? "";
+  const ownsRequest = Boolean(
+    transcript && transcript.id === transcriptId && sessionId,
+  );
   const { request } = useTranscriptRenderData(transcript, people);
   const requestKey = useMemo(
     () => getRenderTranscriptRequestKey(request),
@@ -28,24 +37,44 @@ export function useRenderedTranscriptData(
   );
 
   // eslint-disable-next-line @tanstack/query/exhaustive-deps -- requestKey is the canonical hash of the complete render request.
-  const query = useQuery({
-    queryKey: ["rendered-transcript-segments", transcriptId, requestKey],
-    queryFn: async () => {
-      if (!request) {
-        return [];
-      }
+  const query = useQuery(
+    {
+      queryKey: [
+        ...renderedTranscriptPrefix(owner.scope, sessionId, transcriptId),
+        requestKey,
+      ],
+      queryFn: async ({ signal }) => {
+        owner.assertCurrent(signal);
+        if (!request) {
+          return [];
+        }
 
-      return renderTranscriptSegments(request);
+        const segments = await renderTranscriptSegments(request);
+        owner.assertCurrent(signal);
+        return segments;
+      },
+      enabled: owner.available && ownsRequest && !!request,
+      // Local IPC render call: never let a misreported offline state pause it.
+      networkMode: "always",
+      // Keep the previous segments on screen while a changed request re-renders,
+      // so a speaker rename doesn't blank the transcript and remount every segment.
+      placeholderData: (data, previousQuery) =>
+        owner.isCurrent() &&
+        ownsRequest &&
+        previousQuery &&
+        Object.is(
+          owner.scope.queryClient.getQueryCache().get(previousQuery.queryHash),
+          previousQuery,
+        ) &&
+        previousQuery.queryKey[3] === sessionId &&
+        previousQuery.queryKey[4] === transcriptId
+          ? data
+          : undefined,
+      staleTime: Number.POSITIVE_INFINITY,
+      gcTime: TRANSCRIPT_RENDER_CACHE_TIME_MS,
     },
-    enabled: !!request,
-    // Local IPC render call: never let a misreported offline state pause it.
-    networkMode: "always",
-    // Keep the previous segments on screen while a changed request re-renders,
-    // so a speaker rename doesn't blank the transcript and remount every segment.
-    placeholderData: keepPreviousData,
-    staleTime: Number.POSITIVE_INFINITY,
-    gcTime: TRANSCRIPT_RENDER_CACHE_TIME_MS,
-  });
+    owner.scope.queryClient,
+  );
 
   const maxSpeakerNumber = useMemo(
     () =>
@@ -60,19 +89,29 @@ export function useRenderedTranscriptData(
     [request],
   );
 
-  const previous = useRef<{ id: string; data: Segment[] } | null>(null);
-  if (!request) previous.current = null;
+  const previous = useRef<{
+    sessionId: string;
+    id: string;
+    data: Segment[];
+  } | null>(null);
+  const available = owner.available && ownsRequest && !!request;
+  if (!available) previous.current = null;
   else if (query.data)
-    previous.current = { id: transcriptId, data: query.data };
+    previous.current = { sessionId, id: transcriptId, data: query.data };
   const data =
     query.data ??
-    (previous.current?.id === transcriptId ? previous.current.data : undefined);
+    (previous.current?.sessionId === sessionId &&
+    previous.current.id === transcriptId
+      ? previous.current.data
+      : undefined);
   return {
     maxSpeakerNumber,
-    segments: request ? (data ?? []) : [],
-    isLoading: Boolean(request) && !data && !query.isError,
-    isError: query.isError,
-    refetch: query.refetch,
+    segments: available ? (data ?? []) : [],
+    isLoading: available && !data && !query.isError,
+    isError: available && query.isError,
+    refetch: async () => {
+      if (owner.isCurrent() && ownsRequest && request) return query.refetch();
+    },
   };
 }
 

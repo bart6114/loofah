@@ -1,9 +1,21 @@
+export {
+  type AttachmentPresentation,
+  type AttachmentAction,
+  legacyAttachmentPresentation,
+  scopedAttachmentPresentation,
+} from "./attachment-presentation";
 export { appLinkNodeSpec } from "./app-link-spec";
+export { AttachmentActions, AttachmentFeedback } from "./attachment-feedback";
 export { attachmentNodeSpec, AttachmentChipView } from "./attachment-view";
 export {
   type AttachmentResolution,
   type AttachmentResolver,
+  type AttachmentResourceLoader,
+  AttachmentResource,
+  AttachmentResourceContext,
   AttachmentEditingContext,
+  AttachmentPresentationContext,
+  useAttachmentPresentation,
   AttachmentResolverContext,
   useAttachmentEditingEnabled,
   useAttachmentResolver,

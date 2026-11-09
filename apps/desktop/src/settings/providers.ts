@@ -25,24 +25,30 @@ const EMPTY_PROVIDER_ENTRIES: Partial<Record<string, AiProviderEntry>> = {};
 
 export function useAiProviders(
   type: AiProviderType,
+  enabled = true,
 ): Record<string, AiProviderConfig> {
-  return useAiProvidersState(type).providers;
+  return useAiProvidersState(type, enabled).providers;
 }
 
-export function useAiProvidersState(type: AiProviderType): {
+export function useAiProvidersState(
+  type: AiProviderType,
+  enabled = true,
+): {
   providers: Record<string, AiProviderConfig>;
   isReady: boolean;
 } {
   const { snapshot, isLoading } = useConfigStoreState();
-  const providers = parseAiProviders(
-    snapshot?.config.ai_providers ?? EMPTY_PROVIDER_ENTRIES,
-    type,
-  );
+  const providers = enabled
+    ? parseAiProviders(
+        snapshot?.config.ai_providers ?? EMPTY_PROVIDER_ENTRIES,
+        type,
+      )
+    : {};
   const providerIds = Object.keys(providers).sort();
   const secureApiKeysQuery = useQuery({
     queryKey: ["ai-provider-api-keys", type, providerIds],
     queryFn: () => loadSecureAiProviderApiKeys(providerIds, type),
-    enabled: !isLoading,
+    enabled: enabled && !isLoading,
     staleTime: Infinity,
   });
   const secureApiKeys = secureApiKeysQuery.data ?? EMPTY_PROVIDER_API_KEYS;
@@ -57,15 +63,16 @@ export function useAiProvidersState(type: AiProviderType): {
         },
       ]),
     ),
-    isReady: !isLoading && secureApiKeysQuery.data !== undefined,
+    isReady: enabled && !isLoading && secureApiKeysQuery.data !== undefined,
   };
 }
 
 export function useAiProvider(
   type: AiProviderType,
   providerId: string | null | undefined,
+  enabled = true,
 ): AiProviderConfig | undefined {
-  const providers = useAiProviders(type);
+  const providers = useAiProviders(type, enabled);
   return providerId ? providers[providerRowId(type, providerId)] : undefined;
 }
 

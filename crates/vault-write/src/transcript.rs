@@ -108,6 +108,93 @@ fn next_retry_delay(current: std::time::Duration) -> std::time::Duration {
     (current * 2).min(RETRY_DELAY_CAP)
 }
 
+pub(crate) fn assigned_speaker_hints(
+    entry: &TranscriptWithData,
+    channel: i32,
+    speaker_index: Option<i32>,
+    speaker_label: &str,
+    anchor_word_id: &str,
+) -> Vec<TranscriptSpeakerHint> {
+    let new_id = format!("{anchor_word_id}:speaker_label");
+    let next_channel = f64::from(channel);
+    let next_speaker_index = speaker_index.map(f64::from);
+
+    let mut next_hints: Vec<TranscriptSpeakerHint> = {
+        let hints = &entry.speaker_hints;
+        let words_by_id: std::collections::HashMap<&str, &TranscriptWord> = entry
+            .words
+            .iter()
+            .filter_map(|word| word.id.as_deref().map(|id| (id, word)))
+            .collect();
+
+        // A channel is "diarized" when its provider hints resolve to >=2 distinct
+        // speaker indexes. On such a channel, indexed assignments and the
+        // channel-wide fallback are separate scopes that must coexist -- a
+        // channel-wide hint is the fallback for gap segments, not a stale duplicate.
+        let channel_is_diarized = {
+            let mut indexes: Vec<f64> = hints
+                .iter()
+                .filter(|h| {
+                    h.hint_type == "provider_speaker_index"
+                        && words_by_id
+                            .get(h.word_id.as_str())
+                            .is_some_and(|w| w.channel == next_channel)
+                })
+                .filter_map(|h| provider_speaker_index_for_word(hints, &h.word_id))
+                .collect();
+            indexes.sort_by(f64::total_cmp);
+            indexes.dedup();
+            indexes.len() >= 2
+        };
+
+        hints
+            .iter()
+            .filter(|hint| {
+                if hint.hint_type != "speaker_label" {
+                    return true;
+                }
+                if hint.id.as_deref() == Some(new_id.as_str()) {
+                    return false;
+                }
+                let Some(word) = words_by_id.get(hint.word_id.as_str()) else {
+                    return true;
+                };
+                if word.channel != next_channel {
+                    return true;
+                }
+                let existing_speaker_index = provider_speaker_index_for_word(hints, &hint.word_id);
+                let conflicts = if channel_is_diarized {
+                    // Diarized channel: only an exact scope match supersedes --
+                    // (ch, idx) evicts the same (ch, idx), channel-wide evicts
+                    // channel-wide. Mixed scopes coexist (fallback semantics).
+                    existing_speaker_index == next_speaker_index
+                } else {
+                    // Undiarized channel: a missing speaker index on either side
+                    // means "the whole channel", which conflicts with everything
+                    // on it (pre-diarization behavior, unchanged).
+                    match (existing_speaker_index, next_speaker_index) {
+                        (Some(left), Some(right)) => left == right,
+                        _ => true,
+                    }
+                };
+                !conflicts
+            })
+            .cloned()
+            .collect()
+    };
+
+    next_hints.push(TranscriptSpeakerHint {
+        id: Some(new_id),
+        word_id: anchor_word_id.to_string(),
+        hint_type: "speaker_label".to_string(),
+        // The frontend write path persisted the label as a bare JSON string;
+        // renderers read it back the same way.
+        value: serde_json::Value::String(speaker_label.to_string()),
+    });
+
+    next_hints
+}
+
 impl SessionStore {
     pub async fn finish_transcript(
         &self,
@@ -370,7 +457,7 @@ impl SessionStore {
             let vault_base = self.vault_base.clone();
             let session_dir = self.session_dir_locked(&guard, session_id).await?;
             let relative = paths::transcript_path_in(&session_dir);
-            tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+            self.spawn_blocking(move || -> Result<(), StoreError> {
                 let abs = vault_base.join(relative);
                 hypr_fs_sync_core::export::move_to_trash(&vault_base, &abs)
                     .map(|_| ())
@@ -451,83 +538,8 @@ impl SessionStore {
             )));
         };
 
-        let new_id = format!("{anchor_word_id}:speaker_label");
-        let next_channel = f64::from(channel);
-        let next_speaker_index = speaker_index.map(f64::from);
-
-        let mut next_hints: Vec<TranscriptSpeakerHint> = {
-            let hints = &entry.speaker_hints;
-            let words_by_id: std::collections::HashMap<&str, &TranscriptWord> = entry
-                .words
-                .iter()
-                .filter_map(|word| word.id.as_deref().map(|id| (id, word)))
-                .collect();
-
-            // A channel is "diarized" when its provider hints resolve to >=2 distinct
-            // speaker indexes. On such a channel, indexed assignments and the
-            // channel-wide fallback are separate scopes that must coexist -- a
-            // channel-wide hint is the fallback for gap segments, not a stale duplicate.
-            let channel_is_diarized = {
-                let mut indexes: Vec<f64> = hints
-                    .iter()
-                    .filter(|h| {
-                        h.hint_type == "provider_speaker_index"
-                            && words_by_id
-                                .get(h.word_id.as_str())
-                                .is_some_and(|w| w.channel == next_channel)
-                    })
-                    .filter_map(|h| provider_speaker_index_for_word(hints, &h.word_id))
-                    .collect();
-                indexes.sort_by(f64::total_cmp);
-                indexes.dedup();
-                indexes.len() >= 2
-            };
-
-            hints
-                .iter()
-                .filter(|hint| {
-                    if hint.hint_type != "speaker_label" {
-                        return true;
-                    }
-                    if hint.id.as_deref() == Some(new_id.as_str()) {
-                        return false;
-                    }
-                    let Some(word) = words_by_id.get(hint.word_id.as_str()) else {
-                        return true;
-                    };
-                    if word.channel != next_channel {
-                        return true;
-                    }
-                    let existing_speaker_index =
-                        provider_speaker_index_for_word(hints, &hint.word_id);
-                    let conflicts = if channel_is_diarized {
-                        // Diarized channel: only an exact scope match supersedes --
-                        // (ch, idx) evicts the same (ch, idx), channel-wide evicts
-                        // channel-wide. Mixed scopes coexist (fallback semantics).
-                        existing_speaker_index == next_speaker_index
-                    } else {
-                        // Undiarized channel: a missing speaker index on either side
-                        // means "the whole channel", which conflicts with everything
-                        // on it (pre-diarization behavior, unchanged).
-                        match (existing_speaker_index, next_speaker_index) {
-                            (Some(left), Some(right)) => left == right,
-                            _ => true,
-                        }
-                    };
-                    !conflicts
-                })
-                .cloned()
-                .collect()
-        };
-
-        next_hints.push(TranscriptSpeakerHint {
-            id: Some(new_id),
-            word_id: anchor_word_id.to_string(),
-            hint_type: "speaker_label".to_string(),
-            // The frontend write path persisted the label as a bare JSON string;
-            // renderers read it back the same way.
-            value: serde_json::Value::String(speaker_label.to_string()),
-        });
+        let next_hints =
+            assigned_speaker_hints(entry, channel, speaker_index, speaker_label, anchor_word_id);
 
         // Hints-only mutation: `entry.words` is deliberately never reassigned, so word
         // content (including per-word metadata) cannot regress no matter what raced the
@@ -641,10 +653,14 @@ impl SessionStore {
         session_id: &str,
     ) -> Result<TranscriptJson, StoreError> {
         validate_session_id(session_id)?;
+        self.ensure_append_ready(session_id)?;
+        let append_store = self.clone();
+        let append_id = session_id.to_owned();
         let vault_base = self.vault_base.clone();
         let relative = paths::transcript_path_in(&self.session_dir(session_id).await?);
 
-        tokio::task::spawn_blocking(move || -> Result<TranscriptJson, StoreError> {
+        self.spawn_blocking(move || -> Result<TranscriptJson, StoreError> {
+            append_store.ensure_append_ready(&append_id)?;
             let path = vault_base.join(&relative);
 
             // Attempt-then-match, not exists()-then-read: see read_meta's comment in
@@ -652,6 +668,7 @@ impl SessionStore {
             let bytes = match std::fs::read(&path) {
                 Ok(bytes) => bytes,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    append_store.ensure_append_ready(&append_id)?;
                     return Ok(TranscriptJson {
                         transcripts: Vec::new(),
                     });
@@ -664,6 +681,7 @@ impl SessionStore {
                 }
             };
 
+            append_store.ensure_append_ready(&append_id)?;
             serde_json::from_slice(&bytes).map_err(|e| {
                 StoreError::Serialize(format!("failed to deserialize transcript.json: {}", e))
             })
@@ -681,14 +699,19 @@ impl SessionStore {
         session_id: &str,
     ) -> Result<TranscriptSummary, StoreError> {
         validate_session_id(session_id)?;
+        self.ensure_append_ready(session_id)?;
+        let append_store = self.clone();
+        let append_id = session_id.to_owned();
         let vault_base = self.vault_base.clone();
         let relative = paths::transcript_path_in(&self.session_dir(session_id).await?);
 
-        tokio::task::spawn_blocking(move || -> Result<TranscriptSummary, StoreError> {
+        self.spawn_blocking(move || -> Result<TranscriptSummary, StoreError> {
+            append_store.ensure_append_ready(&append_id)?;
             let path = vault_base.join(&relative);
             let bytes = match std::fs::read(&path) {
                 Ok(bytes) => bytes,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    append_store.ensure_append_ready(&append_id)?;
                     return Ok(TranscriptSummary {
                         transcript_ids: Vec::new(),
                         has_words: false,
@@ -704,6 +727,7 @@ impl SessionStore {
                     )));
                 }
             };
+            append_store.ensure_append_ready(&append_id)?;
             summarize_transcript_bytes(&bytes)
         })
         .await
@@ -714,7 +738,10 @@ impl SessionStore {
 /// Live-era `provider_speaker_index` hints serialized the value as a JSON *string*
 /// (`"{\"channel\":1,\"speaker_index\":2}"`); newer writers store the object
 /// directly. Both shapes are on disk, so both must resolve.
-fn provider_speaker_index_for_word(hints: &[TranscriptSpeakerHint], word_id: &str) -> Option<f64> {
+pub(crate) fn provider_speaker_index_for_word(
+    hints: &[TranscriptSpeakerHint],
+    word_id: &str,
+) -> Option<f64> {
     let hint = hints
         .iter()
         .find(|h| h.hint_type == "provider_speaker_index" && h.word_id == word_id)?;
@@ -928,8 +955,23 @@ mod tests {
             .append_transcript("s1", delta_with_words(&["auto"]))
             .await
             .unwrap();
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-        assert!(vault.path().join("sessions/s1/transcript.json").is_file());
+        let path = vault.path().join("sessions/s1/transcript.json");
+        let json = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        break serde_json::from_slice::<serde_json::Value>(&bytes).unwrap();
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => panic!("cannot read debounced transcript: {error}"),
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("the debounce timer must persist words without an explicit flush");
+        assert_eq!(json["transcripts"][0]["words"].as_array().unwrap().len(), 1);
+        assert_eq!(json["transcripts"][0]["words"][0]["text"], "auto");
     }
 
     #[tokio::test]
@@ -1026,25 +1068,36 @@ mod tests {
                 .await
                 .unwrap();
         }
-        // Give the single scheduled flusher time to fire; if appends had each spawned their
-        // own flusher this would still pass, so the real assertion is the word count below --
-        // three separate un-coalesced buffers would have clobbered each other down to 1 word.
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-        let json: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(vault.path().join("sessions/s1/transcript.json")).unwrap(),
-        )
-        .unwrap();
+        // File replacement precedes index publication; observing the file alone
+        // does not establish that the background flush has reached both readers.
+        let path = vault.path().join("sessions/s1/transcript.json");
+        let (json, indexed) = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                        if json["transcripts"][0]["words"]
+                            .as_array()
+                            .is_some_and(|words| words.len() == 3)
+                        {
+                            if let Some(indexed) = store.transcript_get("t1").await.unwrap()
+                                && indexed.words.len() == 3
+                            {
+                                break (json, indexed);
+                            }
+                        }
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => panic!("could not read the debounced transcript: {error}"),
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the debounce timer must persist and index all three appends");
         assert_eq!(json["transcripts"][0]["words"].as_array().unwrap().len(), 3);
 
-        let texts: Vec<String> = store
-            .transcript_get("t1")
-            .await
-            .unwrap()
-            .unwrap()
-            .words
-            .into_iter()
-            .map(|w| w.text)
-            .collect();
+        let texts: Vec<String> = indexed.words.into_iter().map(|w| w.text).collect();
         assert_eq!(texts, vec!["a", "b", "c"]);
     }
 
@@ -1522,8 +1575,10 @@ mod tests {
             .unwrap();
 
         let mut saw_transcripts_change = false;
-        while let Ok((entity, ids)) = rx.try_recv() {
-            if entity == super::super::IndexEntity::Transcripts && ids.contains(&"s1".to_string()) {
+        while let Ok(change) = rx.try_recv() {
+            if change.entity == super::super::IndexEntity::Transcripts
+                && change.ids.contains(&"s1".to_string())
+            {
                 saw_transcripts_change = true;
             }
         }

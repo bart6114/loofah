@@ -1,13 +1,18 @@
+import { Trans } from "@lingui/react/macro";
+import { QueryClientProvider } from "@tanstack/react-query";
 import type { EditorView } from "prosemirror-view";
-import { forwardRef, useCallback, useMemo } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
 
-import { json2mdStrict, parseJsonContent } from "@hypr/editor/markdown";
 import {
   type FileHandlerConfig,
-  NoteEditor,
-  type JSONContent,
   type NoteEditorRef,
-  normalizePortableAttachmentUrls,
+  useMentionNavigation,
 } from "@hypr/editor/note";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn } from "@hypr/utils";
@@ -17,46 +22,39 @@ import { useMentionConfig } from "~/editor-bridge/mention-config";
 import { openEditorLink } from "~/editor-bridge/open-editor-link";
 import { sessionMentionDropConfig } from "~/editor-bridge/session-mention-drop";
 import { SessionNodeView } from "~/editor-bridge/session-view";
-import { hasStoredNoteContent } from "~/session/components/shared";
-import { useAttachmentResolver } from "~/session/hooks/useAttachmentResolver";
+import { DeviceRecovery } from "~/shared/application/device-recovery";
 import {
-  captureNoteDraft,
-  persistNoteDraft,
-  usePendingNoteDraft,
-} from "~/session/pending-note-drafts";
-import { saveSessionNote, useRefreshSessionNote } from "~/session/queries";
-import {
-  ensureFirstLineTitle,
-  extractFirstLineTitle,
-  documentTitlePlaceholder,
-} from "~/session/title-content";
+  VaultNoteEditor,
+  type VaultNoteEditorHost,
+} from "~/shared/application/vault-note-editor";
+import { useVaultHost } from "~/shared/application/vault-provider";
 
 const extraNodeViews = { appLink: AppLinkView, session: SessionNodeView };
+const noop = () => {};
 
-export const RawEditor = forwardRef<
-  NoteEditorRef,
-  {
-    sessionId: string;
-    rawMd: string;
-    sessionTitle: string;
-    className?: string;
-    onNavigateToTitle?: (pixelWidth?: number) => void;
-    syncTasks?: boolean;
-    showFormatToolbar?: boolean;
-    fileHandlerConfig?: FileHandlerConfig;
-    onViewReady?: (view: EditorView) => void;
-    onViewDisposed?: (view: EditorView) => void;
-    titleTrailerElement?: HTMLElement;
-  }
->(
+type RawEditorProps = {
+  sessionId: string;
+  rawMd: string;
+  sessionTitle: string;
+  className?: string;
+  onNavigateToTitle?: (pixelWidth?: number) => void;
+  showFormatToolbar?: boolean;
+  fileHandlerConfig?: FileHandlerConfig;
+  onViewReady?: (view: EditorView) => void;
+  onViewDisposed?: (view: EditorView) => void;
+  titleTrailerElement?: HTMLElement;
+};
+
+export const RawEditor = forwardRef<NoteEditorRef, RawEditorProps>(
+  (props, ref) => <BoundRawEditor key={props.sessionId} {...props} ref={ref} />,
+);
+
+const BoundRawEditor = forwardRef<NoteEditorRef, RawEditorProps>(
   (
     {
       sessionId,
-      rawMd,
-      sessionTitle,
       className,
       onNavigateToTitle,
-      syncTasks = true,
       showFormatToolbar = true,
       fileHandlerConfig,
       onViewReady,
@@ -65,77 +63,121 @@ export const RawEditor = forwardRef<
     },
     ref,
   ) => {
-    const draftKey = `session:${sessionId}:note`;
-    const refreshContent = useRefreshSessionNote(sessionId);
-    const resolveAttachment = useAttachmentResolver(sessionId);
-    const initialContent = useMemo<JSONContent>(
-      () => ensureFirstLineTitle(parseJsonContent(rawMd), sessionTitle),
-      [rawMd, sessionTitle],
+    const { scope, error, retry } = useVaultHost();
+    const inner = useRef<NoteEditorRef>(null);
+    const pending = useRef<Array<(editor: NoteEditorRef) => void>>([]);
+    const invoke = useCallback((command: (editor: NoteEditorRef) => void) => {
+      if (inner.current?.view) command(inner.current);
+      else pending.current.push(command);
+    }, []);
+    useImperativeHandle(
+      ref,
+      () => ({
+        get view() {
+          return inner.current?.view ?? null;
+        },
+        commands: {
+          focus: () => invoke((editor) => editor.commands.focus()),
+          focusAtStart: () =>
+            invoke((editor) => editor.commands.focusAtStart()),
+          focusAtTrailingEmptyLine: () =>
+            invoke((editor) => editor.commands.focusAtTrailingEmptyLine()),
+          focusAtPixelWidth: (width) =>
+            invoke((editor) => editor.commands.focusAtPixelWidth(width)),
+          insertAtStartAndFocus: (content) =>
+            invoke((editor) => editor.commands.insertAtStartAndFocus(content)),
+          replaceContent: (content) =>
+            invoke((editor) => editor.commands.replaceContent(content)),
+          setSearch: (query, caseSensitive) =>
+            invoke((editor) => editor.commands.setSearch(query, caseSensitive)),
+          replace: (params) =>
+            invoke((editor) => editor.commands.replace(params)),
+        },
+        flushPendingChanges: () => inner.current?.flushPendingChanges(),
+      }),
+      [invoke],
     );
-
-    const { initialDraft, confirmedDraft } = usePendingNoteDraft(
-      draftKey,
-      initialContent,
-    );
-    const handleDraftChange = useCallback(
-      (getContent: () => JSONContent) => captureNoteDraft(draftKey, getContent),
-      [draftKey],
-    );
-
-    const handleChange = useCallback(
-      (input: JSONContent) => {
-        const portableInput = normalizePortableAttachmentUrls(input);
-        const title = extractFirstLineTitle(portableInput);
-        const nextTitle =
-          title !== null || hasStoredNoteContent(rawMd)
-            ? (title ?? "")
-            : undefined;
-
-        return persistNoteDraft(draftKey, portableInput, async () => {
-          await saveSessionNote(
-            sessionId,
-            json2mdStrict(portableInput),
-            nextTitle,
-          );
-          return refreshContent();
-        }).catch((error) => {
-          console.error("[raw-editor] failed to persist note", error);
-          sonnerToast.error(`Note is NOT being saved: ${error}`, {
-            id: `note-save-failed:${sessionId}`,
-          });
-          throw error;
+    const ready = useCallback(
+      (view: EditorView) => {
+        onViewReady?.(view);
+        queueMicrotask(() => {
+          const editor = inner.current;
+          if (editor?.view === view)
+            pending.current.splice(0).forEach((command) => command(editor));
         });
       },
-      [draftKey, rawMd, refreshContent, sessionId],
+      [onViewReady],
     );
-
     const mentionConfig = useMentionConfig();
+    const navigateMention = useMentionNavigation();
+    const options = useMemo<VaultNoteEditorHost["editorOptions"]>(
+      () => ({
+        className: cn(["session-note-editor", className]),
+        mentionConfig,
+        onMentionNavigate: navigateMention,
+        sessionMentionDropConfig,
+        onNavigateToTitle,
+        onLinkOpen: openEditorLink,
+        fileHandlerConfig,
+        extraNodeViews,
+        showFormatToolbar,
+        onViewReady: ready,
+        onViewDisposed,
+        titleTrailerElement,
+        syncContentWhenFocused: false,
+      }),
+      [
+        className,
+        mentionConfig,
+        navigateMention,
+        onNavigateToTitle,
+        fileHandlerConfig,
+        showFormatToolbar,
+        ready,
+        onViewDisposed,
+        titleTrailerElement,
+      ],
+    );
+    const failed = useCallback(
+      (cause: Error) => {
+        sonnerToast.error(`Note is NOT being saved: ${cause.message}`, {
+          id: `note-save-failed:${scope?.client.scope}:${sessionId}`,
+        });
+      },
+      [scope, sessionId],
+    );
+    if (!scope)
+      return (
+        <div role={error ? "alert" : "status"}>
+          {error ? (
+            <>
+              <p>{error.message}</p>
+              <button onClick={retry}>
+                <Trans>Retry</Trans>
+              </button>
+            </>
+          ) : (
+            <Trans>Loading content…</Trans>
+          )}
+        </div>
+      );
     return (
-      <NoteEditor
-        ref={ref}
-        className={cn(["session-note-editor", className])}
-        key={`session-${sessionId}-raw`}
-        initialContent={initialContent}
-        initialDraft={initialDraft}
-        confirmedDraft={confirmedDraft}
-        resolveAttachment={resolveAttachment}
-        handleChange={handleChange}
-        onDraftChange={handleDraftChange}
-        placeholderComponent={documentTitlePlaceholder}
-        mentionConfig={mentionConfig}
-        sessionMentionDropConfig={sessionMentionDropConfig}
-        onNavigateToTitle={onNavigateToTitle}
-        onLinkOpen={openEditorLink}
-        fileHandlerConfig={fileHandlerConfig}
-        taskSource={
-          syncTasks ? { type: "session_raw_note", id: sessionId } : undefined
-        }
-        extraNodeViews={extraNodeViews}
-        showFormatToolbar={showFormatToolbar}
-        onViewReady={onViewReady}
-        onViewDisposed={onViewDisposed}
-        titleTrailerElement={titleTrailerElement}
-      />
+      <QueryClientProvider client={scope.queryClient}>
+        <VaultNoteEditor
+          key={`${scope.client.scope}:${sessionId}`}
+          scope={scope}
+          sessionId={sessionId}
+          onActiveDraft={noop}
+          onSelectSession={noop}
+          hasLegacyDraft={false}
+          legacyEditor={<DeviceRecovery scope={scope.client.scope} />}
+          editorRef={inner}
+          editorOptions={options}
+          showSaveControls={false}
+          layout="document"
+          onSaveError={failed}
+        />
+      </QueryClientProvider>
     );
   },
 );

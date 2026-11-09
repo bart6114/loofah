@@ -1,95 +1,24 @@
+#[cfg(test)]
+use super::live_worker::Work;
 use super::{
-    live_worker::{Job, Work},
+    live_pipeline::{Evidence, EvidenceWindow, Pipeline, evidence, send},
+    live_worker::Job,
     message::{AudioExtract, IncomingMessage, process_incoming_message},
 };
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{StreamExt, stream::SplitStream};
-use hypr_audio_chunking::{AudioChunk, LiveSpeechChunker};
+#[cfg(test)]
+use hypr_audio_chunking::AudioChunk;
 use owhisper_interface::ControlMessage;
+#[cfg(test)]
+use std::time::Instant;
 use std::{
-    collections::VecDeque,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Duration,
 };
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
+use tokio::sync::{Semaphore, mpsc};
 
-pub(super) const MAX_MESSAGE_SAMPLES: usize = 10 * 16000;
-pub(super) const AUDIO_BUDGET: usize = 30 * 16000;
-
-struct Channel {
-    vad: LiveSpeechChunker,
-    cursor: usize,
-    held: VecDeque<(usize, OwnedSemaphorePermit)>,
-}
-
-async fn send(tx: &mpsc::Sender<Job>, job: impl FnOnce() -> Job) -> Result<(), String> {
-    let permit = tx.reserve().await.map_err(|_| "inference worker closed")?;
-    permit.send(job());
-    Ok(())
-}
-
-async fn chunks(
-    tx: &mpsc::Sender<Job>,
-    channel: &mut Channel,
-    index: usize,
-    chunks: Vec<AudioChunk>,
-) -> Result<(), String> {
-    for chunk in chunks {
-        let permit = tx.reserve().await.map_err(|_| "inference worker closed")?;
-        let mut permits = Vec::new();
-        while channel
-            .held
-            .front()
-            .is_some_and(|(end, _)| *end <= chunk.sample_end)
-        {
-            permits.push(channel.held.pop_front().unwrap().1);
-        }
-        permit.send(Job::Audio(Work {
-            channel: index,
-            chunk,
-            permits,
-            queued: Instant::now(),
-        }));
-    }
-    while channel
-        .held
-        .front()
-        .is_some_and(|(end, _)| *end <= channel.vad.retained_start())
-    {
-        channel.held.pop_front();
-    }
-    Ok(())
-}
-
-struct EvidenceWindow {
-    channels: Vec<Vec<f32>>,
-    end: usize,
-    cutoff: usize,
-}
-
-type Evidence = Arc<Mutex<EvidenceWindow>>;
-
-async fn evidence(tx: &mpsc::Sender<Job>, observations: &Evidence) -> Result<(), String> {
-    let permit = tx.reserve().await.map_err(|_| "inference worker closed")?;
-    let mut window = observations.lock().unwrap();
-    let channels = &mut window.channels;
-    let best = channels
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, samples)| samples.len())
-        .map(|(i, _)| i)
-        .unwrap();
-    if channels[best].is_empty() {
-        return Ok(());
-    }
-    let samples = std::mem::take(&mut channels[best]);
-    for channel in channels.iter_mut() {
-        channel.clear();
-    }
-    window.cutoff = window.end;
-    permit.send(Job::Evidence(samples));
-    Ok(())
-}
+pub(super) use super::live_pipeline::{AUDIO_BUDGET, MAX_MESSAGE_SAMPLES};
 
 async fn run_input(
     mut socket: SplitStream<WebSocket>,
@@ -99,20 +28,17 @@ async fn run_input(
     started: tokio::sync::oneshot::Sender<()>,
     observations: Evidence,
 ) -> Result<SplitStream<WebSocket>, String> {
-    let mut channels = (0..count)
-        .map(|_| {
-            LiveSpeechChunker::new(redemption, MAX_MESSAGE_SAMPLES).map(|vad| Channel {
-                vad,
-                cursor: 0,
-                held: VecDeque::new(),
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+    let mut pipeline = Pipeline::new(
+        tx.clone(),
+        count,
+        redemption,
+        started,
+        observations.clone(),
+        0,
+    )?;
     let budgets: Vec<_> = (0..count)
         .map(|_| Arc::new(Semaphore::new(AUDIO_BUDGET)))
         .collect();
-    let mut started = Some(started);
     let mut finalized = false;
     loop {
         let receive = async {
@@ -160,56 +86,9 @@ async fn run_input(
             let used = audio.get(i).map_or(0, Vec::len);
             drop(permit.split(MAX_MESSAGE_SAMPLES - used));
         }
-        let frames = audio.iter().map(Vec::len).max().unwrap_or(0);
-        for offset in (0..frames).step_by(512) {
-            for (index, samples) in audio.iter().enumerate() {
-                let end = (offset + 512).min(samples.len());
-                if offset >= end {
-                    continue;
-                }
-                let frame = &samples[offset..end];
-                let channel = &mut channels[index];
-                channel.cursor += frame.len();
-                channel
-                    .held
-                    .push_back((channel.cursor, permits[index].split(frame.len()).unwrap()));
-                let ready = channel.vad.push(frame).map_err(|e| e.to_string())?;
-                if !channel.vad.speech_observation().is_empty() {
-                    if let Some(started) = started.take() {
-                        let _ = started.send(());
-                    }
-                    let mut window = observations.lock().unwrap();
-                    if channel.cursor > window.cutoff {
-                        window.channels[index].extend_from_slice(channel.vad.speech_observation());
-                        window.end = window.end.max(channel.cursor);
-                    }
-                }
-                chunks(&tx, channel, index, ready).await?;
-            }
-            if observations
-                .lock()
-                .unwrap()
-                .channels
-                .iter()
-                .any(|samples| samples.len() >= 5 * 16000)
-            {
-                evidence(&tx, &observations).await?;
-            }
-            tokio::task::yield_now().await;
-        }
+        pipeline.push(audio, permits).await?;
     }
-    evidence(&tx, &observations).await?;
-    for (index, channel) in channels.iter_mut().enumerate() {
-        let ready = channel.vad.finish().map_err(|e| e.to_string())?;
-        chunks(&tx, channel, index, ready).await?;
-        channel.held.clear();
-    }
-    let duration = channels.iter().map(|c| c.cursor).max().unwrap_or(0) as f64 / 16000.0;
-    send(&tx, || Job::Finish {
-        duration,
-        finalized,
-    })
-    .await?;
+    pipeline.finish(finalized).await?;
     Ok(socket)
 }
 

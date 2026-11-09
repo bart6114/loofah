@@ -5,8 +5,16 @@ import { useCallback } from "react";
 import { Kbd } from "@hypr/ui/components/ui/kbd";
 import { cn } from "@hypr/utils";
 
+import { useLegacyDesktopAccess } from "./use-legacy-activity";
+
+import { useDeviceStartActions } from "~/shared/application/device-recording-controls";
+import { mediaControlsAvailable } from "~/shared/application/use-vault-read-scope";
 import { StandardContentWrapper } from "~/shared/main";
-import { useNewNote, useNewNoteAndListen } from "~/shared/useNewNote";
+import {
+  useNewNote,
+  useNewNoteAndListen,
+  useNoteCreationAvailable,
+} from "~/shared/useNewNote";
 import { useAudioImport } from "~/store/zustand/audio-import";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 
@@ -23,7 +31,17 @@ export function TabContentEmpty({
 }
 
 function EmptyView() {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
+  const device = useDeviceStartActions();
+  const canRecord =
+    isAvailable() ||
+    (!!device?.canStart &&
+      legacy.scope.client.canEdit &&
+      legacy.scope.getSnapshot().state === "connected");
+  const canImport = mediaControlsAvailable(legacy.scope);
   const newNote = useNewNote({ behavior: "current" });
+  const canCreateNote = useNoteCreationAvailable();
   const newNoteAndListen = useNewNoteAndListen({ behavior: "current" });
   const openCurrent = useTabs((state) => state.openCurrent);
   const setAudioImportDialogOpen = useAudioImport(
@@ -35,10 +53,9 @@ function EmptyView() {
     [openCurrent],
   );
 
-  const openAudioImport = useCallback(
-    () => setAudioImportDialogOpen(true),
-    [setAudioImportDialogOpen],
-  );
+  const openAudioImport = useCallback(() => {
+    if (mediaControlsAvailable(legacy.scope)) setAudioImportDialogOpen(true);
+  }, [setAudioImportDialogOpen, legacy.scope]);
 
   return (
     <div
@@ -50,6 +67,7 @@ function EmptyView() {
           label={<Trans>New Note</Trans>}
           shortcut={[platform() === "windows" ? "Ctrl" : "⌘", "N"]}
           onClick={newNote}
+          disabled={!canCreateNote}
         />
         <ActionItem
           label={<Trans>Start Recording</Trans>}
@@ -59,10 +77,12 @@ function EmptyView() {
             "N",
           ]}
           onClick={newNoteAndListen}
+          disabled={!canRecord}
         />
         <ActionItem
           label={<Trans>Import Audio</Trans>}
           onClick={openAudioImport}
+          disabled={!canImport}
         />
         <div className="bg-accent my-1 h-px" />
         <ActionItem
@@ -80,15 +100,18 @@ function ActionItem({
   shortcut,
   icon,
   onClick,
+  disabled,
 }: {
   label: React.ReactNode;
   shortcut?: string[];
   icon?: React.ReactNode;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       data-tauri-drag-region="false"
       className={cn([
         "group",

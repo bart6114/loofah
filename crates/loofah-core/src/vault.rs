@@ -1,0 +1,443 @@
+use std::sync::Arc;
+
+use hypr_loofah_protocol::{
+    ApplicationError, ErrorCode, MutationOutcome, NoteSaveOutcome, NoteSnapshot, SaveNoteRequest,
+};
+use hypr_vault_write::{EnhancedDocPatch, ScoredTagSuggestion, SessionStore, StoreError};
+
+use crate::{
+    events::EventHub, search::SearchService, settings::ConfigState, startup::StartupState,
+};
+
+#[path = "capture_ingest.rs"]
+mod capture_ingest;
+#[path = "operational.rs"]
+pub mod operational;
+
+pub struct VaultContext {
+    pub store: Arc<SessionStore>,
+    pub startup: StartupState,
+    pub settings: Arc<ConfigState>,
+    pub search: Arc<SearchService>,
+    pub events: EventHub,
+    capture_ingestion: std::sync::OnceLock<capture_ingest::CaptureIngestion>,
+    pub(crate) recording_publications: capture_ingest::publication::PublicationGates,
+    pub(crate) lease: Option<Arc<std::fs::File>>,
+    pub(crate) local_capture_intents:
+        std::sync::OnceLock<std::sync::Weak<crate::local_capture_intents::LocalCaptureIntents>>,
+    pub(crate) operations: Option<crate::operations::SessionOperations>,
+    pub(crate) local_lifecycle_host:
+        std::sync::OnceLock<Arc<dyn crate::session_lifecycle::LocalSessionLifecycleHost>>,
+    pub(crate) lifecycle_admission: crate::session_lifecycle_gate::SessionLifecycleGates,
+    pub(crate) media_readers: Arc<tokio::sync::Semaphore>,
+    pub(crate) upload_writers: Arc<tokio::sync::Semaphore>,
+    pub(crate) processing: std::sync::OnceLock<crate::jobs::ProcessingService>,
+    pub(crate) provider_credentials:
+        tokio::sync::OnceCell<Arc<crate::provider_credentials::ProviderCredentials>>,
+    pub(crate) processing_policy: std::sync::OnceLock<hypr_loofah_protocol::ProcessingPolicy>,
+    pub(crate) transcription: std::sync::OnceLock<crate::transcription_jobs::TranscriptionService>,
+    pub(crate) capture_live: std::sync::OnceLock<Arc<crate::capture_live::CaptureLiveService>>,
+    pub(crate) capture_processing:
+        std::sync::OnceLock<Arc<crate::capture_processing::CaptureProcessingService>>,
+}
+
+impl VaultContext {
+    pub fn new(
+        id: String,
+        store: Arc<SessionStore>,
+        startup: StartupState,
+        settings: Arc<ConfigState>,
+        search: Arc<SearchService>,
+    ) -> Self {
+        Self {
+            store,
+            startup,
+            settings,
+            search,
+            events: EventHub::new(id, 256),
+            lease: None,
+            capture_ingestion: std::sync::OnceLock::new(),
+            recording_publications: Default::default(),
+            operations: None,
+            local_capture_intents: std::sync::OnceLock::new(),
+            local_lifecycle_host: std::sync::OnceLock::new(),
+            lifecycle_admission: Default::default(),
+            media_readers: Arc::new(tokio::sync::Semaphore::new(4)),
+            upload_writers: Arc::new(tokio::sync::Semaphore::new(2)),
+            processing: std::sync::OnceLock::new(),
+            processing_policy: std::sync::OnceLock::new(),
+            provider_credentials: tokio::sync::OnceCell::new(),
+            transcription: std::sync::OnceLock::new(),
+            capture_live: std::sync::OnceLock::new(),
+            capture_processing: std::sync::OnceLock::new(),
+        }
+    }
+
+    pub fn with_vault_lease(
+        mut self,
+        lease: hypr_storage::vault::VaultLease,
+    ) -> Result<Self, ApplicationError> {
+        let pin = lease.pin();
+        if self
+            .lease
+            .as_ref()
+            .is_some_and(|current| !Arc::ptr_eq(current, &pin))
+        {
+            return Err(error(
+                ErrorCode::Conflict,
+                "Context already has a different vault owner",
+            ));
+        }
+        self.store
+            .pin_vault_lease(&lease)
+            .map_err(|cause| storage_error(cause, false))?;
+        self.lease = Some(pin);
+        Ok(self)
+    }
+
+    pub(crate) fn lease_pin(&self) -> Option<Arc<std::fs::File>> {
+        self.lease.clone()
+    }
+
+    pub(crate) fn validate(&self, session_id: &str) -> Result<(), ApplicationError> {
+        hypr_vault_read::paths::validate_session_id(session_id)
+            .map_err(|_| error(ErrorCode::Validation, "Invalid session identifier"))?;
+        self.store
+            .ensure_ready()
+            .map_err(|_| error(ErrorCode::Unavailable, "Vault startup is still in progress"))
+    }
+
+    pub async fn read_note(&self, session_id: &str) -> Result<NoteSnapshot, ApplicationError> {
+        self.validate(session_id)?;
+        self.store
+            .read_recovered_note_snapshot(self.document_operation_root().as_deref(), session_id)
+            .await
+            .map_err(|cause| storage_error(cause, false))?
+            .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
+    }
+
+    pub async fn read_note_editor(
+        &self,
+        session_id: &str,
+    ) -> Result<hypr_loofah_protocol::NoteEditorSnapshot, ApplicationError> {
+        self.validate(session_id)?;
+        self.store
+            .read_note_editor(self.document_operation_root().as_deref(), session_id)
+            .await
+            .map_err(|cause| storage_error(cause, false))?
+            .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
+    }
+
+    pub async fn save_note(
+        &self,
+        session_id: &str,
+        request: SaveNoteRequest,
+    ) -> Result<NoteSaveOutcome, ApplicationError> {
+        self.validate(session_id)?;
+        validate_note_fields(
+            &request.markdown,
+            request.title.as_deref(),
+            &request.expected_revision,
+            self.store.content_limits(),
+        )?;
+        // Existence is rechecked under the store's write lock before any bytes are replaced.
+        self.read_note(session_id).await?;
+        let root = self.document_operation_root().ok_or_else(|| {
+            error(
+                ErrorCode::Unavailable,
+                "Operation storage is not configured",
+            )
+        })?;
+        self.store
+            .save_note_with_recovery(
+                &root,
+                session_id,
+                &request.markdown,
+                request.title.as_deref(),
+                &request.expected_revision,
+            )
+            .await
+            .map_err(|cause| storage_error(cause, true))
+    }
+
+    pub async fn update_summary(
+        &self,
+        session_id: &str,
+        markdown: &str,
+        expected_markdown: Option<&str>,
+        reconcile_tasks: bool,
+        suggested_tags: Option<Vec<ScoredTagSuggestion>>,
+    ) -> Result<(), StoreError> {
+        self.store.ensure_ready()?;
+        self.store
+            .update_summary_with_suggestions(
+                session_id,
+                markdown,
+                expected_markdown,
+                reconcile_tasks,
+                suggested_tags,
+                self.settings.snapshot().auto_apply_high_confidence_tags,
+            )
+            .await
+    }
+
+    pub async fn save_enhanced_doc(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        title: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.store.ensure_ready()?;
+        if patch.kind.as_deref() == Some("summary") {
+            return Err(StoreError::Serialize(
+                "Use session_ensure_summary for session summaries".into(),
+            ));
+        }
+        self.store
+            .save_enhanced_doc_with_auto_apply(
+                session_id,
+                doc_id,
+                patch,
+                title,
+                self.settings.snapshot().auto_apply_high_confidence_tags,
+            )
+            .await
+    }
+}
+
+pub(crate) fn validate_note_fields(
+    markdown: &str,
+    title: Option<&str>,
+    expected_revision: &str,
+    limits: hypr_vault_write::ContentLimits,
+) -> Result<(), ApplicationError> {
+    if expected_revision.is_empty() || expected_revision.len() > 128 {
+        return Err(error(
+            ErrorCode::Validation,
+            "Expected note revision is required",
+        ));
+    }
+    if markdown.len() > limits.note_write_bytes
+        || title.is_some_and(|title| title.len() > limits.title_bytes)
+    {
+        return Err(error(
+            ErrorCode::ResourceLimit,
+            "Note exceeds the size limit",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn error(code: ErrorCode, message: &str) -> ApplicationError {
+    ApplicationError {
+        code,
+        message: message.into(),
+        request_id: None,
+        retryable: code == ErrorCode::Unavailable,
+        current_revision: None,
+        mutation_outcome: None,
+    }
+}
+
+pub(crate) fn storage_error(cause: StoreError, mutation: bool) -> ApplicationError {
+    if let StoreError::ResourceLimit(message) = cause {
+        let mut result = error(ErrorCode::ResourceLimit, &message);
+        if mutation {
+            result.mutation_outcome = Some(MutationOutcome::NotCommitted);
+        }
+        return result;
+    }
+    tracing::error!(%cause, "vault operation failed");
+    let mut result = error(ErrorCode::Internal, "Vault operation failed");
+    if mutation {
+        result.mutation_outcome = Some(MutationOutcome::Unknown);
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn headless_note_operations_enforce_readiness_validate_and_report_conflicts() {
+        let vault = tempfile::tempdir().unwrap();
+        let operations = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(vault.path().into()));
+        let context = VaultContext::new(
+            "private".into(),
+            store.clone(),
+            StartupState::new(Some(vault.path())),
+            Arc::new(ConfigState::load_or_default(vault.path())),
+            Arc::new(SearchService::default()),
+        )
+        .with_operation_storage(operations.path().to_path_buf());
+        store.set_startup_pending(true);
+        assert_eq!(
+            context.read_note("note").await.unwrap_err().code,
+            ErrorCode::Unavailable
+        );
+        store.set_startup_pending(false);
+        assert_eq!(
+            context.read_note("../private").await.unwrap_err().code,
+            ErrorCode::Validation
+        );
+        assert_eq!(
+            context.read_note("missing").await.unwrap_err().code,
+            ErrorCode::NotFound
+        );
+        let meta = serde_json::from_value(serde_json::json!({
+            "id": "note", "title": "Original", "created_at": "2026-11-05T10:00:00Z", "tags": []
+        }))
+        .unwrap();
+        store.write_meta(&meta).await.unwrap();
+        let initial = context.read_note("note").await.unwrap();
+        let request = SaveNoteRequest {
+            markdown: "saved".into(),
+            title: Some("New".into()),
+            expected_revision: initial.revision,
+        };
+        assert!(matches!(
+            context.save_note("note", request.clone()).await.unwrap(),
+            NoteSaveOutcome::Saved(_)
+        ));
+        let NoteSaveOutcome::Conflict(latest) = context.save_note("note", request).await.unwrap()
+        else {
+            panic!("stale write succeeded");
+        };
+        assert_eq!(latest.markdown.as_deref(), Some("saved"));
+        assert_eq!(latest.title, "New");
+        assert_eq!(context.read_note("note").await.unwrap(), latest);
+        for (request, code) in [
+            (
+                SaveNoteRequest {
+                    markdown: "Do not write".into(),
+                    title: None,
+                    expected_revision: String::new(),
+                },
+                ErrorCode::Validation,
+            ),
+            (
+                SaveNoteRequest {
+                    markdown: "Do not write".into(),
+                    title: None,
+                    expected_revision: "x".repeat(129),
+                },
+                ErrorCode::Validation,
+            ),
+            (
+                SaveNoteRequest {
+                    markdown: "x".repeat(4 * 1024 * 1024 + 1),
+                    title: None,
+                    expected_revision: latest.revision.clone(),
+                },
+                ErrorCode::ResourceLimit,
+            ),
+            (
+                SaveNoteRequest {
+                    markdown: "Do not write".into(),
+                    title: Some("x".repeat(4097)),
+                    expected_revision: latest.revision.clone(),
+                },
+                ErrorCode::ResourceLimit,
+            ),
+        ] {
+            assert_eq!(
+                context.save_note("note", request).await.unwrap_err().code,
+                code
+            );
+            assert_eq!(context.read_note("note").await.unwrap(), latest);
+        }
+    }
+
+    #[tokio::test]
+    async fn checked_note_saves_require_operation_storage_but_local_reads_do_not_require_login() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(vault.path().to_path_buf()));
+        let context = VaultContext::new(
+            "local".into(),
+            store.clone(),
+            StartupState::new(Some(vault.path())),
+            Arc::new(ConfigState::load_or_default(vault.path())),
+            Arc::new(SearchService::default()),
+        );
+        let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"Title","created_at":"2026-11-05T10:00:00Z","tags":[]})).unwrap();
+        store.create_note_session(&meta, "Original").await.unwrap();
+        let before = context.read_note("note").await.unwrap();
+        let editor = context.read_note_editor("note").await.unwrap();
+        assert_eq!(editor.note, before);
+        assert!(editor.tasks.tasks.is_empty());
+        let result = context
+            .save_note(
+                "note",
+                SaveNoteRequest {
+                    markdown: "Do not write".into(),
+                    title: None,
+                    expected_revision: before.revision.clone(),
+                },
+            )
+            .await;
+        assert_eq!(result.unwrap_err().code, ErrorCode::Unavailable);
+        assert_eq!(context.read_note("note").await.unwrap(), before);
+    }
+}
+
+#[cfg(test)]
+mod lease_tests {
+    use super::*;
+    use hypr_storage::vault::{LeaseAttempt, VaultLease};
+
+    fn acquire(path: &std::path::Path) -> VaultLease {
+        match VaultLease::try_acquire_existing(path).unwrap() {
+            LeaseAttempt::Acquired(lease) => lease,
+            LeaseAttempt::Busy => panic!("unexpected owner"),
+        }
+    }
+
+    #[test]
+    fn context_and_legacy_store_clones_share_the_original_descriptor() {
+        let root = tempfile::tempdir().unwrap();
+        let lease = acquire(root.path());
+        let pin = lease.pin();
+        let original = Arc::downgrade(&pin);
+        let store = Arc::new(SessionStore::new(root.path().into()));
+        let legacy = store.as_ref().clone();
+        let context = VaultContext::new(
+            "vault".into(),
+            store,
+            StartupState::new(None),
+            Arc::new(ConfigState::load_or_default(root.path())),
+            Arc::new(SearchService::default()),
+        )
+        .with_vault_lease(lease)
+        .unwrap();
+        assert!(Arc::ptr_eq(&context.lease_pin().unwrap(), &pin));
+        drop(pin);
+        drop(context);
+        assert!(original.upgrade().is_some());
+        assert!(matches!(
+            VaultLease::try_acquire_existing(root.path()).unwrap(),
+            LeaseAttempt::Busy
+        ));
+        drop(legacy);
+        assert!(original.upgrade().is_none());
+        drop(acquire(root.path()));
+    }
+
+    #[test]
+    fn context_rejects_a_proof_for_another_canonical_vault() {
+        let root = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(root.path().into()));
+        let context = VaultContext::new(
+            "vault".into(),
+            store,
+            StartupState::new(None),
+            Arc::new(ConfigState::load_or_default(root.path())),
+            Arc::new(SearchService::default()),
+        );
+        assert!(context.with_vault_lease(acquire(other.path())).is_err());
+        drop(acquire(root.path()));
+    }
+}

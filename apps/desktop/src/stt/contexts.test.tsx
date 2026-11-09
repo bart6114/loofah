@@ -1,8 +1,13 @@
 import { resolveResource } from "@tauri-apps/api/path";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { AUTO_STOP_CONFIRM_DELAY_MS, ListenerProvider } from "./contexts";
+import {
+  AUTO_STOP_CONFIRM_DELAY_MS,
+  ListenerProvider,
+  ListenerContextProvider,
+  useListener,
+} from "./contexts";
 
 import { createListenerStore } from "~/store/zustand/listener";
 
@@ -1038,5 +1043,36 @@ describe("ListenerProvider detect events", () => {
     });
 
     expect(stopSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("pure listener context", () => {
+  afterEach(cleanup);
+  function Probe() {
+    const id = useListener((state) => state.live.sessionId);
+    return <output>{id ?? "none"}</output>;
+  }
+  test("provides the explicit store and replaces it without installing device detection or model configuration", () => {
+    vi.clearAllMocks();
+    const first = createListenerStore(),
+      second = createListenerStore();
+    setStoreActive(first, "first");
+    setStoreActive(second, "second");
+    const { rerender } = render(
+      <ListenerContextProvider store={first}>
+        <Probe />
+      </ListenerContextProvider>,
+    );
+    expect(screen.getByRole("status").textContent).toBe("first");
+    rerender(
+      <ListenerContextProvider store={second}>
+        <Probe />
+      </ListenerContextProvider>,
+    );
+    expect(screen.getByRole("status").textContent).toBe("second");
+    expect(listenMock).not.toHaveBeenCalled();
+    expect(useConfigValueMock).not.toHaveBeenCalled();
+    expect(listMicUsingApplicationsMock).not.toHaveBeenCalled();
+    expect(showNotificationMock).not.toHaveBeenCalled();
   });
 });

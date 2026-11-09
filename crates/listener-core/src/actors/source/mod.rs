@@ -13,7 +13,10 @@ use tracing::Instrument;
 use crate::{
     ListenerRuntime, SessionErrorEvent, SessionProgressEvent,
     actors::session::session_span,
-    actors::{ChannelMode, ListenerMsg, RecMsg},
+    actors::{
+        ChannelMode, DeviceFinishReceipt, DeviceFrameCredit, DeviceIngress, DeviceRecordingEnd,
+        DeviceSinkError, ListenerMsg, RecMsg,
+    },
 };
 use hypr_audio::{AudioProvider, CaptureFrame};
 
@@ -23,13 +26,27 @@ use stream::start_source_loop;
 use hypr_device_monitor::{DeviceMonitorHandle, DeviceSwitch, DeviceSwitchMonitor};
 
 pub enum SourceMsg {
+    DrainLocal(RpcReplyPort<bool>),
     GetMicDevice(RpcReplyPort<Option<String>>),
     PrepareListenerRefresh(RpcReplyPort<ListenerRefreshReplay>),
     SetListenerRouting(ListenerRouting),
     SetRecorder(Option<ActorRef<RecMsg>>),
     Frame(CaptureFrame),
+    DeviceFrame(CaptureFrame, DeviceFrameCredit),
+    DeviceHalt(String),
+    DrainDevice(RpcReplyPort<Result<DeviceFinishReceipt, DeviceSinkError>>),
+    DeviceDrainReady,
+    DeviceProducerStopped {
+        resources_stopped: bool,
+        complete_frames: Option<u64>,
+        admitted_frames: u64,
+        error: Option<String>,
+    },
     StreamFailed(String),
-    RecoveryChanged { microphone: bool, speaker: bool },
+    RecoveryChanged {
+        microphone: bool,
+        speaker: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -52,6 +69,26 @@ pub struct SourceArgs {
     pub session_id: String,
     pub listener_routing: ListenerRouting,
     pub recorder: Option<ActorRef<RecMsg>>,
+    pub device_ingress: Option<DeviceIngress>,
+    pub capture_mode: Option<ChannelMode>,
+    pub device_root: Option<(
+        crate::actors::DeviceCaptureKey,
+        ActorRef<crate::actors::RootMsg>,
+        ractor::ActorId,
+    )>,
+}
+
+pub(super) type ProviderIntegrity = Arc<std::sync::OnceLock<Arc<hypr_audio::CaptureIntegrity>>>;
+
+pub(super) fn provider_integrity_failure(provider: Option<&ProviderIntegrity>) -> Option<String> {
+    let integrity = provider?.get()?;
+    if !integrity.discontinuous() {
+        return None;
+    }
+    let (microphone, speaker) = integrity.channels();
+    Some(format!(
+        "Capture input lost continuity (microphone={microphone}, system audio={speaker})"
+    ))
 }
 
 pub struct SourceState {
@@ -60,14 +97,42 @@ pub struct SourceState {
     pub(super) session_id: String,
     pub(super) mic_device: Option<String>,
     pub(super) onboarding: bool,
-    pub(super) run_task: Option<tokio::task::JoinHandle<()>>,
+    pub(super) run_task: Option<tokio::task::JoinHandle<stream::ProducerExit>>,
+    drain_task: Option<tokio::task::JoinHandle<()>>,
+    producer_outcome: Option<stream::ProducerExit>,
+    pub(super) stop_interrupted: Arc<std::sync::atomic::AtomicBool>,
+    pub(super) device_lifetime: Option<DeviceLifetime>,
     pub(super) stream_cancel_token: Option<CancellationToken>,
     pub(super) current_mode: ChannelMode,
+    pub(super) capture_mode: Option<ChannelMode>,
+    pub(super) device_ingress: Option<DeviceIngress>,
+    pub(super) provider_integrity: Option<ProviderIntegrity>,
+    device_root: Option<(
+        crate::actors::DeviceCaptureKey,
+        ActorRef<crate::actors::RootMsg>,
+        ractor::ActorId,
+    )>,
+    drain_started: bool,
+    interrupted: Option<String>,
+    device_audio_ready: bool,
+    drain_reply: Option<RpcReplyPort<Result<DeviceFinishReceipt, DeviceSinkError>>>,
     pub(super) pipeline: Pipeline,
     pub(super) listener_routing: ListenerRouting,
     pub(super) recorder: Option<ActorRef<RecMsg>>,
     _device_watcher: Option<DeviceChangeWatcher>,
     _silence_stream_tx: Option<std::sync::mpsc::Sender<()>>,
+}
+
+pub(super) struct DeviceLifetime {
+    cancel: CancellationToken,
+    interrupted: Arc<std::sync::atomic::AtomicBool>,
+}
+impl Drop for DeviceLifetime {
+    fn drop(&mut self) {
+        self.interrupted
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.cancel.cancel();
+    }
 }
 
 pub struct SourceActor;
@@ -78,10 +143,10 @@ struct DeviceChangeWatcher {
 }
 
 impl DeviceChangeWatcher {
-    fn spawn(actor: ActorRef<SourceMsg>) -> Self {
+    fn spawn(actor: ActorRef<SourceMsg>, device: bool) -> Self {
         let (event_tx, event_rx) = mpsc::channel();
         let handle = DeviceSwitchMonitor::spawn_debounced(event_tx);
-        let thread = std::thread::spawn(move || Self::event_loop(event_rx, actor));
+        let thread = std::thread::spawn(move || Self::event_loop(event_rx, actor, device));
 
         Self {
             _handle: handle,
@@ -89,17 +154,29 @@ impl DeviceChangeWatcher {
         }
     }
 
-    fn event_loop(event_rx: Receiver<DeviceSwitch>, actor: ActorRef<SourceMsg>) {
+    fn event_loop(event_rx: Receiver<DeviceSwitch>, actor: ActorRef<SourceMsg>, device: bool) {
         loop {
             match event_rx.recv() {
                 Ok(DeviceSwitch::DefaultInputChanged) => {
                     tracing::info!("default_input_changed_restarting_source");
-                    actor.stop(Some("device_change".to_string()));
+                    if device {
+                        let _ = actor.cast(SourceMsg::DeviceHalt(
+                            "Audio device changed; recording interrupted".into(),
+                        ));
+                    } else {
+                        actor.stop(Some("device_change".to_string()));
+                    }
                 }
                 #[cfg(target_os = "windows")]
                 Ok(DeviceSwitch::DefaultOutputChanged { .. } | DeviceSwitch::DeviceListChanged) => {
                     tracing::info!("audio_endpoint_changed_restarting_source");
-                    actor.stop(Some("device_change".to_string()));
+                    if device {
+                        let _ = actor.cast(SourceMsg::DeviceHalt(
+                            "Audio device changed; recording interrupted".into(),
+                        ));
+                    } else {
+                        actor.stop(Some("device_change".to_string()));
+                    }
                 }
                 Ok(_) => {}
                 Err(_) => break,
@@ -135,7 +212,10 @@ impl Actor for SourceActor {
                 });
 
             #[cfg(not(target_os = "windows"))]
-            let device_watcher = Some(DeviceChangeWatcher::spawn(myself.clone()));
+            let device_watcher = Some(DeviceChangeWatcher::spawn(
+                myself.clone(),
+                args.device_ingress.is_some(),
+            ));
             #[cfg(target_os = "windows")]
             let device_watcher = None;
 
@@ -149,6 +229,10 @@ impl Actor for SourceActor {
             tracing::info!(mic_device = ?mic_device);
 
             let pipeline = Pipeline::new(args.runtime.clone(), args.session_id.clone());
+            let provider_integrity = args
+                .device_ingress
+                .as_ref()
+                .map(|_| Arc::new(std::sync::OnceLock::new()));
 
             let mut st = SourceState {
                 runtime: args.runtime,
@@ -157,10 +241,22 @@ impl Actor for SourceActor {
                 mic_device,
                 onboarding: args.onboarding,
                 run_task: None,
+                drain_task: None,
+                producer_outcome: None,
+                stop_interrupted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                device_lifetime: None,
                 stream_cancel_token: None,
                 _device_watcher: device_watcher,
                 _silence_stream_tx: silence_stream_tx,
                 current_mode: ChannelMode::MicAndSpeaker,
+                capture_mode: args.capture_mode,
+                device_ingress: args.device_ingress,
+                provider_integrity,
+                device_root: args.device_root,
+                drain_started: false,
+                interrupted: None,
+                device_audio_ready: false,
+                drain_reply: None,
                 pipeline,
                 listener_routing: args.listener_routing,
                 recorder: args.recorder,
@@ -211,7 +307,111 @@ impl Actor for SourceActor {
                     st.recorder.as_ref(),
                 );
             }
+            SourceMsg::DeviceFrame(frame, credit) => {
+                if !st.device_audio_ready {
+                    st.device_audio_ready = true;
+                    st.runtime.emit_progress(SessionProgressEvent::AudioReady {
+                        session_id: st.session_id.clone(),
+                        device: st.mic_device.clone(),
+                    });
+                }
+                if let Err(error) = st.pipeline.dispatch_device_frame(
+                    frame,
+                    st.current_mode,
+                    st.recorder.as_ref(),
+                    credit,
+                ) {
+                    begin_device_drain(&myself, st, Some(error.0), None).await;
+                }
+            }
+            SourceMsg::DrainLocal(reply) => {
+                if st.device_ingress.is_some() {
+                    let _ = reply.send(false);
+                } else {
+                    if let Some(cancel) = st.stream_cancel_token.take() {
+                        cancel.cancel();
+                    }
+                    let stopped = match st.run_task.take() {
+                        Some(task) => task.await.is_ok_and(|outcome| outcome.resources_stopped),
+                        None => false,
+                    };
+                    let _ = reply.send(stopped);
+                }
+            }
+            SourceMsg::DeviceHalt(reason) => {
+                begin_device_drain(&myself, st, Some(reason), None).await;
+            }
+            SourceMsg::DrainDevice(reply) => {
+                if st.drain_reply.is_some() {
+                    let _ = reply.send(Err(DeviceSinkError(
+                        "Device recording already has a drain waiter".into(),
+                    )));
+                } else {
+                    st.drain_reply = Some(reply);
+                    begin_device_drain(&myself, st, None, None).await;
+                }
+            }
+            SourceMsg::DeviceProducerStopped {
+                resources_stopped,
+                complete_frames,
+                admitted_frames,
+                error,
+            } => {
+                if let Some(error) = &error {
+                    st.interrupted.get_or_insert(error.clone());
+                }
+                if resources_stopped {
+                    st._silence_stream_tx.take();
+                    st._device_watcher.take();
+                }
+                st.producer_outcome = Some(stream::ProducerExit {
+                    resources_stopped,
+                    complete_frames,
+                    admitted_frames,
+                    error,
+                });
+                let _ = myself.cast(SourceMsg::DeviceDrainReady);
+            }
+            SourceMsg::DeviceDrainReady => {
+                if let Some(reason) = provider_integrity_failure(st.provider_integrity.as_ref()) {
+                    st.interrupted.get_or_insert(reason);
+                }
+                let complete = st.producer_outcome.as_ref().is_some_and(|outcome| {
+                    outcome.resources_stopped
+                        && outcome.complete_frames == Some(outcome.admitted_frames)
+                });
+                let end = if st.interrupted.is_none() && complete {
+                    DeviceRecordingEnd::Complete
+                } else {
+                    DeviceRecordingEnd::Interrupted
+                };
+                let result = if let Some(recorder) = &st.recorder {
+                    ractor::call!(recorder, RecMsg::DeviceFinish, end)
+                        .map_err(|_| {
+                            DeviceSinkError(
+                                "Device recorder did not confirm its final drain".into(),
+                            )
+                        })
+                        .and_then(|result| result)
+                } else {
+                    Err(DeviceSinkError(
+                        "Device recorder disappeared before its final drain".into(),
+                    ))
+                };
+                let reason = st
+                    .interrupted
+                    .clone()
+                    .or_else(|| result.as_ref().err().map(ToString::to_string));
+                if let Some(reply) = st.drain_reply.take() {
+                    let _ = reply.send(result);
+                }
+                myself.stop(reason);
+            }
             SourceMsg::StreamFailed(reason) => {
+                if st.device_ingress.is_some() {
+                    begin_device_drain(&myself, st, Some(reason), None).await;
+                    return Ok(());
+                }
                 tracing::error!(%reason, "source_stream_failed_stopping");
                 st.runtime.emit_error(SessionErrorEvent::AudioError {
                     session_id: st.session_id.clone(),
@@ -225,6 +425,10 @@ impl Actor for SourceActor {
                 microphone,
                 speaker,
             } => {
+                if st.device_ingress.is_some() {
+                    begin_device_drain(&myself, st, Some(format!("Capture source recovery interrupted input (microphone={microphone}, system audio={speaker})")), None).await;
+                    return Ok(());
+                }
                 let error = match (microphone, speaker) {
                     (true, true) => {
                         "Microphone and system audio disconnected. Reconnecting; the recording contains silence until they return."
@@ -257,10 +461,69 @@ impl Actor for SourceActor {
         if let Some(cancel_token) = st.stream_cancel_token.take() {
             cancel_token.cancel();
         }
-        if let Some(task) = st.run_task.take() {
-            task.abort();
+        if st.device_ingress.is_some() {
+            st.stop_interrupted
+                .store(true, std::sync::atomic::Ordering::Release);
+            // A device producer retains native cleanup ownership after the actor exits.
+            drop(st.run_task.take());
+        } else if let Some(task) = st.run_task.take() {
+            let outcome = task.await?;
+            if !outcome.resources_stopped {
+                return Err(outcome
+                    .error
+                    .unwrap_or_else(|| "Capture resources have not stopped".into())
+                    .into());
+            }
         }
 
         Ok(())
     }
+}
+
+async fn begin_device_drain(
+    myself: &ActorRef<SourceMsg>,
+    st: &mut SourceState,
+    reason: Option<String>,
+    reply: Option<RpcReplyPort<Result<DeviceFinishReceipt, DeviceSinkError>>>,
+) {
+    if let Some(reason) = reason {
+        st.stop_interrupted
+            .store(true, std::sync::atomic::Ordering::Release);
+        st.interrupted.get_or_insert(reason);
+    }
+    if let Some(reply) = reply {
+        st.drain_reply = Some(reply);
+    }
+    if st.drain_started {
+        return;
+    }
+    st.drain_started = true;
+    st.runtime
+        .emit_lifecycle(crate::SessionLifecycleEvent::Finalizing {
+            session_id: st.session_id.clone(),
+        });
+    if let Some(cancel) = st.stream_cancel_token.take() {
+        cancel.cancel();
+    }
+    let producer = st.run_task.take();
+    let actor = myself.clone();
+    st.drain_task = Some(tokio::spawn(async move {
+        let outcome = match producer {
+            Some(task) => task.await.unwrap_or_else(|_| stream::ProducerExit {
+                error: Some("Audio producer failed before its drain acknowledgement".into()),
+                ..stream::ProducerExit::default()
+            }),
+            None => stream::ProducerExit {
+                error: Some("Audio producer disappeared before draining".into()),
+                ..stream::ProducerExit::default()
+            },
+        };
+        // This join precedes the mailbox barrier, while the source actor keeps forwarding admitted frames.
+        let _ = actor.cast(SourceMsg::DeviceProducerStopped {
+            resources_stopped: outcome.resources_stopped,
+            complete_frames: outcome.complete_frames,
+            admitted_frames: outcome.admitted_frames,
+            error: outcome.error,
+        });
+    }));
 }

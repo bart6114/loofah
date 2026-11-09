@@ -83,7 +83,7 @@ export const commands = {
   },
   async audioMetadata(
     sessionId: string,
-  ): Promise<Result<AudioFileMetadata | null, string>> {
+  ): Promise<Result<FileMetadata | null, string>> {
     try {
       return {
         status: "ok",
@@ -380,12 +380,6 @@ export type AttachmentInfo = {
   modifiedAt: string;
 };
 export type AttachmentSaveResult = { path: string; attachmentId: string };
-export type AudioFileMetadata = {
-  filename: string;
-  contentType: string;
-  sizeBytes: number;
-  sha256: string;
-};
 export type AudioImportEvent =
   | { type: "audioImportStarted"; session_id: string }
   | { type: "audioImportProgress"; session_id: string; percentage: number }
@@ -397,16 +391,19 @@ export type AudioImportSourceInfo = {
   size: number;
 };
 /**
- * Per-channel waveform peaks precomputed for the audio player. Rendering from these skips
- * pulling the whole recording into the webview and decoding it there (seconds for an
- * hour-long file) -- WaveSurfer accepts pre-decoded peaks plus a duration and renders
- * immediately, while playback itself still streams through the media element.
+ * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
  */
 export type AudioPeaks = { durationSec: number; channels: number[][] };
 export type AudioSourceMetadata = {
   createdAt: string | null;
   modifiedAt: string | null;
   durationMs: number | null;
+};
+export type FileMetadata = {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
 };
 export type JsonValue =
   | null

@@ -116,7 +116,12 @@ export function useSmartCurrentTime(sessionsTable: TimelineSessionsTable) {
 
       if (sessionsTable) {
         Object.values(sessionsTable).forEach((session) => {
-          const time = safeParseDate(session.created_at);
+          const time =
+            session.timestamp_ms !== undefined
+              ? session.timestamp_ms === null
+                ? null
+                : new Date(session.timestamp_ms)
+              : safeParseDate(session.created_at);
           if (time && time.getTime() > currentTime) {
             importantTimes.push(time.getTime());
           }

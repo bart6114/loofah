@@ -3,38 +3,78 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub mod agents_doc;
+pub mod attachment_list;
+pub mod attachment_remove;
+pub mod attachment_stage;
+pub mod attachment_upload;
 pub mod attachments;
 pub mod audio;
 mod audio_layout;
 pub mod content;
+mod content_limits;
+mod document_delete;
+mod document_editor;
+mod document_operation;
+mod document_revision;
 pub mod enhanced;
+mod file_snapshot;
 #[cfg(test)]
 mod flat_layout_tests;
+mod generated_title;
 pub mod index;
 pub mod journal;
 pub mod legacy_templates;
+pub mod media;
+mod metadata_revision;
 pub mod migrate;
+mod note_revision;
+mod operation_io;
+mod ownership;
 pub mod paths;
 pub mod people;
+mod people_checked;
+pub mod processing_source;
 pub mod rebuild;
+pub mod recording_append;
+pub mod recording_delete;
+pub mod recording_publish;
+mod session_cleanup;
+mod session_lifecycle;
 mod session_path;
+mod session_summaries;
 pub mod stats;
 pub mod storage_stats;
 pub mod summary;
 pub mod tags;
 pub mod tasks;
+mod tasks_revision;
+mod timeline;
 pub mod transcript;
+mod transcript_editor;
 mod transcript_operation;
+mod transcript_overview;
+pub mod transcript_publication;
 
 pub use attachments::SavedAttachment;
-pub use content::{SessionMeta, SessionMetaPatch, TagSuggestionState};
+pub use content::{
+    NoteSaveOutcome, NoteSnapshot, SessionMeta, SessionMetaPatch, TagSuggestionState,
+};
+pub use content_limits::ContentLimits;
+pub use document_editor::{DocumentEditorPlan, DocumentEditorPreparation};
 pub use enhanced::{EnhancedDoc, EnhancedDocPatch};
+pub use generated_title::{
+    GeneratedTitleBaseline, GeneratedTitleOutcome, GeneratedTitlePreparation, RawNoteTitleOutcome,
+};
 pub use index::{
     IndexChanged, IndexEntity, SessionListEntry, SessionListHeader, SessionRecord,
     SessionTranscriptMetadata,
 };
 pub use people::PersonItem;
 pub use rebuild::RebuildReport;
+pub use session_cleanup::{SessionCleanupError, SessionCleanupKey};
+pub use session_lifecycle::{
+    LifecycleError, LocalSessionDeletionDetails, LocalSessionLifecycleProof, SessionLifecycleKey,
+};
 pub use stats::{VaultStats, VaultYearStats};
 pub use storage_stats::{VaultStorageCategory, VaultStorageStats};
 pub use tags::{ScoredTagSuggestion, TagContext, TagItem};
@@ -44,6 +84,8 @@ pub use transcript::TranscriptDelta;
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     vault_base: PathBuf,
+    vault_lease: Arc<std::sync::OnceLock<Arc<std::fs::File>>>,
+    content_limits: ContentLimits,
     journal: Arc<journal::WriteJournal>,
     rebuild_lock: Arc<tokio::sync::Mutex<Option<(u64, Result<RebuildReport, StoreError>)>>>,
     rebuild_generation: Arc<std::sync::atomic::AtomicU64>,
@@ -67,9 +109,18 @@ pub struct SessionStore {
     audio_operations: Arc<std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     /// Backend recording reservations also protect whole-vault relocation.
     active_recordings: Arc<std::sync::Mutex<HashMap<String, usize>>>,
+    attachment_removals: Arc<tokio::sync::Mutex<()>>,
+    attachment_stages: Arc<std::sync::Mutex<HashMap<String, usize>>>,
+    attachment_publications: Arc<tokio::sync::Mutex<()>>,
     deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     startup_pending: Arc<std::sync::atomic::AtomicBool>,
+    append_pending: Arc<std::sync::Mutex<HashMap<String, recording_append::AppendIdentity>>>,
     storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
+}
+
+#[must_use]
+pub struct VaultSnapshotGuard {
+    _guard: WriteGuard<'static>,
 }
 
 /// Product of `normalize_startup_layout`: one discovery snapshot -- with paths
@@ -89,6 +140,8 @@ impl StartupLayout {
 
 #[derive(Debug, Clone)]
 pub enum StoreError {
+    /// A size or cost limit rejected the request before its mutation committed.
+    ResourceLimit(String),
     Io(String),
     Serialize(String),
     /// A compare-and-swap guard didn't match current file content. Stringifies with a
@@ -100,6 +153,7 @@ pub enum StoreError {
 impl std::fmt::Display for StoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            StoreError::ResourceLimit(msg) => write!(f, "resource limit: {}", msg),
             StoreError::Io(msg) => write!(f, "I/O error: {}", msg),
             StoreError::Serialize(msg) => write!(f, "Serialization error: {}", msg),
             StoreError::Conflict(msg) => write!(f, "conflict: {}", msg),
@@ -108,6 +162,18 @@ impl std::fmt::Display for StoreError {
 }
 
 impl std::error::Error for StoreError {}
+
+impl StoreError {
+    // A failed confirmation cannot establish that an admitted write committed nothing.
+    pub(crate) fn after_commit(self) -> Self {
+        match self {
+            Self::ResourceLimit(message) => Self::Io(format!(
+                "Cannot confirm the saved content; reload its recovery state: {message}"
+            )),
+            error => error,
+        }
+    }
+}
 
 impl From<hypr_vault_read::Error> for StoreError {
     fn from(err: hypr_vault_read::Error) -> Self {
@@ -119,10 +185,69 @@ impl From<hypr_vault_read::Error> for StoreError {
 }
 
 impl SessionStore {
+    pub async fn lock_snapshot(&self) -> VaultSnapshotGuard {
+        VaultSnapshotGuard {
+            _guard: WriteGuard::Owned {
+                _guard: self.write_lock.clone().lock_owned().await,
+            },
+        }
+    }
+
+    pub async fn lock_recovered_snapshot(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        session_id: &str,
+    ) -> Result<VaultSnapshotGuard, StoreError> {
+        validate_session_id(session_id)?;
+        let store = self.clone();
+        let root = operation_root.map(std::path::Path::to_path_buf);
+        let id = session_id.to_owned();
+        // Recovery can dispatch blocking writes; cancellation must not release their lock.
+        tokio::spawn(async move {
+            let snapshot = store.lock_snapshot().await;
+            if let Some(root) = root {
+                store
+                    .recover_document_write_locked(&snapshot._guard, &root, &id)
+                    .await?;
+            }
+            Ok(snapshot)
+        })
+        .await
+        .map_err(|cause| StoreError::Io(format!("snapshot worker failed: {cause}")))?
+    }
+
+    async fn recovered_read<T, F>(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        session_id: &str,
+        read: impl FnOnce(SessionStore, VaultSnapshotGuard, String) -> F + Send + 'static,
+    ) -> Result<T, StoreError>
+    where
+        T: Send + 'static,
+        F: std::future::Future<Output = Result<T, StoreError>> + Send + 'static,
+    {
+        validate_session_id(session_id)?;
+        let store = self.clone();
+        let root = operation_root.map(std::path::Path::to_path_buf);
+        let id = session_id.to_owned();
+        tokio::spawn(async move {
+            let snapshot = store.lock_recovered_snapshot(root.as_deref(), &id).await?;
+            read(store, snapshot, id).await
+        })
+        .await
+        .map_err(|cause| StoreError::Io(format!("snapshot read failed: {cause}")))?
+    }
+
     pub fn new(vault_base: PathBuf) -> Self {
+        Self::with_content_limits(vault_base, ContentLimits::default())
+    }
+
+    pub fn with_content_limits(vault_base: PathBuf, content_limits: ContentLimits) -> Self {
         let (index_changes_tx, index_changes_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             vault_base,
+            vault_lease: Default::default(),
+            content_limits,
             journal: Arc::new(journal::WriteJournal::new()),
             rebuild_lock: Arc::new(tokio::sync::Mutex::new(None)),
             rebuild_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -138,6 +263,10 @@ impl SessionStore {
             active_recordings: Arc::new(std::sync::Mutex::new(HashMap::new())),
             deleted_sessions: Arc::new(std::sync::Mutex::new(Default::default())),
             startup_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            append_pending: Default::default(),
+            attachment_removals: Arc::new(tokio::sync::Mutex::new(())),
+            attachment_stages: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            attachment_publications: Arc::new(tokio::sync::Mutex::new(())),
             storage_stats: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
@@ -161,6 +290,10 @@ impl SessionStore {
         &self.vault_base
     }
 
+    pub fn content_limits(&self) -> ContentLimits {
+        self.content_limits
+    }
+
     /// Whether the current on-disk bytes at `relative` match the hash this store itself last
     /// wrote there via `write_file`. `false` for anything this store has never written, or
     /// whose bytes have since changed. This is `vault_watch.rs`'s authoritative own-write
@@ -177,7 +310,9 @@ impl SessionStore {
     /// this, `write_file`'s internal lock only spans the write, and two callers computing a
     /// new whole-file value from the same starting bytes silently drop one of the updates.
     pub(crate) async fn lock_writes(&self) -> WriteGuard<'_> {
-        self.write_lock.lock().await
+        WriteGuard::Borrowed {
+            _guard: self.write_lock.lock().await,
+        }
     }
 
     pub async fn write_file(&self, relative: PathBuf, bytes: Vec<u8>) -> Result<(), StoreError> {
@@ -194,6 +329,18 @@ impl SessionStore {
         bytes: Vec<u8>,
     ) -> Result<(), StoreError> {
         validate_relative_path(&relative)?;
+        if let Some(id) = self.session_id_for_relative_path(&relative) {
+            match relative.file_name().and_then(|value| value.to_str()) {
+                Some("_meta.json") => {
+                    self.check_append_metadata_write(&id, &relative, &bytes)
+                        .await?
+                }
+                Some("transcript.json" | "audio.wav" | "audio.mp3" | "audio.ogg") => {
+                    self.ensure_append_ready(&id)?
+                }
+                _ => {}
+            }
+        }
         if let Some(id) = self.session_id_for_relative_path(&relative)
             && self.deleted_sessions.lock().unwrap().contains(&id)
         {
@@ -218,20 +365,23 @@ impl SessionStore {
         let journal = self.journal.clone();
         let journal_relative = relative_str.clone();
 
-        let hash = tokio::task::spawn_blocking(move || {
-            std::fs::create_dir_all(&parent_path)
-                .map_err(|e| StoreError::Io(format!("failed to create parent directory: {}", e)))?;
+        let hash = self
+            .spawn_blocking(move || {
+                std::fs::create_dir_all(&parent_path).map_err(|e| {
+                    StoreError::Io(format!("failed to create parent directory: {}", e))
+                })?;
 
-            trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
+                trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
 
-            let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
-            hypr_storage::fs::write_staged_file(&abs_path, &tmp_path, &bytes)
-                .map_err(|e| StoreError::Io(format!("failed to write file atomically: {}", e)))?;
+                let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
+                hypr_storage::fs::write_staged_file(&abs_path, &tmp_path, &bytes).map_err(|e| {
+                    StoreError::Io(format!("failed to write file atomically: {}", e))
+                })?;
 
-            Ok::<String, StoreError>(sha256(&bytes))
-        })
-        .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
+                Ok::<String, StoreError>(sha256(&bytes))
+            })
+            .await
+            .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
 
         self.journal.record(&relative_str, &hash);
 
@@ -251,6 +401,11 @@ impl SessionStore {
     pub async fn freeze_for_vault_move(&self) -> Result<VaultMoveGuard<'_>, StoreError> {
         self.flush_all().await?;
         let guard = self.lock_writes().await;
+        if !self.attachment_stages.lock().unwrap().is_empty() {
+            return Err(StoreError::Conflict(
+                "an attachment transfer is in progress; finish it before moving the vault".into(),
+            ));
+        }
         if !self.active_recordings.lock().unwrap().is_empty() {
             return Err(StoreError::Conflict(
                 "a recording is in progress; stop it before moving the vault".to_string(),
@@ -285,7 +440,14 @@ pub struct VaultMoveGuard<'a> {
 }
 
 /// Proof that the caller holds the store-wide write lock.
-pub(crate) type WriteGuard<'a> = tokio::sync::MutexGuard<'a, ()>;
+pub(crate) enum WriteGuard<'a> {
+    Borrowed {
+        _guard: tokio::sync::MutexGuard<'a, ()>,
+    },
+    Owned {
+        _guard: tokio::sync::OwnedMutexGuard<()>,
+    },
+}
 
 /// Preserves bytes at `abs` that this store did not write, before they are overwritten.
 ///

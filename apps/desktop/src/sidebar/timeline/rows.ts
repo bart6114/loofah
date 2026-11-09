@@ -16,6 +16,7 @@ export const TIMELINE_ROW_HEIGHT = {
 } as const;
 
 export type TimelineRow =
+  | { key: string; kind: "page"; streamKey: string }
   | {
       key: string;
       kind: "bucket-header";
@@ -111,6 +112,8 @@ export function buildTimelineRows({
 
 export function getTimelineRowHeight(row: TimelineRow): number {
   switch (row.kind) {
+    case "page":
+      return 36;
     case "bucket-header":
       return TIMELINE_ROW_HEIGHT.bucketHeader;
     case "session":

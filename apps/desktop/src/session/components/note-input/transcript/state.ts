@@ -1,6 +1,10 @@
 import type { DegradedError } from "@hypr/plugin-transcription";
 
 import { useAudioPlayer } from "~/audio-player";
+import {
+  legacyTranscriptControlsAvailable,
+  useVaultReadScope,
+} from "~/shared/application/use-vault-read-scope";
 import { getLiveCaptureUiMode } from "~/store/zustand/listener/general-shared";
 import { useListener } from "~/stt/contexts";
 import type { Segment } from "~/stt/live-segment";
@@ -44,20 +48,32 @@ export function useTranscriptScreen({
   sessionId: string;
   transcripts: readonly TranscriptRecord[];
 }): TranscriptScreen {
-  const sessionMode = useListener((state) => state.getSessionMode(sessionId));
-  const batchError = useListener(
-    (state) => state.batch[sessionId]?.error ?? null,
+  const owner = useVaultReadScope();
+  const legacy =
+    owner.current() && legacyTranscriptControlsAvailable(owner.scope);
+  const sessionMode = useListener((state) =>
+    legacy ? state.getSessionMode(sessionId) : "inactive",
   );
-  const batchProgress = useListener((state) => state.batch[sessionId] ?? null);
-  const live = useListener((state) => state.live);
+  const batchError = useListener((state) =>
+    legacy ? (state.batch[sessionId]?.error ?? null) : null,
+  );
+  const batchProgress = useListener((state) =>
+    legacy ? (state.batch[sessionId] ?? null) : null,
+  );
+  const live = useListener((state) =>
+    legacy && state.live.sessionId === sessionId ? state.live : null,
+  );
   const { audioExists } = useAudioPlayer();
 
-  const { liveSegments, hasTranscriptWords } =
-    useTranscriptContent(transcripts);
+  const { liveSegments, hasTranscriptWords } = useTranscriptContent(
+    sessionId,
+    transcripts,
+    legacy,
+  );
 
   const currentActive =
     sessionMode === "active" || sessionMode === "finalizing";
-  const captureMode = getLiveCaptureUiMode(live);
+  const captureMode = live ? getLiveCaptureUiMode(live) : null;
   const isRecordOnlyMode = sessionMode === "active" && captureMode !== "live";
   const hasTranscriptContent = hasTranscriptWords || liveSegments.length > 0;
 
@@ -69,7 +85,7 @@ export function useTranscriptScreen({
     };
   }
 
-  if (isRecordOnlyMode) {
+  if (isRecordOnlyMode && live) {
     return {
       kind: "batch_fallback",
       requestedLiveTranscription: live.requestedLiveTranscription,
@@ -100,8 +116,17 @@ export function useTranscriptScreen({
   };
 }
 
-function useTranscriptContent(transcripts: readonly TranscriptRecord[]) {
-  const liveSegments = useListener((state) => state.liveSegments);
+const emptyLiveSegments: Segment[] = [];
+function useTranscriptContent(
+  sessionId: string,
+  transcripts: readonly TranscriptRecord[],
+  legacy: boolean,
+) {
+  const liveSegments = useListener((state) =>
+    legacy && state.live.sessionId === sessionId
+      ? state.liveSegments
+      : emptyLiveSegments,
+  );
 
   return {
     liveSegments,

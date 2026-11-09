@@ -1,10 +1,14 @@
 import { Trans } from "@lingui/react/macro";
+import { useMutation } from "@tanstack/react-query";
 import { AlertCircleIcon, RefreshCwIcon } from "lucide-react";
 
 import { Button } from "@hypr/ui/components/ui/button";
 
 import { useAITask } from "~/ai/contexts";
 import { useLanguageModel } from "~/ai/hooks";
+import { useEnhancedDocumentTarget } from "~/session/queries";
+import { captureSessionGenerationGuard } from "~/shared/application/session-generation-guard";
+import { useVaultHost } from "~/shared/application/vault-provider";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 
 export function EnhanceError({
@@ -19,21 +23,39 @@ export function EnhanceError({
   const model = useLanguageModel();
   const generate = useAITask((state) => state.generate);
 
-  const handleRetry = () => {
-    if (!model) return;
+  const { scope } = useVaultHost();
+  const target = useEnhancedDocumentTarget(sessionId, enhancedNoteId);
+  const allowed =
+    !!scope &&
+    !!target &&
+    scope.client.canEdit &&
+    scope.client.features.includes("document_editor_write") &&
+    scope.client.features.includes("legacy_desktop_enhance");
+  const retry = useMutation({
+    mutationFn: async () => {
+      if (!model || !scope || !target || !allowed)
+        throw new Error("This document is not available for generation.");
+      const guard = captureSessionGenerationGuard(scope, sessionId, target);
+      try {
+        await guard.prepare();
+        guard.assertReady();
 
-    const taskId = createTaskId(enhancedNoteId, "enhance");
-    void generate(taskId, {
-      model,
-      taskType: "enhance",
-      args: {
-        sessionId,
-        ...(enhancedNoteId === sessionId
-          ? {}
-          : { templateDocumentId: enhancedNoteId }),
-      },
-    });
-  };
+        const taskId = createTaskId(enhancedNoteId, "enhance");
+        await generate(taskId, {
+          model,
+          taskType: "enhance",
+          args: {
+            sessionId,
+            ...(enhancedNoteId === sessionId
+              ? {}
+              : { templateDocumentId: enhancedNoteId }),
+          },
+        });
+      } finally {
+        guard.dispose();
+      }
+    },
+  });
 
   return (
     <div
@@ -52,9 +74,14 @@ export function EnhanceError({
           )}
         </p>
       </div>
+      {!scope?.client.features.includes("legacy_desktop_enhance") && (
+        <p role="alert">
+          This connection does not support desktop summary generation.
+        </p>
+      )}
       <Button
-        onClick={handleRetry}
-        disabled={!model}
+        onClick={() => retry.mutate()}
+        disabled={!model || !allowed || retry.isPending}
         size="sm"
         className="gap-2"
         variant="default"
@@ -64,6 +91,7 @@ export function EnhanceError({
           <Trans>Retry</Trans>
         </span>
       </Button>
+      {retry.error && <p role="alert">{retry.error.message}</p>}
     </div>
   );
 }

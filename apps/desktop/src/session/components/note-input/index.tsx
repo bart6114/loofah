@@ -25,6 +25,7 @@ import { SearchBar } from "./search/bar";
 import { useSearch } from "./search/context";
 import { Transcript } from "./transcript";
 
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { MemoImageStrip } from "~/session/components/memo-image-strip";
 import { SessionAuthorBadge } from "~/session/components/session-author-badge";
 import { SessionDate } from "~/session/components/session-date";
@@ -40,7 +41,6 @@ import { useScrollPreservation } from "~/shared/hooks/useScrollPreservation";
 import type { SessionMode } from "~/store/zustand/listener/general";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 import { type EditorView as TabEditorView } from "~/store/zustand/tabs/schema";
-import { useListener } from "~/stt/contexts";
 
 export interface NoteInputHandle {
   focus: () => void;
@@ -104,7 +104,7 @@ const NoteInputWithDerivedState = forwardRef<NoteInputHandle, NoteInputProps>(
     );
     const tabRef = useRef(tab);
     tabRef.current = tab;
-    const sessionMode = useListener((state) => state.getSessionMode(tab.id));
+    const sessionMode = useLegacySessionActivity(tab.id).mode;
 
     const commitTabChange = useCallback(
       (tabView: TabEditorView) => {
@@ -184,7 +184,16 @@ const NoteInputContent = forwardRef<
     const shouldShowTranscriptSpinner =
       shouldShowTranscriptTabSpinner(sessionMode);
 
-    const pendingImageScrollRef = useRef<string | null>(null);
+    const pendingImageScrollRef = useRef<{
+      src: string;
+      attachmentId?: string;
+    } | null>(null);
+    useEffect(
+      () => () => {
+        pendingImageScrollRef.current = null;
+      },
+      [sessionId],
+    );
     const { scrollRef, onBeforeTabChange } = useScrollPreservation(
       renderedCurrentTab.type === "enhanced"
         ? `enhanced-${renderedCurrentTab.id}`
@@ -336,22 +345,46 @@ const NoteInputContent = forwardRef<
     };
 
     const handleMemoImageClick = useCallback(
-      (src: string) => {
-        pendingImageScrollRef.current = src;
+      (src: string, attachmentId?: string) => {
+        const intent = { src, attachmentId };
+        pendingImageScrollRef.current = intent;
         handleTabChange({ type: "raw" });
         // The raw editor mounts asynchronously after the tab switch, so poll
         // briefly for the matching image before giving up.
         const deadline = Date.now() + 3000;
+        let searchedDocument: unknown;
+        let imagePosition: number | undefined;
         const tryScroll = () => {
-          if (pendingImageScrollRef.current !== src) {
+          if (pendingImageScrollRef.current !== intent) {
             return;
           }
-          const imgs = scrollRef.current?.querySelectorAll(
-            "img.prosemirror-image",
-          );
-          const target = imgs
-            ? Array.from(imgs).find((img) => img.getAttribute("src") === src)
-            : undefined;
+          let target: Element | undefined;
+          const view = internalEditorRef.current?.view;
+          if (attachmentId && view && !view.isDestroyed) {
+            if (view.state.doc !== searchedDocument) {
+              searchedDocument = view.state.doc;
+              imagePosition = undefined;
+              view.state.doc.descendants((node, pos) => {
+                if (
+                  imagePosition === undefined &&
+                  node.type.name === "image" &&
+                  (node.attrs.sharedAttachmentId ?? node.attrs.attachmentId) ===
+                    attachmentId
+                )
+                  imagePosition = pos;
+                return imagePosition === undefined;
+              });
+            }
+            if (imagePosition !== undefined) {
+              const dom = view.nodeDOM(imagePosition);
+              if (dom instanceof Element) target = dom;
+            }
+          }
+          if (!attachmentId)
+            target = Array.from(
+              scrollRef.current?.querySelectorAll("img.prosemirror-image") ??
+                [],
+            ).find((img) => img.getAttribute("src") === src);
           if (target) {
             pendingImageScrollRef.current = null;
             target.scrollIntoView({ behavior: "smooth", block: "center" });

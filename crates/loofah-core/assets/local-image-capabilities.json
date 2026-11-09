@@ -1,0 +1,69 @@
+{
+  "text_only_model_pattern": "(?:^|[/:\\-.])(?:gpt-3\\.5|claude-2|claude-instant|davinci|babbage|curie|ada|dall-e|sora|gpt-image|image-generation|embed|embedding|whisper|tts|transcribe|moderation|realtime|computer)(?:$|[/:\\-.])",
+  "image_input_model_pattern": "(?:gpt-4o|gpt-4\\.1|gpt-5|claude-3|claude-sonnet|claude-opus|claude-haiku|gemini|pixtral|vision|vl|llava|llama-3\\.2-vision|llama3\\.2-vision|moondream|minicpm-v|internvl|qwen(?:2|2\\.5|3)?-vl|gemma-3|gemma3)",
+  "cloudflare_workers_ai_models": [
+    {
+      "model": "@cf/moonshotai/kimi-k2.6",
+      "input_modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "model": "@cf/zai-org/glm-4.7-flash",
+      "input_modalities": [
+        "text"
+      ]
+    },
+    {
+      "model": "@cf/openai/gpt-oss-120b",
+      "input_modalities": [
+        "text"
+      ]
+    },
+    {
+      "model": "@cf/meta/llama-4-scout-17b-16e-instruct",
+      "input_modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "input_modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "model": "@cf/nvidia/nemotron-3-120b-a12b",
+      "input_modalities": [
+        "text"
+      ]
+    },
+    {
+      "model": "@cf/openai/gpt-oss-20b",
+      "input_modalities": [
+        "text"
+      ]
+    },
+    {
+      "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+      "input_modalities": [
+        "text"
+      ]
+    },
+    {
+      "model": "@cf/mistralai/mistral-small-3.1-24b-instruct",
+      "input_modalities": [
+        "text"
+      ]
+    },
+    {
+      "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "input_modalities": [
+        "text"
+      ]
+    }
+  ]
+}

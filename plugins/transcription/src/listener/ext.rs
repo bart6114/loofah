@@ -107,6 +107,29 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener<'a, R, M> {
     }
 
     #[tracing::instrument(skip_all)]
+    pub async fn start_capture_tracked(
+        &self,
+        params: CaptureParams,
+        completion: crate::DeviceCaptureReporter,
+    ) -> Result<(), crate::Error> {
+        let cell = registry::where_is(RootActor::name())
+            .ok_or_else(|| crate::Error::ActorNotFound(RootActor::name()))?;
+        let actor: ActorRef<RootMsg> = cell.into();
+        match ractor::call!(
+            actor,
+            RootMsg::StartTrackedSession,
+            params.into(),
+            completion
+        ) {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(StartSessionError::SessionAlreadyRunning)) => {
+                Err(crate::Error::SessionAlreadyRunning)
+            }
+            _ => Err(crate::Error::StartSessionFailed),
+        }
+    }
+
+    #[tracing::instrument(skip_all)]
     pub async fn stop_capture(&self) {
         if let Some(cell) = registry::where_is(RootActor::name()) {
             let actor: ActorRef<RootMsg> = cell.into();
@@ -139,5 +162,118 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> ListenerPluginExt<R> for T {
             manager: self,
             _runtime: std::marker::PhantomData,
         }
+    }
+}
+
+/// Rust-only device entry point; it deliberately bypasses the local SessionStore capture lease.
+pub async fn start_device_capture(args: crate::DeviceCaptureArgs) -> Result<(), crate::Error> {
+    tracked_start_device_capture(args)
+        .await
+        .map_err(|error| match error {
+            DeviceCaptureStartError::NotDispatched => {
+                crate::Error::ActorNotFound(RootActor::name())
+            }
+            DeviceCaptureStartError::Rejected => crate::Error::SessionAlreadyRunning,
+            DeviceCaptureStartError::Unconfirmed => crate::Error::StartSessionFailed,
+        })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeviceCaptureStartError {
+    NotDispatched,
+    Rejected,
+    Unconfirmed,
+}
+
+pub fn device_capture_root_ready() -> bool {
+    registry::where_is(RootActor::name())
+        .is_some_and(|root| root.get_status() != ractor::ActorStatus::Stopped)
+}
+
+pub async fn tracked_start_device_capture(
+    args: crate::DeviceCaptureArgs,
+) -> Result<(), DeviceCaptureStartError> {
+    let cell =
+        registry::where_is(RootActor::name()).ok_or(DeviceCaptureStartError::NotDispatched)?;
+    let actor: ActorRef<RootMsg> = cell.into();
+    match ractor::call!(actor, RootMsg::StartDeviceCapture, args) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(StartSessionError::SessionAlreadyRunning)) => Err(DeviceCaptureStartError::Rejected),
+        _ => Err(DeviceCaptureStartError::Unconfirmed),
+    }
+}
+
+pub async fn stop_device_capture(key: crate::DeviceCaptureKey) -> bool {
+    let Some(cell) = registry::where_is(RootActor::name()) else {
+        return false;
+    };
+    let actor: ActorRef<RootMsg> = cell.into();
+    ractor::call!(actor, RootMsg::StopDeviceCapture, key).unwrap_or(false)
+}
+
+/// Rust-only proof; display snapshots deliberately cannot authorize destructive maintenance.
+pub async fn admit_session_maintenance(
+    expected: crate::CaptureMaintenanceGate,
+) -> Result<crate::CaptureMaintenanceGuard, crate::Error> {
+    let actor = registry::where_is(RootActor::name()).map(ActorRef::<RootMsg>::from);
+    admit_actor_maintenance(actor, expected).await
+}
+
+async fn admit_actor_maintenance(
+    actor: Option<ActorRef<RootMsg>>,
+    expected: crate::CaptureMaintenanceGate,
+) -> Result<crate::CaptureMaintenanceGuard, crate::Error> {
+    let actor = actor.ok_or_else(|| crate::Error::ActorNotFound(RootActor::name()))?;
+    match call_t!(actor, RootMsg::AdmitSessionMaintenance, 500, expected) {
+        Ok(Some(guard)) => Ok(guard),
+        Ok(None) => Err(crate::Error::SessionAlreadyRunning),
+        Err(_) => Err(crate::Error::StartSessionFailed),
+    }
+}
+
+#[cfg(test)]
+mod maintenance_tests {
+    use super::*;
+    use ractor::{Actor, ActorProcessingErr};
+
+    struct SilentRoot;
+    #[ractor::async_trait]
+    impl Actor for SilentRoot {
+        type Msg = RootMsg;
+        type State = Vec<ractor::RpcReplyPort<Option<crate::CaptureMaintenanceGuard>>>;
+        type Arguments = ();
+        async fn pre_start(
+            &self,
+            _: ActorRef<RootMsg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(Vec::new())
+        }
+        async fn handle(
+            &self,
+            _: ActorRef<RootMsg>,
+            message: RootMsg,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            if let RootMsg::AdmitSessionMaintenance(_, reply) = message {
+                state.push(reply);
+            }
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn strict_maintenance_never_converts_missing_failed_or_unresponsive_actor_to_idle() {
+        let gate = crate::CaptureMaintenanceGate::default();
+        assert!(admit_actor_maintenance(None, gate.clone()).await.is_err());
+        let (actor, task) = Actor::spawn(None, SilentRoot, ()).await.unwrap();
+        assert!(
+            admit_actor_maintenance(Some(actor.clone()), gate.clone())
+                .await
+                .is_err()
+        );
+        actor.stop(None);
+        task.await.unwrap();
+        assert!(admit_actor_maintenance(Some(actor), gate).await.is_err());
     }
 }

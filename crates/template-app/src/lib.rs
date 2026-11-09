@@ -52,6 +52,8 @@ common_derives! {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Template exceeds its processing limit")]
+    ResourceLimit,
     #[error(transparent)]
     AskamaError(#[from] askama::Error),
     #[error(transparent)]

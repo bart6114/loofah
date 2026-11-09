@@ -1,4 +1,5 @@
 import { useAITask } from "~/ai/contexts";
+import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
 
 const EMPTY: string[] = [];
 
@@ -6,7 +7,10 @@ const EMPTY: string[] = [];
 // enhanced-docs query; streaming chunks keep status "generating", so the
 // shallow-compared selector output only changes when a task starts or stops.
 export function useEnhancingSessionIds(): string[] {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
   return useAITask((state) => {
+    if (!isAvailable("legacy_desktop_enhance")) return EMPTY;
     let ids: string[] | null = null;
     for (const task of Object.values(state.tasks)) {
       if (

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
   emit: vi.fn(),
   label: "note-window",
+  service: null as unknown,
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: mocks.listen,
@@ -14,7 +15,9 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("@hypr/plugin-windows", () => ({
   getCurrentWebviewWindowLabel: () => mocks.label,
 }));
-vi.mock("~/services/enhancer", () => ({ getEnhancerService: vi.fn() }));
+vi.mock("~/services/enhancer", () => ({
+  getEnhancerService: () => mocks.service,
+}));
 import { act, render } from "@testing-library/react";
 import { createElement } from "react";
 import { createStore } from "zustand/vanilla";
@@ -29,9 +32,14 @@ import {
   beginSummaryActivity,
   useSummaryActivity,
 } from "~/session/summary-activity";
+import type { VaultScope } from "~/shared/application/vault-scope";
 
 describe("detached summary requests", () => {
   let respond: (event: { payload: unknown }) => void;
+  const owner = {
+    client: { scope: "local:captured", canEdit: true },
+    getSnapshot: () => ({ state: "connected" }),
+  } as VaultScope;
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.label = "note-window";
@@ -42,14 +50,30 @@ describe("detached summary requests", () => {
     mocks.emitTo.mockResolvedValue(undefined);
   });
   afterEach(() => vi.useRealTimers());
-  it("waits for the matching start result and removes the listener", async () => {
-    const pending = requestMainEnhance("session-1", {
+  async function discover() {
+    await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledTimes(1));
+    const payload = mocks.emitTo.mock.calls[0][2];
+    expect(payload).toMatchObject({
+      scope: "local:captured",
+      kind: "owner",
+      sourceLabel: "note-window",
+    });
+    respond({
+      payload: { requestId: payload.requestId, ownerId: "incarnation-1" },
+    });
+    await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledTimes(2));
+    return mocks.emitTo.mock.calls[1][2];
+  }
+  it("discovers the exact owner before dispatch and waits for its matching result", async () => {
+    const pending = requestMainEnhance(owner, "session-1", {
       targetNoteId: "legacy-summary",
     });
-    await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalled());
-    const payload = mocks.emitTo.mock.calls[0][2];
-    expect(payload.sourceLabel).toBe("note-window");
-    expect(payload.opts).toEqual({ targetNoteId: "legacy-summary" });
+    const payload = await discover();
+    expect(payload).toMatchObject({
+      kind: "generate",
+      ownerId: "incarnation-1",
+      opts: { targetNoteId: "legacy-summary" },
+    });
     respond({
       payload: {
         requestId: payload.requestId,
@@ -60,39 +84,104 @@ describe("detached summary requests", () => {
       type: "started",
       noteId: "summary-1",
     });
-    expect(mocks.stop).toHaveBeenCalledOnce();
+    expect(mocks.stop).toHaveBeenCalledTimes(2);
   });
-  it("keeps an automatic request pending until the main window owns the queue", async () => {
+  it("keeps automatic requests pending until the captured owner accepts the queue", async () => {
     let finished = false;
-    const request = requestMainAutoEnhance("session-1", "regenerate").then(
-      () => {
-        finished = true;
-      },
-    );
-    await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalled());
+    const pending = requestMainAutoEnhance(
+      owner,
+      "session-1",
+      "regenerate",
+    ).then(() => {
+      finished = true;
+    });
+    const payload = await discover();
     expect(finished).toBe(false);
-    const payload = mocks.emitTo.mock.calls[0][2];
     expect(payload.auto).toBe("regenerate");
     respond({ payload: { requestId: payload.requestId, queued: true } });
-    await request;
+    await pending;
     expect(finished).toBe(true);
-    expect(mocks.stop).toHaveBeenCalledOnce();
   });
-  it("propagates source validation errors", async () => {
-    const pending = requestMainEnhance("session-1");
-    const assertion = expect(pending).rejects.toThrow(
-      "Add a note or transcript",
+  it("does not dispatch when source ownership changes during discovery", async () => {
+    let current = true;
+    const pending = requestMainEnhance(
+      owner,
+      "session-1",
+      undefined,
+      () => current,
     );
-    await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalled());
+    const rejected = expect(pending).rejects.toThrow("no longer available");
+    await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledOnce());
+    current = false;
     respond({
       payload: {
         requestId: mocks.emitTo.mock.calls[0][2].requestId,
-        error: "Add a note or transcript",
+        ownerId: "incarnation-1",
       },
     });
-    await assertion;
-    expect(mocks.stop).toHaveBeenCalledOnce();
+    await rejected;
+    expect(mocks.emitTo).toHaveBeenCalledOnce();
   });
+  it("propagates unknown-outcome errors without automatically resubmitting", async () => {
+    const pending = requestMainEnhance(owner, "session-1");
+    const rejected = expect(pending).rejects.toThrow("Review saved requests");
+    const payload = await discover();
+    respond({
+      payload: { requestId: payload.requestId, error: "Review saved requests" },
+    });
+    await rejected;
+    expect(mocks.emitTo).toHaveBeenCalledTimes(2);
+  });
+});
+
+it("rejects a generation addressed to an old main owner even when scope strings match", async () => {
+  const callbacks = new Map<string, (event: { payload: unknown }) => void>();
+  mocks.label = "main";
+  mocks.listen.mockImplementation(async (event, callback) => {
+    callbacks.set(event, callback);
+    return () => {};
+  });
+  mocks.emitTo.mockReset().mockResolvedValue(undefined);
+  const enhance = vi.fn();
+  mocks.service = {
+    scope: { client: { scope: "local:same" } },
+    ownerId: "old",
+    assertCurrent: vi.fn(),
+    enhance,
+  };
+  const store = createStore<any>(() => ({ tasks: {}, cancel: vi.fn() }));
+  const view = render(createElement(AITaskWindowSyncBridge, { store }));
+  await act(async () => {});
+  const payload = {
+    scope: "local:same",
+    sessionId: "same",
+    sourceLabel: "note-window",
+    requestId: crypto.randomUUID(),
+  };
+  await act(async () =>
+    callbacks.get("hypr:ai-task-enhance")?.({
+      payload: { ...payload, kind: "owner" },
+    }),
+  );
+  expect(mocks.emitTo.mock.lastCall?.[2].ownerId).toBe("old");
+  const replacement = vi.fn();
+  mocks.service = {
+    scope: { client: { scope: "local:same" } },
+    ownerId: "replacement",
+    assertCurrent: vi.fn(),
+    enhance: replacement,
+  };
+  await act(async () =>
+    callbacks.get("hypr:ai-task-enhance")?.({
+      payload: { ...payload, kind: "generate", ownerId: "old" },
+    }),
+  );
+  expect(enhance).not.toHaveBeenCalled();
+  expect(replacement).not.toHaveBeenCalled();
+  expect(mocks.emitTo.mock.lastCall?.[2].error).toContain("owner changed");
+  view.unmount();
+  mocks.service = null;
+  mocks.label = "note-window";
 });
 
 it("does not broadcast unrelated task changes and sends the final summary snapshot", async () => {

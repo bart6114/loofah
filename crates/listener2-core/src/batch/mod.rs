@@ -1,8 +1,10 @@
 mod accumulator;
 mod audio;
 mod diarize;
+mod owned_whisper;
 mod progressive;
 mod simple;
+pub use owned_whisper::run_owned_whisper_batch;
 pub mod transcript;
 
 use std::sync::Arc;
@@ -183,22 +185,23 @@ async fn run_batch_inner(
         prepared.clone(),
     );
 
-    let mut output = match params.provider {
+    let result = match params.provider {
         BatchProvider::WhisperLocal => {
-            run_progressive_batch_session(runtime, params, listen_params, diarization).await
+            run_progressive_batch_session(runtime, params, listen_params, diarization.clone()).await
         }
         BatchProvider::Soniqo => {
-            run_soniqo_batch(runtime, params, listen_params, diarization).await
+            run_soniqo_batch(runtime, params, listen_params, diarization.clone()).await
         }
         BatchProvider::OpenAI => {
             if OpenAIAdapter::supports_progressive_batch_model(listen_params.model.as_deref()) {
-                run_progressive_batch_session(runtime, params, listen_params, diarization).await
+                run_progressive_batch_session(runtime, params, listen_params, diarization.clone())
+                    .await
             } else {
                 run_direct_batch_for_adapter_kind(
                     AdapterKind::OpenAI,
                     params,
                     listen_params,
-                    diarization,
+                    diarization.clone(),
                 )
                 .await
             }
@@ -211,10 +214,18 @@ async fn run_batch_inner(
             let adapter_kind = provider
                 .to_adapter_kind()
                 .expect("all non-special BatchProvider variants have an AdapterKind mapping");
-            run_direct_batch_for_adapter_kind(adapter_kind, params, listen_params, diarization)
-                .await
+            run_direct_batch_for_adapter_kind(
+                adapter_kind,
+                params,
+                listen_params,
+                diarization.clone(),
+            )
+            .await
         }
-    }?;
+    };
+    let diarized = diarization.segments().await;
+    let mut output = result?;
+    diarized?;
     prepared.stamp_response(&mut output.response);
     Ok(output)
 }

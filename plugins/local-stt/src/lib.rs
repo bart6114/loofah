@@ -75,20 +75,17 @@ pub fn init<R: tauri::Runtime>(options: InitOptions) -> tauri::plugin::TauriPlug
 
             app.manage(state.clone());
 
-            ext::backfill_diarizer_download(app.app_handle().clone());
+            if app
+                .try_state::<tauri_plugin_settings::DesktopBootstrap>()
+                .is_some_and(|bootstrap| !bootstrap.is_local())
+            {
+                return Ok(());
+            }
 
             let parent = options.parent_supervisor.clone();
             tauri::async_runtime::spawn(async move {
-                match server::supervisor::spawn_stt_supervisor(parent).await {
-                    Ok((supervisor, handle)) => {
-                        let mut guard = state.lock().await;
-                        guard.stt_supervisor = Some(supervisor);
-                        guard.supervisor_handle = Some(handle);
-                        tracing::info!("stt_supervisor_spawned");
-                    }
-                    Err(e) => {
-                        tracing::error!("failed_to_spawn_stt_supervisor: {:?}", e);
-                    }
+                if let Err(error) = start_local_supervisor(&state, parent).await {
+                    tracing::error!("failed_to_spawn_stt_supervisor: {:?}", error);
                 }
             });
 
@@ -97,9 +94,56 @@ pub fn init<R: tauri::Runtime>(options: InitOptions) -> tauri::plugin::TauriPlug
         .build()
 }
 
+async fn start_local_supervisor(
+    state: &SharedState,
+    parent: Option<ActorCell>,
+) -> std::result::Result<(), ractor::ActorProcessingErr> {
+    // Model downloads require an explicit request; opening a vault must stay offline.
+    let (supervisor, handle) = server::supervisor::spawn_stt_supervisor(parent).await?;
+    let mut guard = state.lock().await;
+    guard.stt_supervisor = Some(supervisor);
+    guard.supervisor_handle = Some(handle);
+    tracing::info!("stt_supervisor_spawned");
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[tokio::test]
+    async fn local_startup_is_idle_without_model_storage_or_downloads() {
+        struct NoModelStorage;
+        impl hypr_model_downloader::ModelDownloaderRuntime<LocalModel> for NoModelStorage {
+            fn models_base(
+                &self,
+            ) -> std::result::Result<std::path::PathBuf, hypr_model_downloader::Error> {
+                panic!("startup must not inspect or create model storage")
+            }
+
+            fn emit_progress(&self, _: &LocalModel, _: hypr_model_downloader::DownloadStatus) {
+                panic!("startup must not schedule a model download")
+            }
+        }
+
+        let state = std::sync::Arc::new(tokio::sync::Mutex::new(State {
+            stt_supervisor: None,
+            supervisor_handle: None,
+            model_downloader: ModelDownloadManager::new(std::sync::Arc::new(NoModelStorage)),
+        }));
+        start_local_supervisor(&state, None).await.unwrap();
+        let (supervisor, handle) = {
+            let mut guard = state.lock().await;
+            for model in LocalModel::all() {
+                assert!(!guard.model_downloader.is_downloading(&model).await);
+            }
+            let supervisor = guard.stt_supervisor.take().unwrap();
+            assert!(supervisor.get_cell().get_children().is_empty());
+            (supervisor, guard.supervisor_handle.take().unwrap())
+        };
+        supervisor.stop(None);
+        handle.await.unwrap();
+    }
 
     #[test]
     fn export_types() {

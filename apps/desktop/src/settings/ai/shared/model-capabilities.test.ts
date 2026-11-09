@@ -45,3 +45,12 @@ describe("modelSupportsImageInput", () => {
     ).toBe(false);
   });
 });
+
+it("keeps unknown models text-only and applies text-only exclusions before vision names", () => {
+  expect(modelSupportsImageInput("ollama", "llama-3.1-8b")).toBe(false);
+  expect(modelSupportsImageInput("custom", "unknown-model")).toBe(false);
+  expect(modelSupportsImageInput("custom", "embedding-gpt-4o")).toBe(false);
+  expect(modelSupportsImageInput("custom", "QWEN2.5-VL")).toBe(true);
+  expect(modelSupportsImageInput(undefined, "gpt-4o")).toBe(false);
+  expect(modelSupportsImageInput("openai", undefined)).toBe(false);
+});

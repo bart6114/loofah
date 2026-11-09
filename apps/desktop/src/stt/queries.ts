@@ -1,7 +1,18 @@
-import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef } from "react";
+
+import { useTranscriptOverview } from "./transcript-overview";
 
 import { type Person, usePeople } from "~/people/queries";
-import { useIndexQuery } from "~/shared/index-query";
+import {
+  type ApplicationClient,
+  getApplicationClient,
+} from "~/shared/application/client";
+import {
+  ApplicationRequestError,
+  connectionClosed,
+} from "~/shared/application/errors";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 import { DEFAULT_USER_ID } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
 import type { RenderLabelContext, SegmentKey } from "~/stt/live-segment";
@@ -16,7 +27,6 @@ import type {
   TranscriptWithData,
   TranscriptWord,
 } from "~/types/tauri.gen";
-import { commands } from "~/types/tauri.gen";
 
 type TranscriptInsert = {
   id: string;
@@ -36,6 +46,7 @@ type TranscriptInsert = {
 };
 
 export type TranscriptRecord = {
+  editorRevision?: string;
   id: string;
   ownerUserId: string;
   sessionId: string;
@@ -54,59 +65,97 @@ export function useSessionTranscripts(sessionId: string): TranscriptRecord[] {
 }
 
 export function useSessionTranscriptMetadata(sessionId: string) {
-  return useIndexQuery({
-    entity: "transcripts",
-    ids: [sessionId],
-    queryKey: ["session-transcript-metadata", sessionId],
-    queryFn: async () => {
-      const result = await commands.sessionTranscriptMetadata(sessionId);
-      if (result.status === "error") throw new Error(result.error);
-      return result.data;
-    },
-    enabled: Boolean(sessionId),
-  });
+  return useTranscriptOverview(sessionId);
 }
 
 export function useSessionTranscriptsQuery(sessionId: string) {
-  return useIndexQuery({
-    // Transcript events carry the session id. session_transcripts is already
-    // ordered (started_at, id).
-    entity: "transcripts",
-    ids: [sessionId],
-    queryKey: ["session-transcripts", sessionId],
-    queryFn: async () => {
-      const result = await commands.sessionTranscripts(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return result.data.map(mapTranscript);
+  const { scope, current, readable } = useVaultReadScope();
+  const session = useRef(sessionId);
+  session.current = sessionId;
+  const supported = scope.client.features.includes("content_read");
+  const checked = !!scope.client.transcriptEditor;
+  const legacyQuery = useQuery(
+    {
+      ...scope.transcriptsOptions(sessionId),
+      enabled: !!sessionId && supported && readable && !checked,
+      select: transcriptRecords,
     },
-    enabled: Boolean(sessionId),
-  });
+    scope.queryClient,
+  );
+  const checkedQuery = useQuery(
+    {
+      ...scope.transcriptEditorOptions(sessionId),
+      enabled: !!sessionId && supported && readable && checked,
+      select: (snapshot) =>
+        snapshot.transcripts.map((row) => ({
+          ...mapTranscript(row),
+          editorRevision: snapshot.revision,
+        })),
+    },
+    scope.queryClient,
+  );
+  const query = checked ? checkedQuery : legacyQuery;
+  const { refetch: read } = query;
+  const refetch = useCallback(() => {
+    if (
+      current() &&
+      ["connected", "reconnecting"].includes(scope.getSnapshot().state) &&
+      session.current === sessionId &&
+      supported &&
+      sessionId
+    )
+      return read();
+  }, [scope, current, sessionId, supported, read]);
+  const foreign = query.data?.some((row) => row.sessionId !== sessionId);
+  const retired = !current();
+  const unavailable = useMemo(
+    () =>
+      !supported || foreign
+        ? new ApplicationRequestError({
+            code: "incompatible_version",
+            message: foreign
+              ? "The server returned a different transcript session"
+              : "This connection does not support transcript reads",
+            request_id: null,
+            retryable: false,
+            mutation_outcome: null,
+            current_revision: null,
+          })
+        : retired
+          ? connectionClosed()
+          : null,
+    [supported, foreign, retired],
+  );
+  const error = unavailable ?? query.error;
+  const valid = !!sessionId && readable && supported && !foreign;
+  return {
+    ...query,
+    data: valid ? query.data : undefined,
+    error,
+    isError: !!error,
+    isSuccess: valid && !error && query.isSuccess,
+    status: error ? ("error" as const) : query.status,
+    isPending: !error && !!sessionId && query.isPending,
+    refetch,
+  };
+}
+function transcriptRecords(rows: TranscriptWithData[]): TranscriptRecord[] {
+  return rows.map(mapTranscript);
 }
 
-export function useTranscript(transcriptId: string): TranscriptRecord | null {
-  const { data = null } = useIndexQuery({
-    // Transcript events carry session ids and the owning session isn't known
-    // here, so this one stays table-level.
-    entity: "transcripts",
-    queryKey: ["transcript", transcriptId],
-    queryFn: async () => {
-      const result = await commands.transcriptGet(transcriptId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return result.data ? mapTranscript(result.data) : null;
-    },
-    enabled: Boolean(transcriptId),
-  });
-  return transcriptId ? data : null;
+export function useTranscript(
+  sessionId: string,
+  transcriptId: string,
+): TranscriptRecord | null {
+  const query = useSessionTranscriptsQuery(sessionId);
+  return query.data?.find((row) => row.id === transcriptId) ?? null;
 }
 
 export function useTranscriptLabelContext(
+  sessionId: string,
   transcriptId: string,
 ): RenderLabelContext | undefined {
-  const transcript = useTranscript(transcriptId);
+  const transcript = useTranscript(sessionId, transcriptId);
   const people = usePeople();
   return useMemo(
     () => createTranscriptLabelContext(transcript, people),
@@ -136,8 +185,14 @@ export function createTranscriptLabelContext(
 
 // `source`/`provider`/`model`/`language` are accepted for caller compatibility but not yet
 // persisted -- the store's `TranscriptWithData` shape (Tasks 6-8) has no columns for them.
-export function createTranscript(input: TranscriptInsert): Promise<void> {
+export function createTranscript(
+  input: TranscriptInsert,
+  options?: { assertCurrent?: () => void; store?: ApplicationClient["store"] },
+): Promise<void> {
+  options?.assertCurrent?.();
+  const backend = options?.store ?? getApplicationClient().store;
   return enqueueDatabaseWrite(`transcript:${input.id}`, async () => {
+    options?.assertCurrent?.();
     const transcript = {
       id: input.id,
       user_id: input.ownerUserId,
@@ -154,7 +209,7 @@ export function createTranscript(input: TranscriptInsert): Promise<void> {
       // The store's supersede primitive: the new transcript replaces the session's whole
       // set (batch re-run must not show old and new side by side). The previous
       // transcript.json lands in `.trash/` and superseded index rows are removed.
-      const result = await commands.sessionReplaceTranscripts(
+      const result = await backend.sessionReplaceTranscripts(
         input.sessionId,
         transcript,
       );
@@ -164,7 +219,7 @@ export function createTranscript(input: TranscriptInsert): Promise<void> {
       return;
     }
 
-    await writeTranscriptOrThrow(input.sessionId, transcript);
+    await writeTranscriptOrThrow(input.sessionId, transcript, backend);
   });
 }
 
@@ -172,38 +227,48 @@ export function appendTranscriptWordsAndHints(
   transcriptId: string,
   words: WordWithId[],
   hints: SpeakerHintWithId[],
-  options?: { mode?: "append" | "replace" },
+  options?: { mode?: "append" | "replace"; store?: ApplicationClient["store"] },
 ): Promise<void> {
-  return mutateTranscript(transcriptId, (store) => {
-    const accumulator = createTranscriptAccumulator(store, transcriptId);
-    accumulator.appendWordsAndHints(words, hints, options);
-    accumulator.dispose();
-  });
+  return mutateTranscript(
+    transcriptId,
+    (store) => {
+      const accumulator = createTranscriptAccumulator(store, transcriptId);
+      accumulator.appendWordsAndHints(words, hints, options);
+      accumulator.dispose();
+    },
+    options?.store,
+  );
 }
 
 // Hints-only Rust command: the store rewrites `speaker_hints` and passes the words
 // through untouched, so a rename never ships the full transcript over IPC (and can
 // never mangle per-word metadata the way the old read-modify-write path did).
 // Shares the per-transcript queue with the append path to keep write ordering.
-export function assignTranscriptSpeaker({
-  transcriptId,
-  segmentKey,
-  speakerLabel,
-  anchorWordId,
-}: {
-  transcriptId: string;
-  segmentKey: SegmentKey;
-  speakerLabel: string;
-  anchorWordId: string;
-}): Promise<void> {
+export function assignTranscriptSpeaker(
+  {
+    transcriptId,
+    segmentKey,
+    speakerLabel,
+    anchorWordId,
+  }: {
+    transcriptId: string;
+    segmentKey: SegmentKey;
+    speakerLabel: string;
+    anchorWordId: string;
+  },
+  assertCurrent?: () => void,
+): Promise<void> {
+  assertCurrent?.();
+  const backend = getApplicationClient().store;
   return enqueueDatabaseWrite(`transcript:${transcriptId}`, async () => {
+    assertCurrent?.();
     const channel =
       segmentKey.channel === "DirectMic"
         ? 0
         : segmentKey.channel === "RemoteParty"
           ? 1
           : 2;
-    const result = await commands.sessionAssignTranscriptSpeaker(
+    const result = await backend.sessionAssignTranscriptSpeaker(
       transcriptId,
       channel,
       typeof segmentKey.speaker_index === "number"
@@ -215,6 +280,7 @@ export function assignTranscriptSpeaker({
     if (result.status === "error") {
       throw new Error(result.error);
     }
+    assertCurrent?.();
   });
 }
 
@@ -238,9 +304,12 @@ export function softDeleteTranscript(
 
 async function writeTranscriptOrThrow(
   sessionId: string,
-  transcript: Parameters<typeof commands.sessionWriteTranscript>[1],
+  transcript: Parameters<
+    ApplicationClient["store"]["sessionWriteTranscript"]
+  >[1],
+  backend: ApplicationClient["store"] = getApplicationClient().store,
 ): Promise<void> {
-  const result = await commands.sessionWriteTranscript(sessionId, transcript);
+  const result = await backend.sessionWriteTranscript(sessionId, transcript);
   if (result.status === "error") {
     throw new Error(result.error);
   }
@@ -319,9 +388,10 @@ function mapTranscript(transcript: TranscriptWithData): TranscriptRecord {
 async function mutateTranscript(
   transcriptId: string,
   mutation: (store: MemoryTranscriptStore) => void,
+  backend: ApplicationClient["store"] = getApplicationClient().store,
 ): Promise<void> {
   return enqueueDatabaseWrite(`transcript:${transcriptId}`, async () => {
-    const read = await commands.transcriptGet(transcriptId);
+    const read = await backend.transcriptGet(transcriptId);
     if (read.status === "error") {
       throw new Error(read.error);
     }
@@ -340,15 +410,21 @@ async function mutateTranscript(
       mutation,
     );
 
-    await writeTranscriptOrThrow(current.session_id, {
-      id: transcriptId,
-      session_id: current.session_id,
-      started_at: current.started_at,
-      words: (JSON.parse(next.wordsJson) as WordWithId[]).map(toTranscriptWord),
-      speaker_hints: (JSON.parse(next.hintsJson) as SpeakerHintWithId[]).map(
-        toTranscriptSpeakerHint,
-      ),
-    });
+    await writeTranscriptOrThrow(
+      current.session_id,
+      {
+        id: transcriptId,
+        session_id: current.session_id,
+        started_at: current.started_at,
+        words: (JSON.parse(next.wordsJson) as WordWithId[]).map(
+          toTranscriptWord,
+        ),
+        speaker_hints: (JSON.parse(next.hintsJson) as SpeakerHintWithId[]).map(
+          toTranscriptSpeakerHint,
+        ),
+      },
+      backend,
+    );
   });
 }
 

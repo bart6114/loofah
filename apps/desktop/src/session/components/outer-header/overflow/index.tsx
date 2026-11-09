@@ -1,4 +1,5 @@
 import { Trans } from "@lingui/react/macro";
+import { useMutation } from "@tanstack/react-query";
 import {
   AudioLinesIcon,
   FileDownIcon,
@@ -8,7 +9,7 @@ import {
   RefreshCwIcon,
   SquareArrowOutUpRightIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 import { Button } from "@hypr/ui/components/ui/button";
 import {
@@ -19,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@hypr/ui/components/ui/dropdown-menu";
+import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { DeleteNote } from "./delete";
 import { ExportModal } from "./export-modal";
@@ -26,16 +28,107 @@ import { Listening } from "./listening";
 import { ShowInFinder } from "./misc";
 
 import { useAudioPlayer } from "~/audio-player";
+import {
+  useLegacyDesktopAccess,
+  useLegacySessionActivity,
+} from "~/main/use-legacy-activity";
 import { openFloatingMeetingPanel } from "~/meeting-float/host";
 import { useRegenerateTranscript } from "~/session/components/note-input/transcript/actions";
 import { useHasTranscript } from "~/session/components/shared";
+import { useSessionDeletionAccess } from "~/session/hooks/useDeleteSession";
 import { openStandaloneNoteWindow } from "~/session/window";
+import { openScopedNoteWindow } from "~/shared/application/open-note-window";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 import { useConfigValue } from "~/shared/config";
 import type { EditorView } from "~/store/zustand/tabs/schema";
-import { useListener } from "~/stt/contexts";
 import { useUploadFile } from "~/stt/useUploadFile";
 
-export function OverflowButton({
+export function OverflowButton(props: {
+  allowListening?: boolean;
+  standaloneWindow?: boolean;
+  sessionId: string;
+  currentView: EditorView;
+  onStartRecording?: () => void;
+}) {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
+  const deletion = useSessionDeletionAccess();
+  if (isAvailable("legacy_desktop_session_controls"))
+    return <LegacyOverflowButton {...props} />;
+  if (
+    !deletion.shared &&
+    !legacy.scope.client.exportSession &&
+    !legacy.scope.client.openNoteWindow
+  )
+    return null;
+  return (
+    <SharedOverflowButton
+      {...props}
+      canDelete={deletion.shared}
+      canExport={!!legacy.scope.client.exportSession}
+    />
+  );
+}
+
+function SharedOverflowButton({
+  sessionId,
+  currentView,
+  canDelete,
+  canExport,
+}: {
+  sessionId: string;
+  currentView: EditorView;
+  canDelete: boolean;
+  canExport: boolean;
+}) {
+  const [exportOpen, setExportOpen] = useState(false);
+  const owner = useVaultReadScope();
+  const openWindow = useMutation({
+    mutationFn: () => openScopedNoteWindow(owner.scope, sessionId),
+    onError: (error) => sonnerToast.error(error.message),
+  });
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Note actions">
+            <MoreHorizontalIcon />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          {owner.scope.client.openNoteWindow && (
+            <DropdownMenuItem
+              disabled={
+                openWindow.isPending ||
+                !owner.current() ||
+                owner.connection.state !== "connected"
+              }
+              onSelect={() => openWindow.mutate()}
+            >
+              <SquareArrowOutUpRightIcon />
+              <Trans>Open in New Window</Trans>
+            </DropdownMenuItem>
+          )}
+          {canExport && (
+            <DropdownMenuItem onSelect={() => setExportOpen(true)}>
+              <FileDownIcon />
+              <Trans>Export</Trans>
+            </DropdownMenuItem>
+          )}
+          {canDelete && <DeleteNote sessionId={sessionId} />}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ExportModal
+        sessionId={sessionId}
+        currentView={currentView}
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+      />
+    </>
+  );
+}
+
+function LegacyOverflowButton({
   allowListening = true,
   standaloneWindow = false,
   sessionId,
@@ -53,9 +146,20 @@ export function OverflowButton({
   const [hasOpenedExportModal, setHasOpenedExportModal] = useState(false);
   const hasTranscript = useHasTranscript(sessionId);
   const { audioExists, audioExistsResolved } = useAudioPlayer();
-  const { uploadAudio, uploadTranscript } = useUploadFile(sessionId);
-  const regenerateTranscript = useRegenerateTranscript(sessionId);
-  const sessionMode = useListener((state) => state.getSessionMode(sessionId));
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
+  const assertCurrent = useCallback(() => {
+    if (!isAvailable()) throw new Error("Transcript controls are unavailable.");
+  }, [isAvailable]);
+  const { uploadAudio, uploadTranscript } = useUploadFile(
+    sessionId,
+    assertCurrent,
+  );
+  const regenerateTranscript = useRegenerateTranscript(
+    sessionId,
+    assertCurrent,
+  );
+  const sessionMode = legacy.mode;
   const floatingBarEnabled = useConfigValue("floating_bar_enabled");
   const isMeetingInProgress =
     sessionMode === "active" || sessionMode === "finalizing";
@@ -75,23 +179,31 @@ export function OverflowButton({
     showUploadActions ||
     canOpenFloatingPanel;
   const openExportModal = () => {
+    if (!isAvailable("legacy_desktop_session_controls")) return;
     setOpen(false);
     setHasOpenedExportModal(true);
-    requestAnimationFrame(() => setIsExportModalOpen(true));
+    requestAnimationFrame(() => {
+      if (isAvailable("legacy_desktop_session_controls"))
+        setIsExportModalOpen(true);
+    });
   };
   const handleUploadAudio = () => {
+    if (!isAvailable("legacy_desktop_session_controls")) return;
     setOpen(false);
     uploadAudio();
   };
   const handleUploadTranscript = () => {
+    if (!isAvailable("legacy_desktop_session_controls")) return;
     setOpen(false);
     uploadTranscript();
   };
   const handleRetranscribe = () => {
+    if (!isAvailable("legacy_desktop_session_controls")) return;
     setOpen(false);
     void regenerateTranscript();
   };
   const handleOpenFloatingPanel = () => {
+    if (!isAvailable("legacy_desktop_session_controls")) return;
     setOpen(false);
     void openFloatingMeetingPanel({
       sessionId,
@@ -99,6 +211,7 @@ export function OverflowButton({
     });
   };
   const handleOpenStandaloneWindow = () => {
+    if (!isAvailable("legacy_desktop_session_controls")) return;
     setOpen(false);
     void openStandaloneNoteWindow(sessionId);
   };

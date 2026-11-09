@@ -1,4 +1,7 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/shallow";
+
+import type { SessionDeletionReceipt } from "~/shared/application/session-lifecycle";
 
 type DeletedSession = {
   id: string;
@@ -9,11 +12,17 @@ export type DeletedSessionData = {
   session: DeletedSession;
   tombstone: string;
   deletedAt: number;
+  receipt?: SessionDeletionReceipt;
+  confirmedAbsent?: boolean;
 };
 
 export const UNDO_TIMEOUT_MS = 5000;
 
 export type PendingDeletion = {
+  token: string;
+  scope: string;
+  owner?: object;
+  restore: (assertCurrent: () => void) => Promise<void>;
   data: DeletedSessionData;
   timeoutId: ReturnType<typeof setTimeout> | null;
   onDeleteConfirm: (() => void | Promise<unknown>) | null;
@@ -24,47 +33,85 @@ export type PendingDeletion = {
 interface UndoDeleteState {
   pendingDeletions: Record<string, PendingDeletion>;
   addDeletion: (
+    scope: string,
     data: DeletedSessionData,
-    onConfirm?: () => void | Promise<unknown>,
-    batchId?: string,
+    options: {
+      restore: PendingDeletion["restore"];
+      owner?: object;
+      onConfirm?: () => void | Promise<unknown>;
+      batchId?: string;
+    },
   ) => void;
-  clearDeletion: (sessionId: string) => void;
-  confirmDeletion: (sessionId: string) => void | Promise<unknown>;
-  clearBatch: (batchId: string) => void;
-  confirmBatch: (batchId: string) => void;
+  clearDeletion: (scope: string, sessionId: string) => void;
+  confirmDeletion: (
+    scope: string,
+    sessionId: string,
+  ) => void | Promise<unknown>;
+  clearBatch: (scope: string, batchId: string) => void;
+  confirmBatch: (scope: string, batchId: string) => void;
+}
+
+export function deletionKey(scope: string, sessionId: string) {
+  return JSON.stringify([scope, sessionId]);
+}
+
+export function pendingDeletionsForScope(
+  entries: Record<string, PendingDeletion>,
+  scope: string,
+  owner?: object,
+) {
+  return Object.fromEntries(
+    Object.values(entries)
+      .filter(
+        (entry) => entry.scope === scope && (!owner || entry.owner === owner),
+      )
+      .map((entry) => [entry.data.session.id, entry]),
+  );
+}
+
+export function useScopedPendingDeletions(scope: string, owner?: object) {
+  return useUndoDelete(
+    useShallow((state) =>
+      pendingDeletionsForScope(state.pendingDeletions, scope, owner),
+    ),
+  );
 }
 
 export const useUndoDelete = create<UndoDeleteState>((set, get) => ({
   pendingDeletions: {},
 
-  addDeletion: (data, onConfirm, batchId) => {
+  addDeletion: (scope, data, options) => {
     const sessionId = data.session.id;
+    const key = deletionKey(scope, sessionId);
 
-    const existing = get().pendingDeletions[sessionId];
+    const existing = get().pendingDeletions[key];
     if (existing?.timeoutId) {
       clearTimeout(existing.timeoutId);
     }
 
-    const timeoutId = setTimeout(() => {
-      get().confirmDeletion(sessionId);
+    const entry: PendingDeletion = {
+      token: crypto.randomUUID(),
+      scope,
+      owner: options.owner,
+      restore: options.restore,
+      data: { ...data, session: { ...data.session } },
+      timeoutId: null,
+      onDeleteConfirm: options.onConfirm ?? null,
+      addedAt: Date.now(),
+      batchId: options.batchId ?? null,
+    };
+    entry.timeoutId = setTimeout(() => {
+      if (get().pendingDeletions[key] === entry)
+        void get().confirmDeletion(scope, sessionId);
     }, UNDO_TIMEOUT_MS);
-
     set((state) => ({
-      pendingDeletions: {
-        ...state.pendingDeletions,
-        [sessionId]: {
-          data,
-          timeoutId,
-          onDeleteConfirm: onConfirm ?? null,
-          addedAt: Date.now(),
-          batchId: batchId ?? null,
-        },
-      },
+      pendingDeletions: { ...state.pendingDeletions, [key]: entry },
     }));
   },
 
-  clearDeletion: (sessionId) => {
-    const pending = get().pendingDeletions[sessionId];
+  clearDeletion: (scope, sessionId) => {
+    const key = deletionKey(scope, sessionId);
+    const pending = get().pendingDeletions[key];
     if (!pending) return;
 
     if (pending.timeoutId) {
@@ -72,35 +119,39 @@ export const useUndoDelete = create<UndoDeleteState>((set, get) => ({
     }
 
     set((state) => {
-      const { [sessionId]: _, ...rest } = state.pendingDeletions;
+      const { [key]: _, ...rest } = state.pendingDeletions;
       return { pendingDeletions: rest };
     });
   },
 
-  confirmDeletion: (sessionId) => {
-    const pending = get().pendingDeletions[sessionId];
+  confirmDeletion: (scope, sessionId) => {
+    const key = deletionKey(scope, sessionId);
+    const pending = get().pendingDeletions[key];
     if (!pending) return;
 
-    const result = pending.onDeleteConfirm?.();
-    get().clearDeletion(sessionId);
-    return result;
-  },
-
-  clearBatch: (batchId) => {
-    const entries = Object.entries(get().pendingDeletions).filter(
-      ([_, p]) => p.batchId === batchId,
-    );
-    for (const [sessionId] of entries) {
-      get().clearDeletion(sessionId);
+    try {
+      return pending.onDeleteConfirm?.();
+    } finally {
+      if (get().pendingDeletions[key] === pending)
+        get().clearDeletion(scope, sessionId);
     }
   },
 
-  confirmBatch: (batchId) => {
+  clearBatch: (scope, batchId) => {
     const entries = Object.entries(get().pendingDeletions).filter(
-      ([_, p]) => p.batchId === batchId,
+      ([_, p]) => p.scope === scope && p.batchId === batchId,
     );
-    for (const [sessionId] of entries) {
-      get().confirmDeletion(sessionId);
+    for (const [, entry] of entries) {
+      get().clearDeletion(scope, entry.data.session.id);
+    }
+  },
+
+  confirmBatch: (scope, batchId) => {
+    const entries = Object.entries(get().pendingDeletions).filter(
+      ([_, p]) => p.scope === scope && p.batchId === batchId,
+    );
+    for (const [, entry] of entries) {
+      void get().confirmDeletion(scope, entry.data.session.id);
     }
   },
 }));
@@ -110,8 +161,15 @@ export const useUndoDelete = create<UndoDeleteState>((set, get) => ({
 export function confirmAllPendingDeletions(): Promise<void> {
   const { pendingDeletions, confirmDeletion } = useUndoDelete.getState();
   return Promise.allSettled(
-    Object.keys(pendingDeletions).map((sessionId) =>
-      confirmDeletion(sessionId),
+    Object.values(pendingDeletions).map((entry) =>
+      Promise.resolve().then(() => {
+        if (
+          useUndoDelete.getState().pendingDeletions[
+            deletionKey(entry.scope, entry.data.session.id)
+          ] === entry
+        )
+          return confirmDeletion(entry.scope, entry.data.session.id);
+      }),
     ),
   ).then(() => undefined);
 }
