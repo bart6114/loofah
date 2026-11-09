@@ -794,7 +794,8 @@ async fn existing_title_is_published_atomically_for_both_policies_and_targets() 
                 let recorded = fixture
                     .journal
                     .run(move |state, _| {
-                        Ok(state.records[&id]
+                        Ok(state
+                            .record(&id)?
                             .body_applied
                             .as_ref()
                             .unwrap()
