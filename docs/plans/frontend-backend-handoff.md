@@ -2651,3 +2651,15 @@ after actual drain, and disk finalization/file-close ownership. No microphone,
 application or model is needed by these fixtures. They are unexecuted pending the
 sole integration lane; dprint and diff checks passed. Both native Windows
 architectures still require qualification for the platform-specific thread pins.
+
+The owner-pin peer review found that CPAL CoreAudio may retain its callback holder
+beyond the outer stream/thread. Both microphone data and error callbacks now pin
+the original owner independently; a delayed-holder DropProbe covers each callback
+being the last owner. Existing macOS workspace and both Windows native package
+selections include `audio-actual` and `listener-core`, so these new tests are
+selected without additional workflow wiring. They remain unexecuted locally.
+
+The macOS tap teardown audit separately found that cidre 0.15's StartedDevice,
+AggregateDevice and TapGuard destruction does not expose reliable release-build
+failure handling. That outstanding teardown issue is not fixed by callback pins
+and does not authorize a stronger restart/completion proof.

@@ -12,6 +12,32 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crate::AsyncSource;
 use crate::async_ring::RingbufAsyncReader;
 
+// CoreAudio may keep either callback after the outer CPAL Stream is dropped.
+fn owned_data_callback<S, F>(
+    owner: Option<Arc<dyn Send + Sync>>,
+    mut callback: F,
+) -> impl FnMut(&[S], &cpal::InputCallbackInfo) + Send
+where
+    F: FnMut(&[S], &cpal::InputCallbackInfo) + Send,
+{
+    move |data, info| {
+        let _original = &owner;
+        callback(data, info);
+    }
+}
+fn owned_error_callback<F>(
+    owner: Option<Arc<dyn Send + Sync>>,
+    mut callback: F,
+) -> impl FnMut(cpal::StreamError) + Send
+where
+    F: FnMut(cpal::StreamError) + Send,
+{
+    move |error| {
+        let _original = &owner;
+        callback(error);
+    }
+}
+
 fn is_tap_device(name: &str) -> bool {
     #[cfg(target_os = "macos")]
     {
@@ -198,7 +224,7 @@ impl MicInput {
         let owner_integrity = integrity.clone();
         let capture_thread = std::thread::spawn(move || {
             // This thread can outlive an abnormal MicStream drop.
-            let _owner = owner;
+            let original_owner = owner;
             fn build_stream<S: ToSample<f32> + SizedSample>(
                 device: &cpal::Device,
                 config: &cpal::SupportedStreamConfig,
@@ -206,9 +232,13 @@ impl MicInput {
                 waker: Arc<AtomicWaker>,
                 wake_pending: Arc<AtomicBool>,
                 dropped_samples: Arc<AtomicUsize>,
-                health: (Arc<AtomicBool>, Option<Arc<hypr_audio::CaptureIntegrity>>),
+                health: (
+                    Arc<AtomicBool>,
+                    Option<Arc<hypr_audio::CaptureIntegrity>>,
+                    Option<Arc<dyn Send + Sync>>,
+                ),
             ) -> Result<cpal::Stream, cpal::BuildStreamError> {
-                let (alive, integrity) = health;
+                let (alive, integrity, owner) = health;
                 let channels = config.channels() as usize;
                 let mut scratch = vec![0.0f32; crate::rt_ring::DEFAULT_SCRATCH_LEN];
                 let waker_for_err = waker.clone();
@@ -216,32 +246,35 @@ impl MicInput {
                 let integrity_for_err = integrity.clone();
                 device.build_input_stream::<S, _, _>(
                     &config.config(),
-                    move |data: &[S], _input_callback_info: &_| {
-                        let stats = crate::rt_ring::push_interleaved_downmix_to_mono_ringbuf(
-                            data,
-                            channels,
-                            &mut scratch,
-                            &mut producer,
-                        );
+                    owned_data_callback(
+                        owner.clone(),
+                        move |data: &[S], _input_callback_info: &_| {
+                            let stats = crate::rt_ring::push_interleaved_downmix_to_mono_ringbuf(
+                                data,
+                                channels,
+                                &mut scratch,
+                                &mut producer,
+                            );
 
-                        stats.record_integrity(integrity.as_deref(), true, false);
-                        if stats.dropped > 0 {
-                            dropped_samples.fetch_add(stats.dropped, Ordering::Relaxed);
-                        }
+                            stats.record_integrity(integrity.as_deref(), true, false);
+                            if stats.dropped > 0 {
+                                dropped_samples.fetch_add(stats.dropped, Ordering::Relaxed);
+                            }
 
-                        if stats.pushed > 0 && wake_pending.load(Ordering::Acquire) {
-                            wake_pending.store(false, Ordering::Release);
-                            waker.wake();
-                        }
-                    },
-                    move |err| {
+                            if stats.pushed > 0 && wake_pending.load(Ordering::Acquire) {
+                                wake_pending.store(false, Ordering::Release);
+                                waker.wake();
+                            }
+                        },
+                    ),
+                    owned_error_callback(owner, move |err| {
                         if let Some(integrity) = &integrity_for_err {
                             integrity.mark_discontinuity(true, false);
                         }
                         tracing::error!(error = %err, "mic_stream_error");
                         alive_for_err.store(false, Ordering::Release);
                         waker_for_err.wake();
-                    },
+                    }),
                     None,
                 )
             }
@@ -255,7 +288,11 @@ impl MicInput {
                         waker_for_thread.clone(),
                         wake_pending_for_thread.clone(),
                         dropped_for_thread.clone(),
-                        (alive_for_thread.clone(), integrity.clone()),
+                        (
+                            alive_for_thread.clone(),
+                            integrity.clone(),
+                            original_owner.clone(),
+                        ),
                     ),
                     cpal::SampleFormat::I16 => build_stream::<i16>(
                         &device,
@@ -264,7 +301,11 @@ impl MicInput {
                         waker_for_thread.clone(),
                         wake_pending_for_thread.clone(),
                         dropped_for_thread.clone(),
-                        (alive_for_thread.clone(), integrity.clone()),
+                        (
+                            alive_for_thread.clone(),
+                            integrity.clone(),
+                            original_owner.clone(),
+                        ),
                     ),
                     cpal::SampleFormat::I32 => build_stream::<i32>(
                         &device,
@@ -273,7 +314,11 @@ impl MicInput {
                         waker_for_thread.clone(),
                         wake_pending_for_thread.clone(),
                         dropped_for_thread.clone(),
-                        (alive_for_thread.clone(), integrity.clone()),
+                        (
+                            alive_for_thread.clone(),
+                            integrity.clone(),
+                            original_owner.clone(),
+                        ),
                     ),
                     cpal::SampleFormat::F32 => build_stream::<f32>(
                         &device,
@@ -282,7 +327,11 @@ impl MicInput {
                         waker_for_thread.clone(),
                         wake_pending_for_thread.clone(),
                         dropped_for_thread.clone(),
-                        (alive_for_thread.clone(), integrity.clone()),
+                        (
+                            alive_for_thread.clone(),
+                            integrity.clone(),
+                            original_owner.clone(),
+                        ),
                     ),
                     sample_format => {
                         tracing::error!(sample_format = ?sample_format, "unsupported");
@@ -484,5 +533,47 @@ mod tests {
         );
         assert!(chunks_received > 0, "should receive at least one chunk");
         assert!(total_samples > 0, "should receive samples");
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    struct DropProbe(Arc<AtomicUsize>);
+    impl Drop for DropProbe {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    #[test]
+    fn backend_callback_holders_keep_original_owner_after_outer_stream_thread_drops() {
+        for data_last in [false, true] {
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let owner = Arc::new(DropProbe(dropped.clone()));
+            let original = Arc::downgrade(&owner);
+            let data = owned_data_callback::<f32, _>(Some(owner.clone()), |_, _| {});
+            let error = owned_error_callback(Some(owner.clone()), |_| {});
+            let data: Box<dyn Send> = Box::new(data);
+            let error: Box<dyn Send> = Box::new(error);
+            let (first, last) = if data_last {
+                (error, data)
+            } else {
+                (data, error)
+            };
+            drop(owner);
+            drop(first);
+            assert!(original.upgrade().is_some());
+            assert_eq!(dropped.load(Ordering::SeqCst), 0);
+            let (release, wait) = std::sync::mpsc::channel();
+            let backend = std::thread::spawn(move || {
+                let _callback = last;
+                wait.recv().unwrap();
+            });
+            assert!(original.upgrade().is_some());
+            release.send(()).unwrap();
+            backend.join().unwrap();
+            assert!(original.upgrade().is_none());
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+        }
     }
 }
