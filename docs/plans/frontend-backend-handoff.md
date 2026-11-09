@@ -2788,3 +2788,37 @@ are unchanged. Rust formatting and diff checks passed; this fixture correction
 has not yet run on either Windows architecture. The healthy f96f84 jobs continue
 without cancellation or retry, and installer/uninstall qualification remains
 separate from this test-only correction.
+
+## Source checkpoint: shaped real WebSocket speech acceptance
+
+The existing ignored
+`real_websocket_finalizes_and_recovers_from_cancellation` integration case now
+runs three explicit loopback TCP proxy profiles at 50, 150 and 500 ms configured
+RTT against the same real Whisper service/model fixture. It remains one outer
+Rust test, with three separately printed profile proofs; a passing test count
+alone must not be reported as three tests. Each profile preserves the ten-second
+speech fixture, finalized text/word timestamps, exactly one terminal metadata
+message and the server Close frame. A replacement connection cancels a prior
+connection only after actual speech output is observed. The old connection must
+then emit Close: the service awaits its CPU completion before that write. Proxy
+EOF is recorded separately and is not, by itself, CPU-drain evidence. The 50 ms
+profile additionally retains an actual abrupt-client-drop and reconnect check.
+
+The private test proxy forwards at most 64 slabs of 16 KiB per direction and
+holds at most six connections (four in the 150/500 ms profiles). Every forwarded
+slab incurs half the configured RTT, so this fixture also bounds throughput;
+it does not model jitter, bandwidth variation or an Internet latency percentile.
+Actual bytes, slab counts, health/handshake time, finalize/cancellation/reconnect
+time and each profile's total time are printed. Known socket-disconnect write
+errors drain the original input to EOF instead of treating proxy abort as
+completion. Successful profiles join every proxy task. Two no-model regressions
+cover exact bidirectional bytes/half-close/delay and retained-source drain after
+a downstream disconnect.
+
+Only fixture timing budgets change: each profile retains the original 240-second
+model allowance plus its finite maximum slab delay; cancellation/replacement
+retains its 15-second allowance plus the corresponding two-connection delay.
+No production deadline, live pipeline, model policy or desktop transport changes.
+This checkpoint is source-only: formatting is checked; configured CPU execution,
+profile evidence and the ordinary no-model tests remain pending the coordinated
+build lane. Desktop app testing remains paused.
