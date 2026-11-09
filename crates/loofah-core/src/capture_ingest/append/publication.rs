@@ -106,8 +106,12 @@ where
         context.trace_append_publication("combine artifact");
         let combined = tokio::task::spawn_blocking(move || {
             let _pin = pin;
+            #[cfg(test)]
+            _pin.trace_append_publication("copy suffix");
             let mut output = File::create_new(&suffix_path).map_err(super::io)?;
             std::io::copy(&mut reader, &mut output).map_err(super::io)?;
+            #[cfg(test)]
+            _pin.trace_append_publication("suffix fsync");
             output.sync_all().map_err(super::io)?;
             drop(output);
             let prefix = NormalizedAppendAudio {
@@ -116,6 +120,8 @@ where
                 sha256: baseline.normalized_sha256,
                 format: baseline.format,
             };
+            #[cfg(test)]
+            _pin.trace_append_publication("concatenate");
             let combined = crate::capture_append::concatenate(
                 &directory.join("core-normalized.wav"),
                 &prefix,
@@ -128,6 +134,8 @@ where
         .await;
         // Reader cancellation does not end the real source operation. Join its
         // owned task before releasing Context or propagating an artifact error.
+        #[cfg(test)]
+        context.trace_append_publication("join source producer");
         let produced = producer.await;
         let (file, combined) = combined.map_err(super::io)??;
         produced.map_err(super::io)??;
