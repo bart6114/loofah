@@ -1,10 +1,17 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum DispatchEvidence {
+    NeverDispatched,
+    Dispatched,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Admission {
-    version: u32,
+    pub(super) version: u32,
     vault_id: String,
     principal: String,
     pub declaration: MediaDeclaration,
@@ -14,6 +21,10 @@ pub(super) struct Admission {
     pub model_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<ApplicationError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatch: Option<DispatchEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retirement: Option<retirement::Intent>,
 }
 impl Admission {
     pub fn new(
@@ -29,7 +40,7 @@ impl Admission {
             MediaPhase::Ready
         };
         Self {
-            version: if model_sha256.is_some() { 2 } else { 1 },
+            version: 3,
             vault_id,
             principal,
             declaration,
@@ -37,9 +48,11 @@ impl Admission {
             phase,
             refusal: None,
             model_sha256,
+            dispatch: Some(DispatchEvidence::NeverDispatched),
+            retirement: None,
         }
     }
-    fn validate(
+    pub(super) fn validate(
         &self,
         dispatcher: &MediaDispatcher,
         request: &str,
@@ -48,7 +61,9 @@ impl Admission {
             .map_err(|_| conflict("Media admission requires review"))?;
         if self.model_sha256.as_ref().is_some_and(|hash| {
             !is_transcription_sha256(hash) || self.declaration.transcription.is_none()
-        }) || !matches!(self.version, 1 | 2)
+        }) || !matches!(self.version, 1 | 2 | 3)
+            || (self.version == 3) != self.dispatch.is_some()
+            || (self.version < 3 && self.retirement.is_some())
             || self.vault_id != dispatcher.context.events.vault_id()
             || self.principal != dispatcher.principal
             || self.declaration.request_id != request
@@ -56,6 +71,15 @@ impl Admission {
                 .is_ok_and(|id| !id.is_nil() && id.to_string() == self.revision)
         {
             return Err(conflict("Media admission identity requires review"));
+        }
+        if let Some(intent) = &self.retirement {
+            intent.validate(self)?;
+        }
+        Ok(())
+    }
+    pub(super) fn ensure_not_retiring(&self) -> Result<(), ApplicationError> {
+        if self.retirement.is_some() {
+            return Err(conflict("Original media request is retired or retiring"));
         }
         Ok(())
     }
@@ -70,12 +94,10 @@ impl MediaDispatcher {
         let record = tokio::task::spawn_blocking(move || {
             let _pin = pin;
             let _guard = guard;
-            if !ledger::existing_directory(&root)? || !ledger::check_file(&path)? {
+            if !ledger::existing_directory(&root)? {
                 return Ok(None);
             }
-            let record = serde_json::from_slice::<Admission>(&ledger::read(&path, 1024 * 1024)?)
-                .map_err(|_| conflict("Media admission requires review"))?;
-            Ok(Some(record))
+            retirement::load_record(&root, &path)
         })
         .await
         .map_err(|_| unavailable("Media admission reader stopped"))??;
@@ -238,7 +260,13 @@ pub(crate) fn sample_media_uploads(
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>();
-                if !matches!(record.version, 1 | 2)
+                if !matches!(record.version, 1 | 2 | 3)
+                    || (record.version == 3) != record.dispatch.is_some()
+                    || (record.version < 3 && record.retirement.is_some())
+                    || record
+                        .retirement
+                        .as_ref()
+                        .is_some_and(|intent| intent.validate(&record).is_err())
                     || record.vault_id != context.events.vault_id()
                     || record.declaration.request_id != request
                     || namespace != expected_namespace

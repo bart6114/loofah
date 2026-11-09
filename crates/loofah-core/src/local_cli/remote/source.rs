@@ -55,6 +55,8 @@ impl MediaDispatcher {
         tokio::spawn(async move {
             let _gate = owner.request_gate(&request).await?;
             let mut record = owner.load(&request).await?.ok_or_else(|| error(ErrorCode::NotFound, "Media request not found"))?;
+            record.ensure_not_retiring()?;
+            let _source_use = owner.source_gate(&request).await.read_owned().await;
             if record.revision != revision { return Err(conflict("Original media admission revision changed")); }
             if record.phase != MediaPhase::Receiving { return owner.status(&request).await; }
             if owner.stop.is_cancelled() { return Err(unavailable("Media service is stopping")); }
@@ -171,6 +173,12 @@ impl MediaDispatcher {
         record: &Admission,
         guard: G,
     ) -> Result<Option<(LocalCliArtifact, Vec<[u8; 32]>)>, ApplicationError> {
+        record.ensure_not_retiring()?;
+        let source_use = self
+            .source_gate(&record.declaration.request_id)
+            .await
+            .read_owned()
+            .await;
         let Some((_, expected)) = record.declaration.operation.upload() else {
             return Ok(None);
         };
@@ -182,7 +190,7 @@ impl MediaDispatcher {
         let stop = self.stop.child_token();
         let _cancel_verification_on_drop = stop.clone().drop_guard();
         tokio::task::spawn_blocking(move || {
-            let owner = (pin, guard);
+            let owner = (pin, guard, source_use);
             if !ledger::existing_directory(&directory)?
                 || !ledger::check_file(&directory.join("source"))?
             {
@@ -265,6 +273,7 @@ impl MediaDispatcher {
         if self.stop.is_cancelled() {
             return Err(unavailable("Media service is stopping"));
         }
+        let _request = self.request_gate(request).await?;
         let access = self.authorization.observe().await?;
         let record = self
             .load(request)

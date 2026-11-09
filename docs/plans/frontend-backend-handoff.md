@@ -1934,3 +1934,55 @@ metadata. The successful speech retry is recorded separately at original source
 or cancelled. Later implementation work and the next head's hosted qualification
 remain outside this record; physical capture, production SSO and model-quality
 gates remain open.
+## Explicit Remote media-source retirement: Core/protocol source checkpoint
+
+The new `MediaDispatcher::retirement_status` and `retire` contract keeps
+retirement separate from existing media/result phases. Only an unequivocal
+completed media receipt, or a new admission durably marked never dispatched,
+can qualify. Ambiguous, failed, dispatched-cancelled, legacy unproven and Review
+work stays retained. Original summary work must be skipped or successfully
+finished; active model, session, upload writer and original-source readers block
+cleanup through their actual drain. Exported/discard/no-upload dispositions are
+explicit and original revision/declaration/source-bound. Exported is a caller's
+retained-copy decision; Core verifies the complete original source but does not
+claim to inspect the external copy.
+
+Before any unlink, a version-3 admission records the immutable decision and
+exact source/partial file identities, lengths and hashes. Cleanup refuses
+unknown files, links, changed identities and byte mismatches. It preserves the
+empty private source directory, canonical vault content, and every lower media,
+subtitle, summary and publication journal. The completed receipt is written to
+the separate bounded `retired/` archive before removing the active admission;
+only that final removal releases active request and declared-byte quotas.
+Archive reservations include unfinished retirements, with a fixed 4,096-record
+and 16 MiB ceiling. Finished dispatcher task/receiver entries are removed.
+Retired point lookup and exact decision replay remain available without
+re-admission, source re-export, decoding or inference. Completed replay ignores
+later session activity and never touches subsequently reappeared source bytes.
+An interrupted cleanup keeps its active quota and accepts only its original
+explicit decision to continue.
+
+New admissions persist explicit dispatch evidence before model/application
+work. Existing v1/v2 records remain readable; missing evidence is never upgraded
+to never-dispatched. A proven legacy success can acquire a v3 retirement intent.
+The bounded operational sampler accepts validated v3 intents and continues to
+count active pending cleanup. Stopped whole-storage backup already includes
+these private records and retained directories. **Downgrade after retirement is
+incompatible:** older binaries may ignore the archive and reuse a retired UUID.
+Restoring a complete matching pre-retirement backup is required before running
+such a binary; a new-reader tombstone is not an old-reader global format fence.
+Pending identity-bound cleanup restored onto different filesystem identities
+fails closed for operator review rather than deleting replacement files.
+
+Focused source regressions cover both quota limits, original replay after
+reopen, actual source-reader/caller drain, canonical/result preservation,
+crashes after source unlink and after receipt publication, ambiguous states,
+member/revocation checks, changed/unknown/hardlinked/symlinked sources, bounded
+archive exhaustion, future receipts and completed replay during later work.
+Filters are `local_cli::remote::retirement::tests` and
+`media_retirement_binds_original_declaration`. This checkpoint has formatting
+and whitespace checks only; Cargo execution and lockfile resolution are reserved
+for the main validation lane. The narrow Windows `winapi-util` dependency uses
+volume/file-index and link-count evidence; both native Windows architectures
+remain required. No retirement capability, automatic cleanup, exported bindings,
+model inference or application launch is activated by this source checkpoint.

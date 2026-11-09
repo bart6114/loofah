@@ -3,8 +3,8 @@ use crate::{VaultRuntime, transcription_jobs::TranscriptionAccess};
 use hypr_storage::vault::{LeaseAttempt, VaultLease};
 use std::{future::Future, pin::Pin};
 
-struct Authority {
-    revoked: CancellationToken,
+pub(super) struct Authority {
+    pub(super) revoked: CancellationToken,
 }
 impl scope::MediaAuthorizer for Authority {
     fn authorize(
@@ -43,15 +43,15 @@ impl crate::capture_processing::CaptureProcessingAuthorizer for Authority {
         Box::pin(async move { Ok(Box::new(()) as Box<dyn Send>) })
     }
 }
-struct Fixture {
-    root: tempfile::TempDir,
-    runtime: VaultRuntime,
-    media: Arc<MediaDispatcher>,
-    authority: Arc<Authority>,
-    session: String,
+pub(super) struct Fixture {
+    pub(super) root: tempfile::TempDir,
+    pub(super) runtime: VaultRuntime,
+    pub(super) media: Arc<MediaDispatcher>,
+    pub(super) authority: Arc<Authority>,
+    pub(super) session: String,
 }
 impl Fixture {
-    async fn new() -> Self {
+    pub(super) async fn new() -> Self {
         let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let vault = root.path().join("vault");
         std::fs::create_dir(&vault).unwrap();
@@ -119,7 +119,7 @@ impl Fixture {
             session: meta.id,
         }
     }
-    async fn declaration(&self, source: &[u8]) -> MediaDeclaration {
+    pub(super) async fn declaration(&self, source: &[u8]) -> MediaDeclaration {
         MediaDeclaration {
             request_id: uuid::Uuid::new_v4().to_string(),
             operation: MediaOperation::ImportSubtitles {
@@ -135,13 +135,13 @@ impl Fixture {
             summary: None,
         }
     }
-    async fn stop(self) {
+    pub(super) async fn stop(self) {
         self.media.shutdown().await;
         self.runtime.shutdown().await.unwrap();
     }
 }
-const SUBTITLE: &[u8] = b"1\n00:00:00,000 --> 00:00:01,000\nOriginal source words\n";
-async fn done(media: &MediaDispatcher, request: &str) -> MediaRequestStatus {
+pub(super) const SUBTITLE: &[u8] = b"1\n00:00:00,000 --> 00:00:01,000\nOriginal source words\n";
+pub(super) async fn done(media: &MediaDispatcher, request: &str) -> MediaRequestStatus {
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         loop {
             let status = media.status(request).await.unwrap_or_else(|cause| {

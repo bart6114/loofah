@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 mod journal;
+mod retirement;
 mod source;
 pub use source::MediaSourceReader;
 mod status;
@@ -47,8 +48,16 @@ pub struct MediaDispatcher {
     receivers: Mutex<HashMap<String, (CancellationToken, tokio::sync::watch::Receiver<bool>)>>,
     stop: CancellationToken,
     source_reads: Arc<tokio::sync::Semaphore>,
+    source_gates: Mutex<HashMap<String, std::sync::Weak<tokio::sync::RwLock<()>>>>,
     #[cfg(test)]
     source_write_pause: std::sync::Mutex<
+        Option<(
+            tokio::sync::oneshot::Sender<()>,
+            std::sync::mpsc::Receiver<()>,
+        )>,
+    >,
+    #[cfg(test)]
+    retirement_pause: std::sync::Mutex<
         Option<(
             tokio::sync::oneshot::Sender<()>,
             std::sync::mpsc::Receiver<()>,
@@ -111,8 +120,11 @@ impl MediaDispatcher {
             receivers: Mutex::new(HashMap::new()),
             stop: CancellationToken::new(),
             source_reads: Arc::new(tokio::sync::Semaphore::new(4)),
+            source_gates: Default::default(),
             #[cfg(test)]
             source_write_pause: Default::default(),
+            #[cfg(test)]
+            retirement_pause: Default::default(),
             #[cfg(test)]
             declaration_pause: Default::default(),
         }))
@@ -288,6 +300,7 @@ impl MediaDispatcher {
         if self.stop.is_cancelled() {
             return Err(unavailable("Media service is stopping"));
         }
+        record.ensure_not_retiring()?;
         if record.phase != MediaPhase::Ready {
             return Err(conflict("Original media request cannot be dispatched"));
         }
@@ -311,11 +324,15 @@ impl MediaDispatcher {
         operation: LocalCliOperation,
         needs_source: bool,
     ) -> Result<(), ApplicationError> {
+        record.ensure_not_retiring()?;
         let access = self.authorization.observe().await?;
         let cancel = self.stop.child_token();
         let cli = self.cli(&record.declaration, cancel.clone())?;
         record.refusal = None;
         record.phase = MediaPhase::Running;
+        if record.dispatch.is_some() {
+            record.dispatch = Some(journal::DispatchEvidence::Dispatched);
+        }
         self.save(record.clone(), false).await?;
         let owner = self.clone();
         let request = record.declaration.request_id.clone();
@@ -384,26 +401,36 @@ impl MediaDispatcher {
                 gate
             })
     }
-    async fn request_gate(
-        &self,
-        request: &str,
-    ) -> Result<tokio::sync::OwnedMutexGuard<()>, ApplicationError> {
+    async fn request_mutex(&self, request: &str) -> Result<Arc<Mutex<()>>, ApplicationError> {
         journal::validate_request(request)?;
         let mut gates = self.request_gates.lock().await;
         gates.retain(|_, gate| gate.strong_count() > 0);
         if !gates.contains_key(request) && gates.len() >= self.limits.requests {
             return Err(unavailable("Media request capacity exhausted"));
         }
-        let gate = gates
+        Ok(gates
             .get(request)
             .and_then(std::sync::Weak::upgrade)
             .unwrap_or_else(|| {
                 let gate = Arc::new(Mutex::new(()));
                 gates.insert(request.into(), Arc::downgrade(&gate));
                 gate
-            });
-        drop(gates);
-        Ok(gate.lock_owned().await)
+            }))
+    }
+    async fn request_gate(
+        &self,
+        request: &str,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, ApplicationError> {
+        Ok(self.request_mutex(request).await?.lock_owned().await)
+    }
+    async fn try_request_gate(
+        &self,
+        request: &str,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, ApplicationError> {
+        self.request_mutex(request)
+            .await?
+            .try_lock_owned()
+            .map_err(|_| conflict("Original media work is still in use"))
     }
     pub fn request_shutdown(&self) {
         self.stop.cancel();

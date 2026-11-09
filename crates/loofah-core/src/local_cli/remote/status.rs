@@ -12,7 +12,7 @@ impl MediaDispatcher {
             status,
         })
     }
-    async fn status_record(
+    pub(super) async fn status_record(
         &self,
         record: Admission,
     ) -> Result<MediaRequestStatus, ApplicationError> {
@@ -169,6 +169,7 @@ impl MediaDispatcher {
             .load(request)
             .await?
             .ok_or_else(|| error(ErrorCode::NotFound, "Media request not found"))?;
+        record.ensure_not_retiring()?;
         if matches!(record.phase, MediaPhase::Receiving | MediaPhase::Ready) {
             record.phase = MediaPhase::Cancelled;
             self.save(record, false).await?;
@@ -194,6 +195,7 @@ impl MediaDispatcher {
         {
             return self.status(request).await;
         }
+        record.ensure_not_retiring()?;
         if record.phase == MediaPhase::Receiving {
             let directory = self.root.join(format!("{request}.source"));
             let exists = tokio::task::spawn_blocking(move || {
