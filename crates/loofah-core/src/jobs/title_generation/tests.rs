@@ -452,11 +452,13 @@ async fn title_cancellation_and_dropped_callers_hold_the_same_model_admission_un
             drain.release.add_permits(1);
             if drop_caller {
                 assert!(caller.await.unwrap_err().is_cancelled());
-            } else {
+            } else if startup {
                 assert_eq!(
                     caller.await.unwrap().unwrap_err(),
                     ProcessingJobFailure::Interrupted
                 );
+            } else {
+                assert_eq!(caller.await.unwrap().unwrap(), Some("Candidate".into()));
             }
             tokio::time::timeout(std::time::Duration::from_secs(10), async {
                 while !drain.finished.load(Ordering::Acquire) || weak.upgrade().is_some() {
@@ -496,4 +498,88 @@ async fn invalid_title_cancels_and_drains_before_releasing_the_supplied_model() 
     );
     assert!(drain.finished.load(Ordering::Acquire));
     assert_eq!(admission.available_permits(), 1);
+}
+
+struct CompletedStream {
+    drain: Arc<Drain>,
+    chunks: Vec<Result<ModelChunk, ProcessingJobFailure>>,
+    trailing: Option<Result<ModelChunk, ProcessingJobFailure>>,
+}
+impl TextModel for CompletedStream {
+    fn stream(
+        &self,
+        _: ModelRequest,
+        cancel: CancellationToken,
+    ) -> JobFuture<'_, Result<ModelStream, ProcessingJobFailure>> {
+        let drain = self.drain.clone();
+        let chunks = self.chunks.clone();
+        let trailing = self.trailing.clone();
+        Box::pin(async move {
+            Ok(Box::pin(async_stream::stream! {
+                for chunk in chunks { yield chunk; }
+                drain.started.add_permits(1);
+                cancel.cancelled().await;
+                drain.cancelled.add_permits(1);
+                drain.release.acquire().await.unwrap().forget();
+                if let Some(chunk) = trailing { yield chunk; }
+                drain.finished.store(true, Ordering::Release);
+            }) as ModelStream)
+        })
+    }
+}
+
+#[tokio::test]
+async fn completed_title_survives_cancel_before_eof_but_incomplete_or_malformed_streams_do_not() {
+    for (chunks, trailing, expected) in [
+        (
+            vec![text("Complete candidate"), finish()],
+            None,
+            Ok(Some("Complete candidate".into())),
+        ),
+        (
+            vec![text("Incomplete candidate")],
+            None,
+            Err(ProcessingJobFailure::Interrupted),
+        ),
+        (
+            vec![text("Complete candidate"), finish()],
+            Some(text("unexpected trailing text")),
+            Err(ProcessingJobFailure::Interrupted),
+        ),
+        (
+            vec![text("Complete candidate"), finish()],
+            Some(finish()),
+            Err(ProcessingJobFailure::Interrupted),
+        ),
+        (
+            vec![text("Complete candidate"), finish()],
+            Some(Err(ProcessingJobFailure::ProviderFailed)),
+            Err(ProcessingJobFailure::Interrupted),
+        ),
+    ] {
+        let drain = Arc::new(Drain::default());
+        let model = Arc::new(CompletedStream {
+            drain: drain.clone(),
+            chunks,
+            trailing,
+        });
+        let weak = Arc::downgrade(&model);
+        let generator = TitleGenerator::new(model, None, Some(0.0));
+        let cancel = CancellationToken::new();
+        let stopping = cancel.clone();
+        let caller =
+            tokio::spawn(
+                async move { generator.generate("# Saved summary".into(), stopping).await },
+            );
+        signal(&drain.started).await;
+        cancel.cancel();
+        signal(&drain.cancelled).await;
+        assert!(!caller.is_finished());
+        assert!(weak.upgrade().is_some());
+        assert!(!drain.finished.load(Ordering::Acquire));
+        drain.release.add_permits(1);
+        assert_eq!(caller.await.unwrap(), expected);
+        assert!(drain.finished.load(Ordering::Acquire));
+        assert!(weak.upgrade().is_none());
+    }
 }

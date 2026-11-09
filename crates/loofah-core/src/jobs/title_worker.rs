@@ -317,7 +317,10 @@ impl TitleExecution<'_> {
             Ok(Ok(Some(candidate))) => {
                 title_generation::normalize_candidate(&candidate).map_err(failed)
             }
-            Ok(Ok(None)) => Ok(None),
+            Ok(Ok(None)) => match self.interrupted(work).await {
+                Some(interruption) => Err(interruption),
+                None => Ok(None),
+            },
             Ok(Err(failure)) => Err(self
                 .interrupted(work)
                 .await

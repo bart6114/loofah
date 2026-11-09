@@ -72,9 +72,6 @@ impl TitleGenerator {
                 let mut thinking = ReasoningFilter::new("<thinking>", "</thinking>");
                 let mut think = ReasoningFilter::new("<think>", "</think>");
                 while let Some(chunk) = stream.next().await {
-                    if stopping.is_cancelled() && failure.is_none() {
-                        failure = Some(ProcessingJobFailure::Interrupted);
-                    }
                     if failure.is_some() {
                         stopping.cancel();
                         continue;
@@ -118,7 +115,9 @@ impl TitleGenerator {
                         stopping.cancel();
                     }
                 }
-                if cancel.is_cancelled() {
+                // A complete validated candidate remains recoverable after actual
+                // stream drain. The worker independently fences canonical publication.
+                if cancel.is_cancelled() && (failure.is_some() || !finished) {
                     return Err(ProcessingJobFailure::Interrupted);
                 }
                 if let Some(cause) = failure {
