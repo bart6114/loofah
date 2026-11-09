@@ -83,7 +83,8 @@ async fn publish_when_ready(
     source: &CaptureIngestStatus,
     seal: CaptureSeal,
 ) -> CaptureIngestStatus {
-    tokio::time::timeout(Duration::from_secs(20), async {
+    let mut last_failure = None;
+    let result = tokio::time::timeout(Duration::from_secs(20), async {
         loop {
             match context
                 .publish_capture_authorized(
@@ -101,14 +102,16 @@ async fn publish_when_ready(
                         ErrorCode::Unavailable | ErrorCode::ResourceLimit
                     ) =>
                 {
+                    last_failure = Some(cause);
                     tokio::time::sleep(Duration::from_millis(20)).await
                 }
                 Err(cause) => panic!("append publication failed: {cause:?}"),
             }
         }
     })
-    .await
-    .unwrap()
+    .await;
+    result
+        .unwrap_or_else(|_| panic!("append publication timed out; last failure: {last_failure:?}"))
 }
 
 #[tokio::test]
