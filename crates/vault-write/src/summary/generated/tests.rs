@@ -1097,7 +1097,7 @@ async fn generated_summary_accepts_unrelated_metadata_edits_after_preparation() 
         .await
         .unwrap();
     assert!(
-        matches!(outcome, DocumentSaveOutcome::Saved(snapshot) if snapshot.document.unwrap().markdown == PUBLISHED)
+        matches!(outcome, DocumentSaveOutcome::Saved(snapshot) if snapshot.document.as_ref().unwrap().markdown == PUBLISHED)
     );
     assert_eq!(
         store.read_meta("note").await.unwrap().unwrap().tags,
@@ -1126,7 +1126,7 @@ async fn generated_summary_quota_includes_stamped_title_before_intent() {
     assert!(!intent(root.path()).exists());
     store.content_limits.note_write_bytes = PUBLISHED.len();
     assert!(
-        matches!(store.save_generated_summary_with_suggestions_if_revision(root.path(), "note", GENERATED, &revision(&store).await, None, false).await.unwrap(), DocumentSaveOutcome::Saved(snapshot) if snapshot.document.unwrap().markdown == PUBLISHED)
+        matches!(store.save_generated_summary_with_suggestions_if_revision(root.path(), "note", GENERATED, &revision(&store).await, None, false).await.unwrap(), DocumentSaveOutcome::Saved(snapshot) if snapshot.document.as_ref().unwrap().markdown == PUBLISHED)
     );
 }
 
