@@ -13526,6 +13526,1138 @@
       "new_cases": "Three owned-listener parser/ownership cases include rejection of wildcard/IPv6, extra/missing/wrong-port listeners and malformed data; unrelated namespace rows and established connections do not count as owned listeners.",
       "runtime_assertion": "Read bounded service PID fd/tcp/tcp6 snapshots before and after restart, confirm stable process start ticks and expected listener inode ownership, preserve owned raw rows and table hashes, and require only the configured IPv4 loopback listener.",
       "limits": "Offline helper tests only. Actual proc sampling and installed Linux deployment remain pending hosted CI. Rust sources unchanged since the recorded23b5766ecf all-target check; no desktop or physical tests resumed."
+    },
+    "hosted_f96f84_both_windows_architectures_terminal_2026_11_09": {
+      "source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+      "report_sha256": "e60a36e53e3c404e3075a737f44f87397c4e3a3af6bf4230f05386fe6a9d481d",
+      "report": {
+        "schema": 1,
+        "at": "2026-11-09 13:44:03 UTC",
+        "head": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+        "pr_merge": "a1357483949a487077852c7b6df5c1d5a31afab8",
+        "merge_parents": [
+          "a6a8f001d9165881e59fd0fa29df944da26b8801",
+          "f96f84c7dc916a04bd21a42ffc00be732af2a575"
+        ],
+        "all_requested_runs_terminal": true,
+        "runs": [
+          {
+            "id": 42618386270,
+            "event": "pull_request",
+            "conclusion": "failure"
+          },
+          {
+            "id": 42618500736,
+            "event": "workflow_dispatch",
+            "conclusion": "success"
+          }
+        ],
+        "jobs": [
+          {
+            "id": 129163901342,
+            "name": "native (windows-2025, x86_64-pc-windows-msvc)",
+            "run_id": 42618386270,
+            "event": "pull_request",
+            "attempt": 1,
+            "conclusion": "failure",
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129163901342.log",
+            "bytes": 567442,
+            "sha256": "99a3d8f30b69c4a0c7af1a7967fcdfe8c2b7ff2f0801a4687baa7b57f1ec853d",
+            "expected_checkout": "a1357483949a487077852c7b6df5c1d5a31afab8",
+            "rust_cohorts": 70,
+            "rust_passed": 2343,
+            "rust_failed": 2,
+            "rust_ignored": 47,
+            "connector_utf8_byte_fidelity_verified": true,
+            "cargo_only": {
+              "cohorts": 68,
+              "passed": 2335,
+              "failed": 2,
+              "ignored": 47
+            },
+            "standalone_git_helpers": {
+              "passed": 4,
+              "failed": 0,
+              "ignored": 0,
+              "names": [
+                "ordinary_repository_and_source_archive_keep_existing_fallback_behavior",
+                "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit",
+                "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change",
+                "detached_head_and_branch_switch_are_tracked_without_object_directory_watches"
+              ]
+            },
+            "standalone_release_policy": {
+              "passed": 4,
+              "failed": 0,
+              "ignored": 0
+            },
+            "targeted_named_tests": [
+              {
+                "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+                "name": "successful_checked_teardown_closes_every_original_handle_once_before_releasing_context",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+                "name": "each_native_failure_or_panic_retains_context_owner_and_remaining_handles_without_retry",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+                "name": "partial_startup_preserves_first_error_and_cleans_only_acquired_resources",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+                "name": "unknown_registration_and_startup_unwind_never_free_a_live_callback_context",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream/ownership_tests.rs",
+                "name": "original_owner_retires_after_actual_native_drain_even_if_control_survives",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream/ownership_tests.rs",
+                "name": "dropped_observer_cannot_release_original_owner_while_native_factory_is_blocked",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream/ownership_tests.rs",
+                "name": "native_panic_releases_owner_only_after_the_actual_worker_unwinds",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "archive_interruptions_recover_exact_receipt_bytes_and_index_once",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "opening_history_does_not_read_archived_bodies_and_point_reads_validate_them",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "legacy_and_ambiguous_work_never_acquire_invented_drain_proofs",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "conflicting_archive_destinations_and_missing_move_inputs_are_never_overwritten",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "history_pagination_is_snapshot_bound_and_does_not_adopt_later_archives",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "archived_point_reads_reject_valid_json_mutation_and_changed_sequence_locator",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "empty_history_reads_do_not_migrate_legacy_private_layout",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "maximum_private_directory_recovers_after_adding_its_separate_locator",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "more_than_4096_real_local_admissions_preserve_uuid_history_without_active_growth",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "full_legacy_active_inventory_does_not_count_the_reserved_history_directory",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "archive_waits_for_original_record_reader_and_preserves_abandoned_io_ownership",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "shutdown_waits_for_abandoned_archive_io_and_closes_new_history_admission",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "shutdown_waits_for_abandoned_history_reader_actual_end",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "archived_review_resolution_replays_original_decision_without_current_session_reads",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "standalone_local_cli_cannot_bypass_original_unknown_review_or_rewrite_its_receipt",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "standalone_local_cli_allows_confirmed_drained_terminal_receipt_without_loading_service",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "malformed_future_and_unexpected_local_inventory_fail_closed_without_writes",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "known_history_layout_is_checked_without_recursively_scanning_or_initializing_it",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "stored_conflict_requires_actual_drain_evidence_instead_of_a_terminal_enum",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "initialized_service_keeps_legacy_terminal_readable_but_cannot_invent_its_drain",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "original_native_physical_and_persistence_barriers_both_precede_source_binding",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "process_restart_requires_review_and_never_reconstructs_unconfirmed_producer_completion",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "declaration_binds_authoritative_append_state_and_original_summary_revision",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "changed_canonical_source_retains_output_and_explicit_recovery_never_repeats_inference",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "eligibility_counts_unicode_characters_and_requires_five_canonical_words",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "summary_keeps_original_lifecycle_admission_until_actual_cancelled_generation_drains",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "changed_transcript_during_summary_keeps_the_target_unchanged",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "confirmed_batch_capture_publishes_retained_output_once_under_original_owner",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "lost_parent_summary_completion_replays_original_child_without_new_generation_or_write",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "busy_model_preflight_copies_no_audio_and_explicit_retry_dispatches_only_once",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_waits_for_native_source_drain_retains_late_result_and_survives_restart",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_waits_for_actual_summary_child_and_preserves_saved_content",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_winning_final_inference_admission_never_calls_native_engine",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_winning_dispatch_fence_never_polls_preparation_or_summary_submission",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_controls_never_offer_unknown_producer_or_conflict_recovery",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_private_schema_preserves_legacy_without_inventing_cancel_or_drain_proof",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_controls_do_not_offer_recovery_for_a_terminal_cancelled_summary_child",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_after_preparation_prevents_transcript_commit_and_summary",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_after_admitted_commit_preserves_publication_and_waits_for_receipt",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_before_retained_publication_commit_preserves_original_content",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_after_retained_publication_commit_waits_for_original_receipt",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen",
+                "windows_expected": true,
+                "outcomes": [
+                  "FAILED"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_resolution_refuses_unknown_or_live_ownership_and_changed_session_generation",
+                "windows_expected": true,
+                "outcomes": [
+                  "FAILED"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/mic.rs",
+                "name": "backend_callback_holders_keep_original_owner_after_outer_stream_thread_drops",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream.rs",
+                "name": "speaker_setup_preserves_uncertain_cleanup_through_error_wrappers",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream.rs",
+                "name": "unconfirmed_native_stop_never_produces_a_successful_control_receipt",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/listener-core/src/actors/source/stream.rs",
+                "name": "uncertain_native_startup_cleanup_never_reports_physical_resources_stopped",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/listener-core/src/actors/recorder/disk.rs",
+                "name": "original_owner_survives_wav_mp3_finalization_and_all_disk_file_drops",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/capture_append/audio.rs",
+                "name": "buffered_pcm_output_preserves_exact_wav_bytes_with_bounded_write_calls",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/capture_append/audio.rs",
+                "name": "buffered_pcm_output_propagates_underlying_write_and_final_flush_errors",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/listener-core/src/actors/source/stream.rs",
+                "name": "native_startup_owns_original_runtime_even_after_source_future_unwinds",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              }
+            ],
+            "only_failures": [
+              "local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen",
+              "local_capture_resolution_refuses_unknown_or_live_ownership_and_changed_session_generation"
+            ],
+            "failure_location": "crates/loofah-core/src/local_capture_intents/tests.rs:1466:41",
+            "failure": "Both whole-fixture byte snapshots failed with Windows OS33 (locked region) while reading files. The snapshot included the original exclusively locked vault/.loofah-vault.lock.",
+            "installer_steps": [
+              {
+                "name": "Test installer process ownership",
+                "status": "completed",
+                "conclusion": "skipped",
+                "number": 22
+              },
+              {
+                "name": "Test installed app and uninstall",
+                "status": "completed",
+                "conclusion": "skipped",
+                "number": 23
+              }
+            ]
+          },
+          {
+            "id": 129163901775,
+            "name": "native (windows-11-arm, aarch64-pc-windows-msvc)",
+            "run_id": 42618386270,
+            "event": "pull_request",
+            "attempt": 1,
+            "conclusion": "failure",
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129163901775.log",
+            "bytes": 582798,
+            "sha256": "43e20261be09ddc32705f0f058eca388f14ae0b4c6ed2689951c1d73988be006",
+            "expected_checkout": "a1357483949a487077852c7b6df5c1d5a31afab8",
+            "rust_cohorts": 70,
+            "rust_passed": 2343,
+            "rust_failed": 2,
+            "rust_ignored": 47,
+            "connector_utf8_byte_fidelity_verified": true,
+            "cargo_only": {
+              "cohorts": 68,
+              "passed": 2335,
+              "failed": 2,
+              "ignored": 47
+            },
+            "standalone_git_helpers": {
+              "passed": 4,
+              "failed": 0,
+              "ignored": 0,
+              "names": [
+                "ordinary_repository_and_source_archive_keep_existing_fallback_behavior",
+                "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit",
+                "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change",
+                "detached_head_and_branch_switch_are_tracked_without_object_directory_watches"
+              ]
+            },
+            "standalone_release_policy": {
+              "passed": 4,
+              "failed": 0,
+              "ignored": 0
+            },
+            "targeted_named_tests": [
+              {
+                "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+                "name": "successful_checked_teardown_closes_every_original_handle_once_before_releasing_context",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+                "name": "each_native_failure_or_panic_retains_context_owner_and_remaining_handles_without_retry",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+                "name": "partial_startup_preserves_first_error_and_cleans_only_acquired_resources",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+                "name": "unknown_registration_and_startup_unwind_never_free_a_live_callback_context",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream/ownership_tests.rs",
+                "name": "original_owner_retires_after_actual_native_drain_even_if_control_survives",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream/ownership_tests.rs",
+                "name": "dropped_observer_cannot_release_original_owner_while_native_factory_is_blocked",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream/ownership_tests.rs",
+                "name": "native_panic_releases_owner_only_after_the_actual_worker_unwinds",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "archive_interruptions_recover_exact_receipt_bytes_and_index_once",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "opening_history_does_not_read_archived_bodies_and_point_reads_validate_them",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "legacy_and_ambiguous_work_never_acquire_invented_drain_proofs",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "conflicting_archive_destinations_and_missing_move_inputs_are_never_overwritten",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "history_pagination_is_snapshot_bound_and_does_not_adopt_later_archives",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "archived_point_reads_reject_valid_json_mutation_and_changed_sequence_locator",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "empty_history_reads_do_not_migrate_legacy_private_layout",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+                "name": "maximum_private_directory_recovers_after_adding_its_separate_locator",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "more_than_4096_real_local_admissions_preserve_uuid_history_without_active_growth",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "full_legacy_active_inventory_does_not_count_the_reserved_history_directory",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "archive_waits_for_original_record_reader_and_preserves_abandoned_io_ownership",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "shutdown_waits_for_abandoned_archive_io_and_closes_new_history_admission",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "shutdown_waits_for_abandoned_history_reader_actual_end",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+                "name": "archived_review_resolution_replays_original_decision_without_current_session_reads",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "standalone_local_cli_cannot_bypass_original_unknown_review_or_rewrite_its_receipt",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "standalone_local_cli_allows_confirmed_drained_terminal_receipt_without_loading_service",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "malformed_future_and_unexpected_local_inventory_fail_closed_without_writes",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "known_history_layout_is_checked_without_recursively_scanning_or_initializing_it",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "stored_conflict_requires_actual_drain_evidence_instead_of_a_terminal_enum",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+                "name": "initialized_service_keeps_legacy_terminal_readable_but_cannot_invent_its_drain",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "original_native_physical_and_persistence_barriers_both_precede_source_binding",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "process_restart_requires_review_and_never_reconstructs_unconfirmed_producer_completion",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "declaration_binds_authoritative_append_state_and_original_summary_revision",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "changed_canonical_source_retains_output_and_explicit_recovery_never_repeats_inference",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "eligibility_counts_unicode_characters_and_requires_five_canonical_words",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "summary_keeps_original_lifecycle_admission_until_actual_cancelled_generation_drains",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "changed_transcript_during_summary_keeps_the_target_unchanged",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "confirmed_batch_capture_publishes_retained_output_once_under_original_owner",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "lost_parent_summary_completion_replays_original_child_without_new_generation_or_write",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "busy_model_preflight_copies_no_audio_and_explicit_retry_dispatches_only_once",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_waits_for_native_source_drain_retains_late_result_and_survives_restart",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_waits_for_actual_summary_child_and_preserves_saved_content",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_winning_final_inference_admission_never_calls_native_engine",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_winning_dispatch_fence_never_polls_preparation_or_summary_submission",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_controls_never_offer_unknown_producer_or_conflict_recovery",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_private_schema_preserves_legacy_without_inventing_cancel_or_drain_proof",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_controls_do_not_offer_recovery_for_a_terminal_cancelled_summary_child",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_after_preparation_prevents_transcript_commit_and_summary",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_after_admitted_commit_preserves_publication_and_waits_for_receipt",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_before_retained_publication_commit_preserves_original_content",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_cancel_after_retained_publication_commit_waits_for_original_receipt",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen",
+                "windows_expected": true,
+                "outcomes": [
+                  "FAILED"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+                "name": "local_capture_resolution_refuses_unknown_or_live_ownership_and_changed_session_generation",
+                "windows_expected": true,
+                "outcomes": [
+                  "FAILED"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/mic.rs",
+                "name": "backend_callback_holders_keep_original_owner_after_outer_stream_thread_drops",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream.rs",
+                "name": "speaker_setup_preserves_uncertain_cleanup_through_error_wrappers",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/audio-actual/src/capture/stream.rs",
+                "name": "unconfirmed_native_stop_never_produces_a_successful_control_receipt",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/listener-core/src/actors/source/stream.rs",
+                "name": "uncertain_native_startup_cleanup_never_reports_physical_resources_stopped",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/listener-core/src/actors/recorder/disk.rs",
+                "name": "original_owner_survives_wav_mp3_finalization_and_all_disk_file_drops",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/capture_append/audio.rs",
+                "name": "buffered_pcm_output_preserves_exact_wav_bytes_with_bounded_write_calls",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/loofah-core/src/capture_append/audio.rs",
+                "name": "buffered_pcm_output_propagates_underlying_write_and_final_flush_errors",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              },
+              {
+                "file": "crates/listener-core/src/actors/source/stream.rs",
+                "name": "native_startup_owns_original_runtime_even_after_source_future_unwinds",
+                "windows_expected": true,
+                "outcomes": [
+                  "ok"
+                ]
+              }
+            ],
+            "only_failures": [
+              "local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen",
+              "local_capture_resolution_refuses_unknown_or_live_ownership_and_changed_session_generation"
+            ],
+            "failure_location": "crates/loofah-core/src/local_capture_intents/tests.rs:1466:41",
+            "failure": "Both whole-fixture byte snapshots failed with Windows OS33 (locked region) while reading files. The snapshot included the original exclusively locked vault/.loofah-vault.lock.",
+            "installer_steps": [
+              {
+                "name": "Test installer process ownership",
+                "status": "completed",
+                "conclusion": "skipped",
+                "number": 22
+              },
+              {
+                "name": "Test installed app and uninstall",
+                "status": "completed",
+                "conclusion": "skipped",
+                "number": 23
+              }
+            ]
+          },
+          {
+            "id": 129164294451,
+            "name": "speech-models (windows-11-arm)",
+            "run_id": 42618500736,
+            "event": "workflow_dispatch",
+            "attempt": 1,
+            "conclusion": "success",
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129164294451.log",
+            "bytes": 87144,
+            "sha256": "b9c3812fa8d90e308918abda5c7d4d814700fdfc245ca4106baf6084fd26bb3b",
+            "expected_checkout": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+            "rust_cohorts": 7,
+            "rust_passed": 8,
+            "rust_failed": 0,
+            "rust_ignored": 0,
+            "connector_utf8_byte_fidelity_verified": true,
+            "qualification": "Actual CPU automatic/forced transcription, cancellation and native graph abort, live/batch transport, pinned ONNX, timestamped speaker labels and reference embedding."
+          },
+          {
+            "id": 129164294637,
+            "name": "speech-models (windows-2025)",
+            "run_id": 42618500736,
+            "event": "workflow_dispatch",
+            "attempt": 1,
+            "conclusion": "success",
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129164294637.log",
+            "bytes": 84353,
+            "sha256": "bc540fbc30bd0d8d831b03a7335ed4813a0a731a2929dbb15e2a374c4c96f875",
+            "expected_checkout": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+            "rust_cohorts": 7,
+            "rust_passed": 8,
+            "rust_failed": 0,
+            "rust_ignored": 0,
+            "connector_utf8_byte_fidelity_verified": true,
+            "qualification": "Actual CPU automatic/forced transcription, cancellation and native graph abort, live/batch transport, pinned ONNX, timestamped speaker labels and reference embedding."
+          }
+        ],
+        "artifacts": {
+          "42618386270": [],
+          "42618500736": []
+        },
+        "fixture_correction": {
+          "source_commit": "06c484bc78275620929c2d16b6b97158c1783468",
+          "integrated_commit": "df585977eae0ed874d1e0ec2f70fcaef472df004",
+          "scope": "Test-only exact root-relative lease exclusion; same-basename session sentinel stays byte-preserved. No production lock changes. Local exact two-test validation was reported by Root; fresh Windows qualification is pending."
+        },
+        "limits": [
+          "Installer process fixtures, installer build and strict actual install/uninstall were skipped on both architectures. No installer artifacts exist for this run.",
+          "The earlier ARM uninstall cause remains unproven; this run cannot qualify its correction.",
+          "Hosted generic ownership/teardown tests do not establish physical device acceptance.",
+          "Workstation desktop/runtime testing remains paused. No job was retried or cancelled by this collector."
+        ]
+      },
+      "correction": "df585977eae0ed874d1e0ec2f70fcaef472df004",
+      "scope": "Both native Windows jobs completed with identical two OS33 fixture snapshots, all other targeted tests passed. Production locking remains unchanged. Both speech runs passed; installer/uninstall steps were skipped. No job cancelled or retried. The correction needs fresh Windows qualification."
     }
   },
   "local_work_focused": [

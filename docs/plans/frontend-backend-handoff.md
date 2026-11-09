@@ -2875,3 +2875,16 @@ new offline cases cover ownership, endpoint rejection and malformed/native-word
 parsing. All 54 workflow helpers passed at `65d5f026fa`; actual Linux proc sampling
 and installed deployment remain pending CI. Rust source has not changed since
 the recorded integrated compile and two proxy passes.
+
+
+The original f96f84 normal Windows run is now terminal on both architectures.
+Each selected Cargo graph reported 2,335 passed / two failed / 47 ignored across
+68 cohorts; independent Git metadata and release-policy fixtures add eight passes
+for an overall 2,343/2/47. Both failures are the same exclusive lease-file snapshot
+reads corrected in `df585977ea`; all 56 other named Windows-applicable targeted
+cases passed on each architecture. Installer/process/uninstall steps were skipped
+on both, so the previous ARM uninstall issue remains a separate unqualified gate.
+Both direct-head speech jobs passed eight cases each. The original runs were not
+cancelled or retried; all requested jobs were terminal at 13:44:03 UTC. Full raw
+hashes and named evidence are preserved in the existing portable record before
+pushing the corrected fixture and new headless acceptance batch.
