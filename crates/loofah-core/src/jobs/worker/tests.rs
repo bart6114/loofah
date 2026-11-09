@@ -249,10 +249,13 @@ async fn worker_wakes_for_new_jobs_and_commits_real_vault_documents_without_a_de
         f.terminal(&job.id).await.state,
         ProcessingJobState::Succeeded
     );
-    assert_eq!(f.summary().await, "# Decisions\n- Ship Friday");
+    assert_eq!(
+        f.summary().await,
+        "# Release plan\n\n# Decisions\n- Ship Friday"
+    );
     assert_eq!(
         f.journal.result(job.id).await.unwrap().unwrap().markdown,
-        f.summary().await
+        "# Decisions\n- Ship Friday"
     );
     assert_eq!(
         std::fs::read(f.context.store.vault_base().join("sessions/note/notes.md")).unwrap(),
@@ -413,7 +416,7 @@ async fn a_commit_grant_is_held_through_apply_and_cancellation_cannot_undo_a_com
         f.terminal(&job.id).await.state,
         ProcessingJobState::Succeeded
     );
-    assert_eq!(f.summary().await, "# Committed result");
+    assert_eq!(f.summary().await, "# Release plan\n\n# Committed result");
     worker.shutdown().await.unwrap();
 }
 
@@ -1124,7 +1127,10 @@ async fn conditional_jobs_generate_once_for_an_unchanged_empty_document_and_reop
     );
     assert_eq!(f.generator.calls.load(Ordering::SeqCst), 1);
     worker.shutdown().await.unwrap();
-    assert_eq!(f.summary().await, "Generated automatically");
+    assert_eq!(
+        f.summary().await,
+        "# Release plan\n\nGenerated automatically"
+    );
     let Fixture {
         root,
         context,

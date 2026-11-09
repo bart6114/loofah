@@ -7,7 +7,8 @@ use std::{
 };
 
 const BEFORE: &str = "# Before\n- [ ] Follow up";
-const AFTER: &str = "# Decisions\n- [ ] Follow up\n- [ ] Send agenda";
+const GENERATED: &str = "# Decisions\n- [ ] Follow up\n- [ ] Send agenda";
+const PUBLISHED: &str = "# Keep title\n\n# Decisions\n- [ ] Follow up\n- [ ] Send agenda";
 
 async fn fixture() -> (tempfile::TempDir, tempfile::TempDir, SessionStore) {
     let vault = tempfile::tempdir().unwrap();
@@ -95,7 +96,7 @@ async fn save(
         .save_generated_summary_with_suggestions_if_revision(
             root,
             "note",
-            AFTER,
+            GENERATED,
             &revision(store).await,
             suggestions,
             auto,
@@ -123,7 +124,7 @@ async fn failed_at(
         .save_generated_summary_with_checkpoint(
             root,
             "note",
-            (AFTER, &revision(store).await),
+            (GENERATED, &revision(store).await),
             suggestions(),
             true,
             move |current| async move {
@@ -257,7 +258,7 @@ async fn a_first_summary_can_be_created_against_its_absent_revision() {
         .save_generated_summary_with_suggestions_if_revision(
             runtime.path(),
             "note",
-            AFTER,
+            GENERATED,
             &absent.revision,
             suggestions(),
             true,
@@ -265,7 +266,7 @@ async fn a_first_summary_can_be_created_against_its_absent_revision() {
         .await
         .unwrap();
     assert!(
-        matches!(outcome,DocumentSaveOutcome::Saved(snapshot) if snapshot.document.as_ref().unwrap().markdown==AFTER)
+        matches!(outcome,DocumentSaveOutcome::Saved(snapshot) if snapshot.document.as_ref().unwrap().markdown==PUBLISHED)
     );
     assert!(
         store
@@ -292,7 +293,7 @@ async fn stale_summary_is_rejected_without_applying_tags_or_replacing_newer_task
         .save_generated_summary_with_suggestions_if_revision(
             runtime.path(),
             "note",
-            AFTER,
+            GENERATED,
             &stale,
             suggestions(),
             true,
@@ -316,7 +317,7 @@ async fn uncertain_body_publication_updates_the_index_and_invalidates_content_fo
             .await
             .is_err()
     );
-    assert_eq!(store.summary_get("note").as_deref(), Some(AFTER));
+    assert_eq!(store.summary_get("note").as_deref(), Some(PUBLISHED));
     let mut entities = std::collections::HashSet::new();
     while let Ok(change) = changes.try_recv() {
         entities.insert(format!("{:?}", change.entity));
@@ -375,7 +376,7 @@ async fn fault_after_each_file_boundary_recovers_once_without_a_second_generatio
             assert_eq!(actual.document.unwrap().markdown, BEFORE);
             assert_eq!(files(vault.path()), before);
         } else {
-            assert_eq!(actual.document.unwrap().markdown, AFTER);
+            assert_eq!(actual.document.unwrap().markdown, PUBLISHED);
             let meta = store.read_meta("note").await.unwrap().unwrap();
             assert!(meta.tags.contains(&"project/new".into()));
             assert_eq!(
@@ -530,7 +531,7 @@ async fn corrupt_or_symlinked_registry_never_becomes_an_empty_replacement() {
                 .save_generated_summary_with_suggestions_if_revision(
                     runtime.path(),
                     "note",
-                    AFTER,
+                    GENERATED,
                     &revision(&store).await,
                     suggestions(),
                     true
@@ -553,7 +554,7 @@ async fn corrupt_or_symlinked_registry_never_becomes_an_empty_replacement() {
                 .save_generated_summary_with_suggestions_if_revision(
                     runtime.path(),
                     "note",
-                    AFTER,
+                    GENERATED,
                     &revision(&store).await,
                     suggestions(),
                     true
@@ -569,11 +570,16 @@ async fn corrupt_or_symlinked_registry_never_becomes_an_empty_replacement() {
 #[tokio::test]
 async fn unchanged_body_still_recovers_the_admitted_tag_and_task_updates() {
     let (vault, runtime, store) = fixture().await;
+    let unchanged = "# Keep title\n\n# Before\n- [ ] Follow up";
+    store
+        .update_generated_summary("note", unchanged, Some(BEFORE))
+        .await
+        .unwrap();
     let result = store
         .save_generated_summary_with_checkpoint(
             runtime.path(),
             "note",
-            (BEFORE, &revision(&store).await),
+            (unchanged, &revision(&store).await),
             suggestions(),
             true,
             |stage| async move {
@@ -611,7 +617,7 @@ async fn recording_refuses_application_and_keeps_uncertain_recovery_until_record
             .save_generated_summary_with_suggestions_if_revision(
                 runtime.path(),
                 "note",
-                AFTER,
+                GENERATED,
                 &revision(&store).await,
                 suggestions(),
                 true
@@ -651,7 +657,7 @@ async fn cancellation_keeps_the_continuous_write_lock_until_all_admitted_files_f
             .save_generated_summary_with_checkpoint(
                 &root,
                 "note",
-                (AFTER, &expected),
+                (GENERATED, &expected),
                 suggestions(),
                 true,
                 move |stage| {
@@ -736,7 +742,7 @@ async fn legacy_summary_migration_and_filename_collision_preserve_task_identity_
         save(&store, runtime.path(), suggestions(), true).await;
         assert_eq!(
             store.read_summary("note").await.unwrap().as_deref(),
-            Some(AFTER)
+            Some(PUBLISHED)
         );
         let tasks = store.session_tasks("note").await.unwrap();
         let current = tasks.iter().find(|task| task.text == "Follow up").unwrap();
@@ -751,7 +757,7 @@ async fn legacy_summary_migration_and_filename_collision_preserve_task_identity_
         } else {
             assert_eq!(
                 std::fs::read_to_string(vault.path().join("sessions/note/summary.md")).unwrap(),
-                AFTER
+                PUBLISHED
             );
             assert!(
                 !vault
@@ -797,7 +803,7 @@ async fn interrupted_legacy_collision_recovers_each_boundary_without_replacing_f
             Some(if stage == CommitStage::Intent {
                 BEFORE
             } else {
-                AFTER
+                PUBLISHED
             })
         );
         assert_eq!(
@@ -884,7 +890,7 @@ async fn killed_processes_leave_recoverable_intents_at_each_file_boundary() {
             Some(if stage == CommitStage::Intent {
                 BEFORE
             } else {
-                AFTER
+                PUBLISHED
             })
         );
         assert_eq!(
@@ -915,7 +921,7 @@ async fn generated_summary_child() {
         .save_generated_summary_with_checkpoint(
             &runtime,
             "note",
-            (AFTER, &revision(&store).await),
+            (GENERATED, &revision(&store).await),
             suggestions(),
             true,
             move |current| {
@@ -931,4 +937,253 @@ async fn generated_summary_child() {
         .await
         .unwrap();
     panic!("subprocess did not exit at its boundary");
+}
+
+#[tokio::test]
+async fn generated_summary_stamps_existing_title_with_legacy_markdown_semantics() {
+    for (title, markdown, expected) in [
+        ("Keep title", GENERATED, PUBLISHED),
+        (
+            " Keep title ",
+            "  # Keep title\n\nAlready headed",
+            "  # Keep title\n\nAlready headed",
+        ),
+        ("", GENERATED, GENERATED),
+        ("  ", GENERATED, GENERATED),
+        (
+            "**Title**\n- [ ] Heading action",
+            "# Provider heading\nBody",
+            "# **Title**\n- [ ] Heading action\n\n# Provider heading\nBody",
+        ),
+    ] {
+        let (vault, root, store) = fixture().await;
+        store
+            .update_meta(
+                "note",
+                crate::SessionMetaPatch {
+                    title: Some(title.into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let outcome = store
+            .save_generated_summary_with_suggestions_if_revision(
+                root.path(),
+                "note",
+                markdown,
+                &revision(&store).await,
+                None,
+                false,
+            )
+            .await
+            .unwrap();
+        let DocumentSaveOutcome::Saved(snapshot) = outcome else {
+            panic!("expected saved generated document")
+        };
+        assert_eq!(snapshot.document.unwrap().markdown, expected);
+        assert_eq!(store.read_meta("note").await.unwrap().unwrap().title, title);
+        if title.contains("Heading action") {
+            assert!(
+                store
+                    .session_tasks("note")
+                    .await
+                    .unwrap()
+                    .iter()
+                    .any(|task| task.text == "Heading action")
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(vault.path().join("sessions/note/summary.md")).unwrap(),
+            expected
+        );
+        assert!(!intent(root.path()).exists());
+    }
+}
+
+#[tokio::test]
+async fn generated_summary_checks_prepared_title_before_any_publication() {
+    for (before_title, after_title) in [
+        ("Keep title", "Renamed"),
+        ("", "New title"),
+        ("Keep title", ""),
+    ] {
+        let (vault, root, store) = fixture().await;
+        store
+            .update_meta(
+                "note",
+                crate::SessionMetaPatch {
+                    title: Some(before_title.into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let expected_revision = revision(&store).await;
+        let before = files(vault.path());
+        let updater = store.clone();
+        let outcome = store
+            .save_generated_summary_with_checkpoint(
+                root.path(),
+                "note",
+                (GENERATED, &expected_revision),
+                None,
+                false,
+                move |stage| {
+                    let updater = updater.clone();
+                    async move {
+                        if stage == CommitStage::Prepared {
+                            updater
+                                .update_meta(
+                                    "note",
+                                    crate::SessionMetaPatch {
+                                        title: Some(after_title.into()),
+                                        ..Default::default()
+                                    },
+                                )
+                                .await?;
+                        }
+                        Ok(())
+                    }
+                },
+            )
+            .await
+            .unwrap();
+        assert!(
+            matches!(outcome, DocumentSaveOutcome::Conflict(snapshot) if snapshot.revision == expected_revision)
+        );
+        let after = files(vault.path());
+        for index in [0, 2, 3] {
+            assert_eq!(before[index], after[index]);
+        }
+        assert_eq!(
+            store.read_meta("note").await.unwrap().unwrap().title,
+            after_title
+        );
+        assert!(!intent(root.path()).exists());
+    }
+}
+
+#[tokio::test]
+async fn generated_summary_accepts_unrelated_metadata_edits_after_preparation() {
+    let (_vault, root, store) = fixture().await;
+    let expected_revision = revision(&store).await;
+    let updater = store.clone();
+    let outcome = store
+        .save_generated_summary_with_checkpoint(
+            root.path(),
+            "note",
+            (GENERATED, &expected_revision),
+            None,
+            false,
+            move |stage| {
+                let updater = updater.clone();
+                async move {
+                    if stage == CommitStage::Prepared {
+                        updater
+                            .update_meta(
+                                "note",
+                                crate::SessionMetaPatch {
+                                    tags: Some(vec!["manual".into()]),
+                                    ..Default::default()
+                                },
+                            )
+                            .await?;
+                    }
+                    Ok(())
+                }
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(outcome, DocumentSaveOutcome::Saved(snapshot) if snapshot.document.unwrap().markdown == PUBLISHED)
+    );
+    assert_eq!(
+        store.read_meta("note").await.unwrap().unwrap().tags,
+        ["manual"]
+    );
+}
+
+#[tokio::test]
+async fn generated_summary_quota_includes_stamped_title_before_intent() {
+    let (vault, root, mut store) = fixture().await;
+    store.content_limits.note_write_bytes = GENERATED.len();
+    let before = files(vault.path());
+    let markdown = GENERATED;
+    let outcome = store
+        .save_generated_summary_with_suggestions_if_revision(
+            root.path(),
+            "note",
+            markdown,
+            &revision(&store).await,
+            None,
+            false,
+        )
+        .await;
+    assert!(matches!(outcome, Err(StoreError::ResourceLimit(_))));
+    assert_eq!(files(vault.path()), before);
+    assert!(!intent(root.path()).exists());
+    store.content_limits.note_write_bytes = PUBLISHED.len();
+    assert!(
+        matches!(store.save_generated_summary_with_suggestions_if_revision(root.path(), "note", GENERATED, &revision(&store).await, None, false).await.unwrap(), DocumentSaveOutcome::Saved(snapshot) if snapshot.document.unwrap().markdown == PUBLISHED)
+    );
+}
+
+#[tokio::test]
+async fn generated_summary_rename_conflict_does_not_migrate_legacy_body() {
+    let (vault, root, store) = fixture().await;
+    let canonical = vault.path().join("sessions/note/summary.md");
+    std::fs::remove_file(&canonical).unwrap();
+    store
+        .write_enhanced_doc(&crate::EnhancedDoc {
+            id: "old-summary".into(),
+            session_id: "note".into(),
+            kind: "summary".into(),
+            title: "Legacy title".into(),
+            template_id: String::new(),
+            sort_order: 0,
+            markdown: BEFORE.into(),
+        })
+        .await
+        .unwrap();
+    let legacy = vault.path().join("sessions/note/enhanced/old-summary.md");
+    let before = std::fs::read(&legacy).unwrap();
+    let tasks = std::fs::read(vault.path().join("sessions/note/tasks.json")).unwrap();
+    let updater = store.clone();
+    let outcome = store
+        .save_generated_summary_with_checkpoint(
+            root.path(),
+            "note",
+            (GENERATED, &revision(&store).await),
+            suggestions(),
+            true,
+            move |stage| {
+                let updater = updater.clone();
+                async move {
+                    if stage == CommitStage::Prepared {
+                        updater
+                            .update_meta(
+                                "note",
+                                crate::SessionMetaPatch {
+                                    title: Some("Renamed".into()),
+                                    ..Default::default()
+                                },
+                            )
+                            .await?;
+                    }
+                    Ok(())
+                }
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(outcome, DocumentSaveOutcome::Conflict(_)));
+    assert!(!canonical.exists());
+    assert_eq!(std::fs::read(legacy).unwrap(), before);
+    assert_eq!(
+        std::fs::read(vault.path().join("sessions/note/tasks.json")).unwrap(),
+        tasks
+    );
+    assert!(!intent(root.path()).exists());
 }

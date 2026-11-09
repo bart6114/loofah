@@ -7,6 +7,7 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CommitStage {
+    Prepared,
     Intent,
     Body,
     Tasks,
@@ -73,13 +74,10 @@ impl SessionStore {
                 "Invalid generated tag suggestions".into(),
             ));
         }
-        let markdown = markdown.to_owned();
-        let parse = markdown.clone();
-        let content = self
-            .spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
-            .await
-            .map_err(|error| StoreError::Io(error.to_string()))?
-            .map_err(StoreError::Serialize)?;
+        let (prepared_title, markdown, content) = self
+            .prepare_generated_markdown(operation_root, session_id, markdown)
+            .await?;
+        checkpoint(CommitStage::Prepared).await?;
         let expected_revision = expected_revision.to_owned();
         let root = operation_root.to_path_buf();
         self.recovered_read(
@@ -103,6 +101,14 @@ impl SessionStore {
                     if current.revision != expected_revision {
                         return Ok(DocumentSaveOutcome::Conflict(current));
                     }
+                    let mut meta = store
+                        .metadata_snapshot_locked(guard, &id)
+                        .await?
+                        .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?
+                        .meta;
+                    if meta.title != prepared_title {
+                        return Ok(DocumentSaveOutcome::Conflict(current));
+                    }
                     let directory = store.writable_summary_dir(guard, &id).await?;
                     store
                         .try_migrate_summary_locked(guard, &id, &directory)
@@ -112,11 +118,6 @@ impl SessionStore {
                         .await?
                         .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
                     let before_tasks = store.document_tasks_hash(&id).await?;
-                    let mut meta = store
-                        .metadata_snapshot_locked(guard, &id)
-                        .await?
-                        .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?
-                        .meta;
                     let before = GeneratedTagMetadata::read(&meta);
                     let registered = suggestions
                         .map(|items| {

@@ -725,3 +725,89 @@ async fn cancellation_during_final_authorization_cannot_admit_title_application(
     assert_eq!(fixture.summary().await, BODY);
     worker.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn existing_title_is_published_atomically_for_both_policies_and_targets() {
+    for title_policy in [TitlePolicy::Preserve, TitlePolicy::GenerateIfEmpty] {
+        for template in [false, true] {
+            let fixture = Fixture::new(BODY, false).await;
+            let target = if template {
+                fixture
+                    .context
+                    .store
+                    .write_enhanced_doc(&hypr_vault_write::EnhancedDoc {
+                        id: "output".into(),
+                        session_id: "note".into(),
+                        kind: "template_output".into(),
+                        title: "Keep template name".into(),
+                        template_id: "custom".into(),
+                        sort_order: 3,
+                        markdown: "Original template".into(),
+                    })
+                    .await
+                    .unwrap();
+                DocumentTarget::TemplateOutput {
+                    document_id: "output".into(),
+                }
+            } else {
+                DocumentTarget::Summary
+            };
+            let generator = PreparedGenerator::new(Ok(Some("Must not run".into())), false, false);
+            let worker = worker(&fixture, generator.clone()).await;
+            let mut input = fixture.request(target.clone()).await;
+            input.title_policy = title_policy;
+            let job = fixture
+                .journal
+                .submit("member-one".into(), uuid::Uuid::new_v4().to_string(), input)
+                .await
+                .unwrap();
+            assert_eq!(
+                fixture.terminal(&job.id).await.state,
+                ProcessingJobState::Succeeded
+            );
+            let snapshot = fixture
+                .context
+                .read_document("note", &target)
+                .await
+                .unwrap();
+            let document = snapshot.document.unwrap();
+            assert_eq!(document.markdown, format!("# Release plan\n\n{BODY}"));
+            if template {
+                assert_eq!(document.title, "Keep template name");
+                assert_eq!(document.template_id, "custom");
+            }
+            let result = fixture
+                .journal
+                .owned_result("member-one".into(), job.id.clone())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(result.markdown, BODY);
+            assert_eq!(generator.state.body_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(generator.state.title_calls.load(Ordering::SeqCst), 0);
+            if title_policy == TitlePolicy::GenerateIfEmpty {
+                assert_eq!(
+                    result.title.unwrap().status,
+                    ProcessingTitleStatus::AlreadyNamed
+                );
+                let id = job.id.clone();
+                let recorded = fixture
+                    .journal
+                    .run(move |state, _| {
+                        Ok(state.records[&id]
+                            .body_applied
+                            .as_ref()
+                            .unwrap()
+                            .revision
+                            .clone())
+                    })
+                    .await
+                    .unwrap();
+                assert_eq!(recorded, snapshot.revision);
+            } else {
+                assert!(result.title.is_none());
+            }
+            worker.shutdown().await.unwrap();
+        }
+    }
+}

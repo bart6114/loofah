@@ -2,7 +2,8 @@ use super::*;
 use serde_json::{Value, json};
 
 const BEFORE: &str = "# Before\n- [ ] Follow up";
-const AFTER: &str = "# Actions\n- [ ] Follow up\n- [ ] Send agenda";
+const GENERATED: &str = "# Actions\n- [ ] Follow up\n- [ ] Send agenda";
+const PUBLISHED: &str = "# Keep title\n\n# Actions\n- [ ] Follow up\n- [ ] Send agenda";
 const PREFIX: &str = "---\r\n# Keep this comment\r\nkind: template_output\r\ntitle: Existing output\r\ntemplate_id: retired-template\r\nsort_order: 7\r\nfuture:\r\n  nested: [one, two]\r\n---\r\n\r\n";
 
 async fn fixture() -> (tempfile::TempDir, tempfile::TempDir, SessionStore) {
@@ -127,7 +128,7 @@ async fn save(
             root,
             "note",
             "output",
-            replacement(AFTER, &revision(store).await),
+            replacement(GENERATED, &revision(store).await),
             tags,
             auto,
         )
@@ -140,7 +141,7 @@ async fn failed_at(store: &SessionStore, root: &Path, stage: CommitStage) {
             .save_generated_template_with_checkpoint(
                 root,
                 ("note", "output"),
-                replacement(AFTER, &revision(store).await),
+                replacement(GENERATED, &revision(store).await),
                 suggestions(),
                 true,
                 move |at| async move {
@@ -178,7 +179,7 @@ async fn generated_template_preserves_raw_frontmatter_tasks_tag_policy_and_unkno
     ));
     assert_eq!(
         std::fs::read_to_string(body(vault.path())).unwrap(),
-        format!("{PREFIX}{AFTER}")
+        format!("{PREFIX}{PUBLISHED}")
     );
     let meta = store.read_meta("note").await.unwrap().unwrap();
     assert_eq!(meta.tags, ["attached", "project/new"]);
@@ -308,7 +309,7 @@ async fn generated_template_cas_covers_comments_unknown_frontmatter_body_and_met
                     root.path(),
                     "note",
                     "output",
-                    replacement(AFTER, &expected),
+                    replacement(GENERATED, &expected),
                     suggestions(),
                     true
                 )
@@ -355,7 +356,7 @@ async fn generated_template_missing_legacy_recording_and_invalid_suggestions_nev
                     root.path(),
                     "note",
                     "output",
-                    replacement(AFTER, &expected),
+                    replacement(GENERATED, &expected),
                     tags,
                     true
                 )
@@ -405,7 +406,7 @@ async fn generated_template_each_file_boundary_recovers_on_restart_without_rewri
                 if stage == CommitStage::Intent {
                     BEFORE
                 } else {
-                    AFTER
+                    PUBLISHED
                 }
             )
         );
@@ -597,7 +598,7 @@ async fn generated_template_intents_recover_beside_existing_schema_one_two_and_s
     store.recover_document_writes(root.path()).await.unwrap();
     assert_eq!(
         std::fs::read_to_string(body(vault.path())).unwrap(),
-        format!("{PREFIX}{AFTER}")
+        format!("{PREFIX}{PUBLISHED}")
     );
     for id in ["old-document", "old-note", "old-summary"] {
         assert_eq!(
@@ -624,7 +625,7 @@ async fn generated_template_commit_serializes_normal_frontmatter_updates() {
             .save_generated_template_with_checkpoint(
                 &operations,
                 ("note", "output"),
-                replacement(AFTER, &expected),
+                replacement(GENERATED, &expected),
                 suggestions(),
                 true,
                 move |stage| {
@@ -667,7 +668,7 @@ async fn generated_template_commit_serializes_normal_frontmatter_updates() {
         .unwrap()
         .unwrap();
     assert_eq!(doc.title, "Newer user title");
-    assert_eq!(doc.markdown, AFTER);
+    assert_eq!(doc.markdown, PUBLISHED);
     assert_eq!(
         store.read_meta("note").await.unwrap().unwrap().tags,
         ["attached", "project/new"]
@@ -708,7 +709,10 @@ async fn generated_template_killed_process_boundaries_recover_without_losing_hea
         store.recover_document_writes(root.path()).await.unwrap();
         assert_eq!(
             std::fs::read_to_string(body(vault.path())).unwrap(),
-            format!("{PREFIX}{}", if stage == "intent" { BEFORE } else { AFTER })
+            format!(
+                "{PREFIX}{}",
+                if stage == "intent" { BEFORE } else { PUBLISHED }
+            )
         );
         assert_eq!(
             store
@@ -737,11 +741,12 @@ async fn generated_template_crash_child() {
         .save_generated_template_with_checkpoint(
             &root,
             ("note", "output"),
-            replacement(AFTER, &revision(&store).await),
+            replacement(GENERATED, &revision(&store).await),
             suggestions(),
             true,
             move |at| {
                 let selected = match at {
+                    CommitStage::Prepared => "prepared",
                     CommitStage::Intent => "intent",
                     CommitStage::Body => "body",
                     CommitStage::Tasks => "tasks",
@@ -757,4 +762,195 @@ async fn generated_template_crash_child() {
         .await
         .unwrap();
     panic!("requested boundary was not reached");
+}
+
+#[tokio::test]
+async fn generated_enhanced_stamps_existing_title_with_legacy_markdown_semantics() {
+    for (title, markdown, expected) in [
+        ("Keep title", GENERATED, PUBLISHED),
+        (
+            " Keep title ",
+            "  # Keep title\n\nAlready headed",
+            "  # Keep title\n\nAlready headed",
+        ),
+        ("", GENERATED, GENERATED),
+        ("  ", GENERATED, GENERATED),
+        (
+            "**Title**\n- [ ] Heading action",
+            "# Provider heading\nBody",
+            "# **Title**\n- [ ] Heading action\n\n# Provider heading\nBody",
+        ),
+    ] {
+        let (vault, root, store) = fixture().await;
+        store
+            .update_meta(
+                "note",
+                crate::SessionMetaPatch {
+                    title: Some(title.into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let outcome = store
+            .save_generated_template_with_suggestions_if_revision(
+                root.path(),
+                "note",
+                "output",
+                replacement(markdown, &revision(&store).await),
+                None,
+                false,
+            )
+            .await
+            .unwrap();
+        let DocumentSaveOutcome::Saved(snapshot) = outcome else {
+            panic!("expected saved generated document")
+        };
+        assert_eq!(snapshot.document.unwrap().markdown, expected);
+        assert_eq!(store.read_meta("note").await.unwrap().unwrap().title, title);
+        if title.contains("Heading action") {
+            assert!(
+                store
+                    .session_tasks("note")
+                    .await
+                    .unwrap()
+                    .iter()
+                    .any(|task| task.text == "Heading action")
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(body(vault.path())).unwrap(),
+            format!("{PREFIX}{expected}")
+        );
+        assert!(!intent(root.path()).exists());
+    }
+}
+
+#[tokio::test]
+async fn generated_enhanced_checks_prepared_title_before_any_publication() {
+    for (before_title, after_title) in [
+        ("Keep title", "Renamed"),
+        ("", "New title"),
+        ("Keep title", ""),
+    ] {
+        let (vault, root, store) = fixture().await;
+        store
+            .update_meta(
+                "note",
+                crate::SessionMetaPatch {
+                    title: Some(before_title.into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let expected_revision = revision(&store).await;
+        let before = files(vault.path());
+        let updater = store.clone();
+        let outcome = store
+            .save_generated_template_with_checkpoint(
+                root.path(),
+                ("note", "output"),
+                replacement(GENERATED, &expected_revision),
+                None,
+                false,
+                move |stage| {
+                    let updater = updater.clone();
+                    async move {
+                        if stage == CommitStage::Prepared {
+                            updater
+                                .update_meta(
+                                    "note",
+                                    crate::SessionMetaPatch {
+                                        title: Some(after_title.into()),
+                                        ..Default::default()
+                                    },
+                                )
+                                .await?;
+                        }
+                        Ok(())
+                    }
+                },
+            )
+            .await
+            .unwrap();
+        assert!(
+            matches!(outcome, DocumentSaveOutcome::Conflict(snapshot) if snapshot.revision == expected_revision)
+        );
+        let after = files(vault.path());
+        for index in [0, 2, 3] {
+            assert_eq!(before[index], after[index]);
+        }
+        assert_eq!(
+            store.read_meta("note").await.unwrap().unwrap().title,
+            after_title
+        );
+        assert!(!intent(root.path()).exists());
+    }
+}
+
+#[tokio::test]
+async fn generated_enhanced_accepts_unrelated_metadata_edits_after_preparation() {
+    let (_vault, root, store) = fixture().await;
+    let expected_revision = revision(&store).await;
+    let updater = store.clone();
+    let outcome = store
+        .save_generated_template_with_checkpoint(
+            root.path(),
+            ("note", "output"),
+            replacement(GENERATED, &expected_revision),
+            None,
+            false,
+            move |stage| {
+                let updater = updater.clone();
+                async move {
+                    if stage == CommitStage::Prepared {
+                        updater
+                            .update_meta(
+                                "note",
+                                crate::SessionMetaPatch {
+                                    tags: Some(vec!["manual".into()]),
+                                    ..Default::default()
+                                },
+                            )
+                            .await?;
+                    }
+                    Ok(())
+                }
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(outcome, DocumentSaveOutcome::Saved(snapshot) if snapshot.document.unwrap().markdown == PUBLISHED)
+    );
+    assert_eq!(
+        store.read_meta("note").await.unwrap().unwrap().tags,
+        ["manual"]
+    );
+}
+
+#[tokio::test]
+async fn generated_enhanced_quota_includes_stamped_title_before_intent() {
+    let (vault, root, mut store) = fixture().await;
+    store.content_limits.note_write_bytes = GENERATED.len();
+    let before = files(vault.path());
+    let markdown = GENERATED;
+    let outcome = store
+        .save_generated_template_with_suggestions_if_revision(
+            root.path(),
+            "note",
+            "output",
+            replacement(markdown, &revision(&store).await),
+            None,
+            false,
+        )
+        .await;
+    assert!(matches!(outcome, Err(StoreError::ResourceLimit(_))));
+    assert_eq!(files(vault.path()), before);
+    assert!(!intent(root.path()).exists());
+    store.content_limits.note_write_bytes = PUBLISHED.len();
+    assert!(
+        matches!(store.save_generated_template_with_suggestions_if_revision(root.path(), "note", "output", replacement(GENERATED, &revision(&store).await), None, false).await.unwrap(), DocumentSaveOutcome::Saved(snapshot) if snapshot.document.unwrap().markdown == PUBLISHED)
+    );
 }

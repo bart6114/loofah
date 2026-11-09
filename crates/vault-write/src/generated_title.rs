@@ -646,6 +646,39 @@ fn make_intent(
     })
 }
 
+impl SessionStore {
+    pub(super) async fn prepare_generated_markdown(
+        &self,
+        operation_root: &Path,
+        session_id: &str,
+        markdown: &str,
+    ) -> Result<(String, String, serde_json::Value), StoreError> {
+        let title = self
+            .read_recovered_metadata_snapshot(Some(operation_root), session_id)
+            .await?
+            .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?
+            .meta
+            .title;
+        let markdown = if title.trim().is_empty() {
+            markdown.to_owned()
+        } else {
+            stamp_title(markdown, &title)
+        };
+        if markdown.len() > self.content_limits.note_write_bytes {
+            return Err(StoreError::ResourceLimit(
+                "Generated document including session title is too large".into(),
+            ));
+        }
+        let parse = markdown.clone();
+        let content = self
+            .spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
+            .await
+            .map_err(|cause| StoreError::Io(cause.to_string()))?
+            .map_err(StoreError::Serialize)?;
+        Ok((title, markdown, content))
+    }
+}
+
 pub(super) fn stamp_title(markdown: &str, title: &str) -> String {
     let title = title.trim();
     let content = markdown.trim_start();
