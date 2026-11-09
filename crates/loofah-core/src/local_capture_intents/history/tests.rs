@@ -343,3 +343,39 @@ pub(super) fn pause(
         .insert(path.into(), (stage.into(), entered, released));
     (waiting, release)
 }
+
+#[test]
+fn maximum_private_directory_recovers_after_adding_its_separate_locator() {
+    for stage in ["locator", "move"] {
+        let root = root();
+        let active = root.path().join("local-capture-intents");
+        let record = record();
+        let request = &record.status.declaration.request_id;
+        journal::persist(&active, &record, true).unwrap();
+        for index in 0..63 {
+            fs::write(
+                active.join(request).join(format!(".private-{index}")),
+                index.to_string(),
+            )
+            .unwrap();
+        }
+        let history = History::open(&active, "original-vault").unwrap();
+        FAULTS
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap()
+            .insert(history.directory.clone(), stage.into());
+        assert!(history.archive(&record).is_err());
+        let reopened = History::open(&active, "original-vault").unwrap();
+        let retained = reopened.read(request).unwrap().unwrap();
+        assert_eq!(fs::read_dir(&retained.directory).unwrap().count(), 65);
+        for index in 0..63 {
+            assert_eq!(
+                fs::read_to_string(retained.directory.join(format!(".private-{index}"))).unwrap(),
+                index.to_string()
+            );
+        }
+        assert_eq!(reopened.head().unwrap().total, 1);
+        assert_eq!(reopened.page(None, None, 10).unwrap().items.len(), 1);
+    }
+}

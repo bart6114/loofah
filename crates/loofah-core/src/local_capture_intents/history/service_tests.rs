@@ -266,3 +266,63 @@ async fn shutdown_waits_for_abandoned_history_reader_actual_end() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn archived_review_resolution_replays_original_decision_without_current_session_reads() {
+    let root = root();
+    let context = context(root.path()).await;
+    let mut record = tests::record();
+    record.version = 3;
+    record.status.declaration = declaration();
+    record.status.state = LocalCaptureState::Closed;
+    record.processing_drained = true;
+    record.physical = Some(Ok(()));
+    record.persistence = Some(Ok(LocalCapturePersistence {
+        live_transcription_active: false,
+        needs_batch_repair: false,
+        new_transcript_id: None,
+    }));
+    let resolution = LocalCaptureResolution {
+        resolution_id: uuid::Uuid::new_v4().to_string(),
+        expected_revision: "a".repeat(64),
+        decision: LocalCaptureResolutionDecision::KeepCurrentContent,
+    };
+    record.resolution = Some(resolution.clone());
+    let request = record.status.declaration.request_id.clone();
+    let active = root.path().join("operations/local-capture-intents");
+    journal::persist(&active, &record, true).unwrap();
+    let original = fs::read(active.join(&request).join("intent.json")).unwrap();
+    fs::write(
+        active.join(&request).join("unknown-private-copy"),
+        b"retained",
+    )
+    .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    assert!(service.state.lock().await.is_empty());
+    fs::remove_file(root.path().join("vault/sessions/note/_meta.json")).unwrap();
+    let snapshot = service.control_status(&request).await.unwrap();
+    assert_eq!(snapshot.status.state, LocalCaptureState::Closed);
+    assert!(snapshot.actions.is_empty());
+    assert_eq!(
+        service
+            .resolve(request.clone(), resolution.clone())
+            .await
+            .unwrap(),
+        snapshot
+    );
+    let mut changed = resolution;
+    changed.resolution_id = uuid::Uuid::new_v4().to_string();
+    assert!(service.resolve(request.clone(), changed).await.is_err());
+    let retained = service.read_public_original(&request).await.unwrap();
+    assert!(retained.archived);
+    assert_eq!(
+        fs::read(retained.directory.join("intent.json")).unwrap(),
+        original
+    );
+    assert_eq!(
+        fs::read(retained.directory.join("unknown-private-copy")).unwrap(),
+        b"retained"
+    );
+    drop(retained);
+    service.shutdown().await;
+}

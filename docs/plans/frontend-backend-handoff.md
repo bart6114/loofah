@@ -2497,3 +2497,84 @@ the last checked publication error without increasing its deadline. Shared worke
 and title corrections remain in progress. This is not a passing cancellation or
 resolution checkpoint. The 62 frontend tests and actual locale checks passed
 separately, as preserved in the portable record.
+### Original Local capture owner in actual native workers (source only)
+
+The recorder now retains the original opaque runtime owner inside its disk sink,
+through WAV finalization, MP3 encoding and final file-handle destruction. Source
+producer tasks retain that owner independently of their supervisor and pass it to
+three additive owned-open provider methods before dispatch. Legacy/mock provider
+defaults keep their existing behavior and gain no stopped-owner proof.
+
+ActualAudio installs the pin before input opening. The CPAL microphone thread,
+Windows WASAPI thread, macOS device/callback lifetime, native stream workers and
+Windows recovery factories retain it. A blocked recovery factory keeps its own
+owner even if the observer and recovery task disappear. Control/receipt observers
+do not own that pin, so retaining a completed control cannot form a runtime-owner
+cycle. Normal drain and abnormal task loss remain distinct; this checkpoint does
+not rewrite legacy capture intents, assert their completion, enable a recovery
+proof schema or authorize quarantine.
+
+Five deterministic source regressions cover source-open panic after native
+startup, blocked recovery-factory observer loss, native unwind, controls retained
+after actual drain, and disk finalization/file-close ownership. No microphone,
+application or model is needed by these fixtures. They are unexecuted pending the
+sole integration lane; dprint and diff checks passed. Both native Windows
+architectures still require qualification for the platform-specific thread pins.
+
+The stored lifecycle follow-up uses the same durable admission predicate in an
+initialized Local intent service. A terminal enum alone is insufficient: modern
+Succeeded, Skipped, Conflict, Cancelled and Closed receipts require recorded
+physical, persistence and processing drain. Legacy terminal receipts remain
+readable without rewriting their bytes but cannot invent missing drain evidence.
+NotStarted still requires a genuinely undispatched record. Additional fixtures
+cover both standalone and initialized-service refusal, including the crash window
+between publishing a terminal state and saving the final drain receipt.
+
+
+### Bounded Local capture active inventory and immutable history (source only)
+
+The Local capture journal now separates confirmed-drained terminal receipts from
+its bounded active inventory. Startup examines at most 4,096 active receipts and
+64 MiB of active JSON; it never enumerates historical receipt bodies. Confirmed
+schema 2/3 Succeeded, Skipped, Cancelled and explicitly reviewed Closed receipts,
+and genuinely undispatched NotStarted receipts, can move into history. Review,
+unresolved Conflict and legacy processing-terminal records without durable drain
+proof stay active. The live and stored lifecycle checks share the same durable
+eligibility predicate; a terminal enum alone never grants destructive admission.
+
+The private `local-capture-intents/history/` layout is version 1 and bound to the
+original vault. It is created lazily on the first archive, including startup
+migration of eligible existing receipts; merely opening an empty service or
+reading empty history creates no history layout. An intent is durable before a
+same-filesystem, no-replace whole-directory move. Recovery settles that one move,
+then its exact indexed slot and durable head, without restarting inference or
+rewriting the original receipt. Unknown regular private files remain in the
+moved directory; links, nested directories and malformed ownership are refused.
+Original source/result bytes and all lower processing/publication journals remain.
+This is active-memory/index separation, not automatic data deletion or disk quota
+reclamation.
+
+Each archived UUID has an immutable sequence locator checked against its exact
+index slot and receipt SHA before point lookup. Exact status and completed control
+replays use the original receipt; changed input is refused, and declaration checks
+history before inspecting a new canonical source. Archived requests never receive
+new producer tokens. History pages are capped at 100 receipts and four 256-entry
+index pages, with opaque cursors bound to vault, session filter and a frozen index
+head. Sparse filtered pages may be empty while still returning a continuation.
+Original-context read/write owners survive abandoned callers. Shutdown closes
+new history admission and waits for actual admitted blocking I/O to finish.
+
+This changes private storage compatibility once history exists. Older binaries
+that treat every active-root entry as a UUID refuse the new directory; do not
+remove it or copy only active records to downgrade. Restore the matching complete
+pre-history backup, including private source/result and operation journals. No
+canonical vault-format migration is introduced. Existing schema 1/2/3 receipt
+bytes are retained unchanged by archival, with no invented legacy drain evidence.
+
+New source fixtures cover more than 4,096 real admissions, a full legacy active
+inventory, interruption after intent/locator/move/index/head, immutable lookup
+and cursor binding, original resolution replay after canonical removal, unknown
+file preservation, link refusal, and cancelled-caller I/O drain. Formatting and
+source review are complete; Rust execution, generated Native bindings and the
+lazy history UI's integrated qualification remain pending. Desktop app testing
+stays paused and all existing activation gates remain unchanged.
