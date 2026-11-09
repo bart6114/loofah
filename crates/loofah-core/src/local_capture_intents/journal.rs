@@ -48,7 +48,7 @@ pub(super) fn load(root: &Path, vault: &str) -> Result<Vec<Record>, ApplicationE
         if unresolved(&record) {
             record.version = 2;
             record.status.state = LocalCaptureState::Review;
-            record.status.message=Some("An earlier process did not confirm completion; retained output requires explicit recovery".into());
+            record.status.message=Some("An earlier process did not confirm completion. Saved files are retained; processing will not restart automatically.".into());
             persist(root, &record, false)?;
         }
         records.push(record);
