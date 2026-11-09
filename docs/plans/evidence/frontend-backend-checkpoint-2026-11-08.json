@@ -756,6 +756,76 @@
         ],
         "known_observation": "Reader global pending-recording header remains enabled; audit delegated. No capture was started. Native File New Note reveals parent but does not create Remote note; audit delegated."
       }
+    },
+    "optimized_local_gui_b755769_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/gui-acceptance-b755-pre-import.json",
+      "sha256": "a318d28da87f9a87a7f7bb37bb7cadc44a183a00e865a065c0008b3d98249f6d",
+      "record": {
+        "source": "b755769c2542b3454b511544a9f6b7d9ea29228a",
+        "binary_sha256": "cda3ecd98c4ee6f695419930655785946dd5bed5d092094c806876a43cc930c3",
+        "artifact": "Optimized macOS ARM64, exact21-package graph plus desktop/dev/custom-protocol, MOCK_AUDIO=0, VITE_PROFILE=true, bounded task-only reporting overlay",
+        "recorded_at": "2026-11-09T02:07:28.735364+00:00",
+        "initial_vault": {
+          "sessions": 5001,
+          "transcripts": 2501,
+          "data": "synthetic vault plus public English2 sample"
+        },
+        "passes": [
+          "Local opened directly without login; no new OS recording grants",
+          "Actual note edit persisted in canonical notes.md with marker saffron-native-b755",
+          "GUI PDF export succeeded to private QA Downloads; all4page PNGs visually inspected with readable unclipped content",
+          "One explicit saved-notes summary completed; partial preview visible while search remained interactive",
+          "Bundled CLI listed the open desktop vault, created6a7bb040-1c19-4b60-882e-b8cfbbe94962, and GUI received/opened exact note; vault then5002sessions",
+          "Bundled read-only MCP discovered schema, retrieved exact CLI-created note/marker, left note hash unchanged and exited0",
+          "Specific search0499 returned and opened QA engineering review0499"
+        ],
+        "pdf": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/downloads/QA large-vault offline edit.pdf",
+          "sha256": "f64b54714eb92e0ce97b84949494a9d32b52bab73817eace60a912deacd7878b",
+          "bytes": 26217,
+          "pages": 4,
+          "format": "A4 tagged PDF1.7, no JavaScript, not encrypted",
+          "text_checked": [
+            "saved note marker",
+            "saved summary",
+            "73-word transcript"
+          ],
+          "renders": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/pdf-check"
+        },
+        "ai": {
+          "user_admissions": 1,
+          "job_id": "5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb",
+          "created_at": "2026-11-09T01:49:52.312Z",
+          "succeeded_at": "2026-11-09T01:49:58.111Z",
+          "duration_s": 5.799,
+          "http_posts": 2,
+          "explanation": "Source and logs strongly identify deliberate invalid-heading validation retry with cancel/drain, not unknown transport replay; first response text not retained",
+          "provider": "task-local Ollama qwen2.5:1.5b",
+          "performance": "Two overlapping5s windows (neither wholly within inference): framep95=18ms each; frame maxima26/29ms; input maxima16/15ms across2/9samples. No pooled percentile."
+        },
+        "cua_inclusive_bounds_ms": {
+          "ai_search_open": 484,
+          "ai_eight_key_query_and_snapshot": 628,
+          "specific_search_open": 712,
+          "specific_four_key_query_and_result": 569,
+          "specific_result_open": 426
+        },
+        "limitations": [
+          "CUA bounds include automation overhead and are not query timings",
+          "No vault-query metric samples: shared client paths bypass legacy instrumentation",
+          "Existing selected Whisper model prewarmed on Metal16.543s; no ASR or model download during this cohort",
+          "Physical capture and OS microphone/system-audio access remain pending",
+          "CPU audio import held until sustained soak repair/drain completes",
+          "Settled empty future stream displayed0of0above real rows;3-line source correction is later than this frozen app"
+        ],
+        "other_receipts": [
+          "performance-evidence.json",
+          "performance-ai-evidence.json",
+          "mcp-stdio-evidence.json",
+          "cli-open-desktop-list.json",
+          "cli-open-desktop-create.json"
+        ]
+      }
     }
   },
   "local_work_focused": [

@@ -22,8 +22,8 @@ existing managed Context and original lease. Its shutdown joins admitted owner
 work before the final Store flush. Generated contracts and full Native/platform
 validation remain integration gates; source checkpoints alone do not prove them.
 
-Latest combined checkpoint: 2,419 Native library tests passed (34 explicit ignored),
-2,615 frontend tests passed in 298 files, actual Native Ollama preview/summary/title
+Latest combined checkpoint: 2,426 Native library tests passed (34 explicit ignored),
+2,622 frontend tests passed in 298 files, actual Native Ollama preview/summary/title
 and replay passed, and all-target checks plus debug binaries passed. Qualified
 previews are now advertised with configured workers. The exact dev-only A/B QA
 trust allowlist passed its default-build negative test. Checked Local lifecycle,
@@ -1195,3 +1195,60 @@ ignored across 69 test cohorts, with no additional failure or CLI stack overflow
 Its exact log SHA-256 is
 `803cb075f02e662638442f886fc15cec4dd62053c1edd498e4dbef6ccbda5c26`.
 No healthy CI run was cancelled; fresh checks can now run on the corrected head.
+
+
+## Optimized Local GUI and current-head qualification, 2026-11-09
+
+The single optimized macOS ARM64 Local QA artifact from frozen `b755769c25` uses
+the stable 21-package graph plus explicit `desktop/dev`/custom-protocol, real audio
+selection (`MOCK_AUDIO=0`) and `VITE_PROFILE=true`. A bounded task-only reporting
+asset exposes numeric diagnostics through existing tracing; production source and
+user flows have no new telemetry. The exact executable SHA-256 is
+`cda3ecd98c4ee6f695419930655785946dd5bed5d092094c806876a43cc930c3`.
+Its isolated synthetic vault initially held 5,001 sessions and 2,501 transcripts.
+The index completed 4.264 seconds after process spawn, 1.422 seconds after root
+actor startup, with no index errors. Local opened without login. The selected
+existing task Whisper model prewarmed on Metal for 16.543 seconds in the background;
+no ASR or model download occurred in this cohort. All paths are local, not T7.
+
+Actual note edits persisted through the GUI. The GUI exported saved note, summary
+and transcript to a 26,217-byte four-page tagged A4 PDF; text and all four rendered
+pages were inspected without clipping. One explicit local Ollama summary request
+ran from `01:49:52.312Z` to `01:49:58.111Z` (5.799 seconds). Its partial preview was
+visible while search remained interactive. Two overlapping five-second metric
+windows had frame p95 18 ms, frame maxima 26/29 ms and input maxima 16/15 ms across
+2/9 samples. Neither window lies wholly inside generation; these are individual
+window statistics, not a pooled percentile. Shared client queries bypass the old
+query instrument, so query latency remains unmeasured. CUA-inclusive search bounds
+and their automation overhead are retained separately.
+
+One user admission/job made two HTTP calls. Logs and frozen generation source
+strongly identify the deliberate invalid-heading retry, which cancels and drains
+the first stream; its rejected text was not retained. Transport only retries an
+explicit 429 and does not replay unknown transport outcomes. This is no evidence
+of a second user job or inferred historical work. The native title receipt was
+`already_named`. The existing verified local FluidAudio model files match their
+official revision; reuse is documented separately from fresh downloads.
+
+The packaged CLI listed the desktop-owned vault, created a checked note, and the
+running GUI received/opened it. The packaged read-only MCP server negotiated its
+protocol, discovered its tool schema, returned the exact note/marker, preserved
+its SHA and exited zero. The installed stable `loof` symlink remained unchanged.
+The frozen pre-import receipt is under the task lab's
+`local-performance/gui-acceptance-b755-pre-import.json`, copied into the portable
+checkpoint evidence. CPU import and physical capture remain unqualified here.
+
+Fresh hosted frontend/editor, CLI, container, format/lint/security and configured
+Linux x64 CPU qualification passed at `b755769c25`; real Windows speech processing
+also passed on both architectures. Native Windows installer/runtime and macOS
+workspace checks remain active. The sole new backend failure came from a policy
+fixture's global startup observer seeing legitimate eager warmup. Its corrected
+fixture blocks the target's real startup, proves policy reads still complete,
+then releases/joins that startup, retaining authorization/capability checks.
+The exact case passed on the stable Native graph and frozen Linux production
+plus the test-only overlay. An initial Native command used its former function
+name and selected zero tests; that log is explicitly excluded from qualification.
+The follow-up empty-stream display fix passed 43 timeline cases and typechecking;
+an initial wrong-path test selection is likewise not a test pass. Both corrections
+are local follow-ups until the remaining healthy hosted jobs finish. Local lifecycle,
+output deletion and transcript activation gates remain default off.
