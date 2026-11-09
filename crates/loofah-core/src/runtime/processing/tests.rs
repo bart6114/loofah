@@ -164,7 +164,7 @@ async fn processing_is_opt_in_and_completed_work_survives_runtime_restart_withou
             .document
             .unwrap()
             .markdown,
-        "# Runtime result"
+        "# Personal note\n\n# Runtime result"
     );
     let stale = runtime.context.clone();
     runtime.shutdown().await.unwrap();

@@ -1116,7 +1116,7 @@ async fn headless_worker_uses_canonical_source_and_http_model_and_preserves_file
             assert_eq!(final_job.state, ProcessingJobState::Succeeded);
             assert_eq!(
                 result.document.unwrap().markdown,
-                "# Release plan\n- Ship Friday."
+                "# Release\n\n# Release plan\n- Ship Friday."
             );
         }
         assert_eq!(std::fs::read(note_path).unwrap(), before);

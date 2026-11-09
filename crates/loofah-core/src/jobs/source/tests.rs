@@ -484,7 +484,7 @@ async fn a_headless_job_prepares_canonical_source_and_applies_the_shared_generat
             .document
             .unwrap()
             .markdown,
-        "# Release plan\n- Ship Friday."
+        "# Release\n\n# Release plan\n- Ship Friday."
     );
     runtime.shutdown().await.unwrap();
     assert_eq!(

@@ -823,7 +823,7 @@ async fn shared_generation_runs_without_a_frontend_and_retains_tag_results_acros
             .document
             .unwrap()
             .markdown,
-        "# Release plan\n- Ship Friday."
+        "# Original title\n\n# Release plan\n- Ship Friday."
     );
     let generated = journal.result(job.id.clone()).await.unwrap().unwrap();
     assert_eq!(
