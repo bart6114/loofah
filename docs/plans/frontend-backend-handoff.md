@@ -2363,3 +2363,32 @@ No desktop app or physical capture was started. Native UI/production-build and
 new-head platform qualification remain pending; lifecycle/output/transcript,
 append and retirement activation gates remain off. Summary semantic quality
 remains unqualified by this presentation correction.
+
+## Local image-capability dispatch correction: source checkpoint
+
+Source `3eda782997` restores a second demonstrated generation-parity difference:
+shared Local HTTP and subscription models had enabled image context
+unconditionally. The Local HTTP path now consumes one committed policy asset
+shared with the legacy TypeScript presentation helpers, preserving the exact
+text-only/vision patterns and ordered Cloudflare catalog/modalities. Unknown
+and text-only selections skip image collection. Eligible models retain their
+existing request format, and source notes/attachments remain unchanged.
+
+Native subscription classification reads the same bundled catalog path already
+provided to its existing runtime. Exact model modalities, not model-name guesses,
+decide image eligibility. Owned reads are bounded to 2 MiB/512 entries and drain
+through cancellation; no login, runtime startup or model-list RPC is introduced.
+Remote operator `include_images` policy is unchanged. Source adds Core policy and
+actual PNG/source-read tripwire fixtures, Native pure catalog fixtures and
+TypeScript shared-data checks. Execution/typechecking remains pending; Native
+desktop test execution stays user-paused. This does not qualify semantic summary
+quality.
+
+The Local orchestration audit separately identified missing per-request automatic
+repair cancellation, non-progressing Recover controls for some Conflict/Review
+states and a 4,096 lifetime-intent ceiling. A source owner is implementing
+durable cooperative cancellation and truthful action eligibility first; reviewed
+resolution and bounded active/history separation remain explicitly owned later
+stages. None may fabricate producer completion, replay unknown inference,
+retarget an original request or discard the only retained source. These gaps
+remain open rather than being classified as acceptance-only work.
