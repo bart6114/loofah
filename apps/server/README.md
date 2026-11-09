@@ -102,6 +102,7 @@ The experimental `capture_ingestion` capability exposes authenticated staging AP
 | GET    | `/captures/{capture}`                   | Recover the durable prefix and seal after reconnect or an unknown reply.                                      |
 | POST   | `/captures/{capture}/seal`              | Finalize only if the full declared seal matches the admitted audio.                                           |
 | POST   | `/captures/{capture}/publish`           | Verify the sealed source and publish absent-only canonical WAV; return its bound checksum/size observation.   |
+| POST   | `/captures/{capture}/retirement`        | Explicitly retire verified raw staging while retaining the original identity and cleanup receipt. |
 | PUT / GET | `/captures/{capture}/processing`     | Declare or recover explicit processing intent over the original capture identity. |
 | POST | `/captures/{capture}/processing/cancel` | Request processing cancellation without stopping capture, uploads or recording publication. |
 
@@ -126,8 +127,9 @@ backups. Only explicit declarations are reconciled after restart. Interrupted or
 uncertain native/provider attempts are never silently rerun; a model checksum
 change requires review. Cancellation requests retain child ownership until actual
 drain and may leave admitted commits or retained results. Raw capture/upload progress is
-independent of processing availability and cancellation. The new orchestration
-capability remains unadvertised until its paired device acceptance is complete.
+independent of processing availability and cancellation. Configured transcription
+hosts advertise `capture_processing`; notes-only hosts omit it. Physical recording
+and final platform acceptance remain separate requirements.
 Pipeline children carry an atomic private origin marker binding the capture,
 intent, exact request and resolved model checksum. A missing parent or coordinator
 cannot turn one into a manual job. Older binaries reject marked child records;
@@ -151,9 +153,11 @@ Pending uploads require the distinct `capture_pending_publication` capability
 before credentials or chunks are sent; older existing-note-only servers leave
 them queued with an upgrade-needed error and preserve all device audio.
 This raw recording queue does not permit offline remote-note editing. Pending
-live transcription and automatic summaries remain separate work; explicit batch
-transcription can process published audio. Append/replacement and any existing
-`transcript.json` remain refused unchanged.
+captures retain any explicit processing declaration; processing waits for the
+published session binding. Staging or publication alone never requests AI work.
+Append preparation is implemented separately, but `capture_append` remains
+unadvertised pending Native/platform acceptance, so normal clients cannot start
+it. Ordinary publication still refuses existing recordings and transcripts.
 
 Private WAV/result stages and receipts recover exact admitted writes before vault
 readiness. Same-process gates prevent playback, recording metadata/waveform reads
@@ -180,8 +184,10 @@ identified pending note and retains its decision for review or exact retry.
 Completed replay returns the original accepted metadata without overwriting user
 edits, recreating deleted notes or re-registering subsequently deleted tags.
 Keep these receipts in backups; older binaries cannot replay this internal
-operation. The HTTPS creation contract is unchanged, and remote CLI metadata
-flags require an explicit future contract rather than being silently dropped.
+operation. The older HTTPS creation contract is unchanged. Servers advertising
+`session_initial_metadata` also accept checked rich creation through
+`POST /vaults/{vault}/session-creations`; Remote CLI metadata flags use that
+capability rather than silently dropping their values.
 
 A published response contains the exact source seal, session ID, canonical SHA-256
 and byte count. Verify a separate authenticated canonical artifact read before
@@ -189,11 +195,14 @@ considering device cleanup. Neither upload acknowledgment nor this response alon
 authorizes deleting device audio; server raw source is retained. A lost reply is
 recovered through status and explicit identical retry without another file publish.
 The desktop recording controls, durable uploader lifecycle and authenticated
-live-caption delivery use these shared APIs. The current service spool
-retains raw bytes with a default 2 GiB quota per vault and 64 capture entries;
-publication does not reclaim that quota. Verified retention/cleanup and sustained
-recording acceptance remain required before treating this as a continuous-use
-recording deployment.
+live-caption delivery use these shared APIs. The service spool retains raw bytes
+with a default 2 GiB quota per vault and 64 capture entries; publication alone does
+not reclaim that quota. The separate `capture_retirement` capability supports
+explicit verified cleanup. Its request binds the original capture, source seal,
+canonical publication and processing declaration. Cleanup retains a durable
+identity tombstone and never follows automatically from a terminal job or upload
+acknowledgment. Sustained physical recording and final platform acceptance remain
+required before treating this as a continuous-use recording deployment.
 
 Back up the recording-publications bookkeeping with its vault. Resolve pending
 intents with the current reader before rollback; older executables can ignore this
@@ -205,7 +214,7 @@ durability has not been established as equivalent.
 
 The service derives the server, member and vault scope from its configuration and current authorization. Staging is private to its contributing member, including in shared vaults. Editors and owners can upload; a demoted reader can inspect their own staged capture while they retain vault membership. Each operation checks access again after startup before admitting a read or mutation. Status polling supplies reconnect recovery; canonical change streams keep their existing event types.
 
-Chunks must declare 16 kHz PCM f32 little-endian with explicit channel ownership, be at most 1 MiB, and extend the accepted prefix or exactly replay an earlier chunk. A wrong descriptor or seal fails before admitting the mutation. The initial per-vault staging limits are 2 GiB, 64 captures and 32,768 chunks; capacity errors preserve existing bytes. Files live under persistent `runtime/{vault}/creates/captures`, outside canonical sessions, and belong in service backups. Verified staging cleanup and durable client upload orchestration remain required before enabling remote recording. These endpoints are not a remote-vault editing queue.
+Chunks must declare 16 kHz PCM f32 little-endian with explicit channel ownership, be at most 1 MiB, and extend the accepted prefix or exactly replay an earlier chunk. A wrong descriptor or seal fails before admitting the mutation. The initial per-vault staging limits are 2 GiB, 64 captures and 32,768 chunks; capacity errors preserve existing bytes. Files live under persistent `runtime/{vault}/creates/captures`, outside canonical sessions, and belong in service backups. Durable device upload/recovery and explicit verified staging cleanup are implemented; physical recording and platform acceptance remain required. These endpoints are not a remote-vault editing queue.
 
 The shared Rust core contains a durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator configuration wires allowed providers, host environment credentials and current catalog membership into authenticated document-body job APIs. The opt-in notes workspace has summary controls, existing template-output regeneration and durable device submission recovery. Shared processing settings/model selection are available in the opt-in workspace. Optional generated titles and owner-managed vault keys are implemented; streaming previews remain unfinished. Configured CPU batch transcription uses the separate job APIs below. The existing local AI flow remains active.
 
@@ -1044,7 +1053,9 @@ Internal generated-title storage additionally supports schema-4 recovery. Its
 opaque baseline binds the owning vault context and guards the title plus all
 mandatory output revisions before writing. Template frontmatter and task files
 are retained; raw-note stamping may independently skip a changed or unreadable
-note. Public processing jobs do not yet request generated titles. Drain any
+note. Configured summary hosts advertise `generated_titles`; an explicit
+`generate_if_empty` title policy freezes the original title decision with its
+parent job. The default policy preserves the title. Drain any
 schema-4 intents with the current version before downgrading; older readers must
 not attempt their recovery.
 
@@ -1105,9 +1116,11 @@ The complete directory, including unknown user attachments, moves intact. No
 local paths are exposed by these remote contracts.
 
 These operations are also thin Native IPC wrappers over the same Core. The Local
-frontend capability remains disabled until the legacy recording/batch persistence
-barrier is installed; existing Local deletion and undo remain available during
-that migration. Shared frontend lifecycle actions are being integrated.
+frontend capability remains disabled pending final Native producer/persistence,
+physical and Windows acceptance. The Native lifecycle host is registered and
+checks the original Context, pending persistence, batch ownership and physical
+capture maintenance. Existing Local deletion and undo remain available; shared
+Remote lifecycle actions use the checked contract.
 
 Verified original media uploads can be downloaded with `GET /api/v1/vaults/{vault}/media/requests/{request}/source` and the original `X-Loofah-Media-Revision`. This member-private, editor-authorized operation returns the exact declared bytes, length and SHA-256 without decoding, publishing or restarting a job. Incomplete or changed uploads are unavailable. Streams recheck access for every bounded chunk and retain the original vault and descriptor until actual I/O ends; clients must verify the complete digest before saving. A request in review because its configured model changed can therefore recover its source without adopting a new model or canonical baseline.
 
