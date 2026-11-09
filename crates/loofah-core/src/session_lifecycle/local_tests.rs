@@ -14,7 +14,8 @@ async fn fixture() -> (
     hypr_storage::vault::VaultLease,
 ) {
     let root = tempfile::tempdir().unwrap();
-    let vault = root.path().join("vault");
+    let physical_root = root.path().canonicalize().unwrap();
+    let vault = physical_root.join("vault");
     std::fs::create_dir(&vault).unwrap();
     let hypr_storage::vault::LeaseAttempt::Acquired(lease) =
         hypr_storage::vault::VaultLease::try_acquire_existing(&vault).unwrap()
@@ -37,7 +38,7 @@ async fn fixture() -> (
         )
         .with_vault_lease(lease.clone())
         .unwrap()
-        .with_operation_storage(root.path().join("operations")),
+        .with_operation_storage(physical_root.join("operations")),
     );
     (root, context, lease)
 }
