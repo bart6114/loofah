@@ -2567,3 +2567,28 @@ readable without rewriting their bytes but cannot invent missing drain evidence.
 NotStarted still requires a genuinely undispatched record. Additional fixtures
 cover both standalone and initialized-service refusal, including the crash window
 between publishing a terminal state and saving the final drain receipt.
+
+
+## Reviewed controls and history: next integration validation
+
+The follow-up at frozen `43ba95293a` passed CLI96/0/0, Core564/2/2,
+server182/0/6 and vault-write631/0/5. All previously failing child cancellation,
+configured title, schema, retained-drain and reviewed-resolution cases passed,
+including the new strict child-journal transition regression. Two older append
+publication cases still failed under the complete Core cohort with the unchanged
+20-second deadline: both reported suffix processing had not finished. They passed
+together in isolation (2/0/0), which is not resolution of the full-cohort failure.
+The raw second failure and isolated result remain preserved. Source `68af1dd026`
+adds bounded test-only coordinator stage/cause, original status, engine counts and
+exact private-file diagnostics; no production behavior or deadline changed.
+The all-target check again did not run after the failing library step.
+
+Bounded history (`3185638f77` plus `c0092b181`) and the stored/live lifecycle
+admission guard (`27a005157` plus `3a8f57323`) are integrated in source. The lazy
+history UI (`00e9b4bb30`) and thin Native/client history adapters require actual
+binding regeneration and execution. Prior source-only descriptions are superseded
+by this integration checkpoint, not by an execution pass. The original native
+writer-owner pin package remains worker-only pending its CPAL callback correction
+and review; it is not part of this Root source yet. No stopped-owner proof or
+legacy-unknown recovery authority is enabled. Desktop application testing remains
+paused; production SSO remains deferred.

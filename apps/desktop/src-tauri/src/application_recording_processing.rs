@@ -1,6 +1,7 @@
 use crate::{application::context, local_capture::LocalCaptureState};
 use hypr_loofah_core::local_capture_intents::{
-    LocalCaptureControlSnapshot, LocalCaptureIntents, LocalCaptureResolution, LocalCaptureStatus,
+    LocalCaptureControlSnapshot, LocalCaptureHistoryPage, LocalCaptureIntents,
+    LocalCaptureResolution, LocalCaptureStatus,
 };
 use hypr_loofah_protocol::{ApplicationError, ErrorCode};
 use std::sync::Arc;
@@ -85,6 +86,20 @@ pub async fn application_recording_processing_controls<R: tauri::Runtime>(
         })?;
     }
     service.controls(session_id.as_deref()).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_recording_processing_history<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: Option<String>,
+    cursor: Option<String>,
+    limit: u32,
+) -> Result<LocalCaptureHistoryPage, ApplicationError> {
+    let service = service(&app)?;
+    service
+        .history(session_id.as_deref(), cursor.as_deref(), limit)
+        .await
 }
 
 #[tauri::command]

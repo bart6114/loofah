@@ -9,6 +9,7 @@ const native = vi.hoisted(() => ({
     applicationLocalMediaAvailable: vi.fn(),
     applicationRecordingProcessingList: vi.fn(),
     applicationRecordingProcessingControls: vi.fn(),
+    applicationRecordingProcessingHistory: vi.fn(),
     applicationCancelRecordingProcessing: vi.fn(),
     applicationResolveRecordingProcessing: vi.fn(),
     applicationLocalMediaSource: vi.fn(),
@@ -2006,6 +2007,48 @@ it("recording processing cancellation preserves predispatch and unknown-outcome 
     native.commands.applicationCancelRecordingProcessing,
   ).toHaveBeenCalledExactlyOnceWith(request);
 });
+it("reads bounded recording history without dispatching processing and forwards the original cursor", async () => {
+  native.commands.applicationRecordingProcessingAvailable.mockResolvedValue(
+    true,
+  );
+  const client = await connectLocalVault();
+  const page = { items: [], next_cursor: "original-snapshot-page" };
+  native.commands.applicationRecordingProcessingHistory.mockResolvedValue({
+    status: "ok",
+    data: page,
+  });
+  expect(await client.recordingProcessing!.history("note", null, 25)).toEqual(
+    page,
+  );
+  expect(
+    await client.recordingProcessing!.history("note", page.next_cursor, 25),
+  ).toEqual(page);
+  expect(
+    native.commands.applicationRecordingProcessingHistory.mock.calls,
+  ).toEqual([
+    ["note", null, 25],
+    ["note", page.next_cursor, 25],
+  ]);
+  const cancelled = new AbortController();
+  cancelled.abort();
+  await expect(
+    client.recordingProcessing!.history("note", null, 25, {
+      signal: cancelled.signal,
+    }),
+  ).rejects.toBeDefined();
+  expect(
+    native.commands.applicationRecordingProcessingHistory,
+  ).toHaveBeenCalledTimes(2);
+  expect(
+    native.commands.applicationCancelRecordingProcessing,
+  ).not.toHaveBeenCalled();
+  expect(
+    native.commands.applicationResolveRecordingProcessing,
+  ).not.toHaveBeenCalled();
+  expect(
+    native.commands.applicationRecoverRecordingProcessing,
+  ).not.toHaveBeenCalled();
+});
 it("reviewed recording resolution preserves its immutable decision and dispatch fences", async () => {
   native.commands.applicationRecordingProcessingAvailable.mockResolvedValue(
     true,
@@ -2073,6 +2116,9 @@ it("Remote clients never expose or probe Local recording parents even if a serve
     vault,
   );
   expect(remote.recordingProcessing).toBeUndefined();
+  expect(
+    native.commands.applicationRecordingProcessingHistory,
+  ).not.toHaveBeenCalled();
   expect(
     native.commands.applicationResolveRecordingProcessing,
   ).not.toHaveBeenCalled();
