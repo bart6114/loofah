@@ -251,9 +251,8 @@ async fn configured_local_ollama_publishes_automatic_summary_and_title_without_l
         assert_eq!(retained_preview.job.state, ProcessingJobState::Succeeded);
         assert!(retained_preview.preview.as_ref().is_some_and(|preview| !preview.markdown.trim().is_empty()));
         assert!(!result.markdown.trim().is_empty());
-        assert!(result.markdown.len() > 80, "summary lacks meaningful meeting content: {result:?}");
         let normalized = result.markdown.to_lowercase();
-        assert!(["saffron", "friday", "migration"].iter().any(|term| normalized.contains(term)), "summary lost the meeting subject: {result:?}");
+        assert!(normalized.contains("saffron") && ["restore", "migration", "pilot", "attachment"].iter().any(|term| normalized.contains(term)), "summary lost the meeting subject or a relevant fact: {result:?}");
         let summary = context.read_document("eligible", &DocumentTarget::Summary).await.unwrap();
         let published_summary = summary.document.unwrap().markdown;
         let title = result.title.as_ref().expect("requested title stage must be retained");

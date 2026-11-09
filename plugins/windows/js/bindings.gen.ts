@@ -339,7 +339,10 @@ export type Anchor =
   | "BottomRight"
   | "BottomLeft"
   | "Center";
-export type AppWindow = { type: "main" } | { type: "note"; value: string };
+export type AppWindow =
+  | { type: "main" }
+  | { type: "note"; value: string }
+  | { type: "remote_note"; value: string };
 export type ChangelogState = { previous: string | null; current: string };
 export type ContactsSelection =
   | { type: "person"; id: string }

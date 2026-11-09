@@ -1035,3 +1035,22 @@ namespace correction; its runtime assertion still exercises the real entry
 module. Native bindings came from the corrected concrete Wry exporter. Preview
 capability activation and checked Local transcript/lifecycle/output controls
 remain gated on the pending Native/provider/platform qualification.
+
+
+The current combined 21-package Native library suite passed **2,419 tests,
+34 explicit ignored cases, zero failures** (`native-full-21-window-preview-third.log`).
+This includes private previews, original-scope windows/default-vault preferences,
+concurrent refresh fences, physical-host transcript guards, stopped Local-vault
+adoption, checked deletion, operational readiness and existing Store/Core/CLI
+regressions. The corrected concurrent-refresh driver passed its focused case
+before the broad run; the first two failing runs remain recorded.
+
+Actual loopback Native Ollama preview/automatic summary/title/replay acceptance
+passed in 2.04 seconds (`native-real-ollama-preview-acceptance-second.log`). A valid
+short summary in the first attempt exposed an arbitrary80-byte fixture heuristic;
+the fixture now requires the meeting subject and a relevant fact while retaining
+all nonempty partial, identity, filtering, canonical preservation and replay
+assertions. There was no extra paid work or provider fallback. The35-case focused
+Native preview/window/adoption/guard/export cohort also passed. Preview capability
+activation follows this qualification; Local checked lifecycle/output/transcript
+UI activation remains default off for final platform/physical acceptance.
