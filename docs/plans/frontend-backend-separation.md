@@ -22,7 +22,8 @@ append/repair, authenticated bounded live captions and verified cleanup are
 implemented. Native Local ownership and CLI routing are composed with the managed
 vault. Checked Local session lifecycle and output deletion activation remain
 default off pending final producer/persistence and platform acceptance. Bounded private processing previews and independent Remote note windows are
-implemented and Native-qualified; actual two-client GUI/platform acceptance is
+implemented and Native-qualified; actual two-client browser/editing/window/role
+checks have passed on frozen QA artifacts, while patched GUI/platform acceptance is
 still in progress.
 
 Current validation includes Native, TLS/HTTP, frontend, configured local models,

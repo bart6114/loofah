@@ -29,7 +29,10 @@ previews are now advertised with configured workers. The exact dev-only A/B QA
 trust allowlist passed its default-build negative test. Checked Local lifecycle,
 output deletion and transcript UI activation remain default off pending final
 platform/physical acceptance. A corrected, shaped two-hour paced run is active;
-its outcome is not yet qualified. Independent Native A/B UI acceptance is next.
+its outcome is not yet qualified. Actual Native A/B browser sign-in, shared editing, Reader downgrade, child-window
+vault/parent-close isolation and live access revocation passed on the frozen
+`71ea43cf94` QA artifacts. Native menu and connected-Reader header gaps found
+through that run are being corrected and need patched-artifact acceptance.
 
 Completed continuation checks so far (local logs are under the cache above):
 
@@ -1089,3 +1092,50 @@ the subsequently qualified preview capability declaration. Monitor/evidence
 paths remain under the local task cache. No long-run pass is claimed yet.
 
 Local startup no longer enumerates unrelated speech-model caches or downloads a missing diarizer when a vault opens. Explicit user speech-model downloads still request the optional diarizer on completion; existing downloaded diarization remains available, and a missing diarizer does not block transcription. This shared initialization rule applies to both macOS and Windows.
+
+
+## Actual independent Native clients, 2026-11-09
+
+Two serial optimized macOS ARM64 builds from `71ea43cf9455beb536b13dcb22481f17f62a02a8`
+used the stable 21-package graph plus the explicit `desktop/dev` QA feature and
+`MOCK_AUDIO=0`. Their distinct A/B bundle IDs, global directories, credentials,
+Downloads and temporary roots stayed isolated from the user's app and vault.
+The immutable server executable came from the same source. Build requests,
+Cargo results, source/lock hashes, bundle manifests and runtime evidence are in
+`~/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/`.
+
+Both apps completed actual system-browser PKCE with synthetic Alice/Bob accounts.
+The API used verified fixture HTTPS; the issuer used the narrowly allowed numeric
+loopback HTTP fixture. This qualifies that browser callback flow, not production
+HTTPS SSO or OS trust changes. The external issuer's initial restrictive CSP
+blocked its cross-origin callback; its corrected policy permits only the exact
+validated callback origin. Invalid callbacks, replay and PKCE checks stay strict.
+B started while the API was unavailable and showed its saved Remote destination
+and connection failure, without falling back to Local.
+
+A created a shared vault and granted the existing synthetic Bob Editor access.
+A saved an initial note; B appended a checked edit; a fresh independent A child
+read both. The child saved a third paragraph, verified in canonical `notes.md`.
+A separate Personal child retained its original scope after the parent switched
+to Shared and closed; a further child edit reached only the original Personal
+vault. Downgrading Bob to Reader refreshed his workspace and made his note and
+new child read-only. Removing Bob replaced the already-open child content with
+“This note's workspace is no longer available.” Sign-out returned the parent to
+Connect. Sign-out's physical window inventory was not independently qualified.
+
+The run exposed two remaining frontend gaps: the connected Reader's global
+pending-recording header stayed enabled, and native File → New Note revealed the
+Remote parent without creating a note. The Reader gate now has 38 passing focused
+checks, including delayed reminders, unknown-request identity, disconnected raw
+capture and Stop. Native menu routing is being corrected separately. Patched GUI,
+final-head platform checks, production performance and physical recording remain
+open; no microphone or system-audio grant was accepted.
+
+The four hosted test/workflow failures at `71ea43cf94` are isolated fixture issues,
+not ignored passes: exact CPU-case selection, eager maintenance recovery timing,
+macOS physical temporary roots and Windows export directory ownership. The latter
+preserves Windows' safe rename refusal while pinned. Corrected macOS temporary-root
+and export cases passed at `37a5b36ab3`; actual Linux maintenance execution and fresh
+Windows execution remain pending. CLI/frontend/container checks and both Windows
+speech-model architectures passed on the earlier published source. The Native
+Windows ARM64 compile is still running; healthy CI has not been cancelled.

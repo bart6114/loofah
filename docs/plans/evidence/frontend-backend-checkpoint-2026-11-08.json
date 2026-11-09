@@ -724,6 +724,36 @@
         ],
         "dirty_inputs_excluded": " M apps/desktop/src/shared/application/protocol.gen.ts\n M apps/desktop/src/types/tauri.gen.ts\n M plugins/transcription/js/bindings.gen.ts\n"
       }
+    },
+    "native_independent_clients_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/ui-acceptance.json",
+      "sha256": "3b1d11c5c7d567e0b8905cac922bde2b3355c4f63aa5f9e9b6bce7ebdda03c3d",
+      "record": {
+        "source": "71ea43cf9455beb536b13dcb22481f17f62a02a8",
+        "recorded_at": "2026-11-09T01:06:35.154820+00:00",
+        "artifact": "Optimized macOS arm64 A/B, exact graph21 plus desktop/dev, MOCK_AUDIO=0; manifests alongside each app",
+        "authentication": "Actual native browser PKCE using synthetic Alice/Bob fixture accounts; numeric loopback HTTP issuer and verified HTTPS API fixture CA. Not production HTTPS SSO qualification. No user credentials/trust changes.",
+        "observed_passes": [
+          "B started while API unavailable, showed saved Remote destination and Cannot reach server, no Local fallback",
+          "A and B completed browser PKCE after external issuer CSP callback-origin correction",
+          "A created shared vault and granted existing synthetic Bob Editor access",
+          "A saved alpha note and B saved beta edit through shared server",
+          "Fresh A independent note window displayed alpha and beta",
+          "A child saved gamma; server canonical notes.md verified all three intact paragraphs",
+          "Owner downgraded Bob to Reader; B workspace refreshed; note read-only, date/tag and session recording/import disabled",
+          "B opened independent Reader window; all three paragraphs visible with no editor",
+          "Owner removed Bob; existing B child immediately replaced content with workspace-no-longer-available message",
+          "Personal child stayed open after parent switched Personal to Shared and parent close; further delta edit saved only in original Personal vault, exact canonical readback verified",
+          "Sign-out returned main workspace to Connect with no Local fallback"
+        ],
+        "not_yet_qualified": [
+          "Actual OS microphone/system-audio capture pending action-time permission",
+          "Production HTTPS SSO",
+          "Final current-source platform matrix",
+          "Sign-out physical child close inventory: main returned Connect; revocation child clearing separately qualified"
+        ],
+        "known_observation": "Reader global pending-recording header remains enabled; audit delegated. No capture was started. Native File New Note reveals parent but does not create Remote note; audit delegated."
+      }
     }
   },
   "local_work_focused": [
