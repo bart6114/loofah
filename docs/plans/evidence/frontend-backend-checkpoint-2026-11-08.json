@@ -2259,6 +2259,160 @@
       ],
       "conclusion": "No concrete prompt-assembly defect found. Observed identity, completion, retention and deployment contradictions violate the source and default instructions; semantic quality and conciseness remain failed observations.",
       "limitation": "Raw provider request payload was not retained; this is source/canonical evidence, not an exact HTTP prompt reconstruction."
+    },
+    "capture_refresh_lock_validation_2026_11_09": {
+      "recorded_at_utc": "2026-11-09T04:14:08.486587+00:00",
+      "source": "24198b3296ca4afcb5817ab51d29b21ac4e1c1a6",
+      "production_change_commit": "bccd5631c5a1a9e8f56f73e45ce3637729e48555",
+      "worker_change_commit": "ecbf41909beef53520f155aabc9b7572725b5938",
+      "change": "Reuse authenticated_scope::original_commit_guards at capture append dispatch, retirement HTTP dispatch and verified device retirement commit. On token contention, release the original profile fence before waiting; reacquire and revalidate original epoch.",
+      "invariants_preserved": [
+        "Original profile/member/server/vault/request UUID and immutable append/retirement declaration",
+        "Original token login generation and current_for_commit checks",
+        "Cancellation, resource ownership, fresh canonical verification and actual-use drains",
+        "No new automatic inference, mutation retry, baseline adoption or raw deletion authority"
+      ],
+      "native_selected_validation": {
+        "source": "24198b3296ca4afcb5817ab51d29b21ac4e1c1a6",
+        "cohorts": 21,
+        "passed": 21,
+        "failed": 0,
+        "ignored": 1,
+        "new_regressions": [
+          "tests::capture_append_authority::append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials",
+          "tests::capture_upload::cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials"
+        ],
+        "new_regressions_passed": 2,
+        "ignored_case": [
+          "test tests::capture_upload::cleanup_retirement_budget_outlives_ordinary_capture_timeout_without_changing_identity ... ignored, real 35s ordinary request deadline versus 36s retirement response"
+        ],
+        "scope": "default stable21 library graph, one batched libtest filter run: capture_upload, capture_append_authority, authenticated_scope, concurrent_refresh_never_holds_profile",
+        "inference": "None; selected regressions use local fixture TLS and fake credential persistence. The explicit ignored case is the real 35s request-deadline/36s retirement-response test.",
+        "passed_test_names": [
+          "tests::authenticated_scope::selected_scope_rechecks_original_session_authorization_without_personal_fallback",
+          "tests::capture_append_authority::append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials",
+          "tests::capture_append_authority::append_authority_rejects_profile_and_login_aba_disconnect_and_window_cancellation",
+          "tests::authenticated_scope::selected_scope_preserves_shared_vault_and_rejects_profile_login_disconnect_and_cancel_aba",
+          "tests::capture_upload::dropping_upload_owner_cancels_active_and_queued_network_work_without_stopping_local_append",
+          "tests::capture_upload::older_existing_note_publication_servers_leave_pending_audio_queued_before_credentials_or_upload",
+          "tests::capture_upload::cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials",
+          "tests::capture_upload::cleanup_proof_independently_reads_fresh_bytes_and_retains_lease_until_device_commit",
+          "tests::capture_upload::cleanup_server_receipt_cannot_substitute_for_current_canonical_body_verification",
+          "tests::capture_upload::immutable_profile_server_member_vault_and_session_are_never_retargeted",
+          "tests::capture_upload::cleanup_dispatch_releases_profile_fence_before_waiting_for_retirement_response",
+          "tests::capture_upload::cleanup_rejects_same_member_interactive_login_queued_during_original_refresh",
+          "tests::capture_upload::unsupported_uploads_do_not_read_credentials_and_closed_clients_leave_audio_for_reauthentication",
+          "tests::capture_upload::pending_append_and_interrupted_sources_stay_explicit_without_canonical_publication",
+          "tests::capture_upload::pending_remote_binding_never_retargets_a_previously_bound_device_capture",
+          "tests::capture_upload::publication_receipt_without_matching_independent_body_never_verifies_or_resurrects_audio",
+          "tests::capture_upload::cleanup_proof_rejects_profile_aba_interactive_login_and_closed_original_client",
+          "tests::media_jobs::concurrent_refresh_never_holds_profile_while_commit_guards_wait_for_tokens",
+          "tests::capture_upload::cleanup_dispatch_rejects_original_profile_or_login_aba_during_member_verification",
+          "tests::capture_upload::lost_ack_and_offline_capture_reopen_resume_exact_identity_and_hash_independent_canonical_bytes",
+          "tests::capture_upload::pending_publication_lost_ack_reauth_and_device_restart_bind_one_note_without_reuploading"
+        ],
+        "ignored_tests": [
+          {
+            "name": "tests::capture_upload::cleanup_retirement_budget_outlives_ordinary_capture_timeout_without_changing_identity",
+            "reason": "real 35s ordinary request deadline versus 36s retirement response"
+          }
+        ],
+        "selected_sdk_elapsed_seconds": 5.14,
+        "scope_clarification": "21 selected SDK cases passed; the stable21 library graph emitted21 cohort result lines. This is a focused run, not a new full-library or two-hour soak run."
+      },
+      "new_public_boundary_coverage": {
+        "append": "Blocked real SDK refresh at fake credential persistence; original capture guard queued first; profile save must finish before refresh is released; final original operation rejects Conflict and request remains exact.",
+        "device_retirement": "Same deterministic blocked-refresh/profile-save ordering; final original proof rejects Conflict, no additional retirement POST, raw chunk retained.",
+        "synchronization": "Held fixture credential-store mutex; no arbitrary sleep or timed delayed-response release."
+      },
+      "third_pre_post_boundary_coverage": {
+        "new_contention_case": false,
+        "same_helper_reused": true,
+        "existing_tests_passed": [
+          "tests::capture_upload::cleanup_dispatch_rejects_original_profile_or_login_aba_during_member_verification",
+          "tests::capture_upload::cleanup_dispatch_releases_profile_fence_before_waiting_for_retirement_response"
+        ],
+        "limit": "No new standalone blocked-refresh regression for the pre-POST path; adding a deterministic post-access/pre-guard hook would require additional fixture plumbing."
+      },
+      "all_target_check": {
+        "result": "PASS",
+        "elapsed_seconds": 31.8,
+        "desktop_library_warnings": 9,
+        "desktop_library_test_warnings": 4,
+        "warnings_existing": true
+      },
+      "windows_metadata_workflow": {
+        "commit": "24198b3296ca4afcb5817ab51d29b21ac4e1c1a6",
+        "path": ".github/workflows/windows_ci.yaml",
+        "step": "Test linked-worktree build metadata",
+        "architectures": [
+          "x86_64-pc-windows-msvc",
+          "aarch64-pc-windows-msvc"
+        ],
+        "method": "Standalone rustc --edition2024 --test -D warnings; no Cargo feature/package graph expansion",
+        "cases": [
+          "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change",
+          "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit",
+          "detached_head_and_branch_switch_are_tracked_without_object_directory_watches",
+          "ordinary_repository_and_source_archive_keep_existing_fallback_behavior"
+        ],
+        "actual_windows_execution": "PENDING for this added step on both architectures"
+      },
+      "workflow_validation": {
+        "python_tests": {
+          "passed": 29,
+          "failed": 0,
+          "elapsed_seconds": 4.305
+        },
+        "actionlint": "PASS; empty diagnostic log",
+        "zizmor": "PASS high-severity gate; offline mode,36 ignored/67 suppressed, no reported findings"
+      },
+      "qualification_limits": [
+        "No Native build, inference or test rerun performed by this docs worker; records come from parent actual validation logs.",
+        "The ignored case is the real35s ordinary request deadline versus36s retirement response, not a soak test.",
+        "Existing frozen573 paced capture proof remains scoped to its own source.",
+        "073e5b7cd3e50caa890c48e317894582de39d878 hosted CI was still running when this follow-up was recorded; it does not qualify the later241 source or newly added Windows step.",
+        "No new push or cancellation of the073 CI run is represented."
+      ],
+      "logs": {
+        "native-capture-refresh-fence-tests.log": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-capture-refresh-fence-tests.log",
+          "bytes": 11739,
+          "sha256": "7462744375c329c0e1f60cd2f53d96cd52483b36da52d2ff0a298fc726c3a6c3"
+        },
+        "native-capture-refresh-fence-tests.json": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-capture-refresh-fence-tests.json",
+          "bytes": 1003,
+          "sha256": "16d7e63edfb3e4e98427d9cf221e45465db3c2fcf34fd3feffdeb7119ebd67ac"
+        },
+        "native-capture-refresh-fence-check.log": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-capture-refresh-fence-check.log",
+          "bytes": 5370,
+          "sha256": "e348c464beede4c1dba5bdc8f9cf4c565bc674447c02cb14e3c3aa2f89513f5b"
+        },
+        "capture-refresh-workflow-tests.log": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/capture-refresh-workflow-tests.log",
+          "bytes": 128,
+          "sha256": "ad100aa8cf46c16bb131c0dfc91feefe5049cb42dcd68566ce720cf20748d079"
+        },
+        "capture-refresh-actionlint.log": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/capture-refresh-actionlint.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "capture-refresh-zizmor.log": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/capture-refresh-zizmor.log",
+          "bytes": 1329,
+          "sha256": "c2c36d7bf68923571e8bdda653b37d9553798e33aa3f44d984805cc22dd2e944"
+        }
+      },
+      "source_file_sha256": {
+        "crates/loofah-client/src/capture_append_authority.rs": "3a098660e42708c46241fe4e78f67df77c75aebb6bc4d7ac7830691ae3bf8bb4",
+        "crates/loofah-client/src/capture_retirement.rs": "e26d0833cc32e2f66a70bda5e4057805f32e71ba2b75a8a161d5bf7994fd6b32",
+        "crates/loofah-client/src/tests/capture_append_authority.rs": "1274d8ab7aaa0e8b948cef0be8d9436a842de20e249b25295760e4d761d60274",
+        "crates/loofah-client/src/tests/capture_upload.rs": "aa44b0672148ff5884f5e5a7829c04fd2c8d6f8375acdd670bdf7414c1184101",
+        ".github/workflows/windows_ci.yaml": "c0f9f4f8de9085b6b242ceefe5c416173aed81a8c4a9e957b30ab7aca0645f95"
+      }
     }
   },
   "local_work_focused": [

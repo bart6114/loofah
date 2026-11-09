@@ -1510,3 +1510,60 @@ model-quality failure. The raw provider request was not retained, so this is
 source/canonical evidence rather than an exact HTTP prompt reconstruction. No
 additional inference or speculative source change followed. The portable audit
 is `remote_summary_prompt_audit_080_2026_11_09`.
+
+## Capture profile fences during concurrent refresh, 2026-11-09
+
+A final read-only crosscheck found three remaining profile/token lock-order sites
+in capture append and retirement. They now reuse the existing
+`authenticated_scope::original_commit_guards`: if a concurrent owned refresh
+holds the token mutex, the capture operation releases its profile fence before
+waiting, then rechecks the original profile epoch. Original member/server/vault,
+request UUID, immutable declaration, login generation, cancellation and retirement
+ownership checks remain intact. The change neither adopts a new baseline nor
+introduces inference, mutation replay or raw deletion authority.
+
+On source `24198b3296ca4afcb5817ab51d29b21ac4e1c1a6`, the stable 21-package Native
+library graph passed 21 selected SDK cases, with zero failures and one explicit
+ignored case. Two new public-boundary regressions passed:
+
+- `tests::capture_append_authority::append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials`
+- `tests::capture_upload::cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials`
+
+Both block a real SDK refresh at fake credential persistence with a held mutex.
+The original capture guard is queued first; a profile save must finish before the
+refresh is released, and the operation must then reject the changed original
+profile generation. The cleanup case additionally verifies no extra retirement
+POST and preservation of its raw chunk. These tests do not depend on a sleep or
+an assumed HTTP response delay.
+
+The third, pre-POST retirement site uses the same helper but has no new standalone
+contention test. Its existing public regressions also passed:
+`cleanup_dispatch_rejects_original_profile_or_login_aba_during_member_verification`
+and `cleanup_dispatch_releases_profile_fence_before_waiting_for_retirement_response`.
+This coverage distinction is intentional and recorded, not represented as a third
+new blocked-refresh test.
+
+The ignored case was
+`cleanup_retirement_budget_outlives_ordinary_capture_timeout_without_changing_identity`:
+it exercises the real 35-second ordinary request deadline against a 36-second
+retirement response. It is not a soak test. This focused cohort performed no model
+inference and does not replace the earlier full-library or frozen-source paced
+acceptance. The all-target check passed in 31.80 seconds with the existing nine
+library/four library-test desktop warnings.
+
+The Windows workflow now runs the four standalone Git build-metadata regressions
+with `rustc --test -D warnings` on both x64 and ARM64, without expanding the Cargo
+feature/package graph. Actual execution of this new step on both architectures
+remains pending. The workflow's local Python checks passed 29 tests; actionlint
+and the high-severity zizmor gate passed. Zizmor ran offline with its existing
+36 ignored/67 suppressed findings. At this checkpoint, hosted CI for the earlier
+`073e5b7cd3e50caa890c48e317894582de39d878` source was still running and was left
+untouched; it does not qualify these later source/workflow changes.
+
+The existing portable JSON record now contains
+`records.capture_refresh_lock_validation_2026_11_09`, including all 21 passed test
+names, the exact ignored case, source hashes, coverage limits and SHA256 hashes
+of the six actual validation logs. The primary logs are
+`native-capture-refresh-fence-tests.log`, its `.json` result,
+`native-capture-refresh-fence-check.log` and `capture-refresh-{workflow-tests,actionlint,zizmor}.log`
+under the local task cache. All prior evidence records remain unchanged.
