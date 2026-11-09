@@ -3455,6 +3455,7 @@ dependencies = [
  "host",
  "intercept",
  "language",
+ "libc",
  "listener2-core",
  "loofah-client",
  "loofah-core",

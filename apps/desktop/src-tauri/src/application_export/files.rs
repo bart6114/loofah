@@ -1,7 +1,11 @@
+#[cfg(unix)]
+use super::staged_file::StagedFile;
 use super::*;
 use sha2::{Digest, Sha256};
 use std::{io::Write, path::Path};
 use tokio::io::AsyncWriteExt;
+#[cfg(not(unix))]
+type StagedFile = tempfile::NamedTempFile;
 
 pub(super) fn image_references(
     input: &ExportInput,
@@ -121,7 +125,7 @@ pub(super) async fn local_attachment(
 }
 
 pub(crate) struct StagedExport {
-    file: tempfile::NamedTempFile,
+    file: StagedFile,
     root: PathBuf,
     identity: DirectoryIdentity,
     name: String,
@@ -170,11 +174,8 @@ pub(super) fn stage(
         Err(error) => return Err(io_error(error)),
     };
     let identity = directory(&root)?;
-    let mut file = tempfile::Builder::new()
-        .prefix(".loofah-export-")
-        .tempfile_in(&root)
-        .map_err(io_error)?;
-    file.write_all(&bytes).map_err(io_error)?;
+    let file = staging_file(&root, &identity, ".loofah-export-")?;
+    file.as_file().write_all(&bytes).map_err(io_error)?;
     file.as_file().sync_all().map_err(io_error)?;
     let name = hypr_storage::fs::windows_safe_filename(title);
     let name = if name.trim().is_empty() {
@@ -209,10 +210,7 @@ pub(crate) fn stage_download(
         Err(error) => return Err(io_error(error)),
     }
     let identity = directory(&root)?;
-    let file = tempfile::Builder::new()
-        .prefix(".loofah-source-")
-        .tempfile_in(&root)
-        .map_err(io_error)?;
+    let file = staging_file(&root, &identity, ".loofah-source-")?;
     let output = file.reopen().map_err(io_error)?;
     let filename = hypr_storage::fs::windows_safe_filename(filename);
     let path = Path::new(&filename);
@@ -239,7 +237,11 @@ pub(crate) fn stage_download(
 }
 impl StagedExport {
     pub(crate) fn mark_download(&self) {
-        if let Err(cause) = crate::remote::attachments::mark_download(self.file.path()) {
+        #[cfg(unix)]
+        let marked = self.file.mark_download();
+        #[cfg(not(unix))]
+        let marked = crate::remote::attachments::mark_download(self.file.path());
+        if let Err(cause) = marked {
             tracing::warn!(%cause,"Could not apply original media download metadata");
         }
     }
@@ -262,7 +264,26 @@ pub(crate) fn publish(mut staged: StagedExport) -> Result<PathBuf, ApplicationEr
         } else {
             format!("{stem}.{}", staged.extension)
         };
-        let path = staged.root.join(name);
+        let path = staged.root.join(&name);
+        #[cfg(unix)]
+        {
+            match staged.file.publish(&name) {
+                Ok(()) => {
+                    staged.file.sync().map_err(io_error)?;
+                    if directory(&staged.root)? != staged.identity {
+                        return Err(error(
+                            ErrorCode::Conflict,
+                            "Export directory changed during publication",
+                        ));
+                    }
+                    staged.file.keep();
+                    return Ok(path);
+                }
+                Err(cause) if cause.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(cause) => return Err(io_error(cause)),
+            }
+        }
+        #[cfg(not(unix))]
         match staged.file.persist_noclobber(&path) {
             Ok(file) => {
                 file.sync_all().map_err(io_error)?;
@@ -282,4 +303,25 @@ pub(crate) fn publish(mut staged: StagedExport) -> Result<PathBuf, ApplicationEr
         ErrorCode::ResourceLimit,
         "Export filename attempts exhausted",
     ))
+}
+
+fn staging_file(
+    root: &Path,
+    identity: &DirectoryIdentity,
+    prefix: &str,
+) -> Result<StagedFile, ApplicationError> {
+    #[cfg(unix)]
+    let file = StagedFile::create(identity.handle.as_file(), prefix).map_err(io_error)?;
+    #[cfg(not(unix))]
+    let file = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempfile_in(root)
+        .map_err(io_error)?;
+    if directory(root)? != *identity {
+        return Err(error(
+            ErrorCode::Conflict,
+            "Export directory changed during staging",
+        ));
+    }
+    Ok(file)
 }

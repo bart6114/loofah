@@ -1159,3 +1159,13 @@ found that `NamedTempFile` cleanup after a Unix destination-directory replacemen
 could target the replacement namespace. Physical staging/publication/cleanup
 ownership and same-basename sentinels are being corrected before patched PDF QA;
 the existing positive rename fixture did not establish this cleanup property.
+
+Export staging now retains the physical destination directory on Unix: creation,
+no-clobber rename and cleanup use its descriptor, download writers duplicate the
+original file, and macOS quarantine metadata uses that file descriptor. A replaced
+Downloads/Loofah path causes refusal without deleting a same-named foreign file.
+Publication rechecks the visible directory identity before returning a path.
+Windows retains its original directory/file pins and no-clobber publication.
+Focused sentinels cover cancellation, failed publication, streamed downloads and
+replacement after directory admission. These new cases still require the stable
+Native graph and fresh Windows checks; no additional inference is involved.

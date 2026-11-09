@@ -247,3 +247,83 @@ fn original_source_publication_streams_large_files_and_preserves_existing_names(
         assert!(files::stage_download(root.clone(), invalid).is_err());
     }
 }
+
+#[test]
+fn rejected_export_publication_preserves_replacement_directory_sentinel() {
+    replaced_export_directory(false, false);
+}
+
+#[test]
+fn cancelled_export_preserves_replacement_directory_sentinel() {
+    replaced_export_directory(true, false);
+}
+
+#[test]
+fn cancelled_original_download_preserves_replacement_directory_sentinel() {
+    replaced_export_directory(true, true);
+}
+
+fn replaced_export_directory(cancel: bool, download: bool) {
+    use std::io::Write;
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap().join("Loofah");
+    let (staged, mut output) = if download {
+        let (staged, output) = files::stage_download(root.clone(), "original.wav").unwrap();
+        (staged, Some(output))
+    } else {
+        (
+            files::stage(root.clone(), "Meeting", "txt", b"original".to_vec()).unwrap(),
+            None,
+        )
+    };
+    let basename = std::fs::read_dir(&root)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .file_name();
+    let retired = root.with_file_name("retired");
+    match std::fs::rename(&root, &retired) {
+        Ok(()) => {
+            std::fs::create_dir(&root).unwrap();
+            let sentinel = root.join(&basename);
+            std::fs::write(&sentinel, b"foreign sentinel").unwrap();
+            if let Some(output) = output.as_mut() {
+                output.write_all(b"original download").unwrap();
+                output.sync_all().unwrap();
+                staged.mark_download();
+                assert_eq!(
+                    std::fs::read(retired.join(&basename)).unwrap(),
+                    b"original download"
+                );
+                assert_eq!(std::fs::read(&sentinel).unwrap(), b"foreign sentinel");
+            }
+            drop(output);
+            if cancel {
+                drop(staged);
+            } else {
+                assert!(files::publish(staged).is_err());
+            }
+            assert_eq!(std::fs::read(&sentinel).unwrap(), b"foreign sentinel");
+            assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+            assert_eq!(std::fs::read_dir(&retired).unwrap().count(), 0);
+        }
+        Err(cause) if cfg!(windows) && matches!(cause.raw_os_error(), Some(5 | 32)) => {
+            assert!(!retired.exists());
+            if let Some(output) = output.as_mut() {
+                output.write_all(b"original download").unwrap();
+                output.sync_all().unwrap();
+            }
+            drop(output);
+            if cancel {
+                drop(staged);
+                assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+            } else {
+                let published = files::publish(staged).unwrap();
+                assert_eq!(std::fs::read(published).unwrap(), b"original");
+            }
+            std::fs::rename(&root, &retired).unwrap();
+        }
+        Err(cause) => panic!("Unexpected export directory rename error: {cause}"),
+    }
+}
