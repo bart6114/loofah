@@ -15,6 +15,19 @@ desktop testing was paused. This build is compiler/bundle evidence only; it does
 not activate `media_retirement`, `capture_append` or the Local gates. The portable
 record preserves exact artifact hashes and the user pause.
 
+Latest allowed local qualification at frozen `e3d19aa0b`: all 1,499 tests in
+four complete shared-library cohorts passed (13 explicit ignores). The two
+append failures were traced to unbuffered float output in WAV concatenation;
+bounded output buffering fixed them under the original deadline without inference
+replay or an early readiness flag. Core passed 590 cases, including real 4,097
+admissions, archive fault/reopen/shutdown checks and cancellation/resolution gates.
+The stable-path 22-package all-target check passed, compiling the new actual-audio
+tests without executing them. The only additional feature union is Rust
+`serial_test`/derive support; native model features remain unchanged. Full headless
+frontend passed 2,660 tests/298 files, plus typechecking, locales and production
+frontend bundling. New hosted/platform qualification and desktop acceptance remain
+separate gates; these local results do not resume desktop application tests.
+
 Current hosted acceptance at published `fada28348314b9d6607830c30fed58c586114cce`:
 all seven workflows are terminal. Six succeeded. Linux backend passed 1,691 tests,
 macOS passed 3,262 with 124 explicit ignores, and the CLI passed 274. Frontend
@@ -2710,3 +2723,54 @@ dprint and diff checks passed, but these new fixtures and native device behavior
 have not run: local desktop tests remain paused and the sole Native compilation
 lane belongs to Root. No dependency, feature, capability or receipt-schema change
 is included, and legacy unknown producers gain no retrospective completion proof.
+
+
+## Final allowed local checkpoint before fresh hosted qualification
+
+At frozen `e3d19aa0b`, the expanded 22-package all-target check passed in 16.56
+seconds. Adding the already-dependent `audio-actual` package compiles its new test
+code; feature-tree comparison shows only additional Rust serial-test support and
+no change to native model features. Existing nine desktop-library/four test
+warnings remain. The earlier missing CPAL sample-lifetime bound failed compile
+and was corrected explicitly; its original exit101/log is preserved.
+
+Nine focused Core append/PCM cases passed, then all four full libraries passed:
+CLI96/0/0, Core590/0/2, server182/0/6, vault-write631/0/5 (**1,499/0/13**).
+No case was filtered from this final full run; the expensive 4,097 real-admission
+case passed under the bounded migration policy. Eighteen other libraries,
+including desktop and actual audio, were explicitly not executed. The actual
+native-owner/teardown fixtures are compiler evidence only on this workstation;
+physical device behavior and fresh Windows x64/ARM64 remain qualification gates.
+
+The two old append failures were reproduced repeatedly under the full Core
+cohort. Test-only stage/attempt diagnostics showed each current publication stuck
+at concatenation after exactly one model call and retained valid output. Hound
+input was already buffered; its float output used one four-byte file write per
+sample. The fixed real 17,601-frame fixture now uses at most seven underlying
+writes, with exact WAV-byte equality, unchanged frame/SHA/finite checks and
+explicit flush before the original writable file's sync. Underlying write and
+flush errors propagate. The original 20-second deadlines and actual source drain
+remain unchanged; transcript readiness still follows the compound canonical
+commit. Both cases passed in the final full cohort, rather than only in isolation.
+
+The complete headless frontend suite passed **2,660 tests/298 files**; the shared
+UI build and production frontend bundle passed. The earlier actual type exporter,
+70 focused UI/adapter cases, TSC and locale extraction/strict compilation are
+recorded separately. Final workflow helpers passed 44 tests; the changed Windows workflow passes
+actionlint, and the configured high-severity offline zizmor check passed. Whole-
+workflow actionlint reports existing findings in four workflows and the pnpm
+composite metadata, all byte-identical to published `fada283`; raw reports and
+Git-blob comparisons are preserved. No unrelated workflow source was changed. Desktop oxlint reported
+zero errors and 114 warnings; no warning-baseline equivalence is claimed.
+All attempts/log hashes and scope exclusions are copied into the existing portable
+record; prior records remain unchanged.
+
+Normative plan review confirms unknown producer Review/no unsafe action is an
+intentional preservation boundary, not missing authority to invent physical
+completion. Eligible retained output has explicit recovery; confirmed-drained
+conflicts have reviewed closure, and existing Local folder access supports manual
+recovery of saved files. The panel does not promise an unknown-producer repair
+wizard. Shared operation activation, fresh platform CI, production responsiveness
+and physical acceptance remain required. Desktop testing is still user-paused,
+production company SSO still deferred, model semantic quality still unqualified,
+and no activation, merge, release or version change occurred.

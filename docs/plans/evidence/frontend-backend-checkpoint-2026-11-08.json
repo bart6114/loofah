@@ -11268,6 +11268,207 @@
         "new_history_idle_cases": "All22 passed including real4097admissions, exacthash, faultrecovery, lifecycle and actualabandonedIOdrain",
         "limits": "Other17librarybinaries NOTEXECUTED. Two append failures remain; no wholecohortpass. Later boundedmigrationbudget/copy/pins not qualified by this run. Desktopbehavior paused."
       }
+    },
+    "local_capture_controls_history_buffered_append_and_native_owner_qualification_2026_11_09": {
+      "source": "e3d19aa0b79268975246dce8bbbc299abc1abc70",
+      "reports": {
+        "final_native": {
+          "sha256": "4530ca58c6a1f12e119ef7ebf19aa90dc0ca4ff68bf9b87de6c9aa06509aa09e",
+          "report": {
+            "source": "e3d19aa0b79268975246dce8bbbc299abc1abc70",
+            "steps": [
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/buffered-and-owned-teardown/all-target-check.log",
+                "exit": 0,
+                "seconds": 16.563018083572388,
+                "sha256": "d9a9abebd7f8abeeec71dfa03ad4f0118c0134b8c23edc3b30f403df6a3ddf6c"
+              },
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/buffered-and-owned-teardown/focused-append.log",
+                "exit": 0,
+                "seconds": 73.71028709411621,
+                "sha256": "d02829d1f10aff673cfac2950b67c81398a9d9b4065af9290caa91ce95df7be0"
+              },
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/buffered-and-owned-teardown/four-libraries.log",
+                "exit": 0,
+                "seconds": 431.7709412574768,
+                "sha256": "5e1f42ee2052096c6ccccf870cb81aa3c92a4c9bd37930d883f6c0ba8310679b"
+              }
+            ]
+          }
+        },
+        "frontend": {
+          "sha256": "c13262b186d5d77498092d32074ca866ef15a2e300be0bd372b0f82e3b3326f8",
+          "report": {
+            "source": "e3d19aa0b79268975246dce8bbbc299abc1abc70",
+            "steps": [
+              {
+                "name": "desktop-tests",
+                "exit": 0,
+                "seconds": 97.91318988800049,
+                "sha256": "e591042daef8038fa9f512ac9cb3eefa029060874b73e5f363ccedbb5c111ba7"
+              },
+              {
+                "name": "ui-build",
+                "exit": 0,
+                "seconds": 1.0390009880065918,
+                "sha256": "32c6d9103e613a289594a4e3d0364d8ee8a49923fdfac8600c1cce55c5b2ced6"
+              },
+              {
+                "name": "desktop-production-bundle",
+                "exit": 0,
+                "seconds": 3.6680350303649902,
+                "sha256": "b98c7453c747d7ad25f0b4f7765aaf2674742cd943d51d36a894604a6830a39b"
+              }
+            ]
+          }
+        },
+        "expanded_graph": {
+          "sha256": "a56f7c3113fc6908a429cac865e7e9ce7024291c6576675871fb09899174bb4e",
+          "report": {
+            "source": "3a6b9f7a1d3c78b4fe17776392a90068bb788683",
+            "differences": {
+              "serial_test v3.4.0": {
+                "before": [],
+                "after": [
+                  "async",
+                  "default",
+                  "logging"
+                ]
+              },
+              "serial_test_derive v3.4.0 (proc-macro)": {
+                "before": [],
+                "after": [
+                  "async",
+                  "default"
+                ]
+              }
+            }
+          }
+        },
+        "prior_bound_failure": {
+          "sha256": "1351e5168522eeb69b6f22b76fd632403421ee7554fd7ea5ff7ae8b7ef7fbf6d",
+          "report": {
+            "source": "3a6b9f7a1d3c78b4fe17776392a90068bb788683",
+            "exit": 101,
+            "seconds": 3.580408811569214,
+            "sha256": "cd8aac8db55d3c7b6a7a5cfb6567ca52bce82e8c02897b9fc4928ccb46860ac8"
+          }
+        },
+        "diagnostic_1": {
+          "sha256": "a09a06deea1058d8e43171e4023c420fabdc4ec0a129516637f779bdb086d7a3",
+          "report": {
+            "source": "38b190ef82eadaedf39982fdf0ee85661b9b661e",
+            "steps": [
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/append-publication-stage-diagnosis/all-target-check.log",
+                "exit": 0,
+                "seconds": 14.371417045593262,
+                "sha256": "515d72455a71df3cf5008e68787ab0410d6c358d72cfc38f4bd44fb8ae9cec5c"
+              },
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/append-publication-stage-diagnosis/core-diagnostic.log",
+                "exit": 101,
+                "seconds": 136.08943700790405,
+                "sha256": "16e8f353c80fbc7c485886609550bfd01c49323f411bfcc6dd7fa40558a7864c"
+              }
+            ]
+          }
+        },
+        "diagnostic_2": {
+          "sha256": "9931cadae9f6c587b7a6f3e33b9734ca8650664859070e46cdf8639ce4a0d812",
+          "report": {
+            "source": "8c8aecd2bdad1642c63e7aa0e47dd878ed069bb4",
+            "steps": [
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-writer-ownership/callback-bound-and-append-substage/all-target-check.log",
+                "exit": 0,
+                "seconds": 11.465473890304565,
+                "sha256": "b42707232b9fdddf7da7516cb17b70036eae2d0832180301140358168eac07b9"
+              },
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-writer-ownership/callback-bound-and-append-substage/core-diagnostic.log",
+                "exit": 101,
+                "seconds": 127.4019558429718,
+                "sha256": "5a4ea4c76944e516ec803af6cd74f3ccadb7df390540243d3b3dcfd7d06fdbb7"
+              }
+            ]
+          }
+        }
+      },
+      "auxiliary_checks": {
+        "workflow-helpers-final.log": {
+          "sha256": "5b4e606d26ab62ad62a7346370efd033dc1b101c3a1e4aeb973341ea1568d928",
+          "bytes": 414
+        },
+        "actionlint-final.log": {
+          "sha256": "2b5efb159f10a9268b2d3a393f381341b1fa6044027f507aac3fb140791139e3",
+          "bytes": 2076
+        },
+        "zizmor-final.log": {
+          "sha256": "932b3c18c3c2f878886d58d088ba4482f2b6abc5705d3294c117db0da86c6583",
+          "bytes": 1150
+        },
+        "frontend-integrated/desktop-lint.log": {
+          "sha256": "147ae270cae2ef0a6edde1c1ad5061d94ba75117fd3b8f701a23f79c1440e92e",
+          "bytes": 97
+        },
+        "actionlint-windows-final.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "actionlint-baseline-source-comparison.json": {
+          "sha256": "1a0115184f965ed23c761eb9470419d3260af18076931535bcae8c2f83de58d2",
+          "bytes": 996
+        }
+      },
+      "qualified": {
+        "compile": "Same stable absolute Native path;22-package all-target check passed16.56s, including audio-actual regression testcode. Actual featureunion change from21 is only Rust serial_test/derive defaults,async,logging; native model features unchanged. Existing9desktoplibrary/4testwarnings.",
+        "focused_core": "9/0/0; other libraries0matches orNOTEXECUTED",
+        "four_complete_libraries": {
+          "cli": [
+            96,
+            0,
+            0
+          ],
+          "core": [
+            590,
+            0,
+            2
+          ],
+          "server": [
+            182,
+            0,
+            6
+          ],
+          "vault_write": [
+            631,
+            0,
+            5
+          ],
+          "total": [
+            1499,
+            0,
+            13
+          ]
+        },
+        "frontend": "2660 tests/298files,70targeted tests earlier, actual locale extract+strictcompile, desktopTSC (shared fixtureannotation corrected), UIbuild+productionVitebundle passed",
+        "workflow_helpers": 44,
+        "lint": "0errors;114warnings; no baseline-equivalence claim",
+        "actionlint": "Changed windows_ci.yaml passes. Whole-workflow invocation reports existing findings in four byte-identical baseline workflows and unchanged pnpm composite metadata; source comparison and both raw logs preserved. No unrelated workflow changes.",
+        "zizmor": "No findings above configured high threshold;36ignored/67suppressed by existing configuration"
+      },
+      "source_fixes": "Durable perrequest cancellation; child journal Cancelling-before-Cancelled; dispatch/canonical commit gates; complete title retention; reviewed conflict resolution; active/history separation with exact archive index+receipt hashes and crash replay; four-receipt foreground migration budget; stored+live destructive admission guards; original owner in physical producer/recorder/backend callbacks; checked macOS teardown and explicit unconfirmed cleanup propagation; bounded64KiB output buffering with exactbits/byte/hash/frame/error/sync regressions.",
+      "append_cause": "Original full-cohort failures reproduced with attempts in-flight at concatenate, after one inference and valid retained result. Buffered output reduced counted real17,601-frame concat from35,202 writes to<=7, preserved exact WAV bytes. Original20s deadlines, no replay or premature readiness. Both cases pass in final full Core run.",
+      "limits": [
+        "18other library binaries includingDesktop and audio-actual NOTEXECUTED locally, no runtime qualification from these runs",
+        "New actual audio teardown tests compiled only; physical/GUI tests remain user-paused",
+        "No new-head Windows or macOS hosted qualification yet; must inspect new CI after push",
+        "Production HTTPS/companySSO explicitly deferred",
+        "Tiny Qwen semantic quality remains failed/unqualified; no new model quality pass",
+        "All activation gates remain off; no merge,release,versionbump or uservaultchanges"
+      ]
     }
   },
   "local_work_focused": [
