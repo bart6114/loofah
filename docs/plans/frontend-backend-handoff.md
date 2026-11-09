@@ -2997,3 +2997,32 @@ per-probe elapsed/budget rows and an explicit early-drop witness row. Source
 formatting is checked; no configured rerun, local inference or desktop test was
 performed for this correction. Root's coordinated compiler and later actual
 platform runs must qualify it before any acceptance claim changes.
+
+### Abrupt-disconnect proof correction after source review
+
+The preceding source checkpoint's mandatory Close frame for abrupt TCP drop was
+incorrect and is superseded here. Tungstenite marks a connection terminated when
+its read half reaches an ungraceful EOF; its later close call need not transmit a
+Close frame. Requiring that frame could therefore depend on whether replacement
+cancellation beat the physical disconnect.
+
+The service now emits two DEBUG observations carrying its existing request ID:
+`whisper_live_worker_started` immediately after starting the original worker and
+`whisper_live_worker_completion` after the existing completion await, with
+`confirmed` reflecting whether that acknowledgement succeeded. This adds no
+protocol, timing or cleanup behavior. The bounded test observer binds the abrupt
+connection's ID before any replacement exists. Within the original 15-second
+plus finite transport allowance, the probe requires that exact worker's confirmed
+acknowledgement and the original proxy's server EOF. A replacement acknowledgement,
+unknown identity or failed acknowledgement cannot satisfy this proof.
+
+The original pre-call start, 100 ms wait and absence of normal native completion
+before early drop remain required. Cooperative connections still require a
+decoded Close. Abrupt downstream bytes report an optional decoded Close honestly;
+incomplete bytes after peer loss do not replace the exact worker-drain witness.
+The decoder rejects one-byte Close payloads, forbidden close codes and invalid
+UTF-8 reasons as well as the existing EOF/truncation/payload-lookalike cases.
+There are six observer and three proxy ordinary tests, plus two ignored real
+model tests. All three RTT profiles and per-semantic budgets remain unchanged.
+This follow-up is formatted source only; no build, test execution, inference,
+application launch or workflow control was performed in the worker.

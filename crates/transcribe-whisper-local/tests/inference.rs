@@ -204,20 +204,20 @@ fn connection_proof(rtt_ms: u64, proof: delayed_proxy::Connection) {
             proof.downstream.bytes
         );
     }
-    if index != 0 {
-        // The service joins its CPU worker before emitting this real Close frame.
-        // Even a dropped client must leave that frame in the owned proxy capture.
+    if !matches!(index, 0 | 4) {
+        // Cooperative shutdown emits Close after the original CPU worker drains.
+        // Abrupt EOF terminates the protocol and instead needs its exact worker acknowledgement.
         proof.require_server_close();
     }
     println!(
-        "websocket shaped connection: rtt_ms={rtt_ms} index={index} upload_bytes={} upload_slabs={} completed_upload_bytes={} download_bytes={} download_slabs={} completed_download_bytes={} client_closed=true server_eof=true server_close={}",
+        "websocket shaped connection: rtt_ms={rtt_ms} index={index} upload_bytes={} upload_slabs={} completed_upload_bytes={} download_bytes={} download_slabs={} completed_download_bytes={} client_closed=true server_eof=true server_close={:?}",
         proof.upstream.bytes,
         proof.upstream.slabs,
         proof.upstream.completed_write_bytes,
         proof.downstream.bytes,
         proof.downstream.slabs,
         proof.downstream.completed_write_bytes,
-        index != 0,
+        proof.observed_server_close(),
     );
 }
 
@@ -290,10 +290,12 @@ async fn shaped_websocket_profile(
 
     let mut abrupt_elapsed = None;
     if rtt_ms == 50 {
-        let disconnected = bounded_probe("abrupt-setup", rtt_ms, model_allowance, 1, async {
+        let (disconnected, original_id) = bounded_probe("abrupt-setup", rtt_ms, model_allowance, 1, async {
             let before = native.snapshot();
+            let live_epoch = native.live_epoch();
             let (mut socket, _) = connect_async(&url).await.unwrap();
             send_speech(&mut socket).await;
+            let original_id = native.live_started_after(live_epoch).await;
             native.started_after(before.0).await;
             tokio::time::sleep(Duration::from_millis(100)).await;
             let at_drop = native.snapshot();
@@ -303,7 +305,7 @@ async fn shaped_websocket_profile(
                 "websocket abrupt witness: rtt_ms={rtt_ms} started_before={} completed_before={} started_at_drop={} completed_at_drop={} post_start_wait_ms=100 witness=pre_call_trace_not_inside_kernel",
                 before.0, before.1, at_drop.0, at_drop.1,
             );
-            socket
+            (socket, original_id)
         })
         .await;
         let dropped = Instant::now();
@@ -312,6 +314,8 @@ async fn shaped_websocket_profile(
             let (mut replacement, _) = connect_async(&url).await.unwrap();
             finalize(&mut replacement).await;
             drop(replacement);
+            native.live_drained(&original_id).await;
+            println!("websocket abrupt worker drain: rtt_ms={rtt_ms} request_id={original_id} confirmed=true");
             connection_proof(rtt_ms, proxy.connection(4).await);
             connection_proof(rtt_ms, proxy.connection(5).await);
         })

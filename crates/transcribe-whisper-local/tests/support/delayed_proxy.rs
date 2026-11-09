@@ -36,12 +36,16 @@ impl Connection {
         assert!(self.downstream.peer_closed);
         assert!(server_close(&self.downstream.server_bytes).unwrap());
     }
+
+    pub fn observed_server_close(&self) -> Option<bool> {
+        server_close(&self.downstream.server_bytes).ok()
+    }
 }
 
 fn server_close(bytes: &[u8]) -> io::Result<bool> {
     use tokio_tungstenite::tungstenite::protocol::frame::{
         FrameSocket,
-        coding::{Control, OpCode},
+        coding::{CloseCode, Control, OpCode},
     };
     if !bytes.starts_with(b"HTTP/1.1 101 ") {
         return Err(io::Error::other("missing original WebSocket upgrade"));
@@ -66,6 +70,15 @@ fn server_close(bytes: &[u8]) -> io::Result<bool> {
         if frame.header().opcode == OpCode::Control(Control::Close) {
             if !frame.header().is_final || frame.payload().len() > 125 {
                 return Err(io::Error::other("invalid server Close frame"));
+            }
+            let payload = frame.payload();
+            if payload.len() == 1
+                || (payload.len() >= 2
+                    && (!CloseCode::from(u16::from_be_bytes([payload[0], payload[1]]))
+                        .is_allowed()
+                        || std::str::from_utf8(&payload[2..]).is_err()))
+            {
+                return Err(io::Error::other("invalid server Close payload"));
             }
             closed = true;
         }
@@ -278,6 +291,15 @@ fn close_proof_decodes_real_frames_and_rejects_eof_or_payload_lookalikes() {
     let mut truncated = bytes.clone();
     truncated.push(0x88);
     assert!(!server_close(&truncated).unwrap_or(false));
+    for malformed in [
+        vec![0x88, 1, 0],
+        vec![0x88, 2, 3, 237],
+        vec![0x88, 3, 3, 232, 255],
+    ] {
+        let mut invalid = bytes.clone();
+        invalid.extend_from_slice(&malformed);
+        assert!(server_close(&invalid).is_err());
+    }
     Frame::close(None).format(&mut bytes).unwrap();
     assert!(server_close(&bytes).unwrap());
     Frame::message(vec![1], OpCode::Data(Data::Binary), true)

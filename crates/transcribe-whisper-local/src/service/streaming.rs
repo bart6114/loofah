@@ -245,6 +245,7 @@ async fn handle_websocket(
     let cancelled = Arc::new(AtomicBool::new(false));
     let (jobs, mut output, completion) =
         super::live_worker::start(model, params, cancelled.clone());
+    tracing::debug!(request_id = %metadata.request_id, "whisper_live_worker_started");
     let (mut sender, receiver) = socket.split();
     let lifecycle = tokio_util::sync::CancellationToken::new();
     let input_lifecycle = lifecycle.clone();
@@ -321,7 +322,12 @@ async fn handle_websocket(
     producer.abort();
     // Dropping the receiver unblocks a worker stalled on output; completion never joins on Tokio.
     drop(output);
-    let _ = completion.await;
+    let completion_result = completion.await;
+    tracing::debug!(
+        request_id = %metadata.request_id,
+        confirmed = completion_result.is_ok(),
+        "whisper_live_worker_completion"
+    );
     let error = input_error.lock().unwrap().take();
     if let Some(error) = error {
         let _ = tokio::time::timeout(
