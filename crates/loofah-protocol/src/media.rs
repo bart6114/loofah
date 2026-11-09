@@ -325,3 +325,116 @@ mod initial_tests {
         assert!(validate_media_declaration(&declaration).is_err());
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaSourceDisposition {
+    Exported,
+    Discard,
+    NoUpload,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaRetirementRequest {
+    pub retirement_id: String,
+    pub expected_revision: String,
+    pub expected_declaration_sha256: String,
+    pub expected_source: Option<MediaUploadSource>,
+    pub disposition: MediaSourceDisposition,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaRetirementState {
+    Eligible,
+    Blocked,
+    Retiring,
+    Retired,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaRetirementStatus {
+    pub request_id: String,
+    pub revision: String,
+    pub declaration_sha256: String,
+    pub source: Option<MediaUploadSource>,
+    pub state: MediaRetirementState,
+    pub retirement: Option<MediaRetirementRequest>,
+    pub reason: Option<String>,
+    pub quota_released: bool,
+    pub allowed_dispositions: Vec<MediaSourceDisposition>,
+}
+
+pub fn validate_media_retirement_request(
+    input: &MediaRetirementRequest,
+) -> Result<(), &'static str> {
+    if !canonical_uuid(&input.retirement_id)
+        || !canonical_uuid(&input.expected_revision)
+        || !crate::is_transcription_sha256(&input.expected_declaration_sha256)
+        || input.expected_source.as_ref().is_some_and(|source| {
+            source.size_bytes == 0 || !crate::is_transcription_sha256(&source.sha256)
+        })
+        || (input.expected_source.is_none()
+            != (input.disposition == MediaSourceDisposition::NoUpload))
+    {
+        return Err("Invalid original media retirement identity");
+    }
+    Ok(())
+}
+
+pub fn media_declaration_sha256(input: &MediaDeclaration) -> Result<String, &'static str> {
+    use sha2::{Digest, Sha256};
+    validate_media_declaration(input)?;
+    let bytes = serde_json::to_vec(input).map_err(|_| "Invalid media declaration")?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("Media declaration exceeds its budget");
+    }
+    let mut hash = Sha256::new();
+    hash.update(b"loofah-media-declaration-v1\0");
+    hash.update(bytes);
+    Ok(hash
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+#[cfg(test)]
+mod retirement_tests {
+    use super::*;
+    #[test]
+    fn media_retirement_binds_original_declaration_revision_and_explicit_disposition() {
+        let mut declaration: MediaDeclaration = serde_json::from_value(serde_json::json!({
+            "request_id":"3ee6ab27-391d-47cb-ad40-5c61b57f4181",
+            "operation":{"kind":"import_audio","session_id":null,"expected":null,
+                "filename":"a.wav","content_type":null,"created_at":null,
+                "transcribe":false,"source":{"sha256":"a".repeat(64),"size_bytes":1}},
+            "transcription":null,"summary":null
+        }))
+        .unwrap();
+        let hash = media_declaration_sha256(&declaration).unwrap();
+        let roundtrip = serde_json::from_slice(&serde_json::to_vec(&declaration).unwrap()).unwrap();
+        assert_eq!(hash, media_declaration_sha256(&roundtrip).unwrap());
+        declaration.request_id = "2ee6ab27-391d-47cb-ad40-5c61b57f4181".into();
+        assert_ne!(hash, media_declaration_sha256(&declaration).unwrap());
+        let mut request = MediaRetirementRequest {
+            retirement_id: "1ee6ab27-391d-47cb-ad40-5c61b57f4181".into(),
+            expected_revision: "4ee6ab27-391d-47cb-ad40-5c61b57f4181".into(),
+            expected_declaration_sha256: hash,
+            expected_source: Some(MediaUploadSource {
+                sha256: "a".repeat(64),
+                size_bytes: 1,
+            }),
+            disposition: MediaSourceDisposition::Exported,
+        };
+        validate_media_retirement_request(&request).unwrap();
+        request.disposition = MediaSourceDisposition::NoUpload;
+        assert!(validate_media_retirement_request(&request).is_err());
+        request.expected_source = None;
+        validate_media_retirement_request(&request).unwrap();
+        request.retirement_id = "00000000-0000-0000-0000-000000000000".into();
+        assert!(validate_media_retirement_request(&request).is_err());
+    }
+}
