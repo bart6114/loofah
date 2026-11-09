@@ -104,6 +104,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & artifacts/cli/loof-staging.exe mcp --help
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test installer process ownership
+        run: ./apps/desktop/src-tauri/scripts/windows-install-process.test.ps1
       - name: Test installed app and uninstall
         run: ./apps/desktop/src-tauri/scripts/test-windows-install.ps1
       - name: Collect installed app logs
