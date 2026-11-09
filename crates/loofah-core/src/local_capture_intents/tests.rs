@@ -1520,13 +1520,24 @@ async fn local_capture_reviewed_conflict_resolution_preserves_content_and_replay
             })
             .await
             .unwrap();
+        let refused = service
+            .resolve(input.request_id.clone(), stale)
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code, ErrorCode::Conflict);
         assert_eq!(
-            service
-                .resolve(input.request_id.clone(), stale)
-                .await
-                .unwrap_err()
-                .code,
-            ErrorCode::Conflict
+            refused.mutation_outcome,
+            Some(hypr_loofah_protocol::MutationOutcome::NotCommitted)
+        );
+        assert_eq!(
+            refused.current_revision,
+            Some(
+                service
+                    .control_status(&input.request_id)
+                    .await
+                    .unwrap()
+                    .revision
+            )
         );
         let snapshot = service.control_status(&input.request_id).await.unwrap();
         let resolution = resolution_request(&snapshot);

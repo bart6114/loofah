@@ -93,11 +93,15 @@ fn eligible(entry: &Entry, resolution: &LocalCaptureResolution) -> Result<(), Ap
             "Only confirmed-drained processing conflicts can be closed",
         ));
     }
-    if controls::control_revision(&entry.record)? != resolution.expected_revision {
-        return Err(error(
+    let revision = controls::control_revision(&entry.record)?;
+    if revision != resolution.expected_revision {
+        let mut failure = error(
             ErrorCode::Conflict,
             "Local processing changed; review the current state",
-        ));
+        );
+        failure.current_revision = Some(revision);
+        failure.mutation_outcome = Some(hypr_loofah_protocol::MutationOutcome::NotCommitted);
+        return Err(failure);
     }
     Ok(())
 }
