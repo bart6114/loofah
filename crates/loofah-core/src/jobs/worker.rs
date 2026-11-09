@@ -129,6 +129,14 @@ async fn run(
     }
 }
 
+fn local_parent_refusal(failure: &ApplicationError) -> JobCompletion {
+    if failure.code == ErrorCode::Cancelled {
+        JobCompletion::Cancelled
+    } else {
+        JobCompletion::Interrupted
+    }
+}
+
 fn failure_completion(failure: ProcessingJobFailure) -> JobCompletion {
     match failure {
         ProcessingJobFailure::Interrupted => JobCompletion::Interrupted,
@@ -171,6 +179,8 @@ async fn execute(
     {
         return Ok(JobCompletion::Interrupted);
     }
+    #[cfg(test)]
+    local_capture_tests::checkpoint(&work.request.session_id, "summary_source_ready").await;
     let grant = match authorizer.authorize(&work).await {
         Ok(grant) => grant,
         Err(failure) => return Ok(failure_completion(failure)),
@@ -211,7 +221,23 @@ async fn execute(
     journal
         .progress(id.into(), ProcessingPhase::Generating)
         .await?;
-    let cancel = CancellationToken::new();
+    let parent_cancel = match context
+        .local_capture_cancellation(&work.principal, &request_id, local_origin.as_ref())
+        .await
+    {
+        Ok(token) => token.unwrap_or_default(),
+        Err(_) => return Ok(JobCompletion::Interrupted),
+    };
+    #[cfg(test)]
+    local_capture_tests::checkpoint(&work.request.session_id, "summary_generate").await;
+    let parent_admission = match context
+        .local_capture_dispatch_guard(&work.principal, &request_id, local_origin.as_ref())
+        .await
+    {
+        Ok(guard) => guard,
+        Err(failure) => return Ok(local_parent_refusal(&failure)),
+    };
+    let cancel = parent_cancel.child_token();
     let (preview, mut preview_changes) = GenerationPreview::channel();
     let mut preview_cursor = None;
     let mut generation = generator.generate_with_preview(
@@ -220,6 +246,17 @@ async fn execute(
         preview.clone(),
         work.request.title_policy == TitlePolicy::GenerateIfEmpty,
     );
+    // Cancellation and the first model poll share the original parent gate.
+    // Release it before waiting for model work or its physical drain.
+    let first =
+        std::future::poll_fn(|cx| std::task::Poll::Ready(generation.as_mut().poll(cx))).await;
+    drop(parent_admission);
+    let mut generation = Box::pin(async move {
+        match first {
+            std::task::Poll::Ready(result) => result,
+            std::task::Poll::Pending => generation.await,
+        }
+    });
     let mut changes = journal.0.events.subscribe(None);
     let mut checks = tokio::time::interval(std::time::Duration::from_secs(1));
     checks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -231,6 +268,11 @@ async fn execute(
             _ = preview_tick.tick() => { preview.publish_pending(false); },
             _ = preview_changes.changed() => { flush_preview(journal, id, &preview, &mut preview_cursor).await; },
             _ = stop.cancelled() => break Err(JobCompletion::Interrupted),
+            _ = parent_cancel.cancelled() => {
+                let completion = context.local_capture_dispatch_guard(&work.principal, &request_id, local_origin.as_ref())
+                    .await.err().map_or(JobCompletion::Interrupted, |failure| local_parent_refusal(&failure));
+                break Err(completion);
+            },
             _ = checks.tick() => {},
             _ = changes.recv() => {},
         }
@@ -314,6 +356,17 @@ async fn execute(
         Ok(guard) => guard,
         Err(_) => return Ok(JobCompletion::Conflict),
     };
+    #[cfg(test)]
+    local_capture_tests::checkpoint(&work.request.session_id, "summary_apply").await;
+    let parent_admission = match context
+        .local_capture_dispatch_guard(&work.principal, &request_id, local_origin.as_ref())
+        .await
+    {
+        Ok(guard) => guard,
+        Err(failure) => return Ok(local_parent_refusal(&failure)),
+    };
+    #[cfg(test)]
+    local_capture_tests::checkpoint(&work.request.session_id, "summary_apply_admitted").await;
     let input = hypr_loofah_protocol::SaveDocumentRequest {
         markdown: output.markdown,
         expected_revision: work.request.expected_revision.clone(),
@@ -335,6 +388,10 @@ async fn execute(
                 .await
         }
     };
+    // Once admitted, the owned canonical write finishes before parent cancellation.
+    drop(parent_admission);
+    #[cfg(test)]
+    local_capture_tests::checkpoint(&work.request.session_id, "summary_written").await;
     drop(source_guard);
     drop(local_source_guard);
     drop(manual_source_guard);
@@ -425,3 +482,6 @@ async fn flush_preview(
         tracing::warn!("Processing preview checkpoint unavailable");
     }
 }
+
+#[cfg(test)]
+pub(super) mod local_capture_tests;

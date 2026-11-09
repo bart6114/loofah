@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use hypr_loofah_protocol::{ProcessingTitleResult, ProcessingTitleStatus};
 
 use super::{title_stage::TitleStage, *};
@@ -23,7 +25,7 @@ impl TitleExecution<'_> {
                 .await;
             return;
         };
-        if let Some(interruption) = self.interrupted().await {
+        if let Some(interruption) = self.interrupted(work).await {
             self.finish(interruption).await;
             return;
         }
@@ -78,7 +80,7 @@ impl TitleExecution<'_> {
                 return;
             }
         };
-        if let Some(interruption) = self.interrupted().await {
+        if let Some(interruption) = self.interrupted(work).await {
             self.finish(interruption).await;
             return;
         }
@@ -118,7 +120,7 @@ impl TitleExecution<'_> {
             return;
         }
         title_stage::checkpoint("title_candidate");
-        if let Some(mut interruption) = self.interrupted().await {
+        if let Some(mut interruption) = self.interrupted(work).await {
             interruption.candidate = Some(candidate);
             self.finish(interruption).await;
             return;
@@ -132,12 +134,23 @@ impl TitleExecution<'_> {
                 return;
             }
         };
-        if let Some(mut interruption) = self.interrupted().await {
+        if let Some(mut interruption) = self.interrupted(work).await {
             interruption.candidate = Some(candidate);
             drop(grant);
             self.finish(interruption).await;
             return;
         }
+        #[cfg(test)]
+        super::worker::local_capture_tests::checkpoint(&work.request.session_id, "title_apply")
+            .await;
+        let parent_admission = match self.parent_admission(work).await {
+            Ok(guard) => guard,
+            Err(mut interruption) => {
+                interruption.candidate = Some(candidate);
+                self.finish(interruption).await;
+                return;
+            }
+        };
         if let Err(failure) = self
             .journal
             .advance_title(
@@ -156,12 +169,22 @@ impl TitleExecution<'_> {
             return;
         }
         title_stage::checkpoint("title_applying");
+        #[cfg(test)]
+        super::worker::local_capture_tests::checkpoint(
+            &work.request.session_id,
+            "title_apply_admitted",
+        )
+        .await;
         // Once admitted, await actual canonical I/O with the grant still held.
         let applied = self
             .context
             .apply_generated_title(baseline, candidate.clone())
             .await;
         title_stage::checkpoint("title_applied");
+        drop(parent_admission);
+        #[cfg(test)]
+        super::worker::local_capture_tests::checkpoint(&work.request.session_id, "title_written")
+            .await;
         drop(grant);
         let result = match applied {
             Ok(GeneratedTitleOutcome::Applied { .. }) => {
@@ -180,7 +203,39 @@ impl TitleExecution<'_> {
         title_stage::checkpoint("title_finished");
     }
 
-    async fn interrupted(&self) -> Option<ProcessingTitleResult> {
+    async fn parent_admission(
+        &self,
+        work: &JobWork,
+    ) -> Result<Option<tokio::sync::OwnedMutexGuard<()>>, ProcessingTitleResult> {
+        let (request, _) = self
+            .journal
+            .capture_request_id(self.id.into())
+            .await
+            .map_err(|_| failed(ProcessingJobFailure::Storage))?;
+        let origin = self
+            .journal
+            .local_capture_origin(self.id.into())
+            .await
+            .map_err(|_| failed(ProcessingJobFailure::Storage))?;
+        self.context
+            .local_capture_dispatch_guard(&work.principal, &request, origin.as_ref())
+            .await
+            .map_err(|failure| {
+                outcome(
+                    if failure.code == ErrorCode::Cancelled {
+                        ProcessingTitleStatus::Cancelled
+                    } else {
+                        ProcessingTitleStatus::Interrupted
+                    },
+                    None,
+                )
+            })
+    }
+
+    async fn interrupted(&self, work: &JobWork) -> Option<ProcessingTitleResult> {
+        if let Err(interruption) = self.parent_admission(work).await {
+            return Some(interruption);
+        }
         if self.stop.is_cancelled() {
             return Some(outcome(ProcessingTitleStatus::Interrupted, None));
         }
@@ -199,8 +254,46 @@ impl TitleExecution<'_> {
         runner: Box<dyn TitleRunner>,
         body: String,
     ) -> Result<Option<String>, ProcessingTitleResult> {
-        let cancel = tokio_util::sync::CancellationToken::new();
+        let (request, _) = self
+            .journal
+            .capture_request_id(self.id.into())
+            .await
+            .map_err(|_| failed(ProcessingJobFailure::Storage))?;
+        let origin = self
+            .journal
+            .local_capture_origin(self.id.into())
+            .await
+            .map_err(|_| failed(ProcessingJobFailure::Storage))?;
+        let parent_cancel = self
+            .context
+            .local_capture_cancellation(&work.principal, &request, origin.as_ref())
+            .await
+            .map_err(|failure| {
+                outcome(
+                    if failure.code == ErrorCode::Cancelled {
+                        ProcessingTitleStatus::Cancelled
+                    } else {
+                        ProcessingTitleStatus::Interrupted
+                    },
+                    None,
+                )
+            })?
+            .unwrap_or_default();
+        #[cfg(test)]
+        super::worker::local_capture_tests::checkpoint(&work.request.session_id, "title_generate")
+            .await;
+        let parent_admission = self.parent_admission(work).await?;
+        let cancel = parent_cancel.child_token();
         let mut generation = runner.generate(body, cancel.clone());
+        let first =
+            std::future::poll_fn(|cx| std::task::Poll::Ready(generation.as_mut().poll(cx))).await;
+        drop(parent_admission);
+        let mut generation = Box::pin(async move {
+            match first {
+                std::task::Poll::Ready(result) => result,
+                std::task::Poll::Pending => generation.await,
+            }
+        });
         let mut changes = self.journal.0.events.subscribe(None);
         let mut checks = tokio::time::interval(std::time::Duration::from_secs(1));
         checks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -208,10 +301,12 @@ impl TitleExecution<'_> {
             tokio::select! {
                 result = &mut generation => break Ok(result),
                 _ = self.stop.cancelled() => break Err(outcome(ProcessingTitleStatus::Interrupted, None)),
+                _ = parent_cancel.cancelled() => break Err(self.parent_admission(work).await.err()
+                    .unwrap_or_else(|| outcome(ProcessingTitleStatus::Interrupted, None))),
                 _ = checks.tick() => {},
                 _ = changes.recv() => {},
             }
-            if let Some(interruption) = self.interrupted().await {
+            if let Some(interruption) = self.interrupted(work).await {
                 break Err(interruption);
             }
             if let Err(failure) = self.authorizer.authorize(work).await {
@@ -223,7 +318,10 @@ impl TitleExecution<'_> {
                 title_generation::normalize_candidate(&candidate).map_err(failed)
             }
             Ok(Ok(None)) => Ok(None),
-            Ok(Err(failure)) => Err(self.interrupted().await.unwrap_or_else(|| failed(failure))),
+            Ok(Err(failure)) => Err(self
+                .interrupted(work)
+                .await
+                .unwrap_or_else(|| failed(failure))),
             Err(mut interruption) => {
                 cancel.cancel();
                 if let Ok(Some(candidate)) = generation.await
