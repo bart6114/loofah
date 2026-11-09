@@ -3913,6 +3913,106 @@
         "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998811023.log",
         "sha256": "70d0b74305426f2152f3801b815cb2811ea9979111b8a32d634c7b362807c22b"
       }
+    },
+    "listener_fixture_actor_namespace_collision_2026_11_09": {
+      "source": "8a4160c03aec8188a335fd7da464b48e06ce887d",
+      "worker_fix": "d2d59a7593cc55cb69b6b79742153ae07f5fc180",
+      "scope": "Test-only identity isolation and local validation; no production behavior change or complete current-head/Windows/physical-capture acceptance claim.",
+      "observed_ci_failure": {
+        "head": "8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1",
+        "job_id": 129005473438,
+        "job_url": "https://github.com/bart6114/loofah/actions/runs/42570167182/job/129005473438",
+        "test": "actors::root::tests::all_recovery_masks_interrupt_device_prefix_without_reopening_source",
+        "location": "crates/listener-core/src/actors/root.rs:1622",
+        "error": "StartDeviceCapture returned FailedToStartSession",
+        "cohort": {
+          "passed": 89,
+          "failed": 1,
+          "ignored": 0
+        },
+        "failure_reported_at_utc": "2026-11-09T06:09:42.2213300Z",
+        "colliding_maintenance_completed_at_utc": "2026-11-09T06:09:42.2296130Z",
+        "reported_completion_difference_ms": 8.283,
+        "log_lines": [
+          2064,
+          2065,
+          2136,
+          2148
+        ],
+        "timing_limit": "These are test-reporter completion timestamps, not instrumented actor-registration timestamps."
+      },
+      "diagnosis": {
+        "fixture_identity": "Both recovery mask e and the concurrently executing maintenance fixture used the same 64 repeated e characters.",
+        "registration": "spawn_session_supervisor calls Actor::spawn with session_supervisor_name(key.actor_id()); the Ractor registry is process-global despite independent fake RootActors.",
+        "failure_path": "An overlapping registration is rejected and mapped to FailedToStartSession before the new source can start. The maintenance fixture deliberately retains active/retiring source and recorder ownership.",
+        "fix": "cfg(test) fixture_key combines the label and a process-local AtomicU64 sequence into a validated 64-character lowercase hexadecimal key. Character and numbered fixtures share the allocator; callers retain each original key for stop and lifecycle checks.",
+        "unchanged": "Production actor names, source/physical gates, completion/drain owners, timeouts and existing assertions remain unchanged; no global test serialization.",
+        "production_root_prefix_sha256": "c92ff32ef02f08f41dfee3056622e8333c95ac7e43ee2a3dad47c627184a78e6",
+        "production_prefix_compared_between": [
+          "8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1",
+          "8a4160c03aec8188a335fd7da464b48e06ce887d"
+        ]
+      },
+      "local_validation": {
+        "receipt": {
+          "source": "8a4160c03aec8188a335fd7da464b48e06ce887d",
+          "feature_graph": "unchanged stable21",
+          "qualifying_package": "listener-core entire library at default parallelism",
+          "passed": 91,
+          "failed": 0,
+          "ignored": 0,
+          "named_regressions": [
+            "actors::root::tests::same_label_device_fixtures_keep_independent_actor_names_and_drains",
+            "actors::root::tests::all_recovery_masks_interrupt_device_prefix_without_reopening_source",
+            "actors::root::tests::maintenance_rejects_active_retiring_and_storage_finalizing_capture"
+          ],
+          "other20targets": "intentionally filtered by Cargo runner, zero matches are not qualification",
+          "runner": "run-listener-core-cohort.sh",
+          "inference": "none; injected fake audio"
+        },
+        "duration_seconds": 1.14,
+        "new_regression_contract": "Two same-label fixtures remain active simultaneously, each with one fake source and a registered actor. Independent stops preserve the other capture, finish exactly 16000 frames each, release admission after drain, and unregister the original actor names.",
+        "runner_scope": "Cargo target runner dispatches listener_core-* without a filter or thread-count override, preserving Cargo runtime environment and unchanged stable21 features. The other 20 executables intentionally receive an exact nonmatching filter; their zero-test results are not qualification.",
+        "all_target_check": {
+          "result": "passed",
+          "duration_seconds": 21.01,
+          "graph": "unchanged stable21",
+          "existing_desktop_library_warnings": 9,
+          "existing_desktop_test_warnings": 4
+        }
+      },
+      "artifacts": [
+        {
+          "path": "logs/ci-8ca3db9-audit/129005473438.log",
+          "sha256": "702efbde6ca1555a16870fea27825b534a3a3f7f19189970bee32b1c7145d841"
+        },
+        {
+          "path": "logs/ci-8ca3db9-audit/mac-listener-start-failure.json",
+          "sha256": "6a46da7648318e2d4dd3b816430a2e9db2c79887d5706066b68015de0200b1b3"
+        },
+        {
+          "path": "logs/native-listener-fixture-full-cohort.log",
+          "sha256": "1e07815752bb817775caf33258a620adcd864722b26ac2c440a40154fe1ca70c"
+        },
+        {
+          "path": "logs/native-listener-fixture-full-cohort.json",
+          "sha256": "3d3207a15ad26a309945ca730d74b04b68dc2180a428e8fc21393f1e3c48c439"
+        },
+        {
+          "path": "logs/run-listener-core-cohort.sh",
+          "sha256": "ab15ced63c47eeb49e85cc1c7320190dcca6567f9665156f7fd173d8e869b6a0"
+        },
+        {
+          "path": "logs/native-listener-fixture-check.log",
+          "sha256": "15ce36d8e194b430523b7e44d22d4a000ad256ed5e50a656b0667115b54f2e30"
+        }
+      ],
+      "limits": [
+        "Injected fake audio only; no microphone/system permission grant, model activity, inference, or production audio capture.",
+        "The failed hosted run remains failed evidence; this local result does not relabel or retry CI.",
+        "Windows and independent speech validation remain separate qualifications; no cancellation or push performed for this evidence update.",
+        "No production artifact refresh is required by this cfg(test)-only correction; prior physical QA and activation gates remain unchanged."
+      ]
     }
   },
   "local_work_focused": [

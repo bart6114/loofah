@@ -1804,3 +1804,50 @@ a complete direct-36 x64 speech pass. ARM64 remains running at this update.
 `records.hosted_36_speech_x64_fixture_download_failure_2026_11_09` preserves the
 exact failed step, timestamp and raw log hash. No retry, cancellation or second
 manual dispatch was made. The earlier pending receipt remains unchanged.
+
+## Listener fixture actor-name collision and local validation, 2026-11-09
+
+The actual macOS workspace job `129005473438` at
+`8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1` failed the recovery-mask test at
+`root.rs:1622`: `StartDeviceCapture` returned `FailedToStartSession`. The listener
+cohort was 89 passed, one failed and zero ignored. Its raw log remains preserved.
+The recovery fixture's `e` iteration and the parallel maintenance fixture both
+used the same 64-character `eeee…` capture key. Their independent fake roots
+still register session actors in Ractor's process-global namespace. The
+maintenance test deliberately holds source/recorder ownership while the recovery
+test tries to register the same name. The log reports the recovery failure at
+06:09:42.221330 UTC and maintenance completion at 06:09:42.229613 UTC, 8.283 ms
+later. These are test-completion timestamps, not measured registration times.
+
+Worker fix `d2d59a7593`, integrated as
+`8a4160c03aec8188a335fd7da464b48e06ce887d`, changes only `cfg(test)` helpers and
+coverage. Character and numbered fixtures now allocate unique, validated
+64-hex-character keys using a shared process-local counter. Each test keeps its
+original key for subsequent operations. Production actor names, physical/source
+fences, actual drain ownership, timeouts and existing assertions are unchanged;
+there is no global test serialization. The new regression keeps two same-label
+captures alive together and verifies separate source ownership, independent
+stops, exactly 16,000 finished frames each and actor unregistration after drain.
+
+The complete listener-core library passed **91 tests, zero failed and zero
+ignored**, in 1.14 seconds at default parallelism on frozen source `8a4160c03a`.
+The named cases all passed:
+
+- `actors::root::tests::same_label_device_fixtures_keep_independent_actor_names_and_drains`
+- `actors::root::tests::all_recovery_masks_interrupt_device_prefix_without_reopening_source`
+- `actors::root::tests::maintenance_rejects_active_retiring_and_storage_finalizing_capture`
+
+The Cargo runner retained the unchanged stable-21 feature graph and Cargo
+runtime environment. It ran `listener_core-*` unfiltered and intentionally
+selected zero matching tests in the other 20 executables; those executables are
+**not qualified by this run**. The same graph's all-target check passed in 21.01
+seconds, with the existing nine desktop library and four test warnings. This
+used injected fake audio and no model inference or physical capture.
+
+Portable record `records.listener_fixture_actor_namespace_collision_2026_11_09`
+contains the exact source, three test names, failed CI log hash, timing evidence,
+runner/receipt/check hashes and an independently compared unchanged production
+prefix hash. Prior failure and qualification records remain unchanged. This is
+local fixture validation, not a new hosted Windows or physical-QA pass. No CI
+retry/cancellation, production artifact change, build by the docs worker,
+inference or push occurred; ongoing hosted checks retain their separate scope.
