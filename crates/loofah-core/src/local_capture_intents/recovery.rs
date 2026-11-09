@@ -93,14 +93,15 @@ impl LocalCaptureIntents {
         else {
             return Ok(None);
         };
-        let outcome = plan
-            .recheck()
-            .await
-            .map_err(|e| storage_error(e, true))?
-            .commit()
-            .await
-            .map_err(|e| storage_error(e, true))?;
-        match outcome {
+        let plan = plan.recheck().await.map_err(|e| storage_error(e, true))?;
+        #[cfg(test)]
+        self.pause_publication(tests::PublicationPoint::RecoveryBeforeCommit)
+            .await;
+        let (_, dispatch) = self.processing_control(request).await?;
+        let commit_guard = dispatch.lock().await;
+        self.check_processing(request).await?;
+        let outcome = plan.commit().await.map_err(|e| storage_error(e, true))?;
+        let result = match outcome {
             TranscriptPublicationOutcome::Published {
                 revision,
                 transcript_id,
@@ -123,6 +124,11 @@ impl LocalCaptureIntents {
             _ => Err(review(format!(
                 "Original transcript publication remains unresolved: {outcome:?}"
             ))),
-        }
+        };
+        #[cfg(test)]
+        self.pause_publication(tests::PublicationPoint::RecoveryAfterCommit)
+            .await;
+        drop(commit_guard);
+        result
     }
 }

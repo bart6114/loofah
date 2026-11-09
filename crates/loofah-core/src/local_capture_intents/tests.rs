@@ -1162,6 +1162,8 @@ async fn local_capture_controls_do_not_offer_recovery_for_a_terminal_cancelled_s
 pub(super) enum PublicationPoint {
     BeforeCommit,
     AfterCommit,
+    RecoveryBeforeCommit,
+    RecoveryAfterCommit,
 }
 pub(super) struct PublicationPause {
     point: PublicationPoint,
@@ -1283,4 +1285,156 @@ async fn publication_cancellation(point: PublicationPoint) {
     service.shutdown().await;
     worker.shutdown().await.unwrap();
     summary_worker.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn local_capture_cancel_before_retained_publication_commit_preserves_original_content() {
+    retained_publication_cancellation(PublicationPoint::RecoveryBeforeCommit).await;
+}
+#[tokio::test]
+async fn local_capture_cancel_after_retained_publication_commit_waits_for_original_receipt() {
+    retained_publication_cancellation(PublicationPoint::RecoveryAfterCommit).await;
+}
+async fn retained_publication_cancellation(point: PublicationPoint) {
+    use hypr_vault_write::transcript_publication::TranscriptSourcePreparation;
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap();
+    let context = context(&path).await;
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let mut input = declaration();
+    input.batch_requested = true;
+    input.transcription = Some(LocalTranscriptionOptions {
+        model: "frozen-model".into(),
+        languages: vec!["nl".into()],
+        keywords: vec![],
+    });
+    let _token = service.declare(input.clone()).await.unwrap();
+    std::fs::write(
+        path.join("vault/sessions/note/audio.wav"),
+        b"original native audio",
+    )
+    .unwrap();
+    let Some(TranscriptSourcePreparation::Ready(source)) = context
+        .store
+        .prepare_transcript_replacement_source("note")
+        .await
+        .unwrap()
+    else {
+        panic!("source unavailable")
+    };
+    let transcript: TranscriptWithData = serde_json::from_value(serde_json::json!({"id":uuid::Uuid::new_v4().to_string(),"session_id":"note","user_id":TRANSCRIPTION_OWNER,"created_at":"2026-11-08T00:00:00Z","started_at":0.0,"ended_at":null,"memo_md":"","words":[{"id":uuid::Uuid::new_v4().to_string(),"text":"retained","start_ms":0.0,"end_ms":1.0,"channel":0.0,"speaker":null,"metadata":null}],"speaker_hints":[]})).unwrap();
+    let bytes = ledger::encode_result(&transcript).unwrap();
+    ledger::write_new(
+        &service.root.join(&input.request_id).join("result.json"),
+        &bytes,
+    )
+    .unwrap();
+    let binding = context
+        .store
+        .guard_processing_source("note", None)
+        .await
+        .unwrap()
+        .unwrap()
+        .binding()
+        .clone();
+    service
+        .update(&input.request_id, |record| {
+            record.physical = Some(Ok(()));
+            record.persistence = Some(Ok(persistence()));
+            record.source = Some(binding);
+            record.inference_dispatched = true;
+            record.inference_drained = true;
+            record.result_sha256 = Some(ledger::hash(&bytes));
+            record.status.state = LocalCaptureState::Transcribing;
+        })
+        .await
+        .unwrap();
+    service
+        .state
+        .lock()
+        .await
+        .get_mut(&input.request_id)
+        .unwrap()
+        .running = true;
+    // A durable prepared transaction survives without an in-memory plan owner.
+    let plan = context
+        .store
+        .prepare_transcript_publication(
+            &path.join("operations/transcript-publications"),
+            service.publication_identity(&input.request_id).unwrap(),
+            source.baseline(),
+            transcript,
+        )
+        .await
+        .unwrap();
+    drop(plan);
+    drop(source);
+    let pause = Arc::new(PublicationPause {
+        point,
+        entered: Notify::new(),
+        release: Notify::new(),
+    });
+    *service.publication_pause.lock().await = Some(pause.clone());
+    let owner = service.clone();
+    let request = input.request_id.clone();
+    let recovery = tokio::spawn(async move { owner.recover_publication(&request).await });
+    notified(&pause.entered).await;
+    let committed = point == PublicationPoint::RecoveryAfterCommit;
+    assert_eq!(
+        context.session_transcripts("note").await.unwrap().len(),
+        usize::from(committed)
+    );
+    if committed {
+        let mut cancellation = Box::pin(service.cancel_owned(input.request_id.clone()));
+        assert!(
+            std::future::poll_fn(|cx| std::task::Poll::Ready(cancellation.as_mut().poll(cx)))
+                .await
+                .is_pending()
+        );
+        assert!(
+            !service
+                .state
+                .lock()
+                .await
+                .get(&input.request_id)
+                .unwrap()
+                .record
+                .cancel_requested
+        );
+        pause.release.notify_one();
+        cancellation.await.unwrap();
+    } else {
+        service.cancel(input.request_id.clone()).await.unwrap();
+        pause.release.notify_one();
+    }
+    let result = recovery.await.unwrap();
+    assert_eq!(result.is_ok(), committed);
+    let state = service.state.lock().await;
+    let record = &state.get(&input.request_id).unwrap().record;
+    assert!(record.cancel_requested);
+    assert_eq!(record.published_revision.is_some(), committed);
+    assert_eq!(record.result_sha256, Some(ledger::hash(&bytes)));
+    drop(state);
+    assert_eq!(
+        context.session_transcripts("note").await.unwrap().len(),
+        usize::from(committed)
+    );
+    assert_eq!(
+        std::fs::read(service.root.join(&input.request_id).join("result.json")).unwrap(),
+        bytes
+    );
+    assert_eq!(
+        std::fs::read(path.join("vault/sessions/note/audio.wav")).unwrap(),
+        b"original native audio"
+    );
+    assert_eq!(
+        context.read_note("note").await.unwrap().markdown.as_deref(),
+        Some("Notes")
+    );
+    let mut state = service.state.lock().await;
+    let entry = state.get_mut(&input.request_id).unwrap();
+    entry.running = false;
+    entry.admission.take();
+    drop(state);
+    service.shutdown().await;
 }
