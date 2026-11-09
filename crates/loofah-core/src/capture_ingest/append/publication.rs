@@ -20,6 +20,8 @@ where
     G: Send + 'static,
     F: Future<Output = Result<G, ApplicationError>> + Send + 'static,
 {
+    #[cfg(test)]
+    context.trace_append_publication("writer snapshot");
     let snapshot = writer.snapshot().await?;
     let CaptureTarget::AppendSession {
         session_id,
@@ -41,6 +43,8 @@ where
         &snapshot.identity.scope.member_id,
         uuid::Uuid::parse_str(&admission.request.admission_id).map_err(super::io)?,
     )?;
+    #[cfg(test)]
+    context.trace_append_publication("original source");
     let source = super::checked_source(&context, &snapshot.identity, false).await?;
     let root = context
         .operations
@@ -49,6 +53,8 @@ where
         .root
         .join("recording-appends");
     let identity = super::identity(&admission.request)?;
+    #[cfg(test)]
+    context.trace_append_publication("existing plan");
     let existing = context
         .store
         .prepare_recording_append_status(&root, identity.clone())
@@ -59,6 +65,8 @@ where
     } else {
         context.ensure_recording_publication_ready(&session)?;
         let merged = if admission.request.processing.is_some() {
+            #[cfg(test)]
+            context.trace_append_publication("merged result");
             context
                 .capture_append_merged(&snapshot.identity, &expected)
                 .await?
@@ -66,6 +74,8 @@ where
         } else {
             source.raw_transcript().map(<[u8]>::to_vec)
         };
+        #[cfg(test)]
+        context.trace_append_publication("source recheck");
         if !source
             .recheck()
             .await
@@ -76,6 +86,8 @@ where
                 "Append original recording or transcript changed",
             ));
         }
+        #[cfg(test)]
+        context.trace_append_publication("verify suffix");
         let verified = wav::verify(&writer, &expected).await?;
         let baseline = admission.baseline.clone();
         let directory = source.directory().to_owned();
@@ -90,6 +102,8 @@ where
             sha256: verified.artifact_sha256,
             format: verified.snapshot.format,
         };
+        #[cfg(test)]
+        context.trace_append_publication("combine artifact");
         let combined = tokio::task::spawn_blocking(move || {
             let _pin = pin;
             let mut output = File::create_new(&suffix_path).map_err(super::io)?;
@@ -123,12 +137,16 @@ where
             frames: combined.frames,
             layout: source.audio().layout,
         };
+        #[cfg(test)]
+        context.trace_append_publication("prepare compound plan");
         context
             .store
             .prepare_recording_append(&root, identity, source, file, artifact, merged)
             .await
             .map_err(|cause| storage_error(cause, false))?
     };
+    #[cfg(test)]
+    context.trace_append_publication("publication gate");
     let mut ticket = context
         .recording_publications
         .begin(
@@ -138,12 +156,18 @@ where
             )?),
         )?
         .with_events(context.events.clone());
+    #[cfg(test)]
+    context.trace_append_publication("plan recheck");
     let plan = plan
         .recheck()
         .await
         .map_err(|cause| storage_error(cause, false))?;
+    #[cfg(test)]
+    context.trace_append_publication("final authorization");
     let _grant = authorize().await?;
     ticket.committing();
+    #[cfg(test)]
+    context.trace_append_publication("compound commit");
     let result = plan
         .commit()
         .await
@@ -182,6 +206,8 @@ where
         canonical_audio_sha256: sha256,
         canonical_audio_bytes: size_bytes,
     };
+    #[cfg(test)]
+    context.trace_append_publication("publication receipt");
     writer
         .acknowledge_prefix(CapturePrefixReceipt {
             capture_fingerprint: publication.source.capture_fingerprint.clone(),

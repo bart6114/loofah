@@ -7,6 +7,14 @@ pub(in crate::capture_processing) fn stage(
     service.diagnostic.lock().unwrap().0 = stage;
 }
 
+impl VaultContext {
+    pub(crate) fn trace_append_publication(&self, stage: &'static str) {
+        if let Some(service) = self.capture_processing.get() {
+            service.diagnostic.lock().unwrap().2 = stage;
+        }
+    }
+}
+
 async fn append_capture(
     context: &Arc<VaultContext>,
     root: &std::path::Path,
@@ -92,17 +100,21 @@ async fn publish_when_ready(
     batch: &Batch,
 ) -> CaptureIngestStatus {
     let mut last_failure = None;
+    let mut attempts_started = 0_u64;
+    let mut attempts_finished = 0_u64;
     let result = tokio::time::timeout(Duration::from_secs(20), async {
         loop {
-            match context
+            attempts_started += 1;
+            let published = context
                 .publish_capture_authorized(
                     MEMBER.into(),
                     source.identity.capture_id.clone(),
                     seal.clone(),
                     || async { Ok(()) },
                 )
-                .await
-            {
+                .await;
+            attempts_finished += 1;
+            match published {
                 Ok(status) => return status,
                 Err(cause)
                     if matches!(
@@ -141,7 +153,7 @@ async fn publish_when_ready(
             })
             .await;
             panic!(
-                "append publication timed out; last={last_failure:?}; stage/cause={:?}; coordinator_failed={}; stop={}; ready={}; task_finished_cancelled={:?}; snapshot={:?}; transcript_ready={}; cancelled={}; epoch={}; engine_calls={}; engine_frames={}; engine_busy={}; retained={retained:?}",
+                "append publication timed out; attempts_started={attempts_started}; attempts_finished={attempts_finished}; last={last_failure:?}; stage/cause={:?}; coordinator_failed={}; stop={}; ready={}; task_finished_cancelled={:?}; snapshot={:?}; transcript_ready={}; cancelled={}; epoch={}; engine_calls={}; engine_frames={}; engine_busy={}; retained={retained:?}",
                 service.diagnostic.lock().unwrap(),
                 service.failed.load(Ordering::Acquire),
                 service.stop.is_cancelled(),

@@ -47,7 +47,7 @@ pub(crate) struct CaptureProcessingService {
     wake: tokio::sync::Notify,
     failed: std::sync::atomic::AtomicBool,
     #[cfg(test)]
-    diagnostic: std::sync::Mutex<(&'static str, Option<ApplicationError>)>,
+    diagnostic: std::sync::Mutex<(&'static str, Option<ApplicationError>, &'static str)>,
 }
 pub(crate) struct CaptureProcessingWorker {
     task: tokio::task::JoinHandle<Result<(), ApplicationError>>,
@@ -96,7 +96,7 @@ impl VaultRuntime {
             wake: tokio::sync::Notify::new(),
             failed: false.into(),
             #[cfg(test)]
-            diagnostic: std::sync::Mutex::new(("prepared", None)),
+            diagnostic: std::sync::Mutex::new(("prepared", None, "not started")),
         });
         self.context
             .capture_processing
