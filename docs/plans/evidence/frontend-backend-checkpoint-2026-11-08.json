@@ -21524,6 +21524,391 @@
       },
       "artifact_location": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/current-source-2e39e792d7/Loofah Separation QA.app",
       "scope": "Preparation only: default-desktop optimized unsigned ARM macOS bundle, same stable Native path/cache and22-package union. No desktop/dev feature, frontend QA overlay, launch, tests, physical capture, inference or release. User desktop pause remains active."
+    },
+    "local_owner_progress_red_green_and_release_a289_2026_11_09": {
+      "published_failure_source": "0cbdcbdc9e16091f64a78d99529e0b713ce7582b",
+      "failure": {
+        "sha256": "c56f891ac462d055c14a19af2e4e95361ed2362f07b414381f39e88066061eca",
+        "report": {
+          "source": "0cbdcbdc9e16091f64a78d99529e0b713ce7582b",
+          "job": 129311750227,
+          "run": 42660864921,
+          "conclusion": "failure",
+          "step": 7,
+          "raw": {
+            "file": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0cbdcbd-audit/129311750227.log",
+            "bytes": 137689,
+            "sha256": "96da576dbf1c20e3d89e3d057e034f5618b4c90a4b807bfd0ba282107bbd70c6"
+          },
+          "decisive_lines": [
+            "2026-11-09T17:08:06.0262958Z test doctor_does_not_initialize_and_explicit_init_streams_progress_separately ... FAILED",
+            "2026-11-09T17:08:06.7583308Z ---- doctor_does_not_initialize_and_explicit_init_streams_progress_separately stdout ----",
+            "2026-11-09T17:08:06.7584073Z thread 'doctor_does_not_initialize_and_explicit_init_streams_progress_separately' (7257) panicked at apps/cli/tests/search_cache.rs:111:5:",
+            "2026-11-09T17:08:06.7584843Z   left: String(\"built\")",
+            "2026-11-09T17:08:06.7585041Z  right: \"ready\"",
+            "2026-11-09T17:08:06.7586005Z     doctor_does_not_initialize_and_explicit_init_streams_progress_separately",
+            "2026-11-09T17:08:06.7586540Z test result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s"
+          ],
+          "source_files": {
+            "apps/cli/tests/search_cache.rs": "a971a0aa5833898fd048da08c0d059b6a84f81bd79d8996496562d1621bf0822",
+            "crates/search-cache/src/cache.rs": "eb6e9cd8c46922e2dde24c166b10af270d4bb130ddaed7ebcacd573e050454b8",
+            "crates/loofah-core/src/local_cli/maintenance.rs": "1a51b5dd8bd592b7b251571dc0618a0c5f823240e813a4a9cd5b0fb4d7050608",
+            "crates/loofah-local-owner/src/server.rs": "d45f347940ed321b1332c146d92f10bd2e80de51a16b373fc50dbb9f65fd6709",
+            "crates/loofah-local-owner/src/lib.rs": "e6da631984090eb90fab7b534cfcf9de2681038ff3e7ae5c9305a6bf2a28a45a",
+            "crates/loofah-local-owner/src/client.rs": "c3dfeb60c85bebcee2ee0a6c58bbe23754e5c51962ecc76b9c1308e89858045c"
+          },
+          "diagnosis": "Cache emits final ready synchronously after pointer publication; Core awaits producer. Owner server select may choose operation completion while progress ready remains queued, then sends final response without draining queued progress. Reporter also silently drops any event when16-slot try_send queue fills. Exact raw log proves missing final ready, not which scheduling path; source shows both concrete loss paths. Docs-only diff means latent existing behavior, not a production source change at this checkpoint.",
+          "proposed_fix": "Bounded queued progress plus guaranteed latest/final event; atomically close reporting at operation completion and flush bounded pending events before Response. Do not await all reporter clones or block producer on disconnected client. Deterministic operation-ready/queued-progress and overflow tests, retain existing final-ready assertion.",
+          "actions": "Read-only diagnosis; no test/build/source edit/retry/CI control."
+        }
+      },
+      "worker_commits": [
+        "9d1d0d346e",
+        "8baf8e8ab1"
+      ],
+      "integrated_test_source": "e6f55e219dc611deb481e39cecdadb14479b3e82",
+      "integrated_fix_source": "a289a661851258dbbeab81cb93364cc4be1ac4b2",
+      "red": {
+        "sha256": "1ab91b7cb3e55c850e1eec3af9487026d360d6867b17e3845441647c37883e8a",
+        "report": {
+          "source": "e6f55e219dc611deb481e39cecdadb14479b3e82",
+          "command": [
+            "nice",
+            "-n",
+            "5",
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "desktop",
+            "-p",
+            "loof-cli",
+            "-p",
+            "loofah-local-owner",
+            "-p",
+            "loofah-local-media",
+            "-p",
+            "loofah-client",
+            "-p",
+            "loofah-core",
+            "-p",
+            "loofah-protocol",
+            "-p",
+            "loofah-server",
+            "-p",
+            "capture-store",
+            "-p",
+            "vault-read",
+            "-p",
+            "vault-write",
+            "-p",
+            "search-cache",
+            "-p",
+            "listener-core",
+            "-p",
+            "listener2-core",
+            "-p",
+            "transcribe-whisper-local",
+            "-p",
+            "tauri-plugin-transcription",
+            "-p",
+            "storage",
+            "-p",
+            "export-core",
+            "-p",
+            "fs-sync-core",
+            "-p",
+            "tauri-plugin-fs-sync",
+            "-p",
+            "tauri-plugin-windows",
+            "-p",
+            "audio-actual",
+            "--features",
+            "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+            "--lib",
+            "--",
+            "tests::progress_transport::"
+          ],
+          "scope": "Red regression with old production reporter/server and new public-API transport tests only. Stable22 graph compile; only Local owner lib executed. No apps/audio/model tests.",
+          "exit_code": 101,
+          "elapsed_seconds": 24.76167195799644,
+          "source_after": "e6f55e219dc611deb481e39cecdadb14479b3e82",
+          "log_sha256": "14d9d9a071759797af0bf42c9ae65612a6ef677de4055bba5e1b9f71d019c8e6"
+        }
+      },
+      "red_outcomes": {
+        "passed": 1,
+        "failed": 2,
+        "ignored": 0,
+        "filtered": 19,
+        "scope": "New public-API transport regressions against old production reporter/server. Completion and queue overflow could lose the final event; no retry or sleep was used to reproduce loss."
+      },
+      "green": {
+        "sha256": "4f1e1d1eae5d1a27d5db7094f3b95485e21919b8a38245607dd2d794ec7a89bd",
+        "report": {
+          "source": "a289a661851258dbbeab81cb93364cc4be1ac4b2",
+          "command": [
+            "nice",
+            "-n",
+            "5",
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "desktop",
+            "-p",
+            "loof-cli",
+            "-p",
+            "loofah-local-owner",
+            "-p",
+            "loofah-local-media",
+            "-p",
+            "loofah-client",
+            "-p",
+            "loofah-core",
+            "-p",
+            "loofah-protocol",
+            "-p",
+            "loofah-server",
+            "-p",
+            "capture-store",
+            "-p",
+            "vault-read",
+            "-p",
+            "vault-write",
+            "-p",
+            "search-cache",
+            "-p",
+            "listener-core",
+            "-p",
+            "listener2-core",
+            "-p",
+            "transcribe-whisper-local",
+            "-p",
+            "tauri-plugin-transcription",
+            "-p",
+            "storage",
+            "-p",
+            "export-core",
+            "-p",
+            "fs-sync-core",
+            "-p",
+            "tauri-plugin-fs-sync",
+            "-p",
+            "tauri-plugin-windows",
+            "-p",
+            "audio-actual",
+            "--features",
+            "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+            "--lib"
+          ],
+          "scope": "Only owner transport and CLI libraries executed; other20 libraries explicitly NOT EXECUTED. No apps/audio/model tests.",
+          "exit_code": 0,
+          "elapsed_seconds": 57.733600917010335,
+          "source_after": "a289a661851258dbbeab81cb93364cc4be1ac4b2",
+          "log_sha256": "c4dd0cd54cf3d43c3d53c7281517a77bc95067d5df959d409eb387e54ea732ea"
+        }
+      },
+      "green_outcomes": {
+        "owner_library": {
+          "passed": 25,
+          "failed": 0,
+          "ignored": 1,
+          "ignored_reason": "child process fixture"
+        },
+        "cli_library": {
+          "passed": 96,
+          "failed": 0,
+          "ignored": 0
+        },
+        "other20_libraries": "Compiled but explicitly NOT EXECUTED, including desktop/audio. No full22-library execution claim."
+      },
+      "all_target_compile": {
+        "sha256": "b389d1824056e51b66a5a88c81cd21ce31577ae3a342aebfbe07b07f4ddb8503",
+        "report": {
+          "source": "a289a661851258dbbeab81cb93364cc4be1ac4b2",
+          "command": [
+            "nice",
+            "-n",
+            "5",
+            "cargo",
+            "check",
+            "--locked",
+            "-p",
+            "desktop",
+            "-p",
+            "loof-cli",
+            "-p",
+            "loofah-local-owner",
+            "-p",
+            "loofah-local-media",
+            "-p",
+            "loofah-client",
+            "-p",
+            "loofah-core",
+            "-p",
+            "loofah-protocol",
+            "-p",
+            "loofah-server",
+            "-p",
+            "capture-store",
+            "-p",
+            "vault-read",
+            "-p",
+            "vault-write",
+            "-p",
+            "search-cache",
+            "-p",
+            "listener-core",
+            "-p",
+            "listener2-core",
+            "-p",
+            "transcribe-whisper-local",
+            "-p",
+            "tauri-plugin-transcription",
+            "-p",
+            "storage",
+            "-p",
+            "export-core",
+            "-p",
+            "fs-sync-core",
+            "-p",
+            "tauri-plugin-fs-sync",
+            "-p",
+            "tauri-plugin-windows",
+            "-p",
+            "audio-actual",
+            "--features",
+            "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+            "--all-targets"
+          ],
+          "scope": "Stable22-package all-target compile only after progress transport correction.",
+          "exit_code": 0,
+          "elapsed_seconds": 15.358276583006955,
+          "source_after": "a289a661851258dbbeab81cb93364cc4be1ac4b2",
+          "log_sha256": "40a2910242684bdfa73e0d8a50cbd1edc548eb0561245792d87243edee6c7309"
+        }
+      },
+      "production_qa_build_request": {
+        "sha256": "ac9c2494adce6fba2f49d8da8fe2d00caefb45ca9bd6de03adf8a9ecd3d14795",
+        "report": {
+          "source": {
+            "commit": "a289a661851258dbbeab81cb93364cc4be1ac4b2",
+            "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "cargo_lock_sha256": "44bc6a295d3634160efefe329f61b2665f5d37f4c7138eb3a4493ffa1e974e66"
+          },
+          "command": [
+            "/Users/bartsmeets/src/loofah-backend-separation/node_modules/.bin/tauri",
+            "build",
+            "--runner",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/current-source-a289a66185/qa-cargo",
+            "--bundles",
+            "app",
+            "--no-sign",
+            "--ci",
+            "--config",
+            "/Users/bartsmeets/Library/Caches/loofah-separation/qa/current-source-a289a66185/tauri.json"
+          ],
+          "packages": [
+            "desktop",
+            "loof-cli",
+            "loofah-local-owner",
+            "loofah-local-media",
+            "loofah-client",
+            "loofah-core",
+            "loofah-protocol",
+            "loofah-server",
+            "capture-store",
+            "vault-read",
+            "vault-write",
+            "search-cache",
+            "listener-core",
+            "listener2-core",
+            "transcribe-whisper-local",
+            "tauri-plugin-transcription",
+            "storage",
+            "export-core",
+            "fs-sync-core",
+            "tauri-plugin-fs-sync",
+            "tauri-plugin-windows",
+            "audio-actual"
+          ],
+          "features": [
+            "loofah-client/dev-fixtures",
+            "loofah-server/cpu-transcription"
+          ],
+          "started_at": 1794244892.638436,
+          "scope": "Compile/bundle preparation only; no launch, desktop/audio tests, inference, signing, installation or release. No frontend QA overlay or desktop/dev feature."
+        }
+      },
+      "production_qa_verification": {
+        "sha256": "59963b913d9e2d858d73fae56419245cf6d02bdfba17aa49d73461611dc685cd",
+        "report": {
+          "observed_at": "2026-11-09T17:27:59.127944+00:00",
+          "source": {
+            "commit": "a289a661851258dbbeab81cb93364cc4be1ac4b2",
+            "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "cargo_lock_sha256": "44bc6a295d3634160efefe329f61b2665f5d37f4c7138eb3a4493ffa1e974e66"
+          },
+          "build_duration_seconds": 290.7,
+          "build_exit_code": 0,
+          "bundle_manifest_sha256": "32faeb721cd72c7c7a41a041a82f77cab68784118ad0d4de29158c87b8d7bc1d",
+          "build_log_sha256": "5cb174378b915900d6eaa3264f602ea75a713516f30c3e06c12ea0ea22f1c53d",
+          "preparation_sha256": "d716acc0e917afac490c1630917edfaee014078ead36ec9755f303613c955b85",
+          "verified_files": 26,
+          "main": {
+            "bytes": 249332864,
+            "sha256": "9111d68b83a09938ab5b54a2160a6741cf177a42e1890510fe8e0be067ecbcaf"
+          },
+          "cli": {
+            "bytes": 165559312,
+            "sha256": "9c4c0385060b1b92257ed217c518a1c4f1705661225f684aea8075dafaf110c6"
+          },
+          "cli_both_copies_match_same_graph": true,
+          "compiled_full_and_short_commit_present": true,
+          "bundle_identifier": "io.loofah.separation-qa",
+          "version": "0.45.7",
+          "native_dependencies": {
+            "loofah-separation-qa": {
+              "architecture": "arm64",
+              "system_dependencies_only": true,
+              "dependency_count": 86
+            },
+            "loof": {
+              "architecture": "arm64",
+              "system_dependencies_only": true,
+              "dependency_count": 58
+            }
+          },
+          "desktop_dev_feature": false,
+          "frontend_overlay": false,
+          "launched": false,
+          "tests_executed": false,
+          "scope": "Unsigned optimized default-desktop macOS ARM build and static verification only after owner progress fix. No launch, installation, physical capture, inference, runtime or release acceptance. Explicit isolated launch roots remain required after user signal."
+        }
+      },
+      "production_qa_preparation": {
+        "sha256": "d716acc0e917afac490c1630917edfaee014078ead36ec9755f303613c955b85",
+        "report": {
+          "prior_helper_source": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/current-source-2e39e792d7",
+          "prior_helper_sha256": "b08c1e550a64c81b25c8c6c8f26a326bf787b043aae4f9cc7fc1c7b10cd504ca",
+          "review_sha256": "0ebea08f350cadce2a6d905da3ecd888688ea42ff5b12d93cd3aed2a716efb2a",
+          "parameter_changes_only": [
+            "expected clean source SHA",
+            "isolated output directory and staging callback path"
+          ],
+          "scope": "Same reviewed default-desktop22 release preparation; no launch or tests. Prior bundle retained. Later launch must pin task-only LOOFAH_GLOBAL_BASE/LOOFAH_VAULT_BASE/LOOFAH_QA_DOWNLOADS_ROOT after explicit user signal.",
+          "later_launch_environment": {
+            "LOOFAH_GLOBAL_BASE": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/current-source-a289a66185/runtime-global",
+            "LOOFAH_VAULT_BASE": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/current-source-a289a66185/runtime-vault",
+            "LOOFAH_QA_DOWNLOADS_ROOT": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/current-source-a289a66185/runtime-downloads"
+          },
+          "runtime_paths_created": false
+        }
+      },
+      "artifact_location": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/current-source-a289a66185/Loofah Separation QA.app",
+      "behavior": "Fixed16-slot pending queue retains first15 and latest on overflow. Handler return/unwind closes reporting; server closes/drains a fixed snapshot before final response, including error replies. Lingering reporter clones cannot extend drain. Original admitted work/lease remains until actual operation completion after delivery loss. Wire DTOs, canonical authority and inference policy unchanged.",
+      "remaining": "Full CLI integration and both native Windows qualifications for the correction remain pending. Healthy prior0cbd jobs continue without cancellation/retry before next source publication. Actual desktop/physical/performance testing remains user-paused; activation off and company SSO deferred."
     }
   },
   "local_work_focused": [

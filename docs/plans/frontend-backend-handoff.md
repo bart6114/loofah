@@ -6,6 +6,17 @@ resume GUI acceptance until the user gives the signal. Both idle QA apps were
 stopped. Source review, implementation, headless service checks and hosted CI may
 continue. Production SSO acceptance is separately deferred by the user.
 
+Latest Local owner correction: `a289a66185`. The documentation-only `0cbdcbdc9e`
+CLI run exposed a latent progress-delivery race: final `ready` could be omitted
+before a successful response. Two deterministic transport cases failed against
+the old production reporter/server; bounded latest-event retention and a fixed
+final drain now pass 25 owner and 96 CLI library tests (one explicit child-process
+fixture ignored), plus the stable 22-package all-target compile. A refreshed
+optimized default-desktop QA bundle from `a289a66185` passed static verification
+and remains unlaunched. Full CLI integration and fresh hosted Windows acceptance
+for this correction are pending at this saved checkpoint; check live PR/CI for
+later results. Earlier qualified source scopes below remain unchanged.
+
 Qualified implementation checkpoint: published `5bb7111562`, tested in PR merge
 `5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7`. All six PR workflows and the separate
 Windows speech dispatch are terminal success. Native Windows x64 and ARM64 each
@@ -3237,3 +3248,55 @@ Remote artifacts retain their own recorded synthetic-loopback scope.
 All held Local lifecycle/output/transcript switches and server append/retirement
 capabilities remain off. Complete the prepared desktop acceptance checklist only
 after the user's signal; actual production/company SSO remains explicitly deferred.
+
+
+## Local owner progress race: reproduced and corrected
+
+CLI run42660864921 at documentation-only `0cbdcbdc9e` failed
+`doctor_does_not_initialize_and_explicit_init_streams_progress_separately`:
+stdout already reported `ready=true`, but the final stderr phase was `built`.
+The search-cache integration cohort was 11 passed / one failed. Raw log SHA-256
+is `96da576dbf1c20e3d89e3d057e034f5618b4c90a4b807bfd0ba282107bbd70c6`.
+Cache publication emits `ready` before returning. Source review found two loss
+paths: the owner select could choose completion with progress still queued, and
+a full 16-slot `try_send` queue discarded the latest event. The raw symptom alone
+does not identify which scheduler branch occurred. The existing CLI assertion
+was preserved; no retry or relaxed readiness condition was used.
+
+The public-API regressions at test-only `e6f55e219d` deterministically failed both
+completed-response cases against old production logic, with the disconnected
+operation-ownership case passing. Red log SHA-256 is
+`14d9d9a071759797af0bf42c9ae65612a6ef677de4055bba5e1b9f71d019c8e6`.
+Correction `a289a66185` retains the first 15 pending milestones plus the latest
+state when full. Handler completion closes reporting; the server drains at most
+16 pending events before the final response. A retained reporter clone cannot
+extend that snapshot. Reporting performs no I/O or wait for client delivery.
+Lost delivery still waits for actual admitted work and retains the original
+lease, as exercised by a blocked real owner operation. Progress remains separate
+from canonical receipts and confirmed resource-drain authority.
+
+Local validation on the sole stable Native path passed 25 owner-library tests
+and 96 CLI-library tests, with one explicit owner child-process fixture ignored.
+All seven new queue/transport tests passed. The other 20 compiled library binaries,
+including desktop/audio, were explicitly NOT EXECUTED. Green run elapsed57.73s,
+raw SHA-256 `c4dd0cd54cf3d43c3d53c7281517a77bc95067d5df959d409eb387e54ea732ea`.
+The 22-package all-target check passed in15.36s, raw SHA-256
+`40a2910242684bdfa73e0d8a50cbd1edc548eb0561245792d87243edee6c7309`.
+Wire DTOs and exported registrations did not change; no generated binding was
+hand-edited or regeneration claimed. Windows acceptance and the full CLI
+integration cohort still require the fresh hosted correction checkpoint.
+
+The refreshed unsigned default-desktop ARM macOS bundle was built from frozen
+`a289a661851258dbbeab81cb93364cc4be1ac4b2` in290.70 seconds, reusing the same path,
+cache and 22-package union. Its 26 files, both same-graph CLI copies, embedded
+source IDs and system-only arm64 dynamic dependencies were independently checked.
+Manifest SHA-256 is
+`32faeb721cd72c7c7a41a041a82f77cab68784118ad0d4de29158c87b8d7bc1d`;
+main executable SHA-256 is
+`9111d68b83a09938ab5b54a2160a6741cf177a42e1890510fe8e0be067ecbcaf`.
+It remains unlaunched at task-local `qa/current-source-a289a66185/` and supersedes
+the earlier bundle only for source preparation; all earlier artifacts remain
+preserved. The same explicit disposable global/vault/downloads roots and normal
+TLS trust requirements apply. No desktop app test, capture, inference, install,
+release or activation occurred. Healthy earlier hosted jobs were left running;
+source publication waits for their terminal results.

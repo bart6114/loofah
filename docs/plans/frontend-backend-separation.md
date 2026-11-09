@@ -60,6 +60,13 @@ and uninstall. Company SSO
 and final desktop activation/acceptance remain separate gates. No full-completion
 claim is made.
 
+A later documentation-head CLI run exposed a latent Local owner progress race.
+Correction `a289a66185` now retains bounded latest progress and drains it before
+the completed response. Deterministic old-source failures, 121 passing local
+owner/CLI library tests, the stable all-target compile and an unlaunched optimized
+QA bundle are recorded in the handoff. Full hosted acceptance of that correction
+is pending at this saved checkpoint; earlier CI results retain their exact scope.
+
 Inspection baseline: clean `main` at `a6a8f001d`, November 5, 2026. Root instructions and applicable plugin, fs-sync, and documentation instructions were inspected. No implementation or runtime testing was performed while preparing this plan.
 
 ## 1. Architecture and verified starting point
