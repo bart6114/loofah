@@ -120,6 +120,8 @@ pub struct LocalCaptureIntents {
     state: Mutex<BTreeMap<String, Entry>>,
     stop: CancellationToken,
     changed: Notify,
+    #[cfg(test)]
+    publication_pause: Mutex<Option<Arc<tests::PublicationPause>>>,
 }
 #[derive(Clone)]
 pub struct LocalCaptureIntent {
@@ -192,6 +194,8 @@ impl LocalCaptureIntents {
             ),
             stop,
             changed: Notify::new(),
+            #[cfg(test)]
+            publication_pause: Mutex::new(None),
         });
         context
             .local_capture_intents

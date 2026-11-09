@@ -1157,3 +1157,130 @@ async fn local_capture_controls_do_not_offer_recovery_for_a_terminal_cancelled_s
     service.shutdown().await;
     worker.shutdown().await.unwrap();
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PublicationPoint {
+    BeforeCommit,
+    AfterCommit,
+}
+pub(super) struct PublicationPause {
+    point: PublicationPoint,
+    entered: Notify,
+    release: Notify,
+}
+impl LocalCaptureIntents {
+    pub(super) async fn pause_publication(&self, point: PublicationPoint) {
+        let pause = self.publication_pause.lock().await.clone();
+        if let Some(pause) = pause.filter(|pause| pause.point == point) {
+            pause.entered.notify_one();
+            pause.release.notified().await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn local_capture_cancel_after_preparation_prevents_transcript_commit_and_summary() {
+    publication_cancellation(PublicationPoint::BeforeCommit).await;
+}
+
+#[tokio::test]
+async fn local_capture_cancel_after_admitted_commit_preserves_publication_and_waits_for_receipt() {
+    publication_cancellation(PublicationPoint::AfterCommit).await;
+}
+
+async fn publication_cancellation(point: PublicationPoint) {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap();
+    let context = context(&path).await;
+    let summary = Arc::new(Summary::default());
+    let summary_worker = context
+        .start_processing(summary.clone(), Arc::new(Auth))
+        .await
+        .unwrap();
+    let engine = Engine::default();
+    let worker = context
+        .start_transcription(Arc::new(engine.clone()), Arc::new(Auth), Default::default())
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let pause = Arc::new(PublicationPause {
+        point,
+        entered: Notify::new(),
+        release: Notify::new(),
+    });
+    *service.publication_pause.lock().await = Some(pause.clone());
+    let input = batch_capture(&context, &service, true).await;
+    notified(&engine.entered).await;
+    engine.release.notify_one();
+    notified(&pause.entered).await;
+    let retained = service.root.join(&input.request_id).join("result.json");
+    let retained_bytes = std::fs::read(&retained).unwrap();
+    assert!(!retained_bytes.is_empty());
+    assert!(context.try_session_lifecycle_change("note").is_err());
+    let admitted = point == PublicationPoint::AfterCommit;
+    let canonical = context.session_transcripts("note").await.unwrap();
+    assert_eq!(canonical.len(), usize::from(admitted));
+    if admitted {
+        // Poll the actual cancellation waiter into the held commit gate. It must
+        // not acknowledge cancellation before the owned publication releases it.
+        let mut cancelling = Box::pin(service.cancel_owned(input.request_id.clone()));
+        assert!(
+            std::future::poll_fn(|cx| std::task::Poll::Ready(cancelling.as_mut().poll(cx)))
+                .await
+                .is_pending()
+        );
+        {
+            let state = service.state.lock().await;
+            let record = &state.get(&input.request_id).unwrap().record;
+            assert!(!record.cancel_requested);
+            assert!(record.published_revision.is_some());
+        }
+        pause.release.notify_one();
+        assert_eq!(
+            cancelling.await.unwrap().status.state,
+            LocalCaptureState::Cancelling
+        );
+    } else {
+        let cancelled = service.cancel(input.request_id.clone()).await.unwrap();
+        assert_eq!(cancelled.status.state, LocalCaptureState::Cancelling);
+        assert!(
+            context
+                .session_transcripts("note")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        pause.release.notify_one();
+    }
+    assert_eq!(
+        terminal(&service, &input.request_id).await.state,
+        LocalCaptureState::Cancelled
+    );
+    let state = service.state.lock().await;
+    let record = &state.get(&input.request_id).unwrap().record;
+    assert!(record.cancel_requested && record.processing_drained && record.inference_drained);
+    assert_eq!(record.published_revision.is_some(), admitted);
+    assert!(record.status.summary_job_id.is_none());
+    assert_eq!(record.result_sha256, Some(ledger::hash(&retained_bytes)));
+    drop(state);
+    assert_eq!(std::fs::read(retained).unwrap(), retained_bytes);
+    let after = context.session_transcripts("note").await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&canonical).unwrap(),
+        serde_json::to_value(&after).unwrap()
+    );
+    assert_eq!(
+        std::fs::read(context.store.vault_base().join("sessions/note/audio.wav")).unwrap(),
+        b"original native audio"
+    );
+    assert_eq!(
+        context.read_note("note").await.unwrap().markdown.as_deref(),
+        Some("Notes")
+    );
+    assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(summary.calls.load(Ordering::SeqCst), 0);
+    assert!(context.try_session_lifecycle_change("note").is_ok());
+    service.shutdown().await;
+    worker.shutdown().await.unwrap();
+    summary_worker.shutdown().await.unwrap();
+}

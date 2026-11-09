@@ -33,7 +33,7 @@ impl LocalCaptureIntents {
                 record.processing_drained = drained;
                 if record.cancel_requested && drained {
                     record.status.state = LocalCaptureState::Cancelled;
-                    record.status.message = Some("Processing cancelled after original resources drained; saved content and retained output were preserved".into());
+                    record.status.message = Some("Processing cancelled after original resources drained; saved content and retained output were preserved; cancellation does not roll back admitted writes".into());
                 } else if let Err(cause) = outcome {
                     record.status.state = if !record.cancel_requested
                         && cause.mutation_outcome
@@ -425,34 +425,34 @@ impl LocalCaptureIntents {
                 "Local session generation changed during transcription",
             ));
         }
-        let outcome = self
-            .dispatch_processing(request, |_| {}, async {
-                let plan = self
-                    .context
-                    .store
-                    .prepare_transcript_publication(
-                        &self
-                            .root
-                            .parent()
-                            .ok_or_else(|| review("Operation root unavailable"))?
-                            .join("transcript-publications"),
-                        self.publication_identity(request)?,
-                        baseline,
-                        transcript,
-                    )
-                    .await
-                    .map_err(|e| storage_error(e, true))?;
-                let outcome = plan
-                    .recheck()
-                    .await
-                    .map_err(|e| storage_error(e, true))?
-                    .commit()
-                    .await
-                    .map_err(|e| storage_error(e, true))?;
-                Ok(outcome)
-            })
-            .await?;
-        match outcome {
+        let plan = self
+            .context
+            .store
+            .prepare_transcript_publication(
+                &self
+                    .root
+                    .parent()
+                    .ok_or_else(|| review("Operation root unavailable"))?
+                    .join("transcript-publications"),
+                self.publication_identity(request)?,
+                baseline,
+                transcript,
+            )
+            .await
+            .map_err(|e| storage_error(e, true))?
+            .recheck()
+            .await
+            .map_err(|e| storage_error(e, true))?;
+        #[cfg(test)]
+        self.pause_publication(tests::PublicationPoint::BeforeCommit)
+            .await;
+        let (_, dispatch) = self.processing_control(request).await?;
+        let commit_guard = dispatch.lock().await;
+        self.check_processing(request).await?;
+        // Preparation hashes outside the gate. An admitted owned commit completes
+        // before cancellation is acknowledged, including its durable parent receipt.
+        let outcome = plan.commit().await.map_err(|e| storage_error(e, true))?;
+        let result = match outcome {
             TranscriptPublicationOutcome::Published { revision, .. }
             | TranscriptPublicationOutcome::AlreadyCommitted { revision, .. } => {
                 self.update(request, |record| {
@@ -467,7 +467,12 @@ impl LocalCaptureIntents {
             _ => Err(review(format!(
                 "Retained transcript publication requires recovery: {outcome:?}"
             ))),
-        }
+        };
+        #[cfg(test)]
+        self.pause_publication(tests::PublicationPoint::AfterCommit)
+            .await;
+        drop(commit_guard);
+        result
     }
     pub(super) fn publication_identity(
         &self,
