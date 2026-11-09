@@ -8,6 +8,8 @@ from backend_deployment_acceptance import (
     caddy_config,
     configuration,
     inventory,
+    owned_listeners,
+    require_private_listener,
     service_unit,
     substitute,
 )
@@ -17,6 +19,71 @@ SOURCE = Path(__file__).resolve().parents[2]
 
 
 class DeploymentAcceptanceTests(unittest.TestCase):
+    def socket_tables(self, rows, ipv6=()):
+        header = "sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n"
+
+        def table(values):
+            return header + "\n".join(
+                f"{index}: {address}:{port:04X} 00000000:0000 {state} 00000000:00000000 00:00000000 00000000 1001 0 {inode} 1"
+                for index, (address, port, state, inode) in enumerate(values)
+            )
+
+        return {"tcp": table(rows), "tcp6": table(ipv6)}
+
+    def test_owned_listener_excludes_other_processes_and_connected_sockets(self):
+        tables = self.socket_tables(
+            [
+                ("0100007F", 18027, "0A", 501),
+                ("00000000", 80, "0A", 900),
+                ("0100007F", 18027, "01", 502),
+            ]
+        )
+        listeners = owned_listeners(tables, {501, 502}, "little")
+        require_private_listener(listeners, "127.0.0.1:18027")
+        self.assertEqual(len(listeners), 1)
+        self.assertEqual(listeners[0]["inode"], 501)
+        self.assertIn("0100007F:466B", listeners[0]["raw"])
+
+    def test_owned_wildcard_ipv6_extra_missing_and_wrong_port_listeners_refused(self):
+        base = ("0100007F", 18027, "0A", 501)
+        variants = [
+            self.socket_tables([("00000000", 18027, "0A", 501)]),
+            self.socket_tables(
+                [], [("00000000000000000000000000000000", 18027, "0A", 501)]
+            ),
+            self.socket_tables(
+                [], [("00000000000000000000000001000000", 18027, "0A", 501)]
+            ),
+            self.socket_tables([base, ("0100007F", 18028, "0A", 502)]),
+            self.socket_tables(
+                [base], [("00000000000000000000000001000000", 18028, "0A", 502)]
+            ),
+            self.socket_tables([]),
+            self.socket_tables([("0100007F", 18028, "0A", 501)]),
+        ]
+        for tables in variants:
+            with self.subTest(tables=tables), self.assertRaises(RuntimeError):
+                require_private_listener(
+                    owned_listeners(tables, {501, 502}, "little"), "127.0.0.1:18027"
+                )
+
+    def test_proc_parser_rejects_malformed_owned_listener_and_handles_native_words(
+        self,
+    ):
+        for tables in (
+            {"tcp": "not proc data"},
+            self.socket_tables([("BAD", 80, "0A", 501)]),
+        ):
+            with self.assertRaises(ValueError):
+                owned_listeners(tables, {501}, "little")
+        tables = self.socket_tables([("7F000001", 18027, "0A", 501)])
+        require_private_listener(
+            owned_listeners(tables, {501}, "big"), "127.0.0.1:18027"
+        )
+        for endpoint in ("0.0.0.0:18027", "127.0.0.1:0", "[::1]:18027"):
+            with self.assertRaises(ValueError):
+                require_private_listener([], endpoint)
+
     def test_real_unit_substitutions_preserve_every_hardening_directive(self):
         original = (SOURCE / "apps/server/deploy/loofah-server.service").read_text()
         actual, changes = service_unit(

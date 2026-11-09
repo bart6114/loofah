@@ -16,6 +16,7 @@ the documented hardened systemd unit on Ubuntu, not inside the Debian image.
 import argparse
 import hashlib
 import http.server
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,7 @@ import socket
 import ssl
 import stat
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -168,6 +170,111 @@ def configuration(storage, cache, origin, backend, issuer):
         },
         "allow_insecure_loopback": True,
     }
+
+
+def owned_listeners(tables, inodes, byteorder=sys.byteorder):
+    listeners = []
+    for family, raw in tables.items():
+        if family not in ("tcp", "tcp6"):
+            raise ValueError("unexpected proc socket table")
+        lines = raw.splitlines()
+        if not lines or "local_address" not in lines[0] or "inode" not in lines[0]:
+            raise ValueError("invalid proc socket table header")
+        for line in lines[1:]:
+            fields = line.split()
+            if len(fields) < 10:
+                raise ValueError("invalid proc socket row")
+            inode = int(fields[9])
+            if inode not in inodes or fields[3] != "0A":
+                continue
+            address, port = fields[1].split(":")
+            if len(address) != (8 if family == "tcp" else 32):
+                raise ValueError("invalid proc socket address")
+            # Linux prints each native-endian u32 of the network address.
+            packed = b"".join(
+                int(address[offset : offset + 8], 16).to_bytes(4, byteorder)
+                for offset in range(0, len(address), 8)
+            )
+            listeners.append(
+                {
+                    "family": family,
+                    "address": str(ipaddress.ip_address(packed)),
+                    "port": int(port, 16),
+                    "inode": inode,
+                    "raw": line,
+                }
+            )
+    return listeners
+
+
+def require_private_listener(listeners, backend):
+    expected = re.fullmatch(r"127\.0\.0\.1:([0-9]+)", backend)
+    if expected is None or not 0 < int(expected[1]) < 65536:
+        raise ValueError("expected private IPv4 application endpoint")
+    if len(listeners) != 1 or (
+        listeners[0]["family"],
+        listeners[0]["address"],
+        listeners[0]["port"],
+    ) != ("tcp", "127.0.0.1", int(expected[1])):
+        raise RuntimeError("application owns an unexpected listening socket")
+
+
+def listener_snapshot(pid, backend, evidence):
+    if not isinstance(pid, int) or pid <= 0:
+        raise ValueError("invalid service PID")
+    proc = Path("/proc") / str(pid)
+
+    def starttime():
+        raw = (proc / "stat").read_text()
+        return int(raw.rsplit(")", 1)[1].split()[19])
+
+    def descriptors():
+        sockets = {}
+        with os.scandir(proc / "fd") as entries:
+            for index, entry in enumerate(entries):
+                if index >= 4096:
+                    raise RuntimeError("service descriptor inventory exceeds bound")
+                try:
+                    target = os.readlink(entry.path)
+                except FileNotFoundError:
+                    continue  # Accepted connections may close while sampling.
+                match = re.fullmatch(r"socket:\[([0-9]+)\]", target)
+                if match:
+                    sockets[entry.name] = int(match[1])
+        return sockets
+
+    original_start = starttime()
+    before = descriptors()
+    tables = {}
+    for family in ("tcp", "tcp6"):
+        with (proc / "net" / family).open("rb") as stream:
+            raw = stream.read(4 * 1024 * 1024 + 1)
+        if len(raw) > 4 * 1024 * 1024:
+            raise RuntimeError("proc socket table exceeds bound")
+        tables[family] = raw.decode("ascii")
+    after = descriptors()
+    if starttime() != original_start:
+        raise RuntimeError("service process changed during listener snapshot")
+    listeners = owned_listeners(tables, set(before.values()) | set(after.values()))
+    proof = {
+        "pid": pid,
+        "process_start_ticks": original_start,
+        "socket_fds_before": before,
+        "socket_fds_after": after,
+        "listeners": listeners,
+        "configured_endpoint": backend,
+        "table_sha256": {
+            family: hashlib.sha256(raw.encode()).hexdigest()
+            for family, raw in tables.items()
+        },
+        "scope": "owned listening sockets at readiness; unrelated namespace rows omitted",
+    }
+    save(evidence, proof)
+    require_private_listener(listeners, backend)
+    inode = listeners[0]["inode"]
+    if inode not in before.values() or inode not in after.values():
+        raise RuntimeError("application listener changed during snapshot")
+    return proof
 
 
 def inventory(root):
@@ -511,6 +618,9 @@ def run(args):
             for path in (storage, cache)
         ]
         report["initial_service"] = first
+        report["initial_listeners"] = listener_snapshot(
+            pid, backend, root / "listeners-initial.json"
+        )
         report["actual_process_uids"] = actual_uids
         raw = request("http://" + backend + "/api/v1/capabilities")[1]
         overlaid = capabilities_overlay(raw)
@@ -591,6 +701,9 @@ def run(args):
         second = properties()
         assert int(second["MainPID"]) != pid
         report["restarted_service"] = second
+        report["restarted_listeners"] = listener_snapshot(
+            int(second["MainPID"]), backend, root / "listeners-restarted.json"
+        )
         save(control / "service-restarted.json", {"ready": True})
         result = marker(control, "driver-result.json", driver)
         assert result["passed"] is True
