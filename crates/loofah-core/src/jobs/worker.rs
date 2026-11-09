@@ -124,9 +124,22 @@ async fn run(
                 &job.id,
             )
             .await?;
-            journal.complete(job.id, completion).await?;
+            finish_job(&journal, job.id, completion).await?;
         }
     }
+}
+
+async fn finish_job(
+    journal: &JobJournal,
+    id: String,
+    completion: JobCompletion,
+) -> Result<ProcessingJobSnapshot, ApplicationError> {
+    // A durable parent cancellation can reach the worker before the parent's
+    // child-status poll. Record that cancellation before the terminal transition.
+    if matches!(completion, JobCompletion::Cancelled) {
+        journal.cancel(id.clone()).await?;
+    }
+    journal.complete(id, completion).await
 }
 
 fn local_parent_refusal(failure: &ApplicationError) -> JobCompletion {

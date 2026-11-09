@@ -8,6 +8,52 @@ use tokio::sync::{RwLock, Semaphore};
 
 mod title;
 
+#[tokio::test]
+async fn parent_cancellation_completion_precedes_child_poll_without_stopping_the_worker() {
+    let f = Fixture::new("# Decisions\n- Ship Friday", false).await;
+    let first = f.submit().await;
+    assert_eq!(
+        f.journal
+            .claim(first.id.clone())
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        ProcessingJobState::Running
+    );
+    // The parent has cancelled, but its periodic child-cancellation request has
+    // not run. Keep the journal's independent transition invariant strict.
+    assert_eq!(
+        f.journal
+            .complete(first.id.clone(), JobCompletion::Cancelled)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    let terminal = finish_job(&f.journal, first.id.clone(), JobCompletion::Cancelled)
+        .await
+        .unwrap();
+    assert_eq!(terminal.state, ProcessingJobState::Cancelled);
+    assert_eq!(terminal.failure, None);
+    assert_eq!(f.journal.cancel(first.id.clone()).await.unwrap(), terminal);
+    assert_eq!(
+        finish_job(&f.journal, first.id, JobCompletion::Cancelled)
+            .await
+            .unwrap(),
+        terminal
+    );
+    assert_eq!(f.generator.calls.load(Ordering::SeqCst), 0);
+    let worker = f.worker().await;
+    let second = f.submit().await;
+    f.generator.release.add_permits(1);
+    assert_eq!(
+        f.terminal(&second.id).await.state,
+        ProcessingJobState::Succeeded
+    );
+    worker.shutdown().await.unwrap();
+}
+
 struct InterruptedOnce(AtomicBool);
 impl JobAuthorizer for InterruptedOnce {
     fn authorize<'a>(

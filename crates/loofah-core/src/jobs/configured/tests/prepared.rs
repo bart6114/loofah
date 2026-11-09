@@ -414,6 +414,11 @@ async fn title_startup_eof_cancellation_and_caller_drop_keep_capacity_and_real_l
             model.drain.add_permits(1);
             if drop_caller {
                 assert!(caller.await.unwrap_err().is_cancelled());
+            } else if blocking == Blocking::TitleEof {
+                assert_eq!(
+                    caller.await.unwrap().unwrap(),
+                    Some("Release planning".into())
+                );
             } else {
                 assert_eq!(
                     caller.await.unwrap().err(),
