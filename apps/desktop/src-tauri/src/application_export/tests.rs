@@ -378,3 +378,42 @@ fn windows_replaced_staging_name_never_publishes_or_deletes_foreign_bytes() {
         assert_eq!(std::fs::read(&existing).unwrap(), b"existing export");
     }
 }
+
+#[cfg(windows)]
+#[test]
+fn windows_download_writer_keeps_original_file_after_staging_name_replacement() {
+    use std::io::Write;
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap().join("Loofah");
+    let (staged, mut output) = files::stage_download(root.clone(), "original.wav").unwrap();
+    let path = std::fs::read_dir(&root)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let moved = root.join("moved-original");
+    match std::fs::rename(&path, &moved) {
+        Ok(()) => {
+            std::fs::write(&path, b"foreign sentinel").unwrap();
+            output.write_all(b"original download").unwrap();
+            output.sync_all().unwrap();
+            assert_eq!(std::fs::read(&moved).unwrap(), b"original download");
+            assert_eq!(std::fs::read(&path).unwrap(), b"foreign sentinel");
+            drop(output);
+            assert!(files::publish(staged).is_err());
+            assert_eq!(std::fs::read(&moved).unwrap(), b"original download");
+            assert_eq!(std::fs::read(&path).unwrap(), b"foreign sentinel");
+            assert!(!root.join("original.wav").exists());
+        }
+        Err(cause) if matches!(cause.raw_os_error(), Some(5 | 32)) => {
+            output.write_all(b"original download").unwrap();
+            output.sync_all().unwrap();
+            drop(output);
+            let published = files::publish(staged).unwrap();
+            assert_eq!(std::fs::read(&published).unwrap(), b"original download");
+            std::fs::rename(published, moved).unwrap();
+        }
+        Err(cause) => panic!("Unexpected download staging rename error: {cause}"),
+    }
+}
