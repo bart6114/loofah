@@ -1369,3 +1369,25 @@ verify the status panel, without reimporting or inferring historical work. Until
 then this panel's GUI correction is not qualified. Compiler-only Debug incremental
 objects were pruned after successful checks to preserve local disk headroom;
 dependency libraries, executables, release cache, models and raw evidence remain.
+
+
+The refreshed optimized artifact from `8eb0b9a532` passed the original-vault GUI
+reopen check. Executable SHA-256:
+`829802c0384861bb9718e442be01f31cc93a51bf0b19dcc81276cb55c85e09d6`.
+It reopened the original `english2` transcript with Media saved/Summary saved and
+a working Transcription jobs panel, without the former UUID error or Retry.
+The settled empty future-stream count is gone. All six original canonical file
+hashes and all 18 private journal JSON hashes remain identical, with no added or
+removed journal/job entries and zero new Ollama inference POSTs. Startup's selected
+Whisper prewarm remains distinct from ASR. The baseline b755 artifact/manifests
+were preserved. Exact source/binary/runtime and comparisons are copied into the
+portable checkpoint under `records.local_principal_refreshed_gui_2026_11_09`;
+raw evidence is in the task lab's `local-performance-refresh/reopen-acceptance.json`.
+
+At the preceding `b755769c25` hosted checkpoint, both native Windows compiler/test
+cohorts passed. X64 additionally completed NSIS, installed app startup, installed
+CLI/MCP and uninstall, with 2,235 passed/zero failed/47 ignored across 69 test
+cohorts. ARM64 installer qualification is still running. The later Core principal,
+macOS fixture and display corrections remain local until that healthy run completes;
+no healthy CI was cancelled. Physical recording permission/acceptance, production
+HTTPS SSO and final current-head platform qualification remain separate gates.

@@ -1307,6 +1307,207 @@
           "qualification_scope": "Frozen production commit573da57617 with harness-only5be9242930+31ad81601. Does not qualify later current-head changes, physical capture, native Windows or production amd64 packaging."
         }
       }
+    },
+    "local_principal_refreshed_gui_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance-refresh/reopen-acceptance.json",
+      "sha256": "d1e3b23f729483a23afd60bc9d1a2dfc21fff4650884596d5697e2d037febdfb",
+      "record": {
+        "schema_version": 1,
+        "observed_at_utc": "2026-11-09T02:58:40.487359+00:00",
+        "source": {
+          "commit": "8eb0b9a5325e19a6f89f81689f991537786cd0bf",
+          "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cargo_lock_sha256": "78061132247937bfcbde48d51cb21dade13f2cc0467a6cebe1f0e3ae94cc952c"
+        },
+        "binary_sha256": "829802c0384861bb9718e442be01f31cc93a51bf0b19dcc81276cb55c85e09d6",
+        "runtime": {
+          "pid": 50115,
+          "binary": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance-refresh/Loofah Local Performance QA.app/Contents/MacOS/loofah-local-performance-qa",
+          "sha256": "829802c0384861bb9718e442be01f31cc93a51bf0b19dcc81276cb55c85e09d6",
+          "source": {
+            "commit": "8eb0b9a5325e19a6f89f81689f991537786cd0bf",
+            "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "cargo_lock_sha256": "78061132247937bfcbde48d51cb21dade13f2cc0467a6cebe1f0e3ae94cc952c"
+          },
+          "started_at": 1794193026.226563,
+          "fixture": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance-refresh/fixture-manifest.json"
+        },
+        "bundle_manifest_sha256": "97ace381063fa69098f86b2e20fe5f9b80441f94b5bfc021e7edb0c06fa278cc",
+        "session_id": "9d4c4fd7-6882-4a52-b200-a2c8980f2e0d",
+        "canonical": {
+          "count": 6,
+          "comparison": {
+            "added": [],
+            "removed": [],
+            "changed": []
+          },
+          "after": {
+            "_meta.json": {
+              "bytes": 237,
+              "sha256": "8dc02e90ef6466b19d0eba96cbac31a76c2600137d0f802e0ed9d03fc27f734d"
+            },
+            "notes.md": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "audio.mp3": {
+              "bytes": 239904,
+              "sha256": "4086c2245e70a968fb33fd2a08e7300678adc22b45dc33f90ab7665621dcc126"
+            },
+            "audio.peaks.json": {
+              "bytes": 9000,
+              "sha256": "c44a5767d334d10b105caba285ae213324a1771be2abbccd8a7dc3b0bca8b1d9"
+            },
+            "transcript.json": {
+              "bytes": 46982,
+              "sha256": "e1d9d39c7d4dabc2bdf05e38eb3d604bbb5b92b96024a19cf1725a783c7a6a40"
+            },
+            "summary.md": {
+              "bytes": 421,
+              "sha256": "26470e5e136a10a7eea2e6fae71179c254909db86f6d16057a840a3f10a1156a"
+            }
+          }
+        },
+        "private_journals": {
+          "count": 18,
+          "comparison": {
+            "added": [],
+            "removed": [],
+            "changed": []
+          },
+          "after": {
+            "session-cleanups/0829f2caa634f9c43c11bde0b965c70099e706520e90388102e962f641211ffc.json": {
+              "bytes": 302,
+              "sha256": "771c06d0da8685eca5a46a9b7959bc0f1e79fb69c5aa15312c99d1f5e3abafff"
+            },
+            "session-cleanups/049277590468dcbed91ee8e231206a7a21eb44285575726614f99316e15fe5aa.json": {
+              "bytes": 302,
+              "sha256": "a8fc1d65fef6ff4536f109b8cba4afa856cc88ab59edfe28efa27c5c13bb5be6"
+            },
+            "session-cleanups/561af42a46cf9eb1eb6d8e20c8a646ca10a43837f9c5abf31c62741453ee0108.json": {
+              "bytes": 302,
+              "sha256": "508abf04b341de7573474c70663c08f5f978979a3a15d1d53915a950de1fa22a"
+            },
+            "local-media/ea9ae91b-56fb-4849-8da2-717c8f4ba600.json": {
+              "bytes": 1664,
+              "sha256": "66982a3d51fc7c1ffba06665a983e2e6a5358ecb3a14e8490d0a7a029bde57bf"
+            },
+            "transcript-publications/transcript-result-8a355c36dc14ad0a432c7992c72db21873748ad9b86389f29a0cdc6117dbf73a.json": {
+              "bytes": 46982,
+              "sha256": "e1d9d39c7d4dabc2bdf05e38eb3d604bbb5b92b96024a19cf1725a783c7a6a40"
+            },
+            "transcript-publications/transcript-publication-8a355c36dc14ad0a432c7992c72db21873748ad9b86389f29a0cdc6117dbf73a.json": {
+              "bytes": 779,
+              "sha256": "c2efcef73a39bbe0155e42384b028bdc82aace9a5a8fe9be602abd7dfad12c02"
+            },
+            "manual-media-summary/ea9ae91b-56fb-4849-8da2-717c8f4ba600.json": {
+              "bytes": 1352,
+              "sha256": "3071efc10007679ab2c6210410f1de3d37296d4d5fa0f80a45ac88da3aecadc2"
+            },
+            "recording-publications/recording-publication-fcff0ef59d350bc834cf1ade2e316697aab372df4ed8499b14082b77ec3d6eba.json": {
+              "bytes": 917,
+              "sha256": "539ea78671193dcec4781bf052648a602b564c8f6d4cc5fcaaab79437124fbf8"
+            },
+            "jobs/3a6a4ba220cb4d9df80e619894a662a11a004eeb632b0f8e9d5f9a52c45baf89.json": {
+              "bytes": 752,
+              "sha256": "1bacc9339e53380fa6d1f78516586f7d8b47f6a62f260108653d8190e44abdfa"
+            },
+            "jobs/dc253f71adafe479325bf1ff16e6510b3bcaf461970c34909909f62f979b754b.json": {
+              "bytes": 1234,
+              "sha256": "439f012be5ece095f47cf85876e7bcff04161a870d23af26b814f3757222b7c7"
+            },
+            "session-creations/6a7bb040-1c19-4b60-882e-b8cfbbe94962.json": {
+              "bytes": 654,
+              "sha256": "faf341849c8e54d2e51a074e4274396e567183d837186559d60efd5d89d33ace"
+            },
+            "session-creations/9d4c4fd7-6882-4a52-b200-a2c8980f2e0d.json": {
+              "bytes": 544,
+              "sha256": "14a83cfe93a563c1959840704a2e2bdad0c8309be4ec44216eac51b7f45b294d"
+            },
+            "jobs/titles/c0b64921-0b90-4d0e-a66c-a2c5f09f9ca2.json": {
+              "bytes": 523,
+              "sha256": "b291c2defaeaa92e8f6363aba55cfb0e910cc5ad7ee8c46d1d73f1f7346a2b77"
+            },
+            "jobs/titles/5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb.json": {
+              "bytes": 502,
+              "sha256": "f64173a53acbb10887760a8e761cfa2f19dee723b1860fe04795e83236695624"
+            },
+            "jobs/results/c0b64921-0b90-4d0e-a66c-a2c5f09f9ca2.json": {
+              "bytes": 844,
+              "sha256": "17cc509cfb31295162fe23ea7b9b4d720f76dde058a28b14351ad6c298bb0288"
+            },
+            "jobs/results/5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb.json": {
+              "bytes": 718,
+              "sha256": "0d29c50e80b3347f29e4dd68a29c0819ae44e7899af12f8d5aaba67c1c09f002"
+            },
+            "jobs/previews/c0b64921-0b90-4d0e-a66c-a2c5f09f9ca2.json": {
+              "bytes": 987,
+              "sha256": "4524e69a709568095c0ab03812b2388fc869df68464a64a14a5215f6e820affc"
+            },
+            "jobs/previews/5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb.json": {
+              "bytes": 812,
+              "sha256": "10cd403e183a178d4b170cafc096b4f4e582e4fa58f3ba17c3c9e953a5c764ca"
+            }
+          }
+        },
+        "job_files": {
+          "before": [
+            "jobs/3a6a4ba220cb4d9df80e619894a662a11a004eeb632b0f8e9d5f9a52c45baf89.json",
+            "jobs/dc253f71adafe479325bf1ff16e6510b3bcaf461970c34909909f62f979b754b.json",
+            "jobs/titles/c0b64921-0b90-4d0e-a66c-a2c5f09f9ca2.json",
+            "jobs/titles/5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb.json",
+            "jobs/results/c0b64921-0b90-4d0e-a66c-a2c5f09f9ca2.json",
+            "jobs/results/5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb.json",
+            "jobs/previews/c0b64921-0b90-4d0e-a66c-a2c5f09f9ca2.json",
+            "jobs/previews/5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb.json"
+          ],
+          "after": [
+            "jobs/3a6a4ba220cb4d9df80e619894a662a11a004eeb632b0f8e9d5f9a52c45baf89.json",
+            "jobs/dc253f71adafe479325bf1ff16e6510b3bcaf461970c34909909f62f979b754b.json",
+            "jobs/titles/c0b64921-0b90-4d0e-a66c-a2c5f09f9ca2.json",
+            "jobs/titles/5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb.json",
+            "jobs/results/c0b64921-0b90-4d0e-a66c-a2c5f09f9ca2.json",
+            "jobs/results/5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb.json",
+            "jobs/previews/c0b64921-0b90-4d0e-a66c-a2c5f09f9ca2.json",
+            "jobs/previews/5f2a70fb-d5d5-418b-b4b4-8b65e2459ceb.json"
+          ],
+          "new": []
+        },
+        "ollama": {
+          "previous_log_bytes": 143399,
+          "current_log_bytes": 143399,
+          "new_post_lines": [],
+          "tail": ""
+        },
+        "native_log": {
+          "sha256": "0bf9c59791848166da3118b41289d5931a834e262e9108f94e03a50efa9498c5",
+          "nonmetrics": [
+            "2026-11-09T02:57:09.103823Z ERROR tauri_plugin_updater2: update_check_failed: Updater does not have any endpoints set.",
+            "2026-11-09T02:57:09.105009Z  INFO tauri_plugin_transcription: root_actor_spawned",
+            "2026-11-09T02:57:09.105124Z  INFO tauri_plugin_local_stt: stt_supervisor_spawned",
+            "2026-11-09T02:57:09.670892Z  INFO whisper_local::model::actual: whisper_model_loading model=Some(\"ggml-base-q8_0.bin\") engine=\"1.9.4\" gpu_requested=true metal=true flash_attn=false",
+            "2026-11-09T02:57:10.150981Z  INFO loofah_core::startup: archived legacy summary templates archived=0",
+            "2026-11-09T02:57:10.577653Z  INFO loofah_core::startup: startup session index rebuild complete sessions=5003 notes=6672 transcripts=2502 error_count=0 errors=[] ghost_session_count=0 ghost_sessions=[]",
+            "2026-11-09T02:57:25.950219Z  INFO whisper_local::model::actual: whisper_model_loaded elapsed_ms=16279",
+            "2026-11-09T02:57:25.950343Z  INFO transcribe_whisper_local::service::streaming: whisper_local_model_warmup_completed"
+          ],
+          "errors_or_warnings": [
+            "2026-11-09T02:57:09.103823Z ERROR tauri_plugin_updater2: update_check_failed: Updater does not have any endpoints set."
+          ]
+        },
+        "root_gui_observation": {
+          "original_english2_note_reopened": true,
+          "transcript_word_count": 73,
+          "media_saved": true,
+          "summary_saved": true,
+          "transcription_jobs_header_visible": true,
+          "nil_uuid_error_visible": false,
+          "retry_visible": false,
+          "empty_future_pagination_visible": false,
+          "observer": "Root using CUA; this observer performed no UI or model actions"
+        },
+        "read_only_reopen_passed": true
+      }
     }
   },
   "local_work_focused": [
