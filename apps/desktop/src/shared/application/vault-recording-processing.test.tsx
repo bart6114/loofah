@@ -231,7 +231,7 @@ it("requires explicit reviewed confirmation before closing only the original con
   await reviewConflict();
   expect(
     screen.getByText(
-      /Current notes, images, transcript, summary, audio, retained results and journals stay unchanged/,
+      /Current notes, images, transcript, summary, audio, retained results stay unchanged/,
     ),
   ).toBeTruthy();
   expect(f.api.resolve).not.toHaveBeenCalled();

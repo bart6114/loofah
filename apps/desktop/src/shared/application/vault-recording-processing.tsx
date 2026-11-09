@@ -360,8 +360,7 @@ function RecordingResolutionReview({
             <Trans>
               This closes only this recording's completed processing conflict.
               Current notes, images, transcript, summary, audio, retained
-              results and journals stay unchanged. No transcription or summary
-              will run.
+              results stay unchanged. No transcription or summary will run.
             </Trans>
           </DialogDescription>
         </DialogHeader>
