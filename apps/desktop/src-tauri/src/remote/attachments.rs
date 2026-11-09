@@ -793,7 +793,7 @@ pub(crate) fn download_root<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, ApplicationError> {
     if app.config().identifier == "io.loofah.separation-qa"
-        || (cfg!(feature = "dev") && app.config().identifier == "io.loofah.remote-qa")
+        || super::qa::fixture_enabled(&app.config().identifier)
     {
         return std::env::var_os("LOOFAH_QA_DOWNLOADS_ROOT")
             .map(PathBuf::from)

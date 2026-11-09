@@ -1058,10 +1058,11 @@ UI activation remains default off for final platform/physical acceptance.
 
 Private processing previews are now advertised only with the configured summary
 worker capability. The configured/unconfigured Native server pair passed both
-cases; the Local facade/preview/scope cohort passed97 cases and desktop typecheck
-passed. The stable21-package all-target check passed in34.41s and all selected
-debug binaries built in1m24s. Logs are `native-preview-capability-pair.log`,
+cases; the Local facade/preview/scope cohort passed 97 cases and desktop typecheck
+passed. The stable 21-package all-target check passed in 34.41 seconds and all selected
+debug binaries built in 1 minute 24 seconds. Logs are `native-preview-capability-pair.log`,
 `preview-capability-frontend.log`, `native-all-target-window-preview-adoption.log`
 and `native-window-preview-adoption-binaries.log`. These supplement the preceding
 full Native/frontend/model results; fresh hosted Windows/Linux qualification and
 physical production QA remain open.
+Native Remote TLS UI qualification may use only the exact development fixture bundle IDs `io.loofah.remote-qa`, `io.loofah.remote-qa-a`, and `io.loofah.remote-qa-b`, with the desktop `dev` feature and an explicit `LOOFAH_QA_ROOT_CA`. The A/B IDs allow independent macOS single-instance sockets and OS credential namespaces; separate `LOOFAH_GLOBAL_BASE` and absolute `LOOFAH_QA_DOWNLOADS_ROOT` directories remain required for disposable runs. This does not enable custom trust in production or authorize OS trust changes. A synthetic numeric-loopback HTTP issuer can exercise the actual browser PKCE callback while the API uses verified fixture TLS; it does not qualify production HTTPS SSO. Build both artifacts serially from the existing Native worktree and shared cache.

@@ -2,6 +2,7 @@ pub(crate) mod attachments;
 pub(crate) mod media;
 pub(crate) mod media_jobs;
 pub(crate) mod note_windows;
+mod qa;
 
 use std::{
     collections::HashMap,
@@ -413,7 +414,7 @@ async fn discover<R: tauri::Runtime>(
     credentials: Arc<dyn CredentialStore>,
 ) -> Result<Arc<RemoteClient>, ApplicationError> {
     #[cfg(feature = "dev")]
-    if _app.config().identifier == "io.loofah.remote-qa" {
+    if qa::fixture_enabled(&_app.config().identifier) {
         if let Some(path) = std::env::var_os("LOOFAH_QA_ROOT_CA") {
             let root = tokio::task::spawn_blocking(move || {
                 let path = std::path::PathBuf::from(path);
