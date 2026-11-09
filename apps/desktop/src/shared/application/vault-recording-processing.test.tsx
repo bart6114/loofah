@@ -10,6 +10,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("~/types/tauri.gen", () => ({ commands: {} }));
 
+import { ApplicationRequestError } from "./errors";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 import { VaultRecordingProcessing } from "./vault-recording-processing";
 import { VaultScope } from "./vault-scope";
@@ -17,6 +18,7 @@ import { VaultScope } from "./vault-scope";
 import type {
   LocalCaptureControlSnapshot,
   LocalCaptureStatus,
+  LocalCaptureResolution,
 } from "~/types/tauri.gen";
 
 const scopes: VaultScope[] = [];
@@ -47,11 +49,24 @@ async function fixture() {
     status,
     revision: "a".repeat(64),
     actions: ["recover"],
+    resolution: null,
   };
   const api = {
     controls: vi.fn(async () => [control]),
     cancel: vi.fn(async () => control),
     recover: vi.fn(async () => status),
+    resolve: vi.fn(
+      async (
+        _request: string,
+        input: LocalCaptureResolution,
+        _options?: { signal?: AbortSignal },
+      ) => {
+        control.status = { ...status, state: "closed" };
+        control.actions = [];
+        control.resolution = input;
+        return structuredClone(control);
+      },
+    ),
   };
   const client = {
     scope: "original",
@@ -187,4 +202,199 @@ it("keeps processing cancellation disabled for a read-only scope", async () => {
     ).getAttribute("disabled"),
   ).not.toBeNull();
   expect(f.api.cancel).not.toHaveBeenCalled();
+});
+
+async function resolutionFixture() {
+  const f = await fixture();
+  f.status.state = "conflict";
+  f.control.actions = ["keep_current_content"];
+  return f;
+}
+async function reviewConflict() {
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Review processing conflict" }),
+  );
+  await screen.findByRole("dialog");
+}
+async function confirmResolution() {
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Keep current content and close processing",
+    }),
+  );
+}
+
+it("requires explicit reviewed confirmation before closing only the original conflict", async () => {
+  const f = await resolutionFixture();
+  render(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+  await reviewConflict();
+  expect(
+    screen.getByText(
+      /Current notes, images, transcript, summary, audio, retained results and journals stay unchanged/,
+    ),
+  ).toBeTruthy();
+  expect(f.api.resolve).not.toHaveBeenCalled();
+  expect(
+    screen
+      .getByRole("button", {
+        name: "Keep current content and close processing",
+      })
+      .getAttribute("disabled"),
+  ).not.toBeNull();
+  await confirmResolution();
+  await screen.findByText("Recording processing closed by review");
+  expect(f.api.resolve).toHaveBeenCalledOnce();
+  expect(f.api.resolve).toHaveBeenCalledWith(
+    f.status.declaration.request_id,
+    {
+      resolution_id: expect.any(String),
+      expected_revision: "a".repeat(64),
+      decision: "keep_current_content",
+    },
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(f.api.cancel).not.toHaveBeenCalled();
+  expect(f.api.recover).not.toHaveBeenCalled();
+});
+
+it("retries an unknown outcome with the same reviewed UUID and revision despite query refresh", async () => {
+  const f = await resolutionFixture();
+  f.api.resolve.mockRejectedValueOnce(new Error("Reply lost"));
+  render(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+  await reviewConflict();
+  await confirmResolution();
+  await screen.findByText("Reply lost");
+  const original = f.api.resolve.mock.calls[0][1];
+  f.control.revision = "b".repeat(64);
+  await act(() =>
+    f.scope.queryClient.invalidateQueries({
+      queryKey: ["recording_processing", "original", "note"],
+    }),
+  );
+  expect(f.api.resolve).toHaveBeenCalledOnce();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Retry original resolution" }),
+  );
+  await screen.findByText("Recording processing closed by review");
+  expect(f.api.resolve.mock.calls[1][1]).toEqual(original);
+  expect(f.api.resolve.mock.calls[1][1].expected_revision).toBe("a".repeat(64));
+});
+
+it("requires a refreshed explicit review after a confirmed stale revision", async () => {
+  const f = await resolutionFixture();
+  f.api.resolve.mockRejectedValueOnce(
+    new ApplicationRequestError({
+      code: "conflict",
+      message: "State changed",
+      retryable: false,
+      request_id: null,
+      current_revision: "b".repeat(64),
+      mutation_outcome: "not_committed",
+    }),
+  );
+  render(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+  await reviewConflict();
+  await confirmResolution();
+  await screen.findByText("State changed");
+  expect(
+    screen
+      .getByRole("button", { name: "Retry original resolution" })
+      .getAttribute("disabled"),
+  ).not.toBeNull();
+  const original = f.api.resolve.mock.calls[0][1];
+  f.control.revision = "b".repeat(64);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Refresh and review again" }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(f.api.controls).toHaveBeenCalledTimes(2));
+  expect(f.api.resolve).toHaveBeenCalledOnce();
+  await reviewConflict();
+  await confirmResolution();
+  await screen.findByText("Recording processing closed by review");
+  expect(f.api.resolve.mock.calls[1][1].resolution_id).not.toBe(
+    original.resolution_id,
+  );
+  expect(f.api.resolve.mock.calls[1][1].expected_revision).toBe("b".repeat(64));
+});
+
+it.each(["reconnecting", "access_denied"] as const)(
+  "does not resolve after original access changes to %s",
+  async (state) => {
+    const f = await resolutionFixture();
+    render(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+    await reviewConflict();
+    fireEvent.click(screen.getByRole("checkbox"));
+    act(() => f.emit({ kind: "connection", state, error: null }));
+    const confirm = screen.queryByRole("button", {
+      name: "Keep current content and close processing",
+    });
+    if (confirm) {
+      expect(confirm.getAttribute("disabled")).not.toBeNull();
+      fireEvent.click(confirm);
+    }
+    expect(f.api.resolve).not.toHaveBeenCalled();
+  },
+);
+
+it("never offers unknown-producer resolution or enables a read-only conflict decision", async () => {
+  const f = await fixture();
+  f.control.actions = [];
+  const view = render(
+    <VaultRecordingProcessing scope={f.scope} sessionId="note" />,
+  );
+  await screen.findByText(f.status.message!);
+  expect(
+    screen.queryByRole("button", { name: "Review processing conflict" }),
+  ).toBeNull();
+  f.status.state = "conflict";
+  f.control.actions = ["keep_current_content"];
+  Object.assign(f.scope.client, { canEdit: false });
+  await act(() =>
+    f.scope.queryClient.invalidateQueries({
+      queryKey: ["recording_processing", "original", "note"],
+    }),
+  );
+  view.rerender(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+  expect(
+    (
+      await screen.findByRole("button", { name: "Review processing conflict" })
+    ).getAttribute("disabled"),
+  ).not.toBeNull();
+  expect(f.api.resolve).not.toHaveBeenCalled();
+});
+
+it("aborts the original resolution lifetime on navigation and never applies late UI success", async () => {
+  const f = await resolutionFixture();
+  let finish!: (value: LocalCaptureControlSnapshot) => void;
+  f.api.resolve.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const view = render(
+    <VaultRecordingProcessing scope={f.scope} sessionId="note" />,
+  );
+  await reviewConflict();
+  await confirmResolution();
+  await waitFor(() => expect(f.api.resolve).toHaveBeenCalledOnce());
+  const signal = f.api.resolve.mock.calls[0][2]!.signal!;
+  view.rerender(
+    <VaultRecordingProcessing scope={f.scope} sessionId="another" />,
+  );
+  expect(signal.aborted).toBe(true);
+  const closed: LocalCaptureControlSnapshot = {
+    ...f.control,
+    status: { ...f.status, state: "closed" },
+    resolution: f.api.resolve.mock.calls[0][1],
+    actions: [],
+  };
+  await act(async () => finish(closed));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(
+    screen.queryByText("Recording processing closed by review"),
+  ).toBeNull();
+  expect(f.api.resolve).toHaveBeenCalledOnce();
 });
