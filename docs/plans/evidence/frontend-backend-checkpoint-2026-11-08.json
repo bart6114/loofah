@@ -1796,6 +1796,47 @@
         "launch_script": "../../remote_metadata_fresh.py",
         "app_launched_by_preparation": false
       }
+    },
+    "native_generated_empty_fence_080_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-generated-empty-fence-qualification.json",
+      "sha256": "f391b6c988d29c7bf76faad57f0b7efc7abb1b1a958d50fa9c8ab470458b8d28",
+      "record": {
+        "source": "080764fe205bc41a8422e8ebbe56b6ee20067958",
+        "cohorts": 21,
+        "passed": 12,
+        "failed": 0,
+        "ignored": 0,
+        "new_regressions": [
+          "jobs::generation::tests::final_generation_preserves_literal_fences_in_first_indented_code_line",
+          "jobs::generation::tests::final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content",
+          "jobs::generation::tests::fence_only_generation_fails_without_an_additional_model_attempt",
+          "jobs::worker::tests::historical_fence_only_retained_result_remains_readable_without_replay",
+          "jobs::generation::tests::fence_only_job_preserves_canonical_summary_and_retains_no_result"
+        ],
+        "new_regressions_passed": 5,
+        "scope": "default stable21 library targets; libtest fence filter",
+        "verification_note": "Initial post-run verifier expected an invented empty_generated_fence substring; corrected to the five exact names without rerunning or changing the successful tests.",
+        "all_target_check": {
+          "result": "passed",
+          "elapsed_seconds": 28.17,
+          "scope": "stable21 all-target check; existing warnings remain; not a warning-free Clippy claim"
+        },
+        "runtime_semantics": "Focused regression and compilation proof only; actual guarded Remote fresh-job runtime acceptance remains pending.",
+        "evidence": [
+          {
+            "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-generated-empty-fence-tests.json",
+            "sha256": "3a99e1879070ac385c9828488806ae204d4d1bdaadbb4af56b63c3bbe3447b6a"
+          },
+          {
+            "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-generated-empty-fence-tests.log",
+            "sha256": "e8a4ae00d3d59ce1b6ae3fd3caee4c880a899edf12307131ed6d497e4a3b83ba"
+          },
+          {
+            "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-generated-empty-fence-check.log",
+            "sha256": "5118728737fe2640e4c00571e53efb8e922c0396c98b3694726d2d50b23c640d"
+          }
+        ]
+      }
     }
   },
   "local_work_focused": [

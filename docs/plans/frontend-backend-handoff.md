@@ -8,9 +8,12 @@ in Git's common directory. A narrow build helper now tracks the real loose ref,
 existing packed refs and the bounded refs ancestor needed for packed-to-loose
 transitions. Vergen still generates the value; version `0.45.7` is unchanged.
 Four standalone Rust helper tests using real temporary Git repositories passed
-for linked loose/packed/detached refs and source-archive fallback. This source
-correction still needs the next ordinary Native artifact build; no cache wipe or
-QA SHA override was used, and the earlier artifact is not relabelled stale.
+for linked loose/packed/detached refs and source-archive fallback. The ordinary
+`6e7656d1b2` optimized build and fresh-profile GUI check passed: About displayed
+that exact commit and version `0.45.7`, without Local statistics. No cache wipe or
+QA SHA override was used. The older unsigned profile's blocked Keychain read and
+unchanged original state are recorded below; no OS grant or credential deletion
+was used to obtain the fresh-profile result.
 
 ## Status: resumed; implementation and integrated validation continue
 
@@ -34,8 +37,10 @@ existing managed Context and original lease. Its shutdown joins admitted owner
 work before the final Store flush. Generated contracts and full Native/platform
 validation remain integration gates; source checkpoints alone do not prove them.
 
-Latest Native checkpoint: 2,429 library tests passed (34 explicit ignored), using
-the actual macOS `/var` alias at test runtime. The complete frontend cohort passed
+Latest full Native checkpoint: 2,429 library tests passed (34 explicit ignored),
+using the actual macOS `/var` alias at test runtime. Separately, the `080764fe20`
+empty-fence guard passed 12 focused tests across the same 21 library targets,
+including five new regressions, and its all-target check passed in 28.17 seconds. The complete frontend cohort passed
 2,622 tests in 298 files, with later timeline checks/typechecking qualified separately; actual Native Ollama preview/summary/title
 and replay passed, and all-target checks plus debug binaries passed. Qualified
 previews are now advertised with configured workers. The exact dev-only A/B QA
@@ -45,8 +50,8 @@ platform/physical acceptance. The corrected, shaped two-hour paced SDK/server ru
 passed on its frozen source; physical capture and later source remain separate
 qualification gates. Actual Native A/B browser sign-in, shared editing, Reader downgrade, child-window
 vault/parent-close isolation and live access revocation passed on the frozen
-`71ea43cf94` QA artifacts. Native menu and connected-Reader header gaps found
-through that run are being corrected and need patched-artifact acceptance.
+`71ea43cf94` QA artifacts. The refreshed `2263b47eb7` artifact subsequently
+qualified the patched native menu and connected-Reader controls, as recorded below.
 
 Completed continuation checks so far (local logs are under the cache above):
 
@@ -1434,3 +1439,24 @@ that original state. Portable records `native_remote_about_6e_2026_11_09` and
 `native_remote_unsigned_startup_6e_2026_11_09` retain the receipts and their hashes.
 Physical recording, production HTTPS SSO and final current-head platform
 qualification remain separate gates.
+
+
+## Empty generated-fence publication guard, 2026-11-09
+
+Actual Remote QA exposed a saved seven-byte summary containing only an opening
+HTML fence. Shared generation now rejects fence-only output before retaining a new
+result or publishing canonical content (`080764fe20`). It preserves short prose,
+real fenced content and literal fences in indented code. Historical retained-result
+validation and receipt replay remain unchanged; no extra model attempt or retry
+budget was added, and rejected output does not overwrite the canonical summary.
+
+The default stable 21-package Native library graph with the `fence` filter passed
+12 tests, zero failures and zero ignored, including all five exact new regression
+names. The all-target check passed in 28.17 seconds with existing warnings. An
+initial post-run verifier expected an invented test-name substring and failed;
+correcting it to the five actual names verified the already successful log without
+rerunning or altering the tests. The portable record
+`native_generated_empty_fence_080_2026_11_09` preserves that distinction and the
+source/log hashes. These focused results are separate from the earlier full-suite
+2,429-pass total. A guarded server's fresh Remote job still needs actual runtime
+acceptance; this checkpoint does not claim semantic Remote summary success.
