@@ -1621,3 +1621,31 @@ The existing portable JSON appends
 `records.native_local_physical_artifact_aa0_2026_11_09`, embedding the exact
 verification receipt plus manifest/launch/preservation hashes, build features
 and unchanged task data roots. Previous records remain unchanged.
+
+## Git metadata fixture path portability, 2026-11-09
+
+Fixture-only checkpoint `b929baf7d` follows parent `365c2f7db9`; production
+`plugins/misc/build_git.rs` is unchanged. The fixture now canonicalizes the
+administrative directory returned by Git before comparing it with production
+canonical paths, and creates its linked worktree using `../linked` from the
+known main repository directory. Assertions and the four covered scenarios
+remain unchanged.
+
+Rust's [official canonicalize documentation](https://doc.rust-lang.org/std/fs/fn.canonicalize.html)
+states that Windows uses extended-length paths, which may be incompatible when
+passed to other applications. This motivates fixture portability hardening;
+there was no observed Windows failure and this is not an actual Windows pass.
+The existing standalone invocation compiled with
+`rustc --edition=2024 --test -D warnings` and passed all four tests locally on
+macOS ARM64 in 0.21 seconds, with zero failures or ignored tests. Formatting
+and `git diff --check` also passed.
+
+`records.git_metadata_fixture_portability_b929_2026_11_09` in the existing
+portable JSON records the exact source/helper hashes, commands, result and
+SHA256 of `git-metadata-path-portability-b929-tests.log`. That task log copies
+the exact test stdout from the completed tool execution; this documentation
+step did not rerun tests. Prior evidence records remain unchanged. No Cargo
+or Native build, inference or permission changes occurred. The current `aa0`
+Local physical-QA artifact's production code is unchanged and the app remains
+unlaunched. Earlier-source hosted Windows checks remain a separate pending
+gate; no push or cancellation is represented here.

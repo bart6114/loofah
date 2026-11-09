@@ -2541,6 +2541,43 @@
         "Launch script is historical workstation evidence; validate current permissions, source and runtime ownership before any future use.",
         "No current hosted Windows acceptance claim; earlier 073 checks were still running."
       ]
+    },
+    "git_metadata_fixture_portability_b929_2026_11_09": {
+      "source": "b929baf7da6cccdcc079da810ff5c32346505a30",
+      "parent_source": "365c2f7db97d11cc8bd13708895190be419e6089",
+      "production_helper_unchanged": true,
+      "source_files": {
+        "plugins/misc/tests/build_git.rs": "47d78018b81f6311da80990dab6534145749035e140f8cd1346c4f9bab91a348",
+        "plugins/misc/build_git.rs": "5490575b5cd950aaabdd8691dde782dd36a7e208e6b2509620cf372999c0f2e3"
+      },
+      "compile_command": "rustc --edition=2024 --test -D warnings plugins/misc/tests/build_git.rs -o /Users/bartsmeets/Library/Caches/loofah-separation/tmp/build-git-path-portability-tests",
+      "run_command": "/Users/bartsmeets/Library/Caches/loofah-separation/tmp/build-git-path-portability-tests",
+      "result": {
+        "passed": 4,
+        "failed": 0,
+        "ignored": 0,
+        "seconds": 0.21,
+        "host": "macOS ARM64"
+      },
+      "log": {
+        "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/git-metadata-path-portability-b929-tests.log",
+        "sha256": "2ca4150d1a1427f3730d6b15142901a12de0051b5ed22409a879ebe6330209a7",
+        "provenance": "Exact test stdout from completed tool execution, copied into the task log after the run; this documentation step did not rerun tests."
+      },
+      "official_contract": {
+        "url": "https://doc.rust-lang.org/std/fs/fn.canonicalize.html",
+        "summary": "On Windows canonicalize returns extended-length paths, which may be incompatible with other applications when supplied on the command line."
+      },
+      "fixture_changes": [
+        "Canonicalize the Git-returned administrative directory before comparison with production canonical paths.",
+        "Pass ../linked to git worktree add from the known main repository directory."
+      ],
+      "limits": [
+        "Fixture portability hardening, not an observed Windows failure or an actual Windows pass.",
+        "Production helper and assertions unchanged; documentation update performs no Cargo or Native rerun.",
+        "Current aa0 Local physical-QA artifact production code unchanged and remains unlaunched; no inference or permission grants.",
+        "Hosted Windows checks for earlier 073 source remain separate; no push or cancellation."
+      ]
     }
   },
   "local_work_focused": [
