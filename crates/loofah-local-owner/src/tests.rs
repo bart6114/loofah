@@ -777,3 +777,6 @@ async fn owner_resolution_retries_a_lost_handshake_until_the_original_lease_is_r
         OwnerResolution::Acquired(_)
     ));
 }
+
+#[path = "progress_transport_tests.rs"]
+mod progress_transport;
