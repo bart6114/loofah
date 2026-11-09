@@ -1892,7 +1892,7 @@
         "client_offline_observation": {
           "reported_at_utc": "2026-11-09T03:49:14.336093+00:00",
           "observer": "parent actual CUA",
-          "banner": "Reconnecting\u2026 Loaded notes remain available.",
+          "banner": "Reconnecting… Loaded notes remain available.",
           "sidebar_new_note_enabled": false,
           "existing_note_readonly": true,
           "tag_date_existing_record_enabled": false,
@@ -6512,6 +6512,61 @@
         "activation": "Local lifecycle, output deletion and transcript activation remain default off; server append and media retirement capabilities remain unadvertised in their recorded scopes.",
         "release": "No merge, release, version change or extra workflow dispatch. Only the one authorized failed-macOS retry occurred; successful jobs were not rerun or cancelled."
       }
+    },
+    "optimized_media_retirement_build_and_desktop_pause_2026_11_09": {
+      "source": {
+        "commit": "94c0cf6b9005701c09942b36bfe5ec6cf8b1c560",
+        "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cargo_lock_sha256": "44bc6a295d3634160efefe329f61b2665f5d37f4c7138eb3a4493ffa1e974e66"
+      },
+      "scope": "Optimized Native build only; no successful Native sign-in/media retirement UI acceptance before user pause",
+      "build_exit_code": 0,
+      "build_seconds": 481.43728494644165,
+      "packages": [
+        "desktop",
+        "loof-cli",
+        "loofah-local-owner",
+        "loofah-local-media",
+        "loofah-client",
+        "loofah-core",
+        "loofah-protocol",
+        "loofah-server",
+        "capture-store",
+        "vault-read",
+        "vault-write",
+        "search-cache",
+        "listener-core",
+        "listener2-core",
+        "transcribe-whisper-local",
+        "tauri-plugin-transcription",
+        "storage",
+        "export-core",
+        "fs-sync-core",
+        "tauri-plugin-fs-sync",
+        "tauri-plugin-windows"
+      ],
+      "features": [
+        "desktop/dev",
+        "loofah-client/dev-fixtures",
+        "loofah-server/cpu-transcription"
+      ],
+      "identifier": "io.loofah.remote-qa-a",
+      "binary_hashes": {
+        "loof": "ccb028c2916cc092fb9dabf133c260d37754488e66a194084f4ef5a145b58310",
+        "loofah-server": "e38a9605c88f6f79d74054632b9acd15c591ecda5ef97f799cf36783db58259a"
+      },
+      "desktop_binary_sha256": "b2e6bfe57264e56f9a1bcaf86bd329a704694aafe41438f961d1c32e03fd02b1",
+      "receipt": {
+        "historical_machine_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-retirement/build-and-user-pause-receipt.json",
+        "sha256": "0c8a51cf86420be6f5bbfd0fdbfbf83d5f57e9d7d0014905fa86b6963408a189"
+      },
+      "desktop_testing_paused_by_user": true,
+      "pause_instruction": "pause local desktop app tests until i give signal",
+      "qa_apps_stopped": true,
+      "native_retirement_ui_qualified": false,
+      "production_retirement_capability_advertised": false,
+      "production_sso_acceptance": "Explicitly deferred by user",
+      "initial_fixture_startup": "Cannot reach server: task-only capabilities proxy returned empty response; diagnostic assigned, not a production source failure"
     }
   },
   "local_work_focused": [

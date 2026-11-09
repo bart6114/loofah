@@ -1,5 +1,20 @@
 # Frontend/backend separation handoff
 
+Desktop app testing on this workstation is **paused at the user's explicit
+request** on 2026-11-09. Do not launch QA desktop apps, start physical capture or
+resume GUI acceptance until the user gives the signal. Both idle QA apps were
+stopped. Source review, implementation, headless service checks and hosted CI may
+continue. Production SSO acceptance is separately deferred by the user.
+
+The optimized stable 21-package graph built successfully from clean frozen
+`94c0cf6b9005701c09942b36bfe5ec6cf8b1c560` in 481.44 seconds. The isolated
+`io.loofah.remote-qa-a` bundle, CLI and server have verified manifests and
+immutable local copies. Native retirement UI acceptance did not run: initial
+startup encountered a task-only capabilities-proxy failure before sign-in, then
+desktop testing was paused. This build is compiler/bundle evidence only; it does
+not activate `media_retirement`, `capture_append` or the Local gates. The portable
+record preserves exact artifact hashes and the user pause.
+
 Current acceptance status, 2026-11-09: all six PR workflows at `053447421f` are
 terminal. Five passed. Each native Windows architecture passed 2,250 executions,
 including the 91-case listener library, all four Git helpers, both SDK refresh
