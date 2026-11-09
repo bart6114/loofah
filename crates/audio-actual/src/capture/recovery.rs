@@ -15,6 +15,7 @@ use super::stream::ChunkStream;
 
 #[derive(Default)]
 pub(crate) struct CaptureHealth {
+    pub(super) owner: Option<Arc<dyn Send + Sync>>,
     pub(super) recovering: AtomicU8,
     pub(super) generation: AtomicUsize,
     pub(super) integrity: Arc<hypr_audio::CaptureIntegrity>,
@@ -103,7 +104,11 @@ pub(super) fn recovering_chunks(
                 _ = retry.tick(), if stream.is_none() && opening.is_none() && !stopping => {
                     let factory = factory.clone();
                     opening_revision = *refresh.borrow();
-                    opening = Some(tokio::task::spawn_blocking(move || factory()));
+                    let original = health.clone();
+                    opening = Some(tokio::task::spawn_blocking(move || {
+                        let _original = original;
+                        factory()
+                    }));
                 }
                 result = async { opening.as_mut().expect("pending source open").await }, if opening.is_some() => {
                     opening = None;

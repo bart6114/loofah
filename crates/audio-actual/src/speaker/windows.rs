@@ -40,6 +40,13 @@ impl SpeakerInput {
         self,
         integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
     ) -> Result<SpeakerStream> {
+        self.stream_owned(integrity, None)
+    }
+    pub(crate) fn stream_owned(
+        self,
+        integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+        owner: Option<Arc<dyn Send + Sync>>,
+    ) -> Result<SpeakerStream> {
         let rb = HeapRb::<f32>::new(BUFFER_SIZE);
         let (producer, consumer) = rb.split();
 
@@ -61,6 +68,7 @@ impl SpeakerInput {
             let dropped_samples = dropped_samples.clone();
 
             thread::spawn(move || {
+                let _owner = owner;
                 let result = capture_audio_loop(
                     producer,
                     waker.clone(),

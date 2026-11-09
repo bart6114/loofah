@@ -18,6 +18,7 @@ pub use hypr_audio::{
     CaptureDrainReceipt, CaptureFrame, CaptureIntegrity, CaptureStream, Error,
 };
 pub use hypr_audio_interface::AsyncSource;
+use std::sync::Arc;
 
 pub const TAP_DEVICE_NAME: &str = "hypr-audio-tap";
 
@@ -233,6 +234,31 @@ impl AsyncSource for AudioStream {
 pub struct ActualAudio;
 
 impl AudioProvider for ActualAudio {
+    fn open_capture_owned(
+        &self,
+        config: CaptureConfig,
+        owner: Arc<dyn Send + Sync>,
+    ) -> Result<CaptureStream, Error> {
+        capture::open_capture_owned(config, Some(owner))
+    }
+    fn open_speaker_capture_owned(
+        &self,
+        sample_rate: u32,
+        chunk_size: usize,
+        owner: Arc<dyn Send + Sync>,
+    ) -> Result<CaptureStream, Error> {
+        capture::open_speaker_capture_owned(sample_rate, chunk_size, Some(owner))
+    }
+    fn open_mic_capture_owned(
+        &self,
+        device: Option<String>,
+        sample_rate: u32,
+        chunk_size: usize,
+        owner: Arc<dyn Send + Sync>,
+    ) -> Result<CaptureStream, Error> {
+        capture::open_mic_capture_owned(device, sample_rate, chunk_size, Some(owner))
+    }
+
     fn open_capture(&self, config: CaptureConfig) -> Result<CaptureStream, Error> {
         capture::open_capture(config)
     }

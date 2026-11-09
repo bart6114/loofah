@@ -212,6 +212,32 @@ impl Stream for CaptureStream {
 
 /// Open failures release partially opened acquisition resources before returning Err.
 pub trait AudioProvider: Send + Sync {
+    /// Defaults preserve legacy providers; only implementations that propagate the
+    /// owner into actual native workers may claim a stopped-owner proof.
+    fn open_capture_owned(
+        &self,
+        config: CaptureConfig,
+        _owner: Arc<dyn Send + Sync>,
+    ) -> Result<CaptureStream, Error> {
+        self.open_capture(config)
+    }
+    fn open_speaker_capture_owned(
+        &self,
+        sample_rate: u32,
+        chunk_size: usize,
+        _owner: Arc<dyn Send + Sync>,
+    ) -> Result<CaptureStream, Error> {
+        self.open_speaker_capture(sample_rate, chunk_size)
+    }
+    fn open_mic_capture_owned(
+        &self,
+        device: Option<String>,
+        sample_rate: u32,
+        chunk_size: usize,
+        _owner: Arc<dyn Send + Sync>,
+    ) -> Result<CaptureStream, Error> {
+        self.open_mic_capture(device, sample_rate, chunk_size)
+    }
     fn open_capture(&self, config: CaptureConfig) -> Result<CaptureStream, Error>;
     fn open_speaker_capture(
         &self,

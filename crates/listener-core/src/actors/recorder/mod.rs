@@ -42,6 +42,7 @@ impl RecordingDestination {
 
 pub struct RecArgs {
     pub destination: RecordingDestination,
+    pub owner: Arc<dyn Send + Sync>,
 }
 
 pub struct RecState {
@@ -89,7 +90,10 @@ impl Actor for RecorderActor {
             } => {
                 let session_dir = find_session_dir(&vault_dir, &session_id)?;
                 std::fs::create_dir_all(&session_dir)?;
-                RecorderSink::Disk(disk::create_disk_sink(&session_dir)?)
+                RecorderSink::Disk(disk::create_owned_disk_sink(
+                    &session_dir,
+                    Some(args.owner),
+                )?)
             }
             RecordingDestination::Device { sink, mode, .. } => {
                 RecorderSink::Device(device::DeviceSink::new(sink, mode))

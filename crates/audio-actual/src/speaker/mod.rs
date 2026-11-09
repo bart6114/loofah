@@ -78,17 +78,18 @@ impl SpeakerInput {
     }
 
     #[cfg(all(any(target_os = "macos", target_os = "windows"), not(test)))]
-    pub(crate) fn stream_with_integrity(
+    pub(crate) fn stream_owned(
         self,
         integrity: Option<std::sync::Arc<hypr_audio::CaptureIntegrity>>,
+        owner: Option<std::sync::Arc<dyn Send + Sync>>,
     ) -> Result<SpeakerStream> {
         #[cfg(target_os = "macos")]
         {
-            Ok(self.inner.stream_with_integrity(integrity)?)
+            Ok(self.inner.stream_owned(integrity, owner)?)
         }
         #[cfg(target_os = "windows")]
         {
-            let inner = self.inner.stream_with_integrity(integrity)?;
+            let inner = self.inner.stream_owned(integrity, owner)?;
             let initial_rate = inner.sample_rate();
             Ok(SpeakerStream {
                 inner,
@@ -98,11 +99,11 @@ impl SpeakerInput {
             })
         }
     }
-
     #[cfg(all(any(target_os = "macos", target_os = "windows"), test))]
-    pub(crate) fn stream_with_integrity(
+    pub(crate) fn stream_owned(
         self,
         _integrity: Option<std::sync::Arc<hypr_audio::CaptureIntegrity>>,
+        _owner: Option<std::sync::Arc<dyn Send + Sync>>,
     ) -> Result<SpeakerStream> {
         self.stream()
     }

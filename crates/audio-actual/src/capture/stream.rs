@@ -23,6 +23,9 @@ use crate::speaker::SpeakerInput;
 use super::joiner::Joiner;
 use super::recovery::CaptureHealth;
 
+#[cfg(test)]
+mod ownership_tests;
+
 pub(crate) trait ChunkSource:
     Stream<Item = Result<Vec<f32>, hypr_resampler::Error>> + Send
 {
@@ -237,32 +240,34 @@ impl Drop for CaptureStreamInner {
     }
 }
 
-pub(crate) fn setup_mic_stream(
+pub(crate) fn setup_mic_stream_owned(
     sample_rate: u32,
     chunk_size: usize,
     mic_device: Option<String>,
     integrity: Arc<hypr_audio::CaptureIntegrity>,
+    owner: Option<Arc<dyn Send + Sync>>,
 ) -> Result<ChunkStream, Error> {
     let mic = MicInput::new(mic_device).map_err(|_| Error::MicOpenFailed)?;
-    mic.stream_with_integrity(Some(integrity))
+    mic.stream_owned(Some(integrity), owner)
         .resampled_chunks(sample_rate, chunk_size)
         .map(|stream| Box::pin(ResampledChunks(stream)) as ChunkStream)
         .map_err(|_| Error::MicStreamSetupFailed)
 }
 
-pub(crate) fn setup_speaker_stream(
+pub(crate) fn setup_speaker_stream_owned(
     sample_rate: u32,
     chunk_size: usize,
     integrity: Arc<hypr_audio::CaptureIntegrity>,
+    owner: Option<Arc<dyn Send + Sync>>,
 ) -> Result<ChunkStream, Error> {
     ensure_system_audio_permission()?;
 
     let speaker = SpeakerInput::new().map_err(crate::speaker::setup_error)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    let speaker_stream = speaker.stream_with_integrity(Some(integrity));
+    let speaker_stream = speaker.stream_owned(Some(integrity), owner);
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let speaker_stream = {
-        let _ = integrity;
+        let _ = (integrity, owner);
         speaker.stream()
     };
     speaker_stream

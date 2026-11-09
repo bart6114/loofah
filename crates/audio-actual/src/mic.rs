@@ -171,6 +171,13 @@ impl MicInput {
         &self,
         integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
     ) -> MicStream {
+        self.stream_owned(integrity, None)
+    }
+    pub(crate) fn stream_owned(
+        &self,
+        integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+        owner: Option<Arc<dyn Send + Sync>>,
+    ) -> MicStream {
         let config = self.config.clone();
         let device = self.device.clone();
         let (drop_tx, drop_rx) = std::sync::mpsc::channel();
@@ -190,6 +197,8 @@ impl MicInput {
 
         let owner_integrity = integrity.clone();
         let capture_thread = std::thread::spawn(move || {
+            // This thread can outlive an abnormal MicStream drop.
+            let _owner = owner;
             fn build_stream<S: ToSample<f32> + SizedSample>(
                 device: &cpal::Device,
                 config: &cpal::SupportedStreamConfig,

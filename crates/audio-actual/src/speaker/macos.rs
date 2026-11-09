@@ -30,6 +30,7 @@ pub struct SpeakerStream {
     current_sample_rate: u32,
     sample_rate_probe_counter: u32,
     buffer_rate: u32,
+    _owner: Option<Arc<dyn Send + Sync>>,
 }
 
 impl SpeakerStream {
@@ -39,6 +40,7 @@ impl SpeakerStream {
 }
 
 struct Ctx {
+    _owner: Option<Arc<dyn Send + Sync>>,
     common_format: av::audio::CommonFormat,
     producer: HeapProd<f32>,
     waker: Arc<AtomicWaker>,
@@ -151,6 +153,13 @@ impl SpeakerInput {
         self,
         integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
     ) -> Result<SpeakerStream, Error> {
+        self.stream_owned(integrity, None)
+    }
+    pub(crate) fn stream_owned(
+        self,
+        integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+        owner: Option<Arc<dyn Send + Sync>>,
+    ) -> Result<SpeakerStream, Error> {
         let asbd = self
             .tap
             .asbd()
@@ -171,6 +180,7 @@ impl SpeakerInput {
         tracing::info!(init = asbd.sample_rate, "sample_rate");
 
         let mut ctx = Box::new(Ctx {
+            _owner: owner.clone(),
             common_format,
             producer,
             waker: waker.clone(),
@@ -199,6 +209,7 @@ impl SpeakerInput {
             current_sample_rate,
             sample_rate_probe_counter: 0,
             buffer_rate: asbd.sample_rate as u32,
+            _owner: owner,
         })
     }
 }

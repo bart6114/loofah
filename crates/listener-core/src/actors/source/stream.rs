@@ -51,6 +51,7 @@ async fn start_streams(
     let myself2 = myself.clone();
     let mic_device = st.mic_device.clone();
     let audio = st.audio.clone();
+    let owner: std::sync::Arc<dyn Send + Sync> = std::sync::Arc::new(st.runtime.clone());
     let device_ingress = st.device_ingress.clone();
     let provider_integrity = st.provider_integrity.clone();
     let device_root = st.device_root.clone();
@@ -73,6 +74,7 @@ async fn start_streams(
             cancel_token: stream_cancel_token,
             mic_device,
             audio,
+            owner,
             device_ingress,
             provider_integrity,
             stop_interrupted,
@@ -108,6 +110,7 @@ struct StreamContext {
     cancel_token: CancellationToken,
     mic_device: Option<String>,
     audio: std::sync::Arc<dyn AudioProvider>,
+    owner: std::sync::Arc<dyn Send + Sync>,
     device_ingress: Option<crate::actors::DeviceIngress>,
     provider_integrity: Option<ProviderIntegrity>,
     stop_interrupted: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -137,6 +140,7 @@ async fn run_stream_loop(ctx: StreamContext, mode: ChannelMode) -> ProducerExit 
     let sample_rate = crate::actors::SAMPLE_RATE;
     let chunk_size = chunk_size_for_stt(sample_rate);
 
+    let owner = ctx.owner.clone();
     let capture_result: Result<CaptureStream, _> = match mode {
         ChannelMode::MicAndSpeaker => {
             let config = CaptureConfig {
@@ -145,12 +149,15 @@ async fn run_stream_loop(ctx: StreamContext, mode: ChannelMode) -> ProducerExit 
                 mic_device: ctx.mic_device.clone(),
                 enable_aec: std::env::var("NO_AEC").as_deref() != Ok("1"),
             };
-            ctx.audio.open_capture(config)
+            ctx.audio.open_capture_owned(config, owner)
         }
-        ChannelMode::SpeakerOnly => ctx.audio.open_speaker_capture(sample_rate, chunk_size),
+        ChannelMode::SpeakerOnly => {
+            ctx.audio
+                .open_speaker_capture_owned(sample_rate, chunk_size, owner)
+        }
         ChannelMode::MicOnly => {
             ctx.audio
-                .open_mic_capture(ctx.mic_device.clone(), sample_rate, chunk_size)
+                .open_mic_capture_owned(ctx.mic_device.clone(), sample_rate, chunk_size, owner)
         }
     };
 
@@ -451,6 +458,104 @@ mod tests {
         }
     }
     struct Probe;
+    struct OpeningAudio {
+        release: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+        joined: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<std::thread::JoinHandle<()>>>>,
+    }
+    impl AudioProvider for OpeningAudio {
+        fn open_capture_owned(
+            &self,
+            _: CaptureConfig,
+            owner: std::sync::Arc<dyn Send + Sync>,
+        ) -> Result<CaptureStream, hypr_audio::Error> {
+            let release = self.release.lock().unwrap().take().unwrap();
+            let task = std::thread::spawn(move || {
+                let _owner = owner;
+                release.recv().unwrap();
+            });
+            self.joined
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap()
+                .send(task)
+                .unwrap();
+            panic!("controlled failure after native startup dispatch")
+        }
+        fn open_capture(&self, config: CaptureConfig) -> Result<CaptureStream, hypr_audio::Error> {
+            UnusedAudio.open_capture(config)
+        }
+        fn open_speaker_capture(
+            &self,
+            rate: u32,
+            size: usize,
+        ) -> Result<CaptureStream, hypr_audio::Error> {
+            UnusedAudio.open_speaker_capture(rate, size)
+        }
+        fn open_mic_capture(
+            &self,
+            device: Option<String>,
+            rate: u32,
+            size: usize,
+        ) -> Result<CaptureStream, hypr_audio::Error> {
+            UnusedAudio.open_mic_capture(device, rate, size)
+        }
+        fn default_device_name(&self) -> String {
+            UnusedAudio.default_device_name()
+        }
+        fn list_mic_devices(&self) -> Vec<String> {
+            UnusedAudio.list_mic_devices()
+        }
+        fn play_silence(&self) -> std::sync::mpsc::Sender<()> {
+            UnusedAudio.play_silence()
+        }
+        fn play_bytes(&self, bytes: &'static [u8]) -> std::sync::mpsc::Sender<()> {
+            UnusedAudio.play_bytes(bytes)
+        }
+        fn probe_mic(&self, device: Option<String>) -> Result<(), hypr_audio::Error> {
+            UnusedAudio.probe_mic(device)
+        }
+        fn probe_speaker(&self) -> Result<(), hypr_audio::Error> {
+            UnusedAudio.probe_speaker()
+        }
+    }
+
+    #[tokio::test]
+    async fn native_startup_owns_original_runtime_even_after_source_future_unwinds() {
+        let owner = std::sync::Arc::new(());
+        let original = std::sync::Arc::downgrade(&owner);
+        let (release, wait) = std::sync::mpsc::channel();
+        let (joined, join) = tokio::sync::oneshot::channel();
+        let (events, _) = tokio::sync::mpsc::unbounded_channel();
+        let (actor, actor_join) = Actor::spawn(None, Probe, events).await.unwrap();
+        let context = StreamContext {
+            actor: actor.clone(),
+            cancel_token: CancellationToken::new(),
+            mic_device: None,
+            audio: std::sync::Arc::new(OpeningAudio {
+                release: std::sync::Mutex::new(Some(wait)),
+                joined: std::sync::Mutex::new(Some(joined)),
+            }),
+            owner,
+            device_ingress: None,
+            provider_integrity: None,
+            stop_interrupted: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            device_root: None,
+        };
+        assert!(
+            std::panic::AssertUnwindSafe(run_stream_loop(context, ChannelMode::MicAndSpeaker))
+                .catch_unwind()
+                .await
+                .is_err()
+        );
+        let native = join.await.unwrap();
+        actor.stop(None);
+        actor_join.await.unwrap();
+        assert!(original.upgrade().is_some());
+        release.send(()).unwrap();
+        native.join().unwrap();
+        assert!(original.upgrade().is_none());
+    }
     #[ractor::async_trait]
     impl Actor for Probe {
         type Msg = SourceMsg;
@@ -489,6 +594,7 @@ mod tests {
             cancel_token: cancel,
             mic_device: None,
             audio: std::sync::Arc::new(UnusedAudio),
+            owner: std::sync::Arc::new(()),
             device_ingress: Some(crate::actors::DeviceIngress::default()),
             provider_integrity: Some(std::sync::Arc::new(std::sync::OnceLock::new())),
             stop_interrupted: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

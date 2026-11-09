@@ -23,9 +23,18 @@ pub(super) struct DiskSink {
     wav_path: PathBuf,
     last_flush: Instant,
     is_stereo: bool,
+    // Drop after all held files, including implicit WAV finalization on panic.
+    _owner: Option<std::sync::Arc<dyn Send + Sync>>,
 }
 
+#[cfg(test)]
 pub(super) fn create_disk_sink(session_dir: &Path) -> Result<DiskSink, ActorProcessingErr> {
+    create_owned_disk_sink(session_dir, None)
+}
+pub(super) fn create_owned_disk_sink(
+    session_dir: &Path,
+    owner: Option<std::sync::Arc<dyn Send + Sync>>,
+) -> Result<DiskSink, ActorProcessingErr> {
     let wav_path = session_dir.join(WAV_FILE);
     let ogg_path = session_dir.join(OGG_FILE);
     let encoded_path = session_dir.join(FINAL_AUDIO_FILE);
@@ -80,6 +89,7 @@ pub(super) fn create_disk_sink(session_dir: &Path) -> Result<DiskSink, ActorProc
         wav_path,
         last_flush: Instant::now(),
         is_stereo,
+        _owner: owner,
     })
 }
 
@@ -295,6 +305,52 @@ mod tests {
     use crate::actors::SAMPLE_RATE;
 
     use super::*;
+
+    #[test]
+    fn original_owner_survives_wav_mp3_finalization_and_all_disk_file_drops() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        struct Owner {
+            directory: PathBuf,
+            dropped: Arc<AtomicUsize>,
+        }
+        impl Drop for Owner {
+            fn drop(&mut self) {
+                assert!(self.directory.join("audio.mp3").metadata().unwrap().len() > 0);
+                assert!(!self.directory.join("audio.wav").exists());
+                #[cfg(windows)]
+                {
+                    use std::os::windows::fs::OpenOptionsExt;
+                    for name in ["audio_mic.wav", "audio_spk.wav"] {
+                        let path = self.directory.join(name);
+                        if path.exists() {
+                            std::fs::OpenOptions::new()
+                                .read(true)
+                                .share_mode(0)
+                                .open(path)
+                                .unwrap();
+                        }
+                    }
+                }
+                self.dropped.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let directory = tempdir().unwrap();
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let owner = Arc::new(Owner {
+            directory: directory.path().into(),
+            dropped: dropped.clone(),
+        });
+        let mut sink = create_owned_disk_sink(directory.path(), Some(owner.clone())).unwrap();
+        drop(owner);
+        write_single(&mut sink, &vec![0.25; 1600]).unwrap();
+        finalize_disk_sink(&mut sink).unwrap();
+        assert_eq!(dropped.load(Ordering::SeqCst), 0);
+        drop(sink);
+        assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn create_disk_sink_decodes_existing_mp3_to_wav() {

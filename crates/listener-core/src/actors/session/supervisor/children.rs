@@ -117,6 +117,7 @@ pub(super) async fn spawn_recorder(
         RecorderActor::new(),
         RecArgs {
             destination: ctx.recording.clone(),
+            owner: std::sync::Arc::new(ctx.runtime.clone()),
         },
         supervisor_cell,
     )
