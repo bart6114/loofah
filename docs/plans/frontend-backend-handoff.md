@@ -1986,3 +1986,46 @@ for the main validation lane. The narrow Windows `winapi-util` dependency uses
 volume/file-index and link-count evidence; both native Windows architectures
 remain required. No retirement capability, automatic cleanup, exported bindings,
 model inference or application launch is activated by this source checkpoint.
+
+## SpeechCore download resilience in macOS CI
+
+The two `0534474` macOS attempts failed before workspace tests while SwiftPM
+fetched the same pinned SpeechCore v0.0.14 archive (HTTP 504). A single local
+preflight returned the exact 2,112,822-byte archive and matched its upstream
+SwiftPM checksum; that did not establish availability from the hosted runner.
+
+The CI-only prewarm verifies the committed speech-swift 0.0.29 revision, checks
+an existing artifact before network access, and caches only the exact
+checksum-keyed archive. Missing bytes receive at most three classified transient
+attempts, each with a 45-second total transfer deadline, bounded backoff and a
+16 MiB limit. Redirects stay on explicitly approved official HTTPS hosts; signed
+redirect URLs and raw curl errors are not logged. Checksum, TLS and permanent
+HTTP failures are not retried. Verified bytes publish atomically in the same
+cache directory, and SwiftPM independently verifies its unchanged manifest
+checksum. Cargo compiler/test commands still execute once; no dependency pin,
+TLS/signature behavior or production build script changes.
+
+The failed runner log records image `macos-26-arm64/20261102.0473.1` and active
+Xcode 26.6. Its [exact image manifest](https://github.com/actions/runner-images/blob/macos-26-arm64/20261102.0473/images/macos/macos-26-arm64-Readme.md)
+confirms that default, and [Apple's Xcode 26.6 notes](https://developer.apple.com/documentation/xcode-release-notes/xcode-26_6-release-notes)
+identify Swift 6.3. The historical logs do not print a SwiftPM version command.
+The new step prints and checks `swift package --version`, refusing an unreviewed
+layout version. The shared `artifacts/` location and URL-derived filename follow
+[SwiftPM 6.3's configuration](https://github.com/swiftlang/swift-package-manager/blob/swift-6.3-RELEASE/Sources/Workspace/Workspace%2BConfiguration.swift#L138-L140)
+and [binary artifact implementation](https://github.com/swiftlang/swift-package-manager/blob/swift-6.3-RELEASE/Sources/Workspace/Workspace%2BBinaryArtifacts.swift#L548-L602).
+
+Offline helper regressions use temporary task-local files and simulated network
+responses. They cover exact pins/cache key, cache verification without writes,
+atomic publication, transient limits, partial cleanup, checksum/size/TLS errors,
+redirect host/deadline bounds, and symlink/hardlink refusal. No user-global cache
+is modified by local validation, and no new download, Native build, inference or
+workflow rerun is performed as part of this source checkpoint. Actual hosted
+cache consumption and the previously unreached workspace tests remain pending.
+
+Source validation passed all **44 workflow-helper tests**, including 15 new
+prewarm tests, plus formatting/whitespace checks and offline zizmor at the
+workflow's high-severity threshold. Actionlint reported the existing missing
+name/description in the unchanged `pnpm_install` action and existing SC2086 on
+the SDKROOT line; excluding exactly those baseline diagnostics passes, with no
+new workflow diagnostic. The existing workflow-helper discovery already runs
+these tests, so the local run-tests script needs no parity change.

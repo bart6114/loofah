@@ -69,6 +69,19 @@ jobs:
         with:
           platform: macos
       - run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> $GITHUB_ENV
+      - id: speechcore
+        run: python3 .github/scripts/prepare_speechcore_artifact.py --describe --github-output "$GITHUB_OUTPUT"
+      - id: speechcore-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.speechcore.outputs.path }}
+          key: ${{ steps.speechcore.outputs.key }}
+      - run: python3 .github/scripts/prepare_speechcore_artifact.py
+      - if: steps.speechcore-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.speechcore.outputs.path }}
+          key: ${{ steps.speechcore.outputs.key }}
       - name: Native notification lifetime tests
         run: swift test --package-path crates/notification-macos/swift-lib
       - run: cargo check -p desktop
