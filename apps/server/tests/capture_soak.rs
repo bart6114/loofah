@@ -172,7 +172,7 @@ fn profile_at(elapsed: u64, duration: u64) -> u64 {
         [
             (duration / 6, duration / 6 + duration / 10),
             (duration * 11 / 20, duration * 13 / 20),
-            (duration * 17 / 20, duration * 19 / 20),
+            (duration * 5 / 6, duration + 20),
         ]
     };
     windows
@@ -190,6 +190,7 @@ fn added_rtt(profile: u64, request: u64) -> u64 {
 struct Shaping {
     active: AtomicU64,
     requests: [AtomicU64; 3],
+    capture_chunks: [AtomicU64; 3],
     bytes: [[AtomicU64; 2]; 3],
     clocks: [tokio::sync::Mutex<(u64, tokio::time::Instant)>; 2],
     connections: Arc<tokio::sync::Semaphore>,
@@ -199,6 +200,7 @@ impl Shaping {
         Self {
             active: AtomicU64::new(0),
             requests: std::array::from_fn(|_| AtomicU64::new(0)),
+            capture_chunks: std::array::from_fn(|_| AtomicU64::new(0)),
             bytes: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             clocks: std::array::from_fn(|_| {
                 tokio::sync::Mutex::new((0, tokio::time::Instant::now()))
@@ -307,6 +309,9 @@ async fn forward(State(state): State<Arc<Faults>>, request: Request) -> Response
         );
     }
     let status = response.status();
+    if profile != 0 && status.is_success() && method == "PUT" && path.contains("/chunks/") {
+        state.shaping.capture_chunks[profile as usize - 1].fetch_add(1, Ordering::SeqCst);
+    }
     let headers = response.headers().clone();
     if headers
         .get("content-type")
@@ -704,22 +709,26 @@ async fn run_capture_acceptance(realtime: bool) {
             .unwrap()
             .success()
     );
-    faults.shaping.active.store(0, Ordering::SeqCst);
-    if realtime {
-        for (index, settings) in SHAPING.iter().enumerate() {
-            let requests = faults.shaping.requests[index].load(Ordering::SeqCst);
-            let upstream_bytes = faults.shaping.bytes[index][0].load(Ordering::SeqCst);
-            let downstream_bytes = faults.shaping.bytes[index][1].load(Ordering::SeqCst);
+    let shaping_finished = CancellationToken::new();
+    let shaping_deadline = if realtime && duration < 7200 {
+        let state = faults.clone();
+        let finished = shaping_finished.clone();
+        let deadline = tokio::time::Instant::from_std(start + Duration::from_secs(duration + 20));
+        Some(tokio::spawn(async move {
+            tokio::select! {
+                _=tokio::time::sleep_until(deadline)=>{},
+                _=finished.cancelled()=>{},
+            }
+            state.shaping.active.store(0, Ordering::SeqCst);
             record(
-                &root,
-                json!({"network_profile_exercised":index+1,"configured_rtt_jitter_bandwidth":settings,"requests":requests,"upstream_plaintext_bytes":upstream_bytes,"downstream_plaintext_bytes":downstream_bytes}),
+                &state.root,
+                json!({"network_profile":0,"short_rehearsal_shaping_finished":true}),
             );
-            assert!(
-                requests > 0 && upstream_bytes > 0 && downstream_bytes > 0,
-                "network profile {} did not carry actual requests and bytes",
-                index + 1
-            );
-        }
+        }))
+    } else {
+        None
+    };
+    if realtime {
         assert!(start.elapsed() >= Duration::from_secs(duration));
     } else {
         check_server_memory(&root, &server, "before_memory_replay_restart");
@@ -743,6 +752,31 @@ async fn run_capture_acceptance(realtime: bool) {
                 record(&root,json!({"resume_rss":rss(resume.id().unwrap()),"server_rss":rss(server.id().unwrap()),"http_requests":faults.requests.load(Ordering::SeqCst)}));
                 assert!(Instant::now()<resume_deadline,"bounded recovery deadline exceeded");
             }
+        }
+    }
+    shaping_finished.cancel();
+    if let Some(task) = shaping_deadline {
+        task.await.unwrap();
+    }
+    faults.shaping.active.store(0, Ordering::SeqCst);
+    if realtime {
+        for (index, settings) in SHAPING.iter().enumerate() {
+            let requests = faults.shaping.requests[index].load(Ordering::SeqCst);
+            let capture_chunks = faults.shaping.capture_chunks[index].load(Ordering::SeqCst);
+            let upstream_bytes = faults.shaping.bytes[index][0].load(Ordering::SeqCst);
+            let downstream_bytes = faults.shaping.bytes[index][1].load(Ordering::SeqCst);
+            record(
+                &root,
+                json!({"network_profile_exercised":index+1,"configured_rtt_jitter_bandwidth":settings,"requests":requests,"successful_capture_chunk_requests":capture_chunks,"upstream_plaintext_bytes":upstream_bytes,"downstream_plaintext_bytes":downstream_bytes}),
+            );
+            assert!(
+                requests > 0
+                    && capture_chunks > 0
+                    && upstream_bytes >= 128_000
+                    && downstream_bytes > 0,
+                "network profile {} did not carry actual requests and bytes",
+                index + 1
+            );
         }
     }
     let publication: CapturePublication =
@@ -1344,7 +1378,7 @@ async fn capture_retirement_existing_replay() {
 
 #[test]
 fn shaped_profiles_have_deterministic_bounded_jitter_and_avoid_scheduled_outages() {
-    for (duration, starts) in [(60, [10, 33, 51]), (7200, [300, 1200, 3600])] {
+    for (duration, starts) in [(60, [10, 33, 50]), (7200, [300, 1200, 3600])] {
         for (index, start) in starts.into_iter().enumerate() {
             assert_eq!(profile_at(start, duration), index as u64 + 1);
             assert_eq!(profile_at(start - 1, duration), 0);
