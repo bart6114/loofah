@@ -37,13 +37,7 @@ impl Repository {
         repo.commit(&repo.main);
         repo.git(
             &repo.main,
-            &[
-                "worktree",
-                "add",
-                "-b",
-                "refactor/metadata",
-                repo.linked.to_str().unwrap(),
-            ],
+            &["worktree", "add", "-b", "refactor/metadata", "../linked"],
         );
         repo
     }
@@ -80,6 +74,8 @@ impl Repository {
 
     fn admin(&self) -> PathBuf {
         PathBuf::from(self.git(&self.linked, &["rev-parse", "--absolute-git-dir"]))
+            .canonicalize()
+            .unwrap()
     }
 
     fn watched(&self, start: &Path) -> Vec<PathBuf> {
