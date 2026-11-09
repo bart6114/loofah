@@ -2392,3 +2392,14 @@ resolution and bounded active/history separation remain explicitly owned later
 stages. None may fabricate producer completion, replay unknown inference,
 retarget an original request or discard the only retained source. These gaps
 remain open rather than being classified as acceptance-only work.
+
+At clean frozen `b05242cc026`, the seven Core connection/policy fixtures passed
+with zero failures/ignores; the Store runner matched zero cases and is not
+qualification. The 19 other library binaries, including desktop, did not execute.
+The stable 21-package all-target check passed in 22.60 seconds. Desktop TypeScript
+checking and seven frontend tests across two files passed, followed by the
+production frontend bundle build. The three Native subscription-catalog fixtures
+were compiled only and remain unexecuted on this workstation. The existing
+portable record preserves source, commands, logs, hashes and those exclusions.
+No desktop app, account login, runtime discovery or provider inference was
+started for these checks.
