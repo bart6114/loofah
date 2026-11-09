@@ -135,27 +135,7 @@ pub fn concatenate(
         return Err(conflict("Append recording exceeds the WAV format limit"));
     }
     let mut output_file = File::create_new(output_path).map_err(io)?;
-    let mut output =
-        hound::WavWriter::new(&mut output_file, pcm_spec(prefix.format.channels.len()))
-            .map_err(io)?;
-    for (path, expected) in [(prefix_path, prefix), (suffix_path, suffix)] {
-        let actual = describe(path, expected.format.clone())?;
-        if actual.frames != expected.frames
-            || actual.sha256 != expected.sha256
-            || actual.bytes != expected.bytes
-        {
-            return Err(conflict("Retained append artifact changed"));
-        }
-        let mut source = hound::WavReader::open(path).map_err(io)?;
-        for sample in source.samples::<f32>() {
-            let sample = sample.map_err(io)?;
-            if !sample.is_finite() {
-                return Err(conflict("Append contains non-finite PCM"));
-            }
-            output.write_sample(sample).map_err(io)?;
-        }
-    }
-    output.finalize().map_err(io)?;
+    concatenate_pcm(prefix_path, prefix, suffix_path, suffix, &mut output_file)?;
     // Windows requires a writable handle for FlushFileBuffers. Retained source
     // verification stays read-only; only this original output owner flushes it.
     output_file.sync_all().map_err(io)?;
@@ -165,6 +145,35 @@ pub fn concatenate(
         return Err(conflict("Append frame count changed"));
     }
     Ok(result)
+}
+
+fn concatenate_pcm<W: Write + Seek>(
+    prefix_path: &Path,
+    prefix: &NormalizedAppendAudio,
+    suffix_path: &Path,
+    suffix: &NormalizedAppendAudio,
+    output: &mut W,
+) -> Result<(), ApplicationError> {
+    write_pcm(output, prefix.format.channels.len(), |output| {
+        for (path, expected) in [(prefix_path, prefix), (suffix_path, suffix)] {
+            let actual = describe(path, expected.format.clone())?;
+            if actual.frames != expected.frames
+                || actual.sha256 != expected.sha256
+                || actual.bytes != expected.bytes
+            {
+                return Err(conflict("Retained append artifact changed"));
+            }
+            let mut source = hound::WavReader::open(path).map_err(io)?;
+            for sample in source.samples::<f32>() {
+                let sample = sample.map_err(io)?;
+                if !sample.is_finite() {
+                    return Err(conflict("Append contains non-finite PCM"));
+                }
+                output.write_sample(sample).map_err(io)?;
+            }
+        }
+        Ok(())
+    })
 }
 
 fn describe(path: &Path, format: CaptureFormat) -> Result<NormalizedAppendAudio, ApplicationError> {
@@ -393,8 +402,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let prefix_path = root.path().join("prefix.wav");
         let suffix_path = root.path().join("suffix.wav");
-        wave(&prefix_path, 16_000, 2, 17);
-        wave(&suffix_path, 16_000, 2, 19);
+        wave(&prefix_path, 16_000, 2, 16_001);
+        wave(&suffix_path, 16_000, 2, 1_600);
         let prefix = describe(&prefix_path, CaptureFormat::stereo()).unwrap();
         let suffix = describe(&suffix_path, CaptureFormat::stereo()).unwrap();
         let inputs = [&prefix_path, &suffix_path].map(|path| {
@@ -406,11 +415,34 @@ mod tests {
         });
         let output = root.path().join("combined.wav");
         let combined = concatenate(&prefix_path, &prefix, &suffix_path, &suffix, &output);
+        let mut counted = CountedOutput::default();
+        concatenate_pcm(&prefix_path, &prefix, &suffix_path, &suffix, &mut counted).unwrap();
+        let bound = (17_601_usize * 2 * 4).div_ceil(PCM_OUTPUT_BUFFER_BYTES) + 4;
+        assert!(
+            counted.writes <= bound,
+            "{} writes exceeds {bound}",
+            counted.writes
+        );
+        assert!(counted.maximum_write <= PCM_OUTPUT_BUFFER_BYTES);
+        assert_eq!(counted.bytes.get_ref(), &std::fs::read(&output).unwrap());
+        for fail_write in [true, false] {
+            let mut failed = CountedOutput {
+                fail_write,
+                fail_flush: !fail_write,
+                ..Default::default()
+            };
+            assert_eq!(
+                concatenate_pcm(&prefix_path, &prefix, &suffix_path, &suffix, &mut failed)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Unavailable
+            );
+        }
         for (path, permissions) in [&prefix_path, &suffix_path].into_iter().zip(inputs) {
             std::fs::set_permissions(path, permissions).unwrap();
         }
         let combined = combined.unwrap();
-        assert_eq!(combined.frames, 36);
+        assert_eq!(combined.frames, 17_601);
         assert_eq!(
             file_hash(&mut File::open(prefix_path).unwrap()).unwrap(),
             prefix.sha256

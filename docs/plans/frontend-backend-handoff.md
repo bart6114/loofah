@@ -2676,3 +2676,16 @@ samples, and propagation of underlying write/final-flush errors. These are
 source-only regressions pending integration validation, not a demonstrated fix
 for the separate full-cohort append timeout whose precise combine substage is
 still under diagnosis.
+
+
+The next exact substage probe confirmed both repeatable full-cohort append
+failures inside concatenation, after the suffix copy and sync and after exactly
+one successful inference with retained output. It did not implicate source-reader
+drain or missing inference. Concatenation now uses the same fixed 64 KiB output
+buffer. Hound already buffers its input files, which remain unchanged. The
+existing immutable-input regression now uses the actual failing test's 16,001 +
+1,600 stereo frames, counts real generic Write/Seek calls through concatenation,
+compares exact WAV bytes, and injects output-write/final-flush errors. Canonical
+CAS/commit and replay policy are unchanged, and the original 20-second publication
+deadline remains. This source correction still awaits focused and complete-cohort
+execution; prior failure logs remain evidence rather than being relabeled passes.
