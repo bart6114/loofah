@@ -2029,3 +2029,70 @@ name/description in the unchanged `pnpm_install` action and existing SC2086 on
 the SDKROOT line; excluding exactly those baseline diagnostics passes, with no
 new workflow diagnostic. The existing workflow-helper discovery already runs
 these tests, so the local run-tests script needs no parity change.
+
+## Local qualification of explicit media-upload retirement
+
+The checked Core, authenticated HTTP, SDK, Native receipt/export and shared
+recovery-panel implementation is integrated through `0833c8ccf9`. The new
+`media_retirement` capability remains unadvertised. Existing Local
+lifecycle/output/transcript activation and server `capture_append` gates are
+unchanged; these checks do not activate those workflows or establish physical
+capture, OS permission, production SSO or current Windows acceptance.
+
+Retirement removes only the dispatcher's exact retained upload `source` and
+`partial` files and releases active upload/request quota. It preserves canonical
+content, lower subtitle/normalization/publication copies and all result/operation
+journals. Discard can remove the only original uploaded copy and needs explicit
+review. Exported disposition requires an actual Native verified no-clobber save;
+that observation records publication, not continued possession of the saved
+file. A merely local pending decision or server-Blocked outcome still permits
+an explicit source save. Server-confirmed Retiring/Retired stays fenced, including
+when a later status refresh fails. Saving does not resume cleanup, change the
+original disposition/UUID, or unblock upload/recovery/cancellation/inference.
+
+The request/source gates, original summary pin and shutdown ownership cover both
+source hash passes. A short initial session busy check releases exclusivity while
+hashing; fresh lifecycle, job-idle, drain and authorization checks protect final
+unlink/archive. Deterministic tests complete checked note appends during both
+paused hash passes and reject late session work or revocation before deletion.
+The five-minute retirement POST budget remains separate from ordinary 35-second
+media calls. Lost replies retain the same durable decision; readonly status
+never initiates cleanup. Unknown files, changed bytes/identities, link aliases,
+future schemas and ambiguous work remain preserved. There is no startup sweep.
+The schema3/tombstone downgrade restriction described above still applies.
+
+Qualification uses distinct source scopes:
+
+- `31aa435da0`: focused Native 21-package graph, **60 passed / 0 failed / 0 ignored**, with
+  nine nonzero cohorts, including 13 Core retirement cases, the 19-case SDK
+  selection, 11 server cases, protocol/CLI checks and four actual Native exporters.
+  The all-target check passed in 46.85 seconds. Zero-match cohorts are not tests.
+- `cc33740c0`, including the session-fence correction: focused selection
+  **62/0/0**, followed by the complete 21-library cohort **2,463/0/34**, with no
+  filtered cases. The 34 ignored cases retain their original scope and are not
+  model, timing or physical acceptance.
+- `0833c8ccf9`, after the SDK/Native/UI pending-export correction: targeted Native
+  **32/0/0** across four nonzero cohorts; the 17 zero-match executables are not
+  qualification. The corresponding frontend selection passed **36 tests in two
+  files**, and desktop typechecking passed. This later targeted run is not a
+  second full-suite result and is not added to the older full-suite total.
+
+The earlier full frontend run used `31aa435da0` plus actual generated protocol
+and Native contracts later committed in `cdd8dda77`. Shared editor **303 tests in
+31 files**, desktop **2,630 tests in 298 files**, and both typechecks passed. That
+script then failed its expected generated-locale drift check; it is not recorded
+as an entirely successful script. After the generated catalog commit, the
+separate locale extraction/strict compilation/drift check passed. Protocol export
+and drift checks passed using actual exporters. The 44 offline workflow-helper
+tests also passed; their simulated network fixtures do not qualify hosted CI.
+
+The first retirement compilation failed with ENOSPC before any tests ran. Its
+log and task-cache prune manifests remain retained, alongside later passing
+runs. No test qualification is assigned to that attempt. The existing portable
+JSON now records exact source hashes, per-cohort counts, named cases, log hashes,
+generated-contract hashes and the failed-attempt/prune provenance. Earlier
+records, including paced capture evidence and failed historical runs, remain
+unchanged. The later all-target check also passed on exact `0833c8ccf9` in
+20.21 seconds, retaining the existing nine desktop-library and four test
+warnings. No optimized retirement QA build or actual retirement UI run is
+qualified by this checkpoint.

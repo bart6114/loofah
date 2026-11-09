@@ -4747,6 +4747,967 @@
         "macos_limit": "The workspace stopped at the listener fixture: 595 passing executions, one failed, 16 ignored across 33 cohorts. Its desktop library passed 193 with 2 ignored. Core and SDK cases were not reached in this job; Linux and both Windows logs independently prove their named cases."
       },
       "scope": "Five successful PR workflows; desktop workflow failed only its macOS listener fixture. Later local fixture corrections and append HTTP tests are separate qualifications, not a relabelled hosted pass. All current jobs completed before the next checkpoint push."
+    },
+    "local_media_retirement_qualification_2026_11_09": {
+      "recorded_at_utc": "2026-11-09T08:24:40.266968+00:00",
+      "checkpoint_source": "0833c8ccf968caedbe5dbf58062057ca598bdaa4",
+      "qualification": "Local macOS stable 21-package Native graph and frontend checks; distinct runs are not summed into a latest-source full-suite claim.",
+      "source_chain": {
+        "initial_client": "31aa435da0eea40358c0560fc8d69c3c719b4d3a",
+        "generated_contracts_and_catalogs": "cdd8dda774e5ce344202cd26ded1d33d1299d4ce",
+        "session_fence": "89e27d385b24845eef8f1c1dfcf3869614093828",
+        "full_suite": "cc33740c00501e3ccf5db1a43a489eb8bcecfa01",
+        "pending_export_sdk_native": "ae23bb40656cde329f52804c895e66f96c042bcb",
+        "pending_export_ui": "0833c8ccf968caedbe5dbf58062057ca598bdaa4"
+      },
+      "contract": [
+        "Authenticated original member/vault and immutable request declaration, admission revision, source descriptor and cleanup UUID bind all status, review, POST and replay operations.",
+        "Only proven successful or durably never-dispatched media with settled summary and drained actual work is eligible. Ambiguous, legacy-uncertain, failed/dispatched-cancelled or active work remains retained.",
+        "Cleanup deletes only exact dispatcher-private upload source/partial files and releases active upload/request quota. Canonical content, lower subtitle/normalization/publication copies and all result/operation journals remain; this is not total disk reclamation.",
+        "Discard may remove the only original uploaded copy and requires explicit review. Exported requires Native verified no-clobber source publication; the stored observation is historical proof at publication, not proof the user still retains that file.",
+        "Durable local pending decisions preserve original disposition and cleanup UUID on unknown replies. A locally pending or server-Blocked decision does not forbid an explicit source export; authoritative Retiring/Retired still refuses it. Saving never auto-resumes cleanup or changes Discard to Exported.",
+        "Retirement POST has a bounded 300-second client timeout; ordinary media calls remain 35 seconds. Timeout/cancel does not imply server owned work stopped; readonly status never dispatches cleanup or inference.",
+        "Request/source gates, original-summary pin and shutdown ownership cover both bounded-buffer hash passes. Initial busy preflight releases session exclusivity during hashing; fresh session/jobs-idle/drain/authorization checks fence final unlink/archive, retaining actual filesystem owners.",
+        "Unknown extra files, symlinks, hardlinks, changed identities/bytes, future schemas and ambiguous cleanup remain fail-closed. No startup deletion sweep, raw replay or UUID reuse; interrupted cleanup retries the same decision.",
+        "Private schema3 admissions and separate tombstones require a complete matching pre-retirement backup for downgrade. Restored pending intents with changed file identities remain for review."
+      ],
+      "native_runs": {
+        "initial_focused": {
+          "source_head": "31aa435da0eea40358c0560fc8d69c3c719b4d3a",
+          "mode": "focused_plus_actual_exporters",
+          "result": "passed",
+          "log": {
+            "path": "logs/native-media-retirement-tests.log",
+            "sha256": "89e2cc0070d79d76f4521477f0873dc448b2c38c80ed733449abc26c27a2be29",
+            "bytes": 14710
+          },
+          "totals": {
+            "passed": 60,
+            "failed": 0,
+            "ignored": 0
+          },
+          "cohorts": [
+            {
+              "executable": "capture_store-75bc04b461f06366",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 57
+            },
+            {
+              "executable": "loofah_desktop_lib-41689b31fd8041d0",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 194
+            },
+            {
+              "executable": "export_core-d57d31d3538a4278",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 10
+            },
+            {
+              "executable": "fs_sync_core-f66c8009f5d520b5",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 97
+            },
+            {
+              "executable": "listener_core-fc5138d851508e60",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 91
+            },
+            {
+              "executable": "listener2_core-8055772a1e28ce8e",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 61
+            },
+            {
+              "executable": "loof_cli-4af3422c7c659c51",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 95
+            },
+            {
+              "executable": "loofah_client-f8cbf984f1cb1a69",
+              "passed": 19,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 192
+            },
+            {
+              "executable": "loofah_core-1f0ec66aca789288",
+              "passed": 24,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 515
+            },
+            {
+              "executable": "loofah_local_media-7d07641748817af2",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 5
+            },
+            {
+              "executable": "loofah_local_owner-67e24697a3f189bb",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 19
+            },
+            {
+              "executable": "loofah_protocol-193ec3dc934da1d3",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 37
+            },
+            {
+              "executable": "loofah_server-9bd092b7ef518f2d",
+              "passed": 11,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 177
+            },
+            {
+              "executable": "search_cache-bfd81d0f620b4c83",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 32
+            },
+            {
+              "executable": "storage-a903b6ec42b866e7",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 73
+            },
+            {
+              "executable": "tauri_plugin_fs_sync-14e12c79d97446f8",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 3
+            },
+            {
+              "executable": "tauri_plugin_transcription-9e2a8ba6ff8d77f2",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 34
+            },
+            {
+              "executable": "tauri_plugin_windows-5001302d54f8cb73",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 6
+            },
+            {
+              "executable": "transcribe_whisper_local-9951bcb917d5187e",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 81
+            },
+            {
+              "executable": "vault_read-f5f90003980b2b75",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 29
+            },
+            {
+              "executable": "vault_write-195624acbcb7b902",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 627
+            }
+          ],
+          "nonzero_cohorts": 9,
+          "zero_match_cohorts_are_not_qualification": true,
+          "named_retirement_cases": [
+            "media_jobs::retirement::tests::explicit_media_retirement_uses_five_minute_budget_without_extending_ordinary_requests",
+            "tests::media_jobs::retirement::media_retirement_lost_reply_keeps_uuid_and_readonly_status_never_redispatches",
+            "tests::media_jobs::retirement::media_retirement_receipt_preserves_original_export_decision_and_only_matching_acknowledgement",
+            "tests::media_jobs::retirement::media_retirement_original_profile_and_login_changes_refuse_before_dispatch",
+            "local_cli::remote::retirement::tests::media_retirement_abandoned_caller_retains_shutdown_and_session_until_io_finishes",
+            "local_cli::remote::retirement::tests::media_retirement_archive_budget_and_future_receipts_fail_closed",
+            "local_cli::remote::retirement::tests::media_retirement_changed_or_unknown_source_preserves_files_and_quota",
+            "local_cli::remote::retirement::tests::media_retirement_refuses_ambiguous_legacy_and_dispatched_terminal_states",
+            "local_cli::remote::retirement::tests::media_retirement_abandoned_source_read_still_blocks_actual_cleanup",
+            "local_cli::remote::retirement::tests::media_retirement_completed_replay_ignores_later_work_and_preserves_reappeared_bytes",
+            "local_cli::remote::retirement::tests::media_retirement_rechecks_owned_source_identity_after_hash_before_unlink",
+            "local_cli::remote::retirement::tests::media_retirement_refuses_hardlinked_and_oversized_sources_before_intent",
+            "local_cli::remote::retirement::tests::media_retirement_releases_both_quotas_but_never_reuses_original_identity",
+            "local_cli::remote::retirement::tests::media_retirement_refuses_symlinked_source_without_touching_target",
+            "local_cli::remote::retirement::tests::media_retirement_revocation_and_member_isolation_preserve_source",
+            "local_cli::remote::retirement::tests::media_retirement_waits_for_source_reader_and_preserves_canonical_and_result",
+            "local_cli::remote::retirement::tests::media_retirement_crash_after_each_destructive_boundary_keeps_quota_and_exact_retry",
+            "media::retirement_tests::media_retirement_binds_original_declaration_revision_and_explicit_disposition",
+            "tests::media_retirement::media_retirement_http_never_dispatched_discard_does_not_create_content",
+            "tests::media_retirement::media_retirement_http_rejects_reader_foreign_member_and_changed_decisions",
+            "tests::media_retirement::media_retirement_http_keeps_results_and_original_identity_after_restart"
+          ]
+        },
+        "session_fence_focused": {
+          "source_head": "cc33740c00501e3ccf5db1a43a489eb8bcecfa01",
+          "mode": "focused_plus_actual_exporters",
+          "result": "passed",
+          "log": {
+            "path": "logs/native-media-retirement-session-fence-tests.log",
+            "sha256": "9bf1828c79be2a667aca3db25f05a770a046ae8812987c6191907516ba3c2bdd",
+            "bytes": 16676
+          },
+          "totals": {
+            "passed": 62,
+            "failed": 0,
+            "ignored": 0
+          },
+          "cohorts": [
+            {
+              "executable": "capture_store-75bc04b461f06366",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 57
+            },
+            {
+              "executable": "loofah_desktop_lib-41689b31fd8041d0",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 194
+            },
+            {
+              "executable": "export_core-d57d31d3538a4278",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 10
+            },
+            {
+              "executable": "fs_sync_core-f66c8009f5d520b5",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 97
+            },
+            {
+              "executable": "listener_core-fc5138d851508e60",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 91
+            },
+            {
+              "executable": "listener2_core-8055772a1e28ce8e",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 61
+            },
+            {
+              "executable": "loof_cli-4af3422c7c659c51",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 95
+            },
+            {
+              "executable": "loofah_client-f8cbf984f1cb1a69",
+              "passed": 19,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 192
+            },
+            {
+              "executable": "loofah_core-1f0ec66aca789288",
+              "passed": 26,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 515
+            },
+            {
+              "executable": "loofah_local_media-7d07641748817af2",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 5
+            },
+            {
+              "executable": "loofah_local_owner-67e24697a3f189bb",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 19
+            },
+            {
+              "executable": "loofah_protocol-193ec3dc934da1d3",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 37
+            },
+            {
+              "executable": "loofah_server-9bd092b7ef518f2d",
+              "passed": 11,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 177
+            },
+            {
+              "executable": "search_cache-bfd81d0f620b4c83",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 32
+            },
+            {
+              "executable": "storage-a903b6ec42b866e7",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 73
+            },
+            {
+              "executable": "tauri_plugin_fs_sync-14e12c79d97446f8",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 3
+            },
+            {
+              "executable": "tauri_plugin_transcription-9e2a8ba6ff8d77f2",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 34
+            },
+            {
+              "executable": "tauri_plugin_windows-5001302d54f8cb73",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 6
+            },
+            {
+              "executable": "transcribe_whisper_local-9951bcb917d5187e",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 81
+            },
+            {
+              "executable": "vault_read-f5f90003980b2b75",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 29
+            },
+            {
+              "executable": "vault_write-195624acbcb7b902",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 627
+            }
+          ],
+          "nonzero_cohorts": 9,
+          "zero_match_cohorts_are_not_qualification": true,
+          "named_retirement_cases": [
+            "media_jobs::retirement::tests::explicit_media_retirement_uses_five_minute_budget_without_extending_ordinary_requests",
+            "tests::media_jobs::retirement::media_retirement_lost_reply_keeps_uuid_and_readonly_status_never_redispatches",
+            "tests::media_jobs::retirement::media_retirement_receipt_preserves_original_export_decision_and_only_matching_acknowledgement",
+            "tests::media_jobs::retirement::media_retirement_original_profile_and_login_changes_refuse_before_dispatch",
+            "local_cli::remote::retirement::tests::media_retirement_changed_or_unknown_source_preserves_files_and_quota",
+            "local_cli::remote::retirement::tests::media_retirement_refuses_ambiguous_legacy_and_dispatched_terminal_states",
+            "local_cli::remote::retirement::tests::media_retirement_abandoned_source_read_still_blocks_actual_cleanup",
+            "local_cli::remote::retirement::tests::media_retirement_abandoned_caller_retains_shutdown_and_session_until_io_finishes",
+            "local_cli::remote::retirement::tests::media_retirement_allows_checked_note_appends_during_both_hashes_but_fences_final_unlink",
+            "local_cli::remote::retirement::tests::media_retirement_completed_replay_ignores_later_work_and_preserves_reappeared_bytes",
+            "local_cli::remote::retirement::tests::media_retirement_rechecks_owned_source_identity_after_hash_before_unlink",
+            "local_cli::remote::retirement::tests::media_retirement_refuses_hardlinked_and_oversized_sources_before_intent",
+            "local_cli::remote::retirement::tests::media_retirement_archive_budget_and_future_receipts_fail_closed",
+            "local_cli::remote::retirement::tests::media_retirement_refuses_symlinked_source_without_touching_target",
+            "local_cli::remote::retirement::tests::media_retirement_releases_both_quotas_but_never_reuses_original_identity",
+            "local_cli::remote::retirement::tests::media_retirement_revocation_and_member_isolation_preserve_source",
+            "local_cli::remote::retirement::tests::media_retirement_waits_for_source_reader_and_preserves_canonical_and_result",
+            "local_cli::remote::retirement::tests::media_retirement_rechecks_session_and_authorization_after_long_verification",
+            "local_cli::remote::retirement::tests::media_retirement_crash_after_each_destructive_boundary_keeps_quota_and_exact_retry",
+            "media::retirement_tests::media_retirement_binds_original_declaration_revision_and_explicit_disposition",
+            "tests::media_retirement::media_retirement_http_never_dispatched_discard_does_not_create_content",
+            "tests::media_retirement::media_retirement_http_rejects_reader_foreign_member_and_changed_decisions",
+            "tests::media_retirement::media_retirement_http_keeps_results_and_original_identity_after_restart"
+          ]
+        },
+        "full_before_pending_export_fix": {
+          "source_head": "cc33740c00501e3ccf5db1a43a489eb8bcecfa01",
+          "mode": "full_library_suite",
+          "result": "passed",
+          "log": {
+            "path": "logs/native-media-retirement-full-21-var-runtime.log",
+            "sha256": "585d8b45ba625e2db4df92a4f037a59be5bbaee16c6673a6a6106082fc71f7f3",
+            "bytes": 260003
+          },
+          "totals": {
+            "passed": 2463,
+            "failed": 0,
+            "ignored": 34
+          },
+          "cohorts": [
+            {
+              "executable": "capture_store-75bc04b461f06366",
+              "passed": 53,
+              "failed": 0,
+              "ignored": 4,
+              "filtered_out": 0
+            },
+            {
+              "executable": "loofah_desktop_lib-41689b31fd8041d0",
+              "passed": 193,
+              "failed": 0,
+              "ignored": 2,
+              "filtered_out": 0
+            },
+            {
+              "executable": "export_core-d57d31d3538a4278",
+              "passed": 10,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "fs_sync_core-f66c8009f5d520b5",
+              "passed": 97,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "listener_core-fc5138d851508e60",
+              "passed": 91,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "listener2_core-8055772a1e28ce8e",
+              "passed": 60,
+              "failed": 0,
+              "ignored": 1,
+              "filtered_out": 0
+            },
+            {
+              "executable": "loof_cli-4af3422c7c659c51",
+              "passed": 96,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "loofah_client-f8cbf984f1cb1a69",
+              "passed": 208,
+              "failed": 0,
+              "ignored": 3,
+              "filtered_out": 0
+            },
+            {
+              "executable": "loofah_core-1f0ec66aca789288",
+              "passed": 539,
+              "failed": 0,
+              "ignored": 2,
+              "filtered_out": 0
+            },
+            {
+              "executable": "loofah_local_media-7d07641748817af2",
+              "passed": 5,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "loofah_local_owner-67e24697a3f189bb",
+              "passed": 18,
+              "failed": 0,
+              "ignored": 1,
+              "filtered_out": 0
+            },
+            {
+              "executable": "loofah_protocol-193ec3dc934da1d3",
+              "passed": 38,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "loofah_server-9bd092b7ef518f2d",
+              "passed": 182,
+              "failed": 0,
+              "ignored": 6,
+              "filtered_out": 0
+            },
+            {
+              "executable": "search_cache-bfd81d0f620b4c83",
+              "passed": 31,
+              "failed": 0,
+              "ignored": 1,
+              "filtered_out": 0
+            },
+            {
+              "executable": "storage-a903b6ec42b866e7",
+              "passed": 73,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "tauri_plugin_fs_sync-14e12c79d97446f8",
+              "passed": 4,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "tauri_plugin_transcription-9e2a8ba6ff8d77f2",
+              "passed": 35,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "tauri_plugin_windows-5001302d54f8cb73",
+              "passed": 7,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "transcribe_whisper_local-9951bcb917d5187e",
+              "passed": 72,
+              "failed": 0,
+              "ignored": 9,
+              "filtered_out": 0
+            },
+            {
+              "executable": "vault_read-f5f90003980b2b75",
+              "passed": 29,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 0
+            },
+            {
+              "executable": "vault_write-195624acbcb7b902",
+              "passed": 622,
+              "failed": 0,
+              "ignored": 5,
+              "filtered_out": 0
+            }
+          ],
+          "nonzero_cohorts": 21,
+          "zero_match_cohorts_are_not_qualification": true,
+          "named_retirement_cases": []
+        },
+        "later_pending_export_focused": {
+          "source_head": "0833c8ccf968caedbe5dbf58062057ca598bdaa4",
+          "mode": "focused_pending_export_correction",
+          "result": "passed",
+          "log": {
+            "path": "logs/native-media-pending-export-tests.log",
+            "sha256": "5d39295cd06c8623a87bf50be1228d8e6afc139e69c8791cd489ec34bad1a1e7",
+            "bytes": 12847
+          },
+          "totals": {
+            "passed": 32,
+            "failed": 0,
+            "ignored": 0
+          },
+          "cohorts": [
+            {
+              "executable": "capture_store-75bc04b461f06366",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 57
+            },
+            {
+              "executable": "loofah_desktop_lib-41689b31fd8041d0",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 195
+            },
+            {
+              "executable": "export_core-d57d31d3538a4278",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 10
+            },
+            {
+              "executable": "fs_sync_core-f66c8009f5d520b5",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 97
+            },
+            {
+              "executable": "listener_core-fc5138d851508e60",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 91
+            },
+            {
+              "executable": "listener2_core-8055772a1e28ce8e",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 61
+            },
+            {
+              "executable": "loof_cli-4af3422c7c659c51",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 96
+            },
+            {
+              "executable": "loofah_client-f8cbf984f1cb1a69",
+              "passed": 12,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 201
+            },
+            {
+              "executable": "loofah_core-1f0ec66aca789288",
+              "passed": 16,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 525
+            },
+            {
+              "executable": "loofah_local_media-7d07641748817af2",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 5
+            },
+            {
+              "executable": "loofah_local_owner-67e24697a3f189bb",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 19
+            },
+            {
+              "executable": "loofah_protocol-193ec3dc934da1d3",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 37
+            },
+            {
+              "executable": "loofah_server-9bd092b7ef518f2d",
+              "passed": 3,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 185
+            },
+            {
+              "executable": "search_cache-bfd81d0f620b4c83",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 32
+            },
+            {
+              "executable": "storage-a903b6ec42b866e7",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 73
+            },
+            {
+              "executable": "tauri_plugin_fs_sync-14e12c79d97446f8",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 4
+            },
+            {
+              "executable": "tauri_plugin_transcription-9e2a8ba6ff8d77f2",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 35
+            },
+            {
+              "executable": "tauri_plugin_windows-5001302d54f8cb73",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 7
+            },
+            {
+              "executable": "transcribe_whisper_local-9951bcb917d5187e",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 81
+            },
+            {
+              "executable": "vault_read-f5f90003980b2b75",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 29
+            },
+            {
+              "executable": "vault_write-195624acbcb7b902",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "filtered_out": 627
+            }
+          ],
+          "nonzero_cohorts": 4,
+          "zero_match_cohorts_are_not_qualification": true,
+          "named_retirement_cases": [
+            "tests::media_jobs::retirement::media_retirement_receipt_preserves_original_export_decision_and_only_matching_acknowledgement",
+            "tests::media_jobs::retirement::media_retirement_export_observation_race_preserves_original_decision_and_ack",
+            "media_jobs::retirement::tests::explicit_media_retirement_uses_five_minute_budget_without_extending_ordinary_requests",
+            "tests::media_jobs::retirement::media_retirement_lost_reply_keeps_uuid_and_readonly_status_never_redispatches",
+            "tests::media_jobs::retirement::media_retirement_blocked_before_post_preserves_verified_source_export",
+            "tests::media_jobs::retirement::media_retirement_original_profile_and_login_changes_refuse_before_dispatch",
+            "local_cli::remote::retirement::tests::media_retirement_abandoned_source_read_still_blocks_actual_cleanup",
+            "local_cli::remote::retirement::tests::media_retirement_rechecks_owned_source_identity_after_hash_before_unlink",
+            "local_cli::remote::retirement::tests::media_retirement_abandoned_caller_retains_shutdown_and_session_until_io_finishes",
+            "local_cli::remote::retirement::tests::media_retirement_changed_or_unknown_source_preserves_files_and_quota",
+            "local_cli::remote::retirement::tests::media_retirement_completed_replay_ignores_later_work_and_preserves_reappeared_bytes",
+            "local_cli::remote::retirement::tests::media_retirement_refuses_ambiguous_legacy_and_dispatched_terminal_states",
+            "local_cli::remote::retirement::tests::media_retirement_allows_checked_note_appends_during_both_hashes_but_fences_final_unlink",
+            "local_cli::remote::retirement::tests::media_retirement_refuses_hardlinked_and_oversized_sources_before_intent",
+            "local_cli::remote::retirement::tests::media_retirement_archive_budget_and_future_receipts_fail_closed",
+            "local_cli::remote::retirement::tests::media_retirement_refuses_symlinked_source_without_touching_target",
+            "local_cli::remote::retirement::tests::media_retirement_releases_both_quotas_but_never_reuses_original_identity",
+            "local_cli::remote::retirement::tests::media_retirement_waits_for_source_reader_and_preserves_canonical_and_result",
+            "local_cli::remote::retirement::tests::media_retirement_crash_after_each_destructive_boundary_keeps_quota_and_exact_retry",
+            "local_cli::remote::retirement::tests::media_retirement_revocation_and_member_isolation_preserve_source",
+            "local_cli::remote::retirement::tests::media_retirement_rechecks_session_and_authorization_after_long_verification",
+            "media::retirement_tests::media_retirement_binds_original_declaration_revision_and_explicit_disposition",
+            "tests::media_retirement::media_retirement_http_never_dispatched_discard_does_not_create_content",
+            "tests::media_retirement::media_retirement_http_rejects_reader_foreign_member_and_changed_decisions",
+            "tests::media_retirement::media_retirement_http_keeps_results_and_original_identity_after_restart"
+          ]
+        }
+      },
+      "native_all_target_checks": {
+        "initial": {
+          "source_head": "31aa435da0eea40358c0560fc8d69c3c719b4d3a",
+          "result": "passed",
+          "elapsed_seconds": 46.85,
+          "existing_warnings": {
+            "desktop_library": 9,
+            "desktop_test": 4
+          },
+          "log": {
+            "path": "logs/native-media-retirement-check.log",
+            "sha256": "4375a0014f9050c75f9ad82f66e006c71425eee9c4f5d2ac8d99d090f67563ac",
+            "bytes": 6016
+          }
+        },
+        "latest": {
+          "source_head": "0833c8ccf968caedbe5dbf58062057ca598bdaa4",
+          "result": "passed",
+          "exit_code": 0,
+          "elapsed_seconds": 20.21,
+          "existing_warnings": {
+            "desktop_library": 9,
+            "desktop_test": 4
+          },
+          "log": {
+            "path": "logs/native-media-pending-export-check.log",
+            "sha256": "89b663d2ecf2dfbe4e93ef7aa8671a094a990e91bf96ee64b571029e070de000",
+            "bytes": 5701
+          },
+          "completion_confirmed_by_root": true
+        }
+      },
+      "frontend": {
+        "initial_full": {
+          "source_head": "31aa435da0eea40358c0560fc8d69c3c719b4d3a",
+          "source_overlay": "Actual regenerated protocol.gen.ts and tauri.gen.ts bytes later committed in cdd8; locale generation occurred during this run, which finished before cdd8 was committed. Not attributed to cc337 or 0833.",
+          "generated_contracts": [
+            {
+              "path": "apps/desktop/src/shared/application/protocol.gen.ts",
+              "source_commit": "cdd8dda774e5ce344202cd26ded1d33d1299d4ce",
+              "sha256": "9540918bd393e341b82d0d6b0553a816e532557cf0e1c3e4f2e15fc21ee10d1e",
+              "bytes": 33269
+            },
+            {
+              "path": "apps/desktop/src/types/tauri.gen.ts",
+              "source_commit": "cdd8dda774e5ce344202cd26ded1d33d1299d4ce",
+              "sha256": "bf4545c7e137227a7c4fad86ac4185fa35efef0f6a0bce034fdd56c948b65269",
+              "bytes": 154981
+            }
+          ],
+          "editor": {
+            "tests_passed": 303,
+            "test_files": 31,
+            "typecheck": "passed"
+          },
+          "desktop": {
+            "tests_passed": 2630,
+            "test_files": 298,
+            "typecheck": "passed"
+          },
+          "whole_script_result": "failed_only_at_generated_locale_catalog_drift_after_tests_and_typechecks",
+          "log": {
+            "path": "logs/frontend-media-retirement-full.log",
+            "sha256": "f23d367246e6a43c72f88b3807a212c6c87189ec0bcaaaf672f13be7812744ac",
+            "bytes": 10123671
+          }
+        },
+        "locale_correction": {
+          "generated_commit": "cdd8dda774e5ce344202cd26ded1d33d1299d4ce",
+          "result": "passed_after_committing_generated_catalogs",
+          "log": {
+            "path": "logs/frontend-media-retirement-locales-check.log",
+            "sha256": "13d86b25a49106768fc40c27001ca2001a3619624fba48d6f6b91b96f44d9516",
+            "bytes": 6126
+          }
+        },
+        "pending_export": {
+          "source_head": "0833c8ccf968caedbe5dbf58062057ca598bdaa4",
+          "result": "passed",
+          "tests_passed": 36,
+          "test_files": 2,
+          "test_files_scope": [
+            "media-recovery-panel.test.tsx:23",
+            "remote-media.test.ts:13"
+          ],
+          "tests_log": {
+            "path": "logs/frontend-media-pending-export-tests.log",
+            "sha256": "e77e988f536b89c76fa38b5f37d8bce97c118e0a3181bcb4ba1b13bda3ce0e06",
+            "bytes": 499
+          },
+          "typecheck": "passed",
+          "typecheck_log": {
+            "path": "logs/frontend-media-pending-export-typecheck.log",
+            "sha256": "8366207267355d3e3d5bf3bf6e8c94c5f93f6078c34f08973fa2b38cdda6cc92",
+            "bytes": 15
+          }
+        }
+      },
+      "exports": {
+        "actual_native_export_cases_in_initial_and_fence_cohorts": 4,
+        "protocol_export": {
+          "path": "logs/media-retirement-protocol-export.log",
+          "sha256": "79757beca3e13a5099b47b0544529aa7b7f17cf243523ae9c3366f28d95a847d",
+          "bytes": 286
+        },
+        "protocol_drift_check": {
+          "path": "logs/media-retirement-protocol-drift-check.log",
+          "sha256": "81b4079177226ec7fdeda772b95008c011f7c75fff5e39fba50c89907cfdbe80",
+          "bytes": 184
+        },
+        "result": "Actual exporters ran; regenerated contracts committed in cdd8. Subsequent exporter/formatter round-trip had no interface diff; no hand-edited generated bindings."
+      },
+      "workflow_helpers": {
+        "tests_passed": 44,
+        "failed": 0,
+        "mode": "offline temporary-file/fake-network helpers; no inference or hosted CI qualification",
+        "log": {
+          "path": "logs/media-retirement-workflow-helper-tests.log",
+          "sha256": "b870140be96363aa1bc2ea8b82f2dffee5bebf4557a763399c33279fcd0d3a70",
+          "bytes": 414
+        },
+        "elapsed_seconds": 4.384
+      },
+      "preserved_failed_attempt": {
+        "source_head": "31aa435da0eea40358c0560fc8d69c3c719b4d3a",
+        "stage": "compilation",
+        "cause": "ENOSPC: rustc LLVM output stream failure; no tests executed or qualified by this attempt.",
+        "log": {
+          "path": "logs/native-media-retirement-tests-attempt1-enospc.log",
+          "sha256": "2def860061ffc2298149c5c7edf709cbfdaf2993e34e92e2667f2b68ca48e8b6",
+          "bytes": 37364
+        },
+        "prune_manifests": [
+          {
+            "manifest": {
+              "path": "logs/pruned-failed-media-retirement-incremental.json",
+              "sha256": "478e710cf2030017f7a8f1d3ae5d65ed66b893376b978f5e1bff2a9a71f92bb5",
+              "bytes": 4090
+            },
+            "at_utc": "2026-11-09T07:32:13.254361+00:00",
+            "entry_count": 32,
+            "bytes": null,
+            "deleted": true,
+            "scope": "Failed31aa retirement build ENOSPC before any tests; remove only incomplete/rebuildable debug incremental data after all compiler tasks exited. All dependency libraries, optimized QA artifacts, models and evidence retained."
+          },
+          {
+            "manifest": {
+              "path": "logs/pruned-qualified-debug-incremental-before-media-retirement.json",
+              "sha256": "8b60a03e8c4889df7c32ffbb35d75602f934c7d78d1e0c70ef3f32828b866da9",
+              "bytes": 1717
+            },
+            "at_utc": "2026-11-09T07:26:12.566249+00:00",
+            "entry_count": 9,
+            "bytes": 2570920989,
+            "deleted": true,
+            "scope": "Completed qualified append HTTP test/check incremental data only; no compiler active. Dependency libraries, executables, optimized QA artifacts, models and logs retained."
+          },
+          {
+            "manifest": {
+              "path": "logs/pruned-superseded-debug-test-executables-before-media-retirement.json",
+              "sha256": "2e0f35fbda7a3b9c9df9bc19822b5eab7a8cb3dfbb3ea4bfca9e8d0858850769",
+              "bytes": 4168
+            },
+            "at_utc": "2026-11-09T07:27:30.633430+00:00",
+            "entry_count": 16,
+            "bytes": 1896600936,
+            "deleted": true,
+            "scope": "Superseded task-local debug executables for exact current21 library crate families; current21 executables, all libraries/dependencies, optimized QA artifacts, models and evidence retained. No Native build active."
+          },
+          {
+            "manifest": {
+              "path": "logs/pruned-superseded-test-unpacked-objects-before-media-retirement.json",
+              "sha256": "79f0d6dfb9d9c7005211c2f5bd15b5482ef2b9d3c0d5d319ef8a79a144b86ca4",
+              "bytes": 4726209
+            },
+            "at_utc": "2026-11-09T07:35:16.029598+00:00",
+            "entry_count": 24336,
+            "bytes": 37700403744,
+            "deleted": true,
+            "scope": "Loose unpacked-debug object companions ONLY for16 already-pruned superseded debug test executable hashes. Current test hashes, dependency libraries and metadata, all optimized artifacts/models/raw evidence retained. No compiler active. These obsolete executables no longer exist."
+          }
+        ],
+        "preserved": "Current dependencies, optimized QA artifacts, models, raw receipts and previous evidence retained. Manifests describe task-owned rebuildable incremental and superseded executable/debug-object cleanup; no user vault cleanup."
+      },
+      "limits": {
+        "media_retirement_capability": "still unadvertised; not activated by these tests",
+        "local_lifecycle_output_transcript_activation": "unchanged and gated",
+        "server_capture_append_capability": "unchanged and gated",
+        "windows_native_x64_arm64": "new retirement changes still require current-source Windows qualification",
+        "physical_capture_or_OS_permissions": "not exercised or granted",
+        "real_model_inference": "not performed; configured/manual model cases remain ignored as recorded",
+        "gui_or_production_staging_SSO_acceptance": "not established",
+        "historical_two_hour_capture_evidence": "preserved separately, not recast as latest-source qualification",
+        "merge_release_push": "none by this documentation task"
+      }
     }
   },
   "local_work_focused": [
