@@ -2475,3 +2475,25 @@ removing the shared build directory, causing just-produced dependency metadata
 to disappear. Its exit101/log are preserved; no shared-library or desktop
 behavioral tests ran. Native validation waits for that exact cleanup process to
 finish rather than racing a rebuild against deletion.
+
+
+At frozen `ff534fe234`, the cold stable-21 compile finished in 833 seconds.
+The first exact exporter filter was mistakenly plural (`tests::export_types`)
+and matched zero tests: it generated nothing and is not qualification. The
+corrected actual `test::export_types` invocation passed exactly one generator in
+7.12 seconds. Its generated commands/types were directly oxfmt-formatted;
+desktop TypeScript checking then passed. The earlier stale-binding typecheck
+failure is preserved separately. No desktop behavioral test executed.
+
+The first four complete shared-library cohorts reported CLI96/0/0,
+Core555/10/2, server182/0/6 and vault-write631/0/5. Seventeen other library
+binaries were not executed; the queued all-target check did not run after failure.
+All ten Core failures remain in the raw log. They include child cancellation
+classification/shutdown, configured title cancellation expectations, private
+fixture canonical paths, genuine absent-summary setup and two append publication
+timeouts. Three fixture corrections are integrated in `7adbc55b6c`, with original
+assertions retained; their execution is pending. Append diagnostics now preserve
+the last checked publication error without increasing its deadline. Shared worker
+and title corrections remain in progress. This is not a passing cancellation or
+resolution checkpoint. The 62 frontend tests and actual locale checks passed
+separately, as preserved in the portable record.

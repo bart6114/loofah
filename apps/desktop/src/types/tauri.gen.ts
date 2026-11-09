@@ -367,6 +367,53 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationRecordingProcessingControls(
+    sessionId: string | null,
+  ): Promise<Result<LocalCaptureControlSnapshot[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recording_processing_controls", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCancelRecordingProcessing(
+    requestId: string,
+  ): Promise<Result<LocalCaptureControlSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_cancel_recording_processing", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationResolveRecordingProcessing(
+    requestId: string,
+    resolution: LocalCaptureResolution,
+  ): Promise<Result<LocalCaptureControlSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_resolve_recording_processing", {
+          requestId,
+          resolution,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationTranscriptionAvailable(): Promise<boolean> {
     return await TAURI_INVOKE("application_transcription_available");
   },
@@ -4060,6 +4107,13 @@ export type ListTranscriptionJobsInput = {
   limit: number | null;
   after: string | null;
 };
+export type LocalCaptureAction = "cancel" | "recover" | "keep_current_content";
+export type LocalCaptureControlSnapshot = {
+  status: LocalCaptureStatus;
+  revision: string;
+  actions: LocalCaptureAction[];
+  resolution: LocalCaptureResolution | null;
+};
 export type LocalCaptureDeclaration = {
   request_id: string;
   session_id: string;
@@ -4068,16 +4122,25 @@ export type LocalCaptureDeclaration = {
   transcription: LocalTranscriptionOptions | null;
   summary: CaptureProcessingSummary | null;
 };
+export type LocalCaptureResolution = {
+  resolution_id: string;
+  expected_revision: string;
+  decision: LocalCaptureResolutionDecision;
+};
+export type LocalCaptureResolutionDecision = "keep_current_content";
 export type LocalCaptureState =
   | "capturing"
   | "waiting_for_persistence"
   | "transcribing"
   | "summarizing"
+  | "cancelling"
+  | "cancelled"
   | "succeeded"
   | "skipped"
   | "not_started"
   | "review"
-  | "conflict";
+  | "conflict"
+  | "closed";
 export type LocalCaptureStatus = {
   declaration: LocalCaptureDeclaration;
   state: LocalCaptureState;

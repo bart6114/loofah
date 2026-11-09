@@ -11054,6 +11054,146 @@
         "Production company HTTPS SSO explicitly deferred",
         "Capabilities remain off pending full acceptance"
       ]
+    },
+    "local_capture_cancellation_resolution_first_integrated_validation_2026_11_09": {
+      "source": "ff534fe234fae8358efe09ab107916649723575e",
+      "reports": {
+        "result.json": {
+          "sha256": "31661d9728edd1916b91a6ca5ed8b6e322c1056329a0f1ed0941c5655f009aa7",
+          "report": {
+            "source": "34e407fe9e9711db61f2eb3b17ed2032dbe9af67",
+            "steps": [
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/exporter.log",
+                "exit": 101,
+                "seconds": 145.12369632720947,
+                "sha256": "2c83f7fff3539e1c084100e99b07be44a5d1d9c4eb742ef9d36b8980d6c35ebc"
+              }
+            ]
+          }
+        },
+        "retry-integrated/result.json": {
+          "sha256": "4270c09889accef7fd5caef4e2f7748dc40cf1f26d189472e4ec817dc596bc7a",
+          "report": {
+            "source": "8f7bf9a70fcec7c9b9f43d13c058b1be53bff5c4",
+            "steps": [
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/retry-integrated/exporter.log",
+                "exit": 101,
+                "seconds": 40.38885188102722,
+                "sha256": "8a437daed2c4832c3534637a905d5fbb6c925fd41810d5cb8711567aa61ab65b"
+              }
+            ]
+          }
+        },
+        "cold-after-external-cleanup/result.json": {
+          "sha256": "3ddd226dfd1ab42bb3f061d89bb1c9d7aeb9d45074a7790c46e94dac04884328",
+          "report": {
+            "source": "ff534fe234fae8358efe09ab107916649723575e",
+            "steps": [
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/cold-after-external-cleanup/exporter.log",
+                "exit": 0,
+                "seconds": 833.1397397518158,
+                "sha256": "528ec83756fb110a4cb060200c154d191f8e65ebee2964dabd4c5e02a1af97c8"
+              },
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/cold-after-external-cleanup/four-libraries.log",
+                "exit": 101,
+                "seconds": 179.7366418838501,
+                "sha256": "65de875b800da3756a9bd84dd4d40a7584644ab1ef80941df759be7db0273add"
+              }
+            ]
+          }
+        },
+        "correct-exporter/result.json": {
+          "sha256": "5bd21ec9c74c48a05b4e9e6c7173a4ed4f0c0b6200f66c2a2f5759ebb33e37d2",
+          "report": {
+            "source": "ff534fe234fae8358efe09ab107916649723575e",
+            "steps": [
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/correct-exporter/exporter.log",
+                "exit": 0,
+                "seconds": 7.119097948074341,
+                "sha256": "59532163515c041493f553a6879326683e894fa7a61e922924324a5cfafcbec7"
+              }
+            ]
+          }
+        },
+        "frontend-source-checkpoint.json": {
+          "sha256": "ea14781191afc5e5f8a961f4544e70ed7659f2e31c8b6ffba4a5aad9d05a0e6e",
+          "report": {
+            "source": "ff534fe234",
+            "desktop_tests_user_paused": true,
+            "checks": {
+              "ui-adapter-tests.log": {
+                "sha256": "89e75cb40c49f00711bb3b6f7eaa748f5a655982058f62de8083893c1c7a685d",
+                "bytes": 396
+              },
+              "locale-extract.log": {
+                "sha256": "63377ac47ab862790996ef81103a4aef2f7aaabd34b21ec1db6228cbd19d34ab",
+                "bytes": 5962
+              },
+              "locale-compile.log": {
+                "sha256": "6ac61a3f5af39bc7089335129e164e691913349dd13cd8fb2d12fdab01052a51",
+                "bytes": 41
+              },
+              "workflow-helpers.log": {
+                "sha256": "fd8cc28ccf80cdbe90f97d2b975971b8ed30bc2059dc39116e6901cc43261582",
+                "bytes": 414,
+                "execution_source": "4e463d3acb9037923b2ff214b98004ad8a7728a6",
+                "same_helpers_tree_at_frontend_source": true
+              }
+            },
+            "results": {
+              "ui_adapter": {
+                "passed": 62,
+                "failed": 0,
+                "files": 2
+              },
+              "locales": "actual Lingui extract + strict compile passed (English fallback preserved)",
+              "workflow_helpers": {
+                "passed": 44
+              }
+            },
+            "native": "pending cold stable21 build; prior two exit101 logs preserved"
+          }
+        }
+      },
+      "qualification": {
+        "exporter": "Actual test::export_types passed exactly1; earlier tests::export_types matchedzero and did not generate",
+        "core": {
+          "passed": 555,
+          "failed": 10,
+          "ignored": 2
+        },
+        "cli": {
+          "passed": 96,
+          "failed": 0,
+          "ignored": 0
+        },
+        "server": {
+          "passed": 182,
+          "failed": 0,
+          "ignored": 6
+        },
+        "vault_write": {
+          "passed": 631,
+          "failed": 0,
+          "ignored": 5
+        },
+        "other17_libraries": "NOT EXECUTED; no qualification",
+        "all_target_check": "Not run because library step failed",
+        "frontend": {
+          "passed": 62,
+          "files": 2,
+          "desktop_typecheck": "Passed after actual Native exporter and directoxfmt",
+          "locales": "Actual extract and strictcompile passed"
+        },
+        "desktop_behavioral_tests": "User-paused; not run"
+      },
+      "failures": "All10 preserved in rawlog65de875b800da3756a9bd84dd4d40a7584644ab1ef80941df759be7db0273add; source/fixture diagnosis inprogress, no cancelled check or broad pass claim",
+      "storage": "First ENOSPC; scoped superseded object prune; independent rm9803 deleting shared build observed terminal before cold rebuild; same absolute path and stable21 graph retained"
     }
   },
   "local_work_focused": [

@@ -328,6 +328,7 @@ msgstr ""
 #: src/shared/application/media-recovery-panel.tsx
 #: src/shared/application/vault-media-processing.tsx
 #: src/shared/application/vault-processing.tsx
+#: src/shared/application/vault-recording-processing.tsx
 msgid "Cancel processing"
 msgstr ""
 
@@ -349,6 +350,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Cancelling"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Cancelling recording processing"
 msgstr ""
 
 #: src/shared/application/vault-media-processing.tsx
@@ -517,6 +522,10 @@ msgstr ""
 
 #: src/changelog/index.tsx
 msgid "Close changelog"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Close review"
 msgstr ""
 
 #: src/settings/ai/llm/configure.tsx
@@ -1230,6 +1239,14 @@ msgstr ""
 msgid "Keep compact recording controls visible while recording."
 msgstr ""
 
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Keep current content and close processing"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Keep current content and close processing?"
+msgstr ""
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Keep editing"
 msgstr ""
@@ -1244,6 +1261,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Keep request"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Keep the current saved content and close this processing request."
 msgstr ""
 
 #: src/shared/application/media-recovery-panel.tsx
@@ -2042,6 +2063,14 @@ msgid "Recording processing"
 msgstr ""
 
 #: src/shared/application/vault-recording-processing.tsx
+msgid "Recording processing cancelled"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Recording processing closed by review"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
 msgid "Recording processing complete"
 msgstr ""
 
@@ -2105,6 +2134,10 @@ msgstr ""
 #: src/main/about-storage.tsx
 #: src/shared/application/device-recording-queue.tsx
 msgid "Refresh"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Refresh and review again"
 msgstr ""
 
 #: src/shared/application/vault-provider-credentials.tsx
@@ -2347,6 +2380,10 @@ msgstr ""
 msgid "Retry original removal"
 msgstr ""
 
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Retry original resolution"
+msgstr ""
+
 #: src/shared/application/media-recovery-panel.tsx
 msgid "Retry status"
 msgstr ""
@@ -2357,6 +2394,10 @@ msgstr ""
 
 #: src/shared/application/media-recovery-panel.tsx
 msgid "Review original cleanup"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Review processing conflict"
 msgstr ""
 
 #: src/shared/application/media-recovery-panel.tsx
@@ -3078,8 +3119,16 @@ msgstr ""
 msgid "The original media retirement request changed."
 msgstr ""
 
+#: src/shared/application/vault-recording-processing.tsx
+msgid "The original resolution has not been confirmed."
+msgstr ""
+
 #: src/shared/application/media-retirement-review.tsx
 msgid "The original workspace is unavailable. Nothing will be removed automatically."
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "The outcome is not confirmed. Retrying uses the same reviewed decision and request ID."
 msgstr ""
 
 #: src/shared/application/vault-processing-preview.tsx
@@ -3096,6 +3145,10 @@ msgstr ""
 
 #: src/shared/application/vault-transcription.tsx
 msgid "The previous transcription request was not confirmed. Recover it before starting another."
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "The processing state changed. Refresh and review it before making another decision."
 msgstr ""
 
 #: src/shared/application/vault-provider-credentials.tsx
@@ -3170,6 +3223,10 @@ msgstr ""
 msgid "This attachment is no longer available."
 msgstr ""
 
+#: src/shared/application/vault-recording-processing.tsx
+msgid "This closes only this recording's completed processing conflict. Current notes, images, transcript, summary, audio, retained results and journals stay unchanged. No transcription or summary will run."
+msgstr ""
+
 #: src/shared/application/notes-workspace.tsx
 msgid "This connection is no longer authorized."
 msgstr ""
@@ -3222,6 +3279,14 @@ msgstr ""
 
 #: src/shared/application/delete-document-modal.tsx
 msgid "This output is unavailable in its original workspace."
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "This processing request is unavailable in its original workspace."
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "This recording is no longer available for cancellation"
 msgstr ""
 
 #: src/shared/application/device-recovery.tsx
@@ -3588,6 +3653,10 @@ msgstr ""
 
 #: src/shared/application/notes-workspace.tsx
 msgid "View"
+msgstr ""
+
+#: src/shared/application/vault-recording-processing.tsx
+msgid "Waiting for processing resources. Saved recording and content will be kept."
 msgstr ""
 
 #: src/shared/application/device-recording-queue.tsx
