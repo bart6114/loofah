@@ -6,19 +6,25 @@ resume GUI acceptance until the user gives the signal. Both idle QA apps were
 stopped. Source review, implementation, headless service checks and hosted CI may
 continue. Production SSO acceptance is separately deferred by the user.
 
-Current integration checkpoint: published `5bb7111562`, with PR merge checkout
-`5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7`. Linux headless, packaged
-systemd/Caddy TLS/SSE append/restart/replay, configured CPU model/network checks,
-frontend, CLI, formatting and security have passed at their exact job scopes.
-Both Windows speech jobs and the final macOS workspace passed. Native x64 passed
-2,354 Rust cases (47 explicit ignored) and the actual installer, startup, installed
-CLI/MCP and uninstall checks. Normal ARM native tests and installer/uninstall
-results are still being collected. Local allowed
-checks at `eeaaf4c315` passed the stable 22-package compile, nine ordinary
-transport/observer fixtures and two Core resolution fixtures. No local desktop,
-audio-device or model test ran for that checkpoint. See the later qualification
-sections and portable record for hashes, failures and exclusions; this is not a
-whole-goal completion claim.
+Qualified implementation checkpoint: published `5bb7111562`, tested in PR merge
+`5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7`. All six PR workflows and the separate
+Windows speech dispatch are terminal success. Native Windows x64 and ARM64 each
+passed 2,354 Rust cases (zero failures, 47 explicit ignored), all 67 required named
+regressions and actual installer/startup/installed CLI-MCP/uninstall checks.
+Both Windows speech jobs passed eight cases per architecture including every
+50/150/500 ms profile. Linux headless, packaged systemd/Caddy TLS/SSE
+append/restart/replay, CPU models, macOS, frontend, CLI, formatting/lint and security
+passed at their exact job scopes. The earlier ARM uninstall failure is preserved;
+the current strict pass does not establish its cause.
+
+A fresh optimized default-desktop macOS QA bundle was prepared from frozen
+`2e39e792d7`, whose only differences from `5bb7111562` are plan/evidence documents.
+Its 22-package build, production frontend and static bundle checks passed; the
+app remains unlaunched and desktop tests remain paused. Explicit disposable
+runtime paths are required before any later authorized launch. See the final
+preparation section and portable record for hashes, feature scope and exclusions.
+These results do not complete the paused desktop/physical/performance gates or
+activate held capabilities. Production company SSO stays deferred.
 
 The optimized stable 21-package graph built successfully from clean frozen
 `94c0cf6b9005701c09942b36bfe5ec6cf8b1c560` in 481.44 seconds. The isolated
@@ -3185,3 +3191,49 @@ Fake-process failure-diagnostic fixture output preceding installation is distinc
 from the successful actual smoke step. Normal ARM job129242496431 remains in
 Cargo tests; its installer/uninstall gate and the earlier ARM failure remain
 unqualified until that actual execution completes. No healthy CI was cancelled.
+
+
+## Final hosted platform result and unlaunched production QA preparation
+
+All seven runs at `5bb7111562` are terminal success: backend42641212714,
+desktop42641212735, CLI42641212755, general42641212982, security42641212646,
+normal Windows42641212668 and separately dispatched Windows speech42641309021.
+Normal ARM job129242496431 independently passed 2,354/0/47 across 70 Rust
+cohorts and all 67 required named cases. Its actual installer/startup/installed
+CLI-MCP/uninstall smoke passed at 16:51:01 UTC. Artifact13692704090 is
+338,513,644 bytes with API SHA-256
+`815f098085d984209d4b07d1d9bfab37340e2cc8956ddfb9f7630e28f210fd63`;
+raw log SHA-256 is
+`ff33356d05cc46cf1e6d9ba2d298ae57eee0b8298b6ede6a25462c99a1ee0708`.
+All named outcomes and exact smoke proof were independently checked against the
+saved raw bytes. This qualifies current ARM uninstall; the cause of its older
+failure remains unproven. No healthy job was cancelled or retried.
+
+The task-local `qa/current-source-2e39e792d7/Loofah Separation QA.app` was then
+built from clean, frozen `2e39e792d7080e64d384b405d72a52bef10dfd32` using the sole
+Native worktree/cache and 22-package union. Tauri production bundling finished in
+1,030.59 seconds. `desktop/dev`, devtools and automation were absent; the ordinary
+production frontend had no QA overlay. Explicit union features remained
+`loofah-client/dev-fixtures,loofah-server/cpu-transcription`, plus Tauri's required
+`tauri/custom-protocol`. Version remains 0.45.7. The unsigned bundle's 26 files,
+both same-graph CLI copies, arm64 executables, system-only dynamic dependencies
+and embedded full/short source IDs were independently verified. Manifest SHA-256
+is `457323f943505b4179e4dade9f8f8c078c411bf6f3f1abc9e4f45c9451f0ccec`;
+main executable SHA-256 is
+`180e685fbaa9f5a648aa6a6492fc26d4fc006ffed7cd17c7c6111ad5d7746b3e`.
+This is compile/bundle preparation only: no application launch, test binary,
+physical capture, inference, installation, notarization or release occurred.
+
+Before any later user-authorized launch, explicitly pin task-only
+`LOOFAH_GLOBAL_BASE`, `LOOFAH_VAULT_BASE` and `LOOFAH_QA_DOWNLOADS_ROOT`. The release
+QA identifier alone does not isolate global storage: `storage::global` otherwise
+selects the normal `loofah` directory. Do not Finder-launch the bare bundle.
+The exact proposed disposable paths are in its saved review; no runtime global
+or vault was prepared by this build. Normal production TLS trust is preserved:
+without `desktop/dev`, the Native fixture Root-CA override is intentionally absent.
+Use this artifact for later isolated Local physical/production QA; existing dev
+Remote artifacts retain their own recorded synthetic-loopback scope.
+
+All held Local lifecycle/output/transcript switches and server append/retirement
+capabilities remain off. Complete the prepared desktop acceptance checklist only
+after the user's signal; actual production/company SSO remains explicitly deferred.

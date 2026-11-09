@@ -48,13 +48,15 @@ verified, and raw retirement. This qualifies frozen Linux ARM64 source `573da576
 `5be9242930`/`31ad81601`, not later current-head code or OS physical capture. Native
 Windows x64 and ARM64 compiler/test/installer/runtime checks passed at the b755 PR
 checkpoint, and the later `92c5fb961c` Native suite passed 2,429 tests with 34 explicit
-ignored under the real macOS temporary alias. The final integrated platform matrix,
-physical recording and production responsiveness during concurrent work remain
+ignored under the real macOS temporary alias. Physical recording and production
+responsiveness during concurrent work remain
 open. Stopped Local-vault adoption, backup/restore and the supported older-client
 pair have qualified artifacts recorded in the handoff; their historical scope is
 retained. At `5bb7111562`, the packaged systemd/Caddy installation, real TLS/SSE
 append/restart/original-request replay and shaped real WebSocket profiles passed
-their headless checks. Native platform jobs are still completing. Company SSO
+their headless checks. All six PR workflows and both Windows speech architectures
+are now terminal success at that source, including native x64/ARM64 installers
+and uninstall. Company SSO
 and final desktop activation/acceptance remain separate gates. No full-completion
 claim is made.
 
@@ -365,10 +367,10 @@ original source state, not an outstanding-work list.
 - [ ] **Phase 1: shared application layer.** Shared vault writes, application operations, ownership, startup, settings, watcher, search and generated contracts are implemented. Complete final adapter/platform qualification.
 - [ ] **Phase 2: frontend client.** The shared main shell, scoped requests/subscriptions, editing/recovery, content, assets, jobs and device capture are integrated. Independent Native client/window/Reader/menu checks passed on their recorded artifacts. Complete final platform/GUI qualification, postqualification Local activation and final regressions; workstation desktop testing is user-paused.
 - [ ] **Phase 3: first remote slice.** OIDC/PKCE, OS credentials, private provisioning, HTTPS, SSE and saved-profile Remote-only startup are implemented. Existing Native TLS/media tests include 50/150/500 ms RTT and reconnects. Clean packaged systemd/Caddy deployment and real TLS/SSE append/restart/replay passed at `5bb7111562`; older-client compatibility retains its recorded pair. Final Native GUI qualification remains paused and production company SSO is deferred.
-- [ ] **Phase 4: vault sharing and content.** Shared roles, checked mutations, attachment staging/recovery, authenticated playback, source export, import/export and Local/Remote CLI ownership are implemented. Stopped Local-vault adoption passed on the recorded Linux artifacts. Explicit media source retirement is integrated with its capability held off. Complete final Native and Windows qualification and guarded Local lifecycle/output/transcript activation.
+- [ ] **Phase 4: vault sharing and content.** Shared roles, checked mutations, attachment staging/recovery, authenticated playback, source export, import/export and Local/Remote CLI ownership are implemented. Stopped Local-vault adoption passed on the recorded Linux artifacts. Explicit media source retirement is integrated with its capability held off. Hosted Windows qualification passed at `5bb7111562`. Complete paused Native/physical qualification and guarded Local lifecycle/output/transcript activation.
 - [ ] **Phase 5: processing.** Shared summary/title/tag/template and transcription policies, durable jobs/recovery, owner-managed provider secrets and configured CPU models are implemented. Bounded private previews are advertised with configured workers after Native/TLS/provider qualification. Complete actual production UI and final platform acceptance.
 - [ ] **Phase 6: resilient remote capture.** Durable native staging/uploader, processing intent, pending/append/repair, live captions and verified cleanup are implemented. The corrected paced Linux run passed shaped latency/jitter/bandwidth, outages/restart, exact-source repair and full-size replay on its frozen source. Short Local physical batch capture/resume passed functionally on AA0. Complete Native live/long physical capture, controlled microphone speech and final sustained/platform acceptance after the user's desktop-test signal.
-- [ ] **Phase 7: release hardening.** Linux images, systemd/Caddy, readiness, private operational observations, retention, stopped-service maintenance, upgrade and interrupted large-copy recovery are implemented and qualified on recorded artifacts. Current Linux headless, packaged deployment and CPU checks passed at `5bb7111562`. Complete the running native platform checks, deferred company deployment acceptance and paused production macOS QA.
+- [ ] **Phase 7: release hardening.** Linux images, systemd/Caddy, readiness, private operational observations, retention, stopped-service maintenance, upgrade and interrupted large-copy recovery are implemented and qualified on recorded artifacts. All current hosted platform checks, packaged deployment and CPU checks passed at `5bb7111562`, including both native Windows installers/uninstall and both speech lanes. Complete deferred company deployment acceptance and paused production macOS QA.
 
 Local startup needs no authentication or account provisioning. Remote remains
 experimental until all acceptance criteria are verified. No merge, release,
