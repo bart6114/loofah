@@ -3361,6 +3361,538 @@
         "No production helper changes, Cargo/Native build, model inference, app launch, permission change, push or PR write.",
         "The aa0 Local physical-QA artifact remains unchanged and unlaunched."
       ]
+    },
+    "hosted_36f85d0_pr_terminal_speech_pending_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/pr-terminal-with-speech-pending.json",
+      "sha256": "beeabaa29011e58cb8a2a82e9dbaf2d5b9ec999a17aa0d78e453d70d997d4966",
+      "record": {
+        "workflow_head": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+        "snapshot_at_utc": "2026-11-09T05:54:11.669737+00:00",
+        "all_terminal": false,
+        "pr_checkout": {
+          "sha": "9d1791521e04c9e55e7736c2eee48a0ffe61351a",
+          "parents": [
+            "a6a8f001d9165881e59fd0fa29df944da26b8801",
+            "36f85d04c80cc4a03ac779ba9979f9581e012115"
+          ],
+          "commit": {
+            "message": "Merge 36f85d04c80cc4a03ac779ba9979f9581e012115 into a6a8f001d9165881e59fd0fa29df944da26b8801"
+          }
+        },
+        "runs": [
+          {
+            "id": 42568044984,
+            "name": "windows-ci",
+            "status": "in_progress",
+            "conclusion": null,
+            "url": "https://github.com/bart6114/loofah/actions/runs/42568044984",
+            "event": "workflow_dispatch",
+            "jobs": [
+              {
+                "id": 128998810702,
+                "name": "speech-models (windows-11-arm)",
+                "status": "in_progress",
+                "conclusion": null,
+                "active": [
+                  "Run ./.github/scripts/test_windows_whisper.ps1"
+                ],
+                "failed_steps": []
+              },
+              {
+                "id": 128998811023,
+                "name": "speech-models (windows-2025)",
+                "status": "completed",
+                "conclusion": "failure",
+                "active": [],
+                "failed_steps": [
+                  "Run real speaker detection"
+                ],
+                "log_sha256": "70d0b74305426f2152f3801b815cb2811ea9979111b8a32d634c7b362807c22b",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998811023.log",
+                "rust_cohorts": 5,
+                "rust_totals": {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "36f85d04c80cc4a03ac779ba9979f9581e012115"
+                ]
+              },
+              {
+                "id": 128998812073,
+                "name": "native",
+                "status": "completed",
+                "conclusion": "skipped",
+                "active": [],
+                "failed_steps": []
+              }
+            ]
+          },
+          {
+            "id": 42567948636,
+            "name": "backend-ci",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42567948636",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 128998507674,
+                "name": "headless",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "7da3b47edfb9bd9d493217d1efe5904b93d0e25e64266b07c791b2d91a986978",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998507674.log",
+                "rust_cohorts": 22,
+                "rust_totals": {
+                  "passed": 1663,
+                  "failed": 0,
+                  "ignored": 19
+                },
+                "new_principal_tests": {
+                  "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                  "local_principal_still_requires_original_host_authorization": true,
+                  "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                },
+                "new_fence_tests": {
+                  "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                  "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                  "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                  "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                  "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                },
+                "sdk_refresh_tests": {
+                  "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                  "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                },
+                "git_helper_tests": {
+                  "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                  "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                  "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                  "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                },
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              },
+              {
+                "id": 128998507848,
+                "name": "container",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "22c4f690d4db940660b306d0a30b5f2c2d487f009cbff5a3838787b13f0af900",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998507848.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              },
+              {
+                "id": 128998507926,
+                "name": "linux-cpu-stt",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "dd27b9e4511ebb56602d390c86a43ee3c4493a7f817c5be6e819edb5d4481ed2",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998507926.log",
+                "count_note": "CPU command reprints successful summaries for exact-selection checks; do not aggregate duplicate lines.",
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              }
+            ],
+            "artifacts": [
+              {
+                "id": 13652404275,
+                "node_id": "MDg6QXJ0aWZhY3QxMzY1MjQwNDI3NQ==",
+                "name": "linux-cpu-stt",
+                "size_in_bytes": 86851,
+                "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13652404275",
+                "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13652404275/zip",
+                "expired": false,
+                "digest": "sha256:f837a0580b45fc058fd8f9bebbbe1f159e034b3342c954fb271c81e0ce4c0cee",
+                "created_at": "2026-11-09T05:51:46Z",
+                "updated_at": "2026-11-09T05:51:46Z",
+                "expires_at": "2026-11-16T05:51:45Z",
+                "workflow_run": {
+                  "id": 42567948636,
+                  "repository_id": 1309166815,
+                  "head_repository_id": 1309166815,
+                  "head_branch": "refactor/frontend-backend-separation",
+                  "head_sha": "36f85d04c80cc4a03ac779ba9979f9581e012115"
+                }
+              }
+            ]
+          },
+          {
+            "id": 42567948706,
+            "name": "desktop-ci",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42567948706",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 128998508087,
+                "name": "rust",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "584a9951cb0934e2ad7a0459affd7733cafa31c476b96e5b2e016cef704175f9",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998508087.log",
+                "rust_cohorts": 182,
+                "rust_totals": {
+                  "passed": 3233,
+                  "failed": 0,
+                  "ignored": 124
+                },
+                "new_principal_tests": {
+                  "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                  "local_principal_still_requires_original_host_authorization": true,
+                  "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                },
+                "new_fence_tests": {
+                  "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                  "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                  "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                  "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                  "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                },
+                "sdk_refresh_tests": {
+                  "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                  "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                },
+                "git_helper_tests": {
+                  "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                  "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                  "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                  "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                },
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              },
+              {
+                "id": 128998508384,
+                "name": "frontend",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "1aa016f75e5b29fe53c599c54565d9b3bc440e1085805500cd32f2cc85bcea5b",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998508384.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              }
+            ],
+            "artifacts": []
+          },
+          {
+            "id": 42567948741,
+            "name": "windows-ci",
+            "status": "completed",
+            "conclusion": "failure",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42567948741",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 128998508014,
+                "name": "native (windows-2025, x86_64-pc-windows-msvc)",
+                "status": "completed",
+                "conclusion": "failure",
+                "active": [],
+                "failed_steps": [
+                  "Test linked-worktree build metadata"
+                ],
+                "log_sha256": "a6ac029117b8cca88a1882e2194f142fb17cdce40524df32d3b4c9d6a9e2ea97",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998508014.log",
+                "rust_cohorts": 1,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 4,
+                  "ignored": 0
+                },
+                "new_principal_tests": {
+                  "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": false,
+                  "local_principal_still_requires_original_host_authorization": false,
+                  "local_principal_survives_submit_result_replay_and_journal_reopen": false
+                },
+                "new_fence_tests": {
+                  "final_generation_preserves_literal_fences_in_first_indented_code_line": false,
+                  "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": false,
+                  "fence_only_generation_fails_without_an_additional_model_attempt": false,
+                  "historical_fence_only_retained_result_remains_readable_without_replay": false,
+                  "fence_only_job_preserves_canonical_summary_and_retains_no_result": false
+                },
+                "sdk_refresh_tests": {
+                  "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": false,
+                  "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": false
+                },
+                "git_helper_tests": {
+                  "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                  "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                  "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                  "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                },
+                "installer_runtime_smoke_passed": false,
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              },
+              {
+                "id": 128998508403,
+                "name": "native (windows-11-arm, aarch64-pc-windows-msvc)",
+                "status": "completed",
+                "conclusion": "failure",
+                "active": [],
+                "failed_steps": [
+                  "Test linked-worktree build metadata"
+                ],
+                "log_sha256": "b29263d6e74a6e401d1f5b147ee4aea925278046d8f6abc3ff3270b7b28bf0e2",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998508403.log",
+                "rust_cohorts": 1,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 4,
+                  "ignored": 0
+                },
+                "new_principal_tests": {
+                  "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": false,
+                  "local_principal_still_requires_original_host_authorization": false,
+                  "local_principal_survives_submit_result_replay_and_journal_reopen": false
+                },
+                "new_fence_tests": {
+                  "final_generation_preserves_literal_fences_in_first_indented_code_line": false,
+                  "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": false,
+                  "fence_only_generation_fails_without_an_additional_model_attempt": false,
+                  "historical_fence_only_retained_result_remains_readable_without_replay": false,
+                  "fence_only_job_preserves_canonical_summary_and_retains_no_result": false
+                },
+                "sdk_refresh_tests": {
+                  "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": false,
+                  "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": false
+                },
+                "git_helper_tests": {
+                  "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                  "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                  "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                  "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                },
+                "installer_runtime_smoke_passed": false,
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              },
+              {
+                "id": 128998509401,
+                "name": "speech-models",
+                "status": "completed",
+                "conclusion": "skipped",
+                "active": [],
+                "failed_steps": []
+              }
+            ],
+            "artifacts": []
+          },
+          {
+            "id": 42567948686,
+            "name": "ci",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42567948686",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 128998508144,
+                "name": "fmt",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "56c956194d1b3d40d190b996abd52278d1000612acded303e4605d66774dc927",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998508144.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              },
+              {
+                "id": 128998508449,
+                "name": "lint",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "89f87ebde58a8dd0c460b8f933ec5683d041d72e1043752384286db084f09c9f",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998508449.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              }
+            ],
+            "artifacts": []
+          },
+          {
+            "id": 42567948663,
+            "name": "cli-ci",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42567948663",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 128998507871,
+                "name": "cli-ci",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "27f45b058115648f62b516df4fb4c7565c6731397efc49a5721f654a0f974f33",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998507871.log",
+                "rust_cohorts": 20,
+                "rust_totals": {
+                  "passed": 274,
+                  "failed": 0,
+                  "ignored": 2
+                },
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              }
+            ],
+            "artifacts": []
+          },
+          {
+            "id": 42567948646,
+            "name": "zizmor",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42567948646",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 128998507412,
+                "name": "zizmor",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "c26021f333180492a4c5436c4a76c879e819b8b00ce9ee36a5c4887f691133cb",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998507412.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "9d1791521e04c9e55e7736c2eee48a0ffe61351a"
+                ]
+              }
+            ],
+            "artifacts": []
+          }
+        ],
+        "qualification_limit": "Counts describe actual logged executions at36. Windows aggregate includes separate standalone Git-helper and release-policy tests; verify their exact names and the two SDK concurrency regressions separately. No physical capture or production SSO claim.",
+        "scope": "Six PR workflows terminal: five successful, nativeWindows fixture failed on both architectures. Independent direct36 speech run remains in progress; not all workflows terminal.",
+        "concurrency": {
+          "expression": "windows-ci-${{ github.ref }}",
+          "speech_group": "windows-ci-refs/heads/refactor/frontend-backend-separation",
+          "next_pr_group": "windows-ci-refs/pull/123/merge",
+          "push_trigger_branches": [
+            "main"
+          ],
+          "next_feature_pr_push_cancels_speech": false,
+          "speech_checkout_pinned": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+          "no_new_speech_dispatch_planned_for_fixture_only_change": true
+        },
+        "fixture_followup": {
+          "source": "6d83abb63b3213a0b2874cdb542b022addba9a2a",
+          "changed_paths_since36": [
+            "docs/plans/evidence/frontend-backend-checkpoint-2026-11-08.json",
+            "docs/plans/frontend-backend-handoff.md",
+            "plugins/misc/tests/build_git.rs"
+          ],
+          "runtime_production_code_unchanged": true,
+          "Windows_qualification": "pending next PR: four standalone helper cases and two SDK concurrency cases must actually execute on both architectures"
+        },
+        "confirmed_details": {
+          "frontend": {
+            "desktop_tests": 2622,
+            "desktop_files": 298,
+            "editor_tests": 303,
+            "editor_files": 31,
+            "typecheck": "passed"
+          },
+          "macos": "3233 passing executions,0failed,124ignored across182 desktop/workspace cohorts; both new SDK concurrency cases actually passed.",
+          "headless": "1663 passed,0failed,19ignored across22cohorts; both new SDK concurrency cases actually passed.",
+          "cli": "274passed,0failed,2ignored across20cohorts; releasebuild passed.",
+          "linux_cpu": "Three exact original kernel cases selected1 each and passed. Checked CPU service, ONNXmedia/live and reservedlive/batch overlap passed; concurrentHTTP63ms.",
+          "native_windows": "Each architecture:0passed4failed0ignored in fixture git-init configuration, before production helper/Cargo suites/SDK cases/installers; no new native runtime acceptance."
+        },
+        "failure_diagnosis": {
+          "head": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+          "job_id": 128998508014,
+          "observed_snapshot": "2026-11-09T05:40:35.343269+00:00",
+          "failed_step": "Test linked-worktree build metadata",
+          "result": {
+            "passed": 0,
+            "failed": 4,
+            "ignored": 0
+          },
+          "actual_error": "git [\"init\", \"--initial-branch=main\"]: fatal: unknown error occurred while reading the configuration files",
+          "location": "plugins/misc/tests/build_git.rs:63",
+          "production_helper_exercised": false,
+          "diagnosis": "Fixture passes canonicalized Windows extended-length root into GIT_CONFIG_GLOBAL and core.hooksPath. Git external-path incompatibility is suspected; no production defect or Windows fix pass claimed.",
+          "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998508014.log",
+          "sha256": "a6ac029117b8cca88a1882e2194f142fb17cdce40524df32d3b4c9d6a9e2ea97",
+          "no_retry_or_cancellation": true,
+          "arm64": {
+            "job_id": 128998508403,
+            "result": {
+              "passed": 0,
+              "failed": 4,
+              "ignored": 0
+            },
+            "actual_error": "git [\"init\", \"--initial-branch=main\"]: fatal: unknown error occurred while reading the configuration files",
+            "location": "plugins/misc/tests/build_git.rs:63",
+            "production_helper_exercised": false,
+            "cargo_suite_reached": false,
+            "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998508403.log",
+            "sha256": "b29263d6e74a6e401d1f5b147ee4aea925278046d8f6abc3ff3270b7b28bf0e2"
+          }
+        }
+      }
     }
   },
   "local_work_focused": [

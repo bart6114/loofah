@@ -1,15 +1,17 @@
 # Frontend/backend separation handoff
 
-Current acceptance status, 2026-11-09: published `073e5b7cd3` has passed backend,
-Linux CPU/container, frontend/editor, CLI, macOS workspace, formatting/security and
-both Windows speech qualifications. Native Windows x64 and ARM64 each passed
-2,243 tests and their installer/runtime checks; all seven workflows are terminal green. These PR checks use synthetic merge
-`a471c04829`; the separate speech dispatch uses `073e5b7cd3` directly. The newer
-SDK dispatch-fence correction and Windows Git-helper test step still need their
-own hosted checkpoint. Physical capture awaits OS permission confirmation,
-production HTTPS SSO needs staging configuration, and observed Qwen accuracy and
-conciseness remain failed. Local lifecycle, output deletion and transcript
-activation gates remain default off; no merge or release is authorized.
+Current acceptance status, 2026-11-09: all six PR workflows at `36f85d04c8` are
+terminal. Five passed; native Windows x64 and ARM64 each failed four new fixture
+cases during Git configuration setup, before the production helper or Cargo suite
+ran. Both new SDK concurrency regressions passed on Linux and macOS. The isolated
+fixture correction is locally qualified and awaits the next Windows PR run. The
+independent direct-36 Windows speech run remains healthy and in progress; its
+branch-ref concurrency group is separate from the next PR group. The prior `073`
+checkpoint's full platform successes remain source-scoped evidence. Physical
+capture awaits OS permission confirmation, production HTTPS SSO needs staging
+configuration, and observed Qwen accuracy and conciseness remain failed. Local
+lifecycle, output deletion and transcript activation gates remain default off;
+no merge or release is authorized.
 
 This document retains chronological checkpoint history. Later dated evidence
 supersedes earlier uses of “current”, “pending” and “analysis-only”; those older
@@ -1755,3 +1757,40 @@ This is not a Windows fix-pass claim. Other hosted checks were left running
 without cancellation or retries. No Cargo/Native rebuild, production helper
 change, inference, permission grant, launch, push or PR write occurred. The
 `aa0` Local physical-QA artifact remains unchanged and unlaunched.
+
+
+## Terminal PR workflows at `36f85d04c8`, independent speech pending
+
+All six PR workflows are terminal: backend, desktop, CLI, formatting/lint and
+security passed. PR checkout was synthetic merge
+`9d1791521e04c9e55e7736c2eee48a0ffe61351a` of exact branch head
+`36f85d04c80cc4a03ac779ba9979f9581e012115` into `a6a8f001d9`. macOS logged
+3,233 passing executions/zero failed/124 ignored across 182 desktop/workspace
+cohorts; Linux headless passed 1,663/zero failed/19 ignored across 22 cohorts.
+Both public SDK blocked-refresh regressions actually passed in both jobs.
+Frontend passed 2,622 desktop and 303 editor tests plus typechecking; CLI passed
+274/zero failed/two ignored plus release build. Configured Linux CPU, reserved
+live/batch overlap and container checks passed.
+
+Both native Windows jobs ran the four new standalone Git fixtures and failed all
+four at initial `git init`, with “unknown error occurred while reading the
+configuration files.” They did not reach the production helper, Cargo suites,
+new SDK cases or installer/runtime checks. The fixture passed Windows extended
+paths to external Git configuration/hooks settings; the later relative-path
+correction is recorded above. This is not a Windows pass for that correction.
+Raw logs and hashes preserve each architecture's actual failure independently.
+
+The separate speech run `42568044984` remains in progress at this receipt and
+continues untouched on direct `36f85d04c8`. The workflow uses
+`windows-ci-${{ github.ref }}`: its branch-ref group differs from the next
+`refs/pull/123/merge` group, and push triggers only target `main`. Thus the next
+fixture-only PR push does not cancel this healthy manual run. No retry or second
+manual speech dispatch is planned for unchanged production processing code.
+The next PR still must execute all four helpers and both SDK concurrency cases
+on both Windows architectures.
+
+Portable record `hosted_36f85d0_pr_terminal_speech_pending_2026_11_09` embeds the
+source, exact workflow/job states, raw log hashes, failure details and concurrency
+proof. It deliberately does not claim every workflow terminal or speech success.
+All earlier records remain unchanged; no cancellation, retry, release or user
+permission change was made.
