@@ -1,5 +1,12 @@
 use super::*;
 
+pub(in crate::capture_processing) fn stage(
+    service: &CaptureProcessingService,
+    stage: &'static str,
+) {
+    service.diagnostic.lock().unwrap().0 = stage;
+}
+
 async fn append_capture(
     context: &Arc<VaultContext>,
     root: &std::path::Path,
@@ -82,6 +89,7 @@ async fn publish_when_ready(
     context: &Arc<VaultContext>,
     source: &CaptureIngestStatus,
     seal: CaptureSeal,
+    batch: &Batch,
 ) -> CaptureIngestStatus {
     let mut last_failure = None;
     let result = tokio::time::timeout(Duration::from_secs(20), async {
@@ -110,8 +118,47 @@ async fn publish_when_ready(
         }
     })
     .await;
-    result
-        .unwrap_or_else(|_| panic!("append publication timed out; last failure: {last_failure:?}"))
+    match result {
+        Ok(status) => status,
+        Err(_) => {
+            let service = context.capture_processing.get().unwrap();
+            let record = service
+                .journal
+                .get(MEMBER, &source.identity.capture_id)
+                .unwrap();
+            let retained = tokio::time::timeout(Duration::from_secs(1), async {
+                let original = context
+                    .capture_append_source(&source.identity, false)
+                    .await?;
+                Ok::<_, ApplicationError>(
+                    [
+                        "core-inference.wav",
+                        "core-inference-dispatch.json",
+                        "core-suffix-result.json",
+                    ]
+                    .map(|name| (name, original.directory().join(name).is_file())),
+                )
+            })
+            .await;
+            panic!(
+                "append publication timed out; last={last_failure:?}; stage/cause={:?}; coordinator_failed={}; stop={}; ready={}; task_finished_cancelled={:?}; snapshot={:?}; transcript_ready={}; cancelled={}; epoch={}; engine_calls={}; engine_frames={}; engine_busy={}; retained={retained:?}",
+                service.diagnostic.lock().unwrap(),
+                service.failed.load(Ordering::Acquire),
+                service.stop.is_cancelled(),
+                service.ready.is_cancelled(),
+                service
+                    .append
+                    .task_state(&record.snapshot.capture_fingerprint),
+                record.snapshot,
+                record.transcript_ready,
+                record.cancel_requested,
+                record.epoch,
+                batch.calls.load(Ordering::Acquire),
+                batch.observed_frames.load(Ordering::Acquire),
+                batch.prepare_busy.load(Ordering::Acquire),
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -125,7 +172,7 @@ async fn suffix_only_inference_preserves_original_unknown_fields_and_summarizes_
         serde_json::from_slice(&std::fs::read(directory.join("transcript.json")).unwrap()).unwrap();
     submit(&runtime.context, &source, true).await;
     let seal = seal(&runtime.context, &source).await;
-    publish_when_ready(&runtime.context, &source, seal.clone()).await;
+    publish_when_ready(&runtime.context, &source, seal.clone(), &batch).await;
     let completed = terminal(&runtime.context, &source).await;
     assert_eq!(
         completed.state,
@@ -333,7 +380,7 @@ async fn busy_engine_preflight_reuses_retained_suffix_without_admitting_inferenc
     assert!(!dispatch.exists());
     assert_eq!(batch.calls.load(Ordering::Acquire), 0);
     batch.prepare_busy.store(false, Ordering::Release);
-    publish_when_ready(&runtime.context, &source, sealed).await;
+    publish_when_ready(&runtime.context, &source, sealed, &batch).await;
     assert_eq!(
         terminal(&runtime.context, &source).await.state,
         CaptureProcessingState::Succeeded

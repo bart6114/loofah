@@ -14,6 +14,8 @@ pub(super) async fn run(
             if service.stop.is_cancelled() {
                 return Ok(());
             }
+            #[cfg(test)]
+            tests::append::stage(&service, "session admission");
             let _work = context.admit_session_work(&previous.target_session).await?;
             // Terminal cancellation still reconciles exact child cancellations;
             // startup never requeues an interrupted/unknown native or paid job.
@@ -35,6 +37,8 @@ pub(super) async fn run(
                 }
                 continue;
             }
+            #[cfg(test)]
+            tests::append::stage(&service, "coordinator authorization");
             let grant = match service.authorizer.authorize(next.member()).await {
                 Ok(grant) => grant,
                 Err(cause) => {
@@ -57,29 +61,38 @@ pub(super) async fn run(
                 next.snapshot.state = CaptureProcessingState::Uncertain;
                 next.snapshot.failure = Some(CaptureProcessingFailure::ModelChanged);
                 next.cancel_requested = true;
-            } else if let Err(cause) = step(&context, &service, &mut next).await
-                && !matches!(
+            } else if let Err(cause) = step(&context, &service, &mut next).await {
+                #[cfg(test)]
+                {
+                    service.diagnostic.lock().unwrap().1 = Some(cause.clone());
+                }
+                if !matches!(
                     cause.code,
                     ErrorCode::Unavailable | ErrorCode::ResourceLimit
-                )
-            {
-                next.snapshot.state = if cause.mutation_outcome == Some(MutationOutcome::Unknown) {
-                    CaptureProcessingState::Uncertain
-                } else if cause.code == ErrorCode::Conflict {
-                    CaptureProcessingState::Conflict
-                } else {
-                    CaptureProcessingState::Failed
-                };
-                next.snapshot.failure = Some(if cause.code == ErrorCode::Conflict {
-                    CaptureProcessingFailure::SourceChanged
-                } else {
-                    CaptureProcessingFailure::Storage
-                });
-                next.cancel_requested = true;
+                ) {
+                    next.snapshot.state =
+                        if cause.mutation_outcome == Some(MutationOutcome::Unknown) {
+                            CaptureProcessingState::Uncertain
+                        } else if cause.code == ErrorCode::Conflict {
+                            CaptureProcessingState::Conflict
+                        } else {
+                            CaptureProcessingState::Failed
+                        };
+                    next.snapshot.failure = Some(if cause.code == ErrorCode::Conflict {
+                        CaptureProcessingFailure::SourceChanged
+                    } else {
+                        CaptureProcessingFailure::Storage
+                    });
+                    next.cancel_requested = true;
+                }
             }
             drop(grant);
+            #[cfg(test)]
+            tests::append::stage(&service, "coordinator journal update");
             service.journal.update(previous, next).await?;
         }
+        #[cfg(test)]
+        tests::append::stage(&service, "coordinator waiting");
         tokio::select! {_=service.stop.cancelled()=>return Ok(()),_=service.wake.notified()=>{},_=timer.tick()=>{}}
     }
 }

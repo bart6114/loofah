@@ -11,6 +11,14 @@ struct Task {
     join: tokio::task::JoinHandle<Result<(), ApplicationError>>,
 }
 impl Workers {
+    #[cfg(test)]
+    pub(super) fn task_state(&self, capture: &str) -> Option<(bool, bool)> {
+        self.0
+            .lock()
+            .unwrap()
+            .get(capture)
+            .map(|task| (task.join.is_finished(), task.stop.is_cancelled()))
+    }
     pub async fn shutdown(&self) -> Result<(), ApplicationError> {
         let tasks = std::mem::take(&mut *self.0.lock().map_err(storage)?);
         for task in tasks.values() {
@@ -81,11 +89,15 @@ pub(super) async fn step(
     source: &CaptureSnapshot,
     ready: bool,
 ) -> Result<bool, ApplicationError> {
+    #[cfg(test)]
+    tests::append::stage(service, "append readiness");
     context.ensure_recording_publication_ready(&record.target_session)?;
     let Some(seal) = &source.seal else {
         record.snapshot.state = CaptureProcessingState::Waiting;
         return Ok(false);
     };
+    #[cfg(test)]
+    tests::append::stage(service, "append completed-task drain");
     service
         .append
         .completed(&record.snapshot.capture_fingerprint)
@@ -100,6 +112,8 @@ pub(super) async fn step(
         record.snapshot.state = CaptureProcessingState::Repairing;
         return Ok(false);
     }
+    #[cfg(test)]
+    tests::append::stage(service, "append retained result");
     if let Some(merged) = result(context, record, seal).await? {
         if source.publication.is_none() {
             record.snapshot.state = CaptureProcessingState::WaitingForPublication;
@@ -125,6 +139,8 @@ pub(super) async fn step(
         record.snapshot.transcript_publication = merged.publication;
         return Ok(true);
     }
+    #[cfg(test)]
+    tests::append::stage(service, "append original source");
     let original = context
         .capture_append_source(&record.identity, true)
         .await?;
@@ -147,6 +163,8 @@ pub(super) async fn step(
     if service.append.0.lock().map_err(storage)?.len() >= 2 {
         return Err(unavailable("Append inference capacity is busy"));
     }
+    #[cfg(test)]
+    tests::append::stage(service, "append suffix preparation");
     let source = context.prepare_capture_suffix(&record.identity).await?;
     let dispatch = Dispatch {
         version: 1,
@@ -169,9 +187,13 @@ pub(super) async fn step(
         path: source.path,
         original: source.original.clone(),
     };
+    #[cfg(test)]
+    tests::append::stage(service, "append engine preparation");
     let prepared = context
         .prepare_capture_suffix_engine(&engine_input, stopping.clone())
         .await?;
+    #[cfg(test)]
+    tests::append::stage(service, "append dispatch receipt");
     let path = source
         .original
         .directory()

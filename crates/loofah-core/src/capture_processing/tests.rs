@@ -1,4 +1,4 @@
-mod append;
+pub(super) mod append;
 use super::*;
 use crate::{jobs::*, transcription_jobs::*};
 use std::{
