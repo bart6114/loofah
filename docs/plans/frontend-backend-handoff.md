@@ -3340,3 +3340,33 @@ unlaunched `a289a66185` QA bundle keeps its exact source/build scope and remains
 suitable for later authorized Local QA; no new production bundle was needed for
 a fixture-only change. Mac and ARM checks from the earlier checkpoint continued
 without cancellation while this correction was prepared.
+
+
+## Prior documentation checkpoint terminal before corrected publication
+
+All six `0cbdcbdc9e` PR workflows are terminal. Backend, desktop, general and
+security succeeded. CLI failed the preserved final-progress assertion; Windows
+failed only its preserved x64 Drop-counter witness. Actual ARM job129311750811
+succeeded: 2,346/0/47 Native Cargo cases across68 cohorts, plus two separate
+four-case Git-helper cohorts. All67 required named cases were independently
+found passing in the raw log. Actual installed startup/CLI-MCP/uninstall passed;
+normal-run speech was skipped. Artifact13700521640 is338,499,385 bytes with API
+ZIP SHA-256 `cd2fd744ed9bf5ddd5bc66e8f2ea5b003dabac5c5471f01e31b80ffff9c42e56`;
+raw log SHA-256 is
+`d4bbda62e57724e2cf4098246e87bab3fe61faf0b39b223983757a5440b3c044`.
+The ARM pass does not invalidate the separately observed x64 witness race.
+
+macOS passed its desktop cohort196/0/2 and selected workspace3,142/0/123;
+headless passed1,751/0/20. Frontend passed2,660 desktop and303 editor cases with
+both typechecks/locales. Current Linux CPU qualification included all9 ordinary
+fixtures, both configured outer cases/all3 RTT profiles, and all4 packaged real
+model cases. The actual packaged systemd/Caddy append/restart driver passed1/0/0
+in5.60s, with independently matching archived PCM frames and clean stops.
+Exact component scopes, raw hashes and qualification limits are copied into the
+portable record. No aggregate whole-goal pass is inferred.
+
+Earlier jobs finished without cancellation or retry before publishing the Local
+owner progress correction and Native fixture correction. Their new full CLI
+integration and native x64/ARM64 runtime checks must finish at the corrected
+published head. Desktop tests remain user-paused; all activation gates stay off,
+company SSO remains deferred and tiny-Qwen semantic quality remains failed.

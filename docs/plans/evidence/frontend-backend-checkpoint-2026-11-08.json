@@ -22579,6 +22579,2479 @@
         "meaning": "Only plan/evidence docs and this test-only fixture differ. Production ownership code, wire types and model pipeline unchanged; existing unlaunched a289 default-desktop bundle retains its exact build/source scope."
       },
       "scope": "Compilation only; audio/desktop test execution stays user-paused. No local runtime pass inferred. Fresh native Windows x64/ARM64 qualification still required. No sleep, timeout increase, production cleanup acknowledgement or weakening of lifetime assertions."
+    },
+    "terminal_hosted_0cbd_before_owner_corrections_2026_11_09": {
+      "source": "0cbdcbdc9e16091f64a78d99529e0b713ce7582b",
+      "merge": "0d1e530214d0dd61d303de37643e1ba13f62105d",
+      "runs": [
+        {
+          "conclusion": "success",
+          "databaseId": 42660864608,
+          "status": "completed",
+          "workflowName": "zizmor"
+        },
+        {
+          "conclusion": "failure",
+          "databaseId": 42660864921,
+          "status": "completed",
+          "workflowName": "cli-ci"
+        },
+        {
+          "conclusion": "success",
+          "databaseId": 42660865018,
+          "status": "completed",
+          "workflowName": "ci"
+        },
+        {
+          "conclusion": "success",
+          "databaseId": 42660865305,
+          "status": "completed",
+          "workflowName": "backend-ci"
+        },
+        {
+          "conclusion": "success",
+          "databaseId": 42660865143,
+          "status": "completed",
+          "workflowName": "desktop-ci"
+        },
+        {
+          "conclusion": "failure",
+          "databaseId": 42660864850,
+          "status": "completed",
+          "workflowName": "windows-ci"
+        }
+      ],
+      "successful_job_raw_receipts": {
+        "129311752771": {
+          "run": 42660865143,
+          "name": "frontend",
+          "conclusion": "success",
+          "log": "129311752771.log",
+          "sha256": "6cce96ac64a9350989edce64469c5246ee9a6a959f421e223ef2da55362fd0a1",
+          "bytes": 157814
+        },
+        "129311752161": {
+          "run": 42660865305,
+          "name": "headless",
+          "conclusion": "success",
+          "log": "device-monitor-129311752161.log",
+          "sha256": "2ae0bd5b89c577cff373c28367665b5c088734e7e7e9d48673ef185da4e659a9",
+          "bytes": 306564
+        },
+        "129311752272": {
+          "run": 42660865305,
+          "name": "container",
+          "conclusion": "success",
+          "log": "device-monitor-129311752272.log",
+          "sha256": "7bf7f5f13f738e7c609d599436961a1f5856f601cc3075d38a0498744d52ab50",
+          "bytes": 169105
+        },
+        "129311751888": {
+          "run": 42660865305,
+          "name": "linux-cpu-stt",
+          "conclusion": "success",
+          "log": "device-monitor-129311751888.log",
+          "sha256": "38a118a3a298dfb6f446f6a9b87344331dec6271e92361827ed72832a6e16b06",
+          "bytes": 242659
+        },
+        "129311752261": {
+          "run": 42660865143,
+          "name": "rust",
+          "conclusion": "success",
+          "log": "device-monitor-129311752261.log",
+          "sha256": "41bdd03ec870ad4f6b452cecfa3e83c3e309b862692c0c8ca0e16960b530f647",
+          "bytes": 628226
+        }
+      },
+      "mac_scope": {
+        "sha256": "814678cc6cb8749686a5d56cd01f8eab6dc10161898bc28c96c52a5bf8963cee",
+        "report": {
+          "head": "0cbdcbdc9e16091f64a78d99529e0b713ce7582b",
+          "merge": "0d1e530214d0dd61d303de37643e1ba13f62105d",
+          "job": 129311752261,
+          "conclusion": "success",
+          "log_sha256": "41bdd03ec870ad4f6b452cecfa3e83c3e309b862692c0c8ca0e16960b530f647",
+          "scopes": {
+            "desktop": {
+              "passed": 196,
+              "failed": 0,
+              "ignored": 2,
+              "result_cohorts": 3,
+              "raw_results": [
+                [
+                  196,
+                  0,
+                  2
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ]
+              ]
+            },
+            "workspace_with_workflow_exclusions": {
+              "passed": 3142,
+              "failed": 0,
+              "ignored": 123,
+              "result_cohorts": 180,
+              "raw_results": [
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  18,
+                  0,
+                  0
+                ],
+                [
+                  22,
+                  0,
+                  0
+                ],
+                [
+                  3,
+                  0,
+                  0
+                ],
+                [
+                  35,
+                  0,
+                  3
+                ],
+                [
+                  17,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  17,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  10,
+                  0,
+                  0
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  15,
+                  0,
+                  0
+                ],
+                [
+                  6,
+                  0,
+                  0
+                ],
+                [
+                  53,
+                  0,
+                  4
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  10,
+                  0,
+                  0
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  3,
+                  0,
+                  4
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  97,
+                  0,
+                  0
+                ],
+                [
+                  1,
+                  0,
+                  3
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  10,
+                  0,
+                  0
+                ],
+                [
+                  94,
+                  0,
+                  0
+                ],
+                [
+                  60,
+                  0,
+                  1
+                ],
+                [
+                  0,
+                  0,
+                  3
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  5,
+                  0,
+                  0
+                ],
+                [
+                  96,
+                  0,
+                  0
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  12,
+                  0,
+                  0
+                ],
+                [
+                  7,
+                  0,
+                  0
+                ],
+                [
+                  6,
+                  0,
+                  0
+                ],
+                [
+                  4,
+                  0,
+                  0
+                ],
+                [
+                  210,
+                  0,
+                  3
+                ],
+                [
+                  590,
+                  0,
+                  2
+                ],
+                [
+                  5,
+                  0,
+                  0
+                ],
+                [
+                  18,
+                  0,
+                  1
+                ],
+                [
+                  38,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  156,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  5,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  14,
+                  0,
+                  0
+                ],
+                [
+                  4,
+                  0,
+                  0
+                ],
+                [
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  6,
+                  0,
+                  0
+                ],
+                [
+                  3,
+                  0,
+                  0
+                ],
+                [
+                  14,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  5,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  17,
+                  0,
+                  0
+                ],
+                [
+                  5,
+                  0,
+                  6
+                ],
+                [
+                  290,
+                  0,
+                  46
+                ],
+                [
+                  0,
+                  0,
+                  7
+                ],
+                [
+                  0,
+                  0,
+                  16
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  7,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ],
+                [
+                  31,
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  73,
+                  0,
+                  0
+                ],
+                [
+                  28,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  2,
+                  0,
+                  1
+                ],
+                [
+                  3,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  35,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  40,
+                  0,
+                  0
+                ],
+                [
+                  12,
+                  0,
+                  6
+                ],
+                [
+                  2,
+                  0,
+                  0
+                ],
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  66,
+                  0,
+                  0
+                ],
+                [
+                  22,
+                  0,
+                  1
+                ],
+                [
+                  6,
+                  0,
+                  1
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ],
+                [
+                  31,
+                  0,
+                  5
+                ],
+                [
+                  86,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  29,
+                  0,
+                  0
+                ],
+                [
+                  5,
+                  0,
+                  0
+                ],
+                [
+                  631,
+                  0,
+                  5
+                ],
+                [
+                  4,
+                  0,
+                  0
+                ],
+                [
+                  6,
+                  0,
+                  0
+                ],
+                [
+                  5,
+                  0,
+                  0
+                ],
+                [
+                  4,
+                  0,
+                  0
+                ],
+                [
+                  3,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0
+                ]
+              ]
+            }
+          },
+          "actual_audio_owner_cases": [
+            "2026-11-09T17:47:37.0965270Z test capture::stream::ownership_tests::dropped_observer_cannot_release_original_owner_while_native_factory_is_blocked ... ok",
+            "2026-11-09T17:47:37.0968880Z test capture::stream::ownership_tests::original_owner_retires_after_actual_native_drain_even_if_control_survives ... ok",
+            "2026-11-09T17:47:37.1026230Z test capture::stream::ownership_tests::native_panic_releases_owner_only_after_the_actual_worker_unwinds ... ok",
+            "2026-11-09T17:47:37.2468210Z test mic::ownership_tests::backend_callback_holders_keep_original_owner_after_outer_stream_thread_drops ... ok"
+          ],
+          "limits": [
+            "Workspace command retains documented exclusions; no full all-package claim.",
+            "Source is published0cbd, not unpublished owner-progress or Audio fixture follow-up. Passing race-prone Audio fixture here does not negate x64 failure.",
+            "Hosted Rust tests are not physical capture or local desktop app execution."
+          ]
+        }
+      },
+      "cpu_scope": {
+        "sha256": "9d9c95d21d2c46ab3413f0c609054d5e46699aecb508c2564f412d6c84bb71dc",
+        "report": {
+          "head": "0cbdcbdc9e16091f64a78d99529e0b713ce7582b",
+          "job": 129311751888,
+          "conclusion": "success",
+          "log_sha256": "38a118a3a298dfb6f446f6a9b87344331dec6271e92361827ed72832a6e16b06",
+          "exact_packaged_model_cases": [
+            "2026-11-09T17:20:51.4117833Z test tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source ... ok",
+            "2026-11-09T17:21:15.1997892Z test tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication ... ok",
+            "2026-11-09T17:22:06.6054697Z test transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join ... ok",
+            "2026-11-09T17:22:36.9019655Z test tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive ... ok"
+          ],
+          "websocket": {
+            "pure_cases": 9,
+            "pure_ignored": 2,
+            "configured_outer_cases": 2,
+            "configured_seconds": 35.6,
+            "profiles": {
+              "websocket shaped profile:": [
+                "2026-11-09T17:07:40.5914551Z websocket shaped profile: rtt_ms=50 health_ms=58 handshake_ms=105 finalize_ms=4344 replacement_cancel_drain_ms=178 abrupt_reconnect_ms=Some(234) total_ms=7748 connections=6 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000",
+                "2026-11-09T17:07:49.1382642Z websocket shaped profile: rtt_ms=150 health_ms=158 handshake_ms=197 finalize_ms=4662 replacement_cancel_drain_ms=430 abrupt_reconnect_ms=None total_ms=8544 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000",
+                "2026-11-09T17:08:05.9033994Z websocket shaped profile: rtt_ms=500 health_ms=508 handshake_ms=546 finalize_ms=7985 replacement_cancel_drain_ms=1306 abrupt_reconnect_ms=None total_ms=16767 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+              ],
+              "websocket abrupt witness:": [
+                "2026-11-09T17:07:40.3578891Z websocket abrupt witness: rtt_ms=50 started_before=4 completed_before=4 started_at_drop=5 completed_at_drop=4 post_start_wait_ms=100 witness=pre_call_trace_not_inside_kernel"
+              ],
+              "websocket abrupt worker drain:": [
+                "2026-11-09T17:07:40.5905642Z websocket abrupt worker drain: rtt_ms=50 request_id=378594a8-8dad-41b2-af18-91cae1323e82 confirmed=true"
+              ],
+              "reserved CPU acceptance:": [
+                "2026-11-09T17:22:36.5663974Z reserved CPU acceptance: total=2 reserved_live=1 batch_frames=5120000 source_sha256=938170e91687b18f8f9c4c289fd579770163ca2df9485b591d2c15578ddd926d first_caption_ms=8223 concurrent_http_ms=8 actual_drain_ms=15901"
+              ]
+            }
+          },
+          "counting_limit": "Raw job log repeats some test-result rows via verification grep and contains quoted shell assertions. Do not sum every occurrence into a total. Four named packaged model cases each executed once.",
+          "physical_capture": false,
+          "desktop_runtime": false,
+          "inference_executed_by_reviewer": false
+        }
+      },
+      "deployment": {
+        "sha256": "f85bff0dca94169bc16fc0aee9f589d72e89fb448933f6685ce8a2616ceab650",
+        "report": {
+          "artifact_id": 13694622458,
+          "zip_sha256": "57ea499fa3186f12c7f73d307f11939a58d42e97919fb05dad6d29d3c2b19621",
+          "tar_sha256": "a4028aca123fbb570e45c152f5bfce5d821258aa1a9eb40d82f8ec350c6326b6",
+          "acceptance_sha256": "7336f2c014bfa02b6c04332fccc7acc53ecccb49b90a2f60c283a65f5b542081",
+          "driver_log": "\nrunning 1 test\ntest packaged_caddy_append_and_restart ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.60s\n\n",
+          "independent_pcm_all_frames_match": true,
+          "scope": "Extracted default image executable under Ubuntu systemd+real CaddyTLS, syntheticOIDC, raw-only; no inference/physical capture/productionSSO.",
+          "acceptance": {
+            "actual_process_uids": [
+              "999",
+              "999",
+              "999",
+              "999"
+            ],
+            "artifacts": {
+              "caddy": {
+                "bytes": 44376248,
+                "sha256": "4ef1f68c70219536b2711fd16547a79841a2dec2d6b4e56b1e3e5e9da76028e6"
+              },
+              "deployment-test": {
+                "bytes": 84520152,
+                "sha256": "4efff39822cc3912bd48dabbf205e0710f178c1c50d533a94f3ea3c690489cf6"
+              },
+              "loofah-server": {
+                "bytes": 74594928,
+                "sha256": "30171c0514990ec9dcd53bb5e5d26979000c9d73ed2095dbc6e40bdad0e15968"
+              }
+            },
+            "caddy_exit": 0,
+            "caddy_fixture_additions": [
+              "admin off",
+              "auto_https disable_redirects",
+              "explicit committed test certificate (no trust installation)",
+              "exact capabilities-only overlay; all other paths use documented streaming proxy"
+            ],
+            "caddy_substitutions": [
+              [
+                "{$LOOFAH_DOMAIN}",
+                "https://127.0.0.1:39571"
+              ],
+              [
+                "127.0.0.1:8027",
+                "127.0.0.1:53439"
+              ],
+              [
+                "    reverse_proxy",
+                "    tls /opt/loofah-deployment-0bef08184d5c/tls/localhost.pem /opt/loofah-deployment-0bef08184d5c/tls/localhost.key\n    handle /api/v1/capabilities {\n        reverse_proxy 127.0.0.1:42993\n    }\n    handle {\n    reverse_proxy"
+              ]
+            ],
+            "commands": [
+              {
+                "argv": [
+                  "useradd",
+                  "--system",
+                  "--user-group",
+                  "--no-create-home",
+                  "--shell",
+                  "/usr/sbin/nologin",
+                  "loofahqa0bef08184d5c"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "git",
+                  "-c",
+                  "safe.directory=/home/runner/work/loofah/loofah",
+                  "-C",
+                  "/home/runner/work/loofah/loofah",
+                  "rev-parse",
+                  "HEAD"
+                ],
+                "exit": 0,
+                "output": "0d1e530214d0dd61d303de37643e1ba13f62105d\n"
+              },
+              {
+                "argv": [
+                  "git",
+                  "-c",
+                  "safe.directory=/home/runner/work/loofah/loofah",
+                  "-C",
+                  "/home/runner/work/loofah/loofah",
+                  "status",
+                  "--porcelain"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "docker",
+                  "image",
+                  "inspect",
+                  "loofah-server:test"
+                ],
+                "exit": 0,
+                "output": "[\n    {\n        \"Id\": \"sha256:62081f8e770ab15b6c1e4c93b6fd8c541884e6929b179e9da0837393b54075c5\",\n        \"RepoTags\": [\n            \"loofah-server:test\"\n        ],\n        \"RepoDigests\": [],\n        \"Parent\": \"\",\n        \"Comment\": \"buildkit.dockerfile.v0\",\n        \"Created\": \"2026-11-09T17:11:26.36180642Z\",\n        \"DockerVersion\": \"\",\n        \"Author\": \"\",\n        \"Config\": {\n            \"Hostname\": \"\",\n            \"Domainname\": \"\",\n            \"User\": \"10001:10001\",\n            \"AttachStdin\": false,\n            \"AttachStdout\": false,\n            \"AttachStderr\": false,\n            \"ExposedPorts\": {\n                \"8027/tcp\": {}\n            },\n            \"Tty\": false,\n            \"OpenStdin\": false,\n            \"StdinOnce\": false,\n            \"Env\": [\n                \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n            ],\n            \"Cmd\": [\n                \"--config\",\n                \"/etc/loofah/server.json\"\n            ],\n            \"Healthcheck\": {\n                \"Test\": [\n                    \"CMD-SHELL\",\n                    \"curl --fail --silent http://127.0.0.1:8027/ready || exit 1\"\n                ],\n                \"Interval\": 30000000000,\n                \"Timeout\": 5000000000\n            },\n            \"ArgsEscaped\": true,\n            \"Image\": \"\",\n            \"Volumes\": null,\n            \"WorkingDir\": \"\",\n            \"Entrypoint\": [\n                \"loofah-server\"\n            ],\n            \"OnBuild\": null,\n            \"Labels\": null\n        },\n        \"Architecture\": \"amd64\",\n        \"Os\": \"linux\",\n        \"Size\": 163135319,\n        \"GraphDriver\": {\n            \"Data\": {\n                \"LowerDir\": \"/var/lib/docker/overlay2/pkyx81isjnouogpld42kvgbna/diff:/var/lib/docker/overlay2/7cbb7d19d00e864bb4eeb065b993f9b051006fc559dd2061fa6b0189691bed97/diff\",\n                \"MergedDir\": \"/var/lib/docker/overlay2/dm9xm5rrx1h7z546zzfw0izdd/merged\",\n                \"UpperDir\": \"/var/lib/docker/overlay2/dm9xm5rrx1h7z546zzfw0izdd/diff\",\n                \"WorkDir\": \"/var/lib/docker/overlay2/dm9xm5rrx1h7z546zzfw0izdd/work\"\n            },\n            \"Name\": \"overlay2\"\n        },\n        \"RootFS\": {\n            \"Type\": \"layers\",\n            \"Layers\": [\n                \"sha256:1d7b9dd8778ebc4d9bf2f64436dd358640718cb349f5640b33bebaea4ffd62c2\",\n                \"sha256:5cd228a58394e7e082294fc4fb283a101930a8cd0113d2097fea51f7d584afe1\",\n                \"sha256:bff79f9fca1c8b2e24664fb6bc270c2f59b3d5cedbe9c93305880aaf4a234575\"\n            ]\n        },\n        \"Metadata\": {\n            \"LastTagTime\": \"2026-11-09T17:11:27.129573848Z\"\n        }\n    }\n]\n"
+              },
+              {
+                "argv": [
+                  "docker",
+                  "create",
+                  "loofah-server:test"
+                ],
+                "exit": 0,
+                "output": "657941b4188cf22f2d75a44079741358b56ac0f629bb96c8bb4329db677c1113\n"
+              },
+              {
+                "argv": [
+                  "docker",
+                  "cp",
+                  "657941b4188cf22f2d75a44079741358b56ac0f629bb96c8bb4329db677c1113:/usr/local/bin/loofah-server",
+                  "/opt/loofah-deployment-0bef08184d5c/bin/loofah-server"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "docker",
+                  "rm",
+                  "657941b4188cf22f2d75a44079741358b56ac0f629bb96c8bb4329db677c1113"
+                ],
+                "exit": 0,
+                "output": "657941b4188cf22f2d75a44079741358b56ac0f629bb96c8bb4329db677c1113\n"
+              },
+              {
+                "argv": [
+                  "docker",
+                  "image",
+                  "inspect",
+                  "caddy:2.10"
+                ],
+                "exit": 0,
+                "output": "[\n    {\n        \"Id\": \"sha256:aac61abc4024c323602ccb9ee38bd68b147601f518626b2a055e06944e01c510\",\n        \"RepoTags\": [\n            \"caddy:2.10\"\n        ],\n        \"RepoDigests\": [\n            \"caddy@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb\"\n        ],\n        \"Parent\": \"\",\n        \"Comment\": \"buildkit.dockerfile.v0\",\n        \"Created\": \"2026-02-11T18:28:06.454154539Z\",\n        \"DockerVersion\": \"\",\n        \"Author\": \"\",\n        \"Config\": {\n            \"Hostname\": \"\",\n            \"Domainname\": \"\",\n            \"User\": \"\",\n            \"AttachStdin\": false,\n            \"AttachStdout\": false,\n            \"AttachStderr\": false,\n            \"ExposedPorts\": {\n                \"2019/tcp\": {},\n                \"443/tcp\": {},\n                \"443/udp\": {},\n                \"80/tcp\": {}\n            },\n            \"Tty\": false,\n            \"OpenStdin\": false,\n            \"StdinOnce\": false,\n            \"Env\": [\n                \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\",\n                \"CADDY_VERSION=v2.10.2\",\n                \"XDG_CONFIG_HOME=/config\",\n                \"XDG_DATA_HOME=/data\"\n            ],\n            \"Cmd\": [\n                \"caddy\",\n                \"run\",\n                \"--config\",\n                \"/etc/caddy/Caddyfile\",\n                \"--adapter\",\n                \"caddyfile\"\n            ],\n            \"Image\": \"\",\n            \"Volumes\": null,\n            \"WorkingDir\": \"/srv\",\n            \"Entrypoint\": null,\n            \"OnBuild\": null,\n            \"Labels\": {\n                \"org.opencontainers.image.description\": \"a powerful, enterprise-ready, open source web server with automatic HTTPS written in Go\",\n                \"org.opencontainers.image.documentation\": \"https://caddyserver.com/docs\",\n                \"org.opencontainers.image.licenses\": \"Apache-2.0\",\n                \"org.opencontainers.image.source\": \"https://github.com/caddyserver/caddy-docker\",\n                \"org.opencontainers.image.title\": \"Caddy\",\n                \"org.opencontainers.image.url\": \"https://caddyserver.com\",\n                \"org.opencontainers.image.vendor\": \"Light Code Labs\",\n                \"org.opencontainers.image.version\": \"v2.10.2\"\n            }\n        },\n        \"Architecture\": \"amd64\",\n        \"Os\": \"linux\",\n        \"Size\": 58599562,\n        \"GraphDriver\": {\n            \"Data\": {\n                \"LowerDir\": \"/var/lib/docker/overlay2/7afb4ad05208a84d5c8193955f6f10b6b12e4e0b382260664f7180955cd3b759/diff:/var/lib/docker/overlay2/99149b08d327aa7967da0353fe17789f93a787c16c2c146071e83f1ba0b3bab7/diff:/var/lib/docker/overlay2/0c06a7013f8c4e5685f79d38f4024d16c6a6296fae25e7e212b6c1ade8324695/diff:/var/lib/docker/overlay2/77681130a5c21d313a1d36dd5295a4ce2a15bef848e36e5d0e8e00ece16d9daf/diff\",\n                \"MergedDir\": \"/var/lib/docker/overlay2/193fd7235234c284b0f2d25a9d79e31bc53546e7b836109f2706b59b62545180/merged\",\n                \"UpperDir\": \"/var/lib/docker/overlay2/193fd7235234c284b0f2d25a9d79e31bc53546e7b836109f2706b59b62545180/diff\",\n                \"WorkDir\": \"/var/lib/docker/overlay2/193fd7235234c284b0f2d25a9d79e31bc53546e7b836109f2706b59b62545180/work\"\n            },\n            \"Name\": \"overlay2\"\n        },\n        \"RootFS\": {\n            \"Type\": \"layers\",\n            \"Layers\": [\n                \"sha256:cce92674e98722970ab3fdce76a2566f54db535beeb24f0b4397f070ab5f6987\",\n                \"sha256:140bf5211f1c52d6180d8e58e95c0010edc7237fc6744510a3c95fcd0955b1e0\",\n                \"sha256:f7ceed6effbebf7ab30f32d1d14fdb8790c01a08e4585239620caa9204fc35bd\",\n                \"sha256:0c3ed47d1e80ab755e312649e1777a324e85401671d88025b804c3a6c8685d35\",\n                \"sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef\"\n            ]\n        },\n        \"Metadata\": {\n            \"LastTagTime\": \"0001-01-01T00:00:00Z\"\n        }\n    }\n]\n"
+              },
+              {
+                "argv": [
+                  "docker",
+                  "create",
+                  "caddy:2.10"
+                ],
+                "exit": 0,
+                "output": "f414ad6b92cf565c1cfaeeb3a141d1ff0eb1669c59fd23bbc14f1e385c7869a4\n"
+              },
+              {
+                "argv": [
+                  "docker",
+                  "cp",
+                  "f414ad6b92cf565c1cfaeeb3a141d1ff0eb1669c59fd23bbc14f1e385c7869a4:/usr/bin/caddy",
+                  "/opt/loofah-deployment-0bef08184d5c/bin/caddy"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "docker",
+                  "rm",
+                  "f414ad6b92cf565c1cfaeeb3a141d1ff0eb1669c59fd23bbc14f1e385c7869a4"
+                ],
+                "exit": 0,
+                "output": "f414ad6b92cf565c1cfaeeb3a141d1ff0eb1669c59fd23bbc14f1e385c7869a4\n"
+              },
+              {
+                "argv": [
+                  "/opt/loofah-deployment-0bef08184d5c/bin/loofah-server",
+                  "--version"
+                ],
+                "exit": 0,
+                "output": "loofah-server 0.45.7\n"
+              },
+              {
+                "argv": [
+                  "/opt/loofah-deployment-0bef08184d5c/bin/deployment-test",
+                  "--list"
+                ],
+                "exit": 0,
+                "output": "packaged_caddy_append_and_restart: test\n\n1 test, 0 benchmarks\n"
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "daemon-reload"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "start",
+                  "loofah-deployment-0bef08184d5c.service"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "show",
+                  "loofah-deployment-0bef08184d5c.service",
+                  "--property=MainPID,Result,ExecMainStatus,ExecMainCode,ActiveState,SubState,User,Group"
+                ],
+                "exit": 0,
+                "output": "MainPID=21992\nResult=success\nExecMainCode=0\nExecMainStatus=0\nUser=loofahqa0bef08184d5c\nGroup=loofahqa0bef08184d5c\nActiveState=active\nSubState=running\n"
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "stop",
+                  "loofah-deployment-0bef08184d5c.service"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "show",
+                  "loofah-deployment-0bef08184d5c.service",
+                  "--property=MainPID,Result,ExecMainStatus,ExecMainCode,ActiveState,SubState,User,Group"
+                ],
+                "exit": 0,
+                "output": "MainPID=0\nResult=success\nExecMainCode=0\nExecMainStatus=0\nUser=loofahqa0bef08184d5c\nGroup=loofahqa0bef08184d5c\nActiveState=inactive\nSubState=dead\n"
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "start",
+                  "loofah-deployment-0bef08184d5c.service"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "show",
+                  "loofah-deployment-0bef08184d5c.service",
+                  "--property=MainPID,Result,ExecMainStatus,ExecMainCode,ActiveState,SubState,User,Group"
+                ],
+                "exit": 0,
+                "output": "MainPID=22289\nResult=success\nExecMainCode=0\nExecMainStatus=0\nUser=loofahqa0bef08184d5c\nGroup=loofahqa0bef08184d5c\nActiveState=active\nSubState=running\n"
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "stop",
+                  "loofah-deployment-0bef08184d5c.service"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "show",
+                  "loofah-deployment-0bef08184d5c.service",
+                  "--property=MainPID,Result,ExecMainStatus,ExecMainCode,ActiveState,SubState,User,Group"
+                ],
+                "exit": 0,
+                "output": "MainPID=0\nResult=success\nExecMainCode=0\nExecMainStatus=0\nUser=loofahqa0bef08184d5c\nGroup=loofahqa0bef08184d5c\nActiveState=inactive\nSubState=dead\n"
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "stop",
+                  "loofah-deployment-0bef08184d5c.service"
+                ],
+                "exit": 0,
+                "output": ""
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "show",
+                  "loofah-deployment-0bef08184d5c.service",
+                  "--property=MainPID,Result,ExecMainStatus,ExecMainCode,ActiveState,SubState,User,Group"
+                ],
+                "exit": 0,
+                "output": "MainPID=0\nResult=success\nExecMainCode=0\nExecMainStatus=0\nUser=loofahqa0bef08184d5c\nGroup=loofahqa0bef08184d5c\nActiveState=inactive\nSubState=dead\n"
+              },
+              {
+                "argv": [
+                  "journalctl",
+                  "--unit",
+                  "loofah-deployment-0bef08184d5c.service",
+                  "--no-pager",
+                  "--output=short-iso"
+                ],
+                "exit": 0,
+                "output": "2026-11-09T17:13:04+00:00 runnervm7aw5e systemd[1]: Started loofah-deployment-0bef08184d5c.service - Loofah application backend.\n2026-11-09T17:13:04+00:00 runnervm7aw5e loofah-server[21992]: 2026-11-09T17:13:04.358272Z  INFO loofah_server: Loofah server listening behind HTTPS termination address=127.0.0.1:53439\n2026-11-09T17:13:04+00:00 runnervm7aw5e loofah-server[21992]: 2026-11-09T17:13:04.536143Z  INFO loofah_core::startup: archived legacy summary templates archived=0\n2026-11-09T17:13:04+00:00 runnervm7aw5e loofah-server[21992]: 2026-11-09T17:13:04.536495Z  INFO loofah_core::startup: startup session index rebuild complete sessions=0 notes=0 transcripts=0 error_count=0 errors=[] ghost_session_count=0 ghost_sessions=[]\n2026-11-09T17:13:04+00:00 runnervm7aw5e loofah-server[21992]: 2026-11-09T17:13:04.537530Z  INFO tantivy::indexer::segment_updater: save metas\n2026-11-09T17:13:04+00:00 runnervm7aw5e loofah-server[21992]: 2026-11-09T17:13:04.622458Z ERROR loofah_core::search: failed to initialize search cache error=Vault changed during reconciliation; retry\n2026-11-09T17:13:05+00:00 runnervm7aw5e loofah-server[21992]: 2026-11-09T17:13:05.984790Z  INFO audio_utils::file_pcm: pcm_decode_buffer_budget audio_buffer_bytes=16384\n2026-11-09T17:13:06+00:00 runnervm7aw5e loofah-server[21992]: 2026-11-09T17:13:06.620941Z  INFO loofah_core::vault_watch: vault watch: rebuilt session index from structural external change sessions=1 errors=0\n2026-11-09T17:13:07+00:00 runnervm7aw5e systemd[1]: Stopping loofah-deployment-0bef08184d5c.service - Loofah application backend...\n2026-11-09T17:13:07+00:00 runnervm7aw5e systemd[1]: loofah-deployment-0bef08184d5c.service: Deactivated successfully.\n2026-11-09T17:13:07+00:00 runnervm7aw5e systemd[1]: Stopped loofah-deployment-0bef08184d5c.service - Loofah application backend.\n2026-11-09T17:13:07+00:00 runnervm7aw5e systemd[1]: Started loofah-deployment-0bef08184d5c.service - Loofah application backend.\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.626712Z  INFO loofah_server: Loofah server listening behind HTTPS termination address=127.0.0.1:53439\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.628839Z  INFO loofah_core::startup: archived legacy summary templates archived=0\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.629195Z  INFO loofah_core::startup: startup session index rebuild complete sessions=1 notes=1 transcripts=0 error_count=0 errors=[] ghost_session_count=0 ghost_sessions=[]\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.629615Z  INFO tantivy::indexer::segment_updater: save metas\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.632710Z  INFO tantivy::indexer::index_writer: Preparing commit\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.642827Z  INFO tantivy::indexer::index_writer: Prepared commit 3\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.642854Z  INFO tantivy::indexer::prepared_commit: committing 3\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.642883Z  INFO tantivy::indexer::segment_updater: save metas\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.643528Z  INFO tantivy::indexer::segment_updater: Running garbage collection\n2026-11-09T17:13:07+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:07.643540Z  INFO tantivy::directory::managed_directory: Garbage collect\n2026-11-09T17:13:09+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:09.642795Z  INFO tantivy::indexer::index_writer: Preparing commit\n2026-11-09T17:13:09+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:09.652190Z  INFO tantivy::indexer::index_writer: Prepared commit 6\n2026-11-09T17:13:09+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:09.652215Z  INFO tantivy::indexer::prepared_commit: committing 6\n2026-11-09T17:13:09+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:09.652405Z  INFO tantivy::indexer::segment_updater: save metas\n2026-11-09T17:13:09+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:09.653146Z  INFO tantivy::indexer::segment_updater: Running garbage collection\n2026-11-09T17:13:09+00:00 runnervm7aw5e loofah-server[22289]: 2026-11-09T17:13:09.653157Z  INFO tantivy::directory::managed_directory: Garbage collect\n2026-11-09T17:13:09+00:00 runnervm7aw5e systemd[1]: Stopping loofah-deployment-0bef08184d5c.service - Loofah application backend...\n2026-11-09T17:13:09+00:00 runnervm7aw5e systemd[1]: loofah-deployment-0bef08184d5c.service: Deactivated successfully.\n2026-11-09T17:13:09+00:00 runnervm7aw5e systemd[1]: Stopped loofah-deployment-0bef08184d5c.service - Loofah application backend.\n"
+              },
+              {
+                "argv": [
+                  "systemctl",
+                  "daemon-reload"
+                ],
+                "exit": 0,
+                "output": ""
+              }
+            ],
+            "driver": {
+              "admission": {
+                "baseline": {
+                  "format": {
+                    "channels": [
+                      "microphone",
+                      "system_audio"
+                    ],
+                    "encoding": "pcm_f32_le",
+                    "sample_rate": 16000
+                  },
+                  "frames": 16001,
+                  "normalized_bytes": 128076,
+                  "normalized_sha256": "4993eb434776fd3fba624234e6a694a02308663789ff5431acc9cbba5a32601a",
+                  "recording_selection": "audio.wav",
+                  "recording_sha256": "4993eb434776fd3fba624234e6a694a02308663789ff5431acc9cbba5a32601a",
+                  "transcript_present": false,
+                  "transcript_revision": "844b72bf93a247164dbc273d15ef7cf15261f856004a5e78cd19865eb82af554"
+                },
+                "request": {
+                  "admission_id": "93673f67-03ae-4c46-bcc2-a7b174d25c16",
+                  "capture_id": "e2a5f39a-971c-4917-ac5f-a3e26fa37f03",
+                  "processing": null,
+                  "request_id": "c7f30238-7746-4fec-bc02-d9b01e4a259b",
+                  "scope": {
+                    "member_id": "45875f6f-ca4a-4633-b013-4832d8537977",
+                    "server": "https://127.0.0.1:39571/",
+                    "vault_id": "88e9eb8e-2b5c-42d7-ba85-f4ff289e5506"
+                  },
+                  "session_id": "faad0137-a7e3-4cfc-b105-1bb4e1f347b4"
+                }
+              },
+              "canonical_sha256": "a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63",
+              "channels": 2,
+              "frames": 16431,
+              "inference_configured": false,
+              "original_http_replay": true,
+              "original_sha256": "4993eb434776fd3fba624234e6a694a02308663789ff5431acc9cbba5a32601a",
+              "passed": true,
+              "pcm_sha256": "9c3d584366813e5cc75c388b132ddf1e6104c10c6f9d272269dc2f8d3d636c5d",
+              "physical_capture": false,
+              "production_sso": false,
+              "publication": {
+                "canonical_audio_bytes": 131516,
+                "canonical_audio_sha256": "a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63",
+                "session_id": "faad0137-a7e3-4cfc-b105-1bb4e1f347b4",
+                "source": {
+                  "capture_fingerprint": "9db30110bc62109d461ed2fab35571099dd4fe54d938412280512c844f0e5a85",
+                  "chain_digest": "672ce0c481b87e9627dd32e8c7d012fd329884f08d7b303d682fb4838adb0854",
+                  "chunk_count": 2,
+                  "frames": 430,
+                  "pcm_bytes": 3440,
+                  "source_sha256": "a4287f6575399642a5fdfcd3b6ceffea81560ad4bfac80fb881cd16806c73826"
+                }
+              },
+              "request": {
+                "admission_id": "93673f67-03ae-4c46-bcc2-a7b174d25c16",
+                "capture_id": "e2a5f39a-971c-4917-ac5f-a3e26fa37f03",
+                "processing": null,
+                "request_id": "c7f30238-7746-4fec-bc02-d9b01e4a259b",
+                "scope": {
+                  "member_id": "45875f6f-ca4a-4633-b013-4832d8537977",
+                  "server": "https://127.0.0.1:39571/",
+                  "vault_id": "88e9eb8e-2b5c-42d7-ba85-f4ff289e5506"
+                },
+                "session_id": "faad0137-a7e3-4cfc-b105-1bb4e1f347b4"
+              },
+              "sample_rate": 16000,
+              "scope": {
+                "member_id": "45875f6f-ca4a-4633-b013-4832d8537977",
+                "server": "https://127.0.0.1:39571/",
+                "vault_id": "88e9eb8e-2b5c-42d7-ba85-f4ff289e5506"
+              },
+              "sse_before_and_after_restart": true
+            },
+            "evidence_hashes": {
+              "caddy.log": "aac202e161915d6979d2b289f6eaa7b0ec840429925b03738fd6b7eb29dde614",
+              "driver.log": "bd20c80f93eccf2f85b1c4d08292e30b3ba71a7c067fa2c02b777e4e853f685f",
+              "server-journal.log": "08d2ed73db2a1915ab1829a3099184f8d051d89f5ae8b95d0d997fbd8a903ce7"
+            },
+            "final_sigterm": {
+              "ActiveState": "inactive",
+              "ExecMainCode": "0",
+              "ExecMainStatus": "0",
+              "Group": "loofahqa0bef08184d5c",
+              "MainPID": "0",
+              "Result": "success",
+              "SubState": "dead",
+              "User": "loofahqa0bef08184d5c"
+            },
+            "finished_at": 1794244390.171999,
+            "first_sigterm": {
+              "ActiveState": "inactive",
+              "ExecMainCode": "0",
+              "ExecMainStatus": "0",
+              "Group": "loofahqa0bef08184d5c",
+              "MainPID": "0",
+              "Result": "success",
+              "SubState": "dead",
+              "User": "loofahqa0bef08184d5c"
+            },
+            "images": {
+              "caddy": {
+                "configured_user": "",
+                "id": "sha256:aac61abc4024c323602ccb9ee38bd68b147601f518626b2a055e06944e01c510",
+                "reference": "caddy:2.10"
+              },
+              "loofah-server": {
+                "configured_user": "10001:10001",
+                "id": "sha256:62081f8e770ab15b6c1e4c93b6fd8c541884e6929b179e9da0837393b54075c5",
+                "reference": "loofah-server:test"
+              }
+            },
+            "inference": false,
+            "initial_listeners": {
+              "configured_endpoint": "127.0.0.1:53439",
+              "listeners": [
+                {
+                  "address": "127.0.0.1",
+                  "family": "tcp",
+                  "inode": 35527,
+                  "port": 53439,
+                  "raw": "   4: 0100007F:D0BF 00000000:0000 0A 00000000:00000000 00:00000000 00000000   999        0 35527 1 ffff8b681430af80 100 0 0 10 0                     "
+                }
+              ],
+              "pid": 21992,
+              "process_start_ticks": 60816,
+              "scope": "owned listening sockets at readiness; unrelated namespace rows omitted",
+              "socket_fds_after": {
+                "1": 36045,
+                "10": 35526,
+                "11": 35527,
+                "2": 36045,
+                "6": 35524,
+                "7": 35525,
+                "8": 35524
+              },
+              "socket_fds_before": {
+                "1": 36045,
+                "10": 35526,
+                "11": 35527,
+                "2": 36045,
+                "6": 35524,
+                "7": 35525,
+                "8": 35524
+              },
+              "table_sha256": {
+                "tcp": "373086d622c857cfd836478034081a1e286f8fa2ee558016a4905eeeb09e2071",
+                "tcp6": "1b3250873edcda1186f0652c379f89b5d3ad7ab53c0b1c6a724a57c20226b2ee"
+              }
+            },
+            "initial_service": {
+              "ActiveState": "active",
+              "ExecMainCode": "0",
+              "ExecMainStatus": "0",
+              "Group": "loofahqa0bef08184d5c",
+              "MainPID": "21992",
+              "Result": "success",
+              "SubState": "running",
+              "User": "loofahqa0bef08184d5c"
+            },
+            "overlay": {
+              "fixture_sha256": "b84c808fa7a682713eae408e20963a0a0fa250513e9124c4c24c56bb89348524",
+              "only_added_feature": "capture_append",
+              "original_sha256": "0b5892d90f15754d4f30ab91ddd43ff5c96caef3d1682f85aba644ba25e6078b"
+            },
+            "passed": true,
+            "persistent_roots": [
+              {
+                "mode": "0o700",
+                "path": "/var/lib/loofah-deployment-0bef08184d5c",
+                "uid": 999
+              },
+              {
+                "mode": "0o700",
+                "path": "/var/cache/loofah-deployment-0bef08184d5c",
+                "uid": 999
+              }
+            ],
+            "physical_capture": false,
+            "production_sso": false,
+            "restarted_listeners": {
+              "configured_endpoint": "127.0.0.1:53439",
+              "listeners": [
+                {
+                  "address": "127.0.0.1",
+                  "family": "tcp",
+                  "inode": 36987,
+                  "port": 53439,
+                  "raw": "   5: 0100007F:D0BF 00000000:0000 0A 00000000:00000000 00:00000000 00000000   999        0 36987 1 ffff8b6814308980 100 0 0 10 0                     "
+                }
+              ],
+              "pid": 22289,
+              "process_start_ticks": 61144,
+              "scope": "owned listening sockets at readiness; unrelated namespace rows omitted",
+              "socket_fds_after": {
+                "1": 35640,
+                "10": 35647,
+                "11": 36987,
+                "17": 37003,
+                "2": 35640,
+                "6": 35645,
+                "7": 35646,
+                "8": 35645
+              },
+              "socket_fds_before": {
+                "1": 35640,
+                "10": 35647,
+                "11": 36987,
+                "17": 37003,
+                "2": 35640,
+                "6": 35645,
+                "7": 35646,
+                "8": 35645
+              },
+              "table_sha256": {
+                "tcp": "01d17bb021f142528a5982549c18f81d8ad7735fb8892015de2edf605778344e",
+                "tcp6": "084da32f42c8838805443de19568fa7c50d9dc6deae70e78f9b8b3d0d105e816"
+              }
+            },
+            "restarted_service": {
+              "ActiveState": "active",
+              "ExecMainCode": "0",
+              "ExecMainStatus": "0",
+              "Group": "loofahqa0bef08184d5c",
+              "MainPID": "22289",
+              "Result": "success",
+              "SubState": "running",
+              "User": "loofahqa0bef08184d5c"
+            },
+            "root": "/opt/loofah-deployment-0bef08184d5c",
+            "runner_uid": 1001,
+            "runtime": "default-image executable under documented systemd on Ubuntu",
+            "schema": 1,
+            "service_uid": 999,
+            "source_commit": "0d1e530214d0dd61d303de37643e1ba13f62105d",
+            "source_dirty": [],
+            "started_at": 1794244375.4908416,
+            "systemd_substitutions": [
+              [
+                "User=loofah",
+                "User=loofahqa0bef08184d5c"
+              ],
+              [
+                "Group=loofah",
+                "Group=loofahqa0bef08184d5c"
+              ],
+              [
+                "EnvironmentFile=-/etc/loofah/server.env",
+                "EnvironmentFile=-/opt/loofah-deployment-0bef08184d5c/server.env"
+              ],
+              [
+                "ExecStart=/usr/local/bin/loofah-server --config /etc/loofah/server.json",
+                "ExecStart=/opt/loofah-deployment-0bef08184d5c/bin/loofah-server --config /opt/loofah-deployment-0bef08184d5c/server.json"
+              ],
+              [
+                "StateDirectory=loofah",
+                "StateDirectory=loofah-deployment-0bef08184d5c"
+              ],
+              [
+                "CacheDirectory=loofah",
+                "CacheDirectory=loofah-deployment-0bef08184d5c"
+              ],
+              [
+                "ReadWritePaths=/var/lib/loofah /var/cache/loofah",
+                "ReadWritePaths=/var/lib/loofah-deployment-0bef08184d5c /var/cache/loofah-deployment-0bef08184d5c"
+              ]
+            ],
+            "unit": "loofah-deployment-0bef08184d5c.service"
+          },
+          "artifact_manifest": [
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/capabilities-fixture.json",
+              "bytes": 874,
+              "sha256": "b84c808fa7a682713eae408e20963a0a0fa250513e9124c4c24c56bb89348524"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/tls/localhost.key",
+              "bytes": 1704,
+              "sha256": "412e9ab9b486dccfd5942881c616276e9e6aec34fcc2ba6b8ac69a65f881ea9e"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/tls/localhost.pem",
+              "bytes": 1229,
+              "sha256": "f9423cfac953eef1c862805beca129bfae6c87e9eddd2ab2f4dca9ef54c30216"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/tls/localhost-ca.pem",
+              "bytes": 1172,
+              "sha256": "9865484200b91e924314eb62c35f1bcd7d6bc9186752a33a63b79b8f312d1473"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/bin/deployment-test",
+              "bytes": 84520152,
+              "sha256": "4efff39822cc3912bd48dabbf205e0710f178c1c50d533a94f3ea3c690489cf6"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/bin/loofah-server",
+              "bytes": 74594928,
+              "sha256": "30171c0514990ec9dcd53bb5e5d26979000c9d73ed2095dbc6e40bdad0e15968"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/bin/caddy",
+              "bytes": 44376248,
+              "sha256": "4ef1f68c70219536b2711fd16547a79841a2dec2d6b4e56b1e3e5e9da76028e6"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/Caddyfile",
+              "bytes": 360,
+              "sha256": "18b42c54390ea7ac1a28c1b48bfd779567fc7d2e2f2c561cd8e7a752520b8abe"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/capabilities-production.json",
+              "bytes": 857,
+              "sha256": "0b5892d90f15754d4f30ab91ddd43ff5c96caef3d1682f85aba644ba25e6078b"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/caddy-data/caddy/last_clean.json",
+              "bytes": 107,
+              "sha256": "c0d335857f69081a67dac3f73b6f6ef9fe4cb5000455ebde9e7308bdc72ee7a0"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/caddy-data/caddy/autosave.json",
+              "bytes": 894,
+              "sha256": "a56a14eeb09a0fa5147e6ef6659ca9ab0c336906b38532956d3bc7dff5748eea"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/caddy-data/caddy/instance.uuid",
+              "bytes": 36,
+              "sha256": "fd7c34664c21d859e7f0d00aa25c880ef7a985221948643519b5c32d12a6c31c"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/server-journal.log",
+              "bytes": 4852,
+              "sha256": "08d2ed73db2a1915ab1829a3099184f8d051d89f5ae8b95d0d997fbd8a903ce7"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/cache-inventory-final.json",
+              "bytes": 6085,
+              "sha256": "04d222696c7a391081b05159eed81fecbab8e490aeb03e2c22d30f2356f02f6a"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/inventory-before-restart.json",
+              "bytes": 10490,
+              "sha256": "4ba564bbab5450092936d850c4020537ffa3d97421af951bb4e57ac19f5c59c2"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/driver.log",
+              "bytes": 158,
+              "sha256": "bd20c80f93eccf2f85b1c4d08292e30b3ba71a7c067fa2c02b777e4e853f685f"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/listeners-restarted.json",
+              "bytes": 977,
+              "sha256": "ebb4dddfb6d736a11f8bb00362f03cdb5531bdaf68459f9948ea53ba25b47e83"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/server.json",
+              "bytes": 394,
+              "sha256": "82de856cc4de745cfdbc8c94b155047f818dc0af8343e8a113dc159fc6f750ba"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/server.service",
+              "bytes": 774,
+              "sha256": "a16fe8dad86f8d3c10b9c2fc4454b9e0419501de65226236c0b707297b093cd5"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/listeners-initial.json",
+              "bytes": 943,
+              "sha256": "ba9400ca14a7b36dc3f96519e5429d84c20635a5c1d74a4c01e1bab491cf6e69"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/acceptance.json",
+              "bytes": 28039,
+              "sha256": "7336f2c014bfa02b6c04332fccc7acc53ecccb49b90a2f60c283a65f5b542081"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/inventory-final.json",
+              "bytes": 11442,
+              "sha256": "2ba677b40f32871f72872fb61d8c3b5ecd840243f9ce571193b14b5052a1177c"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/driver-result.json",
+              "bytes": 2841,
+              "sha256": "1b7cf1d38f39c0e078168bfc7fc3c95c64b7f38396084105cc23beb7944250ed"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/append/0cb3ac5399cafe0aed4d40fb459ea378023b553dd62ed56578175d559c860bf6/93673f67-03ae-4c46-bcc2-a7b174d25c16/request.json",
+              "bytes": 376,
+              "sha256": "b6af82fbe09a0d4fe44eecf79bdc6bb94a7ff552eb314c7a7733b3c0643a9c3a"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/append/0cb3ac5399cafe0aed4d40fb459ea378023b553dd62ed56578175d559c860bf6/93673f67-03ae-4c46-bcc2-a7b174d25c16/admission.json",
+              "bytes": 861,
+              "sha256": "31f520a1f54f48f627f00f050e5b2899563fc73dedecc9e16b2d4187a6f0e710"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/reopened-append/0cb3ac5399cafe0aed4d40fb459ea378023b553dd62ed56578175d559c860bf6/93673f67-03ae-4c46-bcc2-a7b174d25c16/request.json",
+              "bytes": 376,
+              "sha256": "b6af82fbe09a0d4fe44eecf79bdc6bb94a7ff552eb314c7a7733b3c0643a9c3a"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/reopened-append/0cb3ac5399cafe0aed4d40fb459ea378023b553dd62ed56578175d559c860bf6/93673f67-03ae-4c46-bcc2-a7b174d25c16/admission.json",
+              "bytes": 861,
+              "sha256": "31f520a1f54f48f627f00f050e5b2899563fc73dedecc9e16b2d4187a6f0e710"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/restart-continue.json",
+              "bytes": 36,
+              "sha256": "f6aebfa16df43698348c5a8b25d2f315ceee7d99616b07315d871b0309e8914a"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/issuer-ready.json",
+              "bytes": 40,
+              "sha256": "274a66a1d8a46a61db9f2fdd1a73168e2a08120af011e2c823d787661b003711"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/service-stopped.json",
+              "bytes": 16,
+              "sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/service-restarted.json",
+              "bytes": 20,
+              "sha256": "25d16e9f4b9c1254c3171646c95738076bbd1a89e09c24f5be83a528302c0b5a"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/restart-request.json",
+              "bytes": 58,
+              "sha256": "f0cb5bc7f003a93cbcc7d5e281225c2340fa81d60854a0ffa95e336b0d91d50c"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/control/service-ready.json",
+              "bytes": 42,
+              "sha256": "0da05ecec085a28222f9d217226b7a35684a15633a2e6ab350a2d5276ae12dc7"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/server.env",
+              "bytes": 14,
+              "sha256": "cbec27239bbf2e6882a095c0cc694daf10a4f139b0b6559e1eb1a4230da3a4f7"
+            },
+            {
+              "path": "opt/loofah-deployment-0bef08184d5c/caddy.log",
+              "bytes": 4089,
+              "sha256": "aac202e161915d6979d2b289f6eaa7b0ec840429925b03738fd6b7eb29dde614"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-publications/recording-publication-c828bfe8717b5caad8850f3b568ef90d37c2e0621b0071d9f3f01369605300a2.json",
+              "bytes": 905,
+              "sha256": "cf84ebacdd1d7f346456e9eaff6da48046ff37ad250caf28119411fb327c0593"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/1ad412ad2055ed49b66f48f88d5577c9a2740b09b5d33164f59c0d900b64fedc.json",
+              "bytes": 614,
+              "sha256": "a00e3f2181cc3a2e59b5ba99e732e41888c19c19fb90678eb7fdb8334c68675e"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/faad0137a7e37cfcf1051bb4e1f347b40e9e0ac63f154fb74b6fe5a2009c521c.json",
+              "bytes": 617,
+              "sha256": "769317480f5f84f586e80832eb8ebd5bf7db06c29cd2cfcc3718200532d86cb1"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/capture-processing/.lock",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-appends/recording-append/4c92591fc3b8e2b0a763335e5607c0d46a55973579e38ab82013508115e09df4/combined.wav",
+              "bytes": 131516,
+              "sha256": "a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-appends/recording-append/4c92591fc3b8e2b0a763335e5607c0d46a55973579e38ab82013508115e09df4/core-suffix-7257904b-e95e-460a-9e2d-5b42919476a0.wav",
+              "bytes": 3508,
+              "sha256": "b5902d7e35217e63934964acd3baa9477e8ac8a794ff1f302362ae489dcfa45a"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-appends/recording-append/4c92591fc3b8e2b0a763335e5607c0d46a55973579e38ab82013508115e09df4/intent.json",
+              "bytes": 1026,
+              "sha256": "923733d1962bfa777ba83b19a93b848e80451a7f0f910b3cad1e6aff38c8a8ec"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-appends/recording-append/4c92591fc3b8e2b0a763335e5607c0d46a55973579e38ab82013508115e09df4/core-normalized.wav",
+              "bytes": 128076,
+              "sha256": "4993eb434776fd3fba624234e6a694a02308663789ff5431acc9cbba5a32601a"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-appends/recording-append/4c92591fc3b8e2b0a763335e5607c0d46a55973579e38ab82013508115e09df4/core-admission.json",
+              "bytes": 861,
+              "sha256": "31f520a1f54f48f627f00f050e5b2899563fc73dedecc9e16b2d4187a6f0e710"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-appends/recording-append/4c92591fc3b8e2b0a763335e5607c0d46a55973579e38ab82013508115e09df4/result.json",
+              "bytes": 976,
+              "sha256": "227a229a8e6966b60f3cf4556046907308e9e3fa1c7533240c1a1df053554008"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-appends/recording-append/4c92591fc3b8e2b0a763335e5607c0d46a55973579e38ab82013508115e09df4/original.audio",
+              "bytes": 128076,
+              "sha256": "4993eb434776fd3fba624234e6a694a02308663789ff5431acc9cbba5a32601a"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-appends/recording-append/4c92591fc3b8e2b0a763335e5607c0d46a55973579e38ab82013508115e09df4/source.json",
+              "bytes": 684,
+              "sha256": "6147b34681411053779ac1f14313048bc375dc86ca19c244422a3e4087e627f4"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/recording-appends/recording-append/4c92591fc3b8e2b0a763335e5607c0d46a55973579e38ab82013508115e09df4/core-combined-7257904b-e95e-460a-9e2d-5b42919476a0.wav",
+              "bytes": 131516,
+              "sha256": "a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/captures/.lock",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/captures/0cb3ac5399cafe0aed4d40fb459ea378023b553dd62ed56578175d559c860bf6/e3aec3de-b046-4fec-b408-089631d857ae/manifest.json",
+              "bytes": 1923,
+              "sha256": "546cb9a55fdd99f73aa261798b414446ac4ae4cacd3b90bb50ee4b219735eba0"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/captures/0cb3ac5399cafe0aed4d40fb459ea378023b553dd62ed56578175d559c860bf6/e3aec3de-b046-4fec-b408-089631d857ae/chunks/00000000000000000000.chunk",
+              "bytes": 128455,
+              "sha256": "b6a8deb035cb7209da6bcf13707e5ed3037a7c3061db8bf0524dccedb4abc050"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/captures/0cb3ac5399cafe0aed4d40fb459ea378023b553dd62ed56578175d559c860bf6/e2a5f39a-971c-4917-ac5f-a3e26fa37f03/manifest.json",
+              "bytes": 2750,
+              "sha256": "90f5769349dd820e9fbff7d582b20c985cbd8611b67a46f6181c3fed68861927"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/captures/0cb3ac5399cafe0aed4d40fb459ea378023b553dd62ed56578175d559c860bf6/e2a5f39a-971c-4917-ac5f-a3e26fa37f03/chunks/00000000000000000001.chunk",
+              "bytes": 1222,
+              "sha256": "128dbf736348ece46a3816042d86ffe0cfc8d7ec9254e8a746069055b1ff16ac"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/runtime/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/creates/captures/0cb3ac5399cafe0aed4d40fb459ea378023b553dd62ed56578175d559c860bf6/e2a5f39a-971c-4917-ac5f-a3e26fa37f03/chunks/00000000000000000000.chunk",
+              "bytes": 3107,
+              "sha256": "216beeaa7cb9e1233edfeba183ae192ecc97c957bcc5a2481ec2606fa2836f69"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/catalog.json",
+              "bytes": 715,
+              "sha256": "e92d8839330061e184cc9d89cbee53b01de4a69c8d1863665319cc51f6042b92"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/.loofah-server.lock",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/vaults/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/AGENTS.md",
+              "bytes": 13112,
+              "sha256": "43d289a8cfc672897bc1b3d5bd03cc5d973c4d329d124de865c2907f2599c2de"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/vaults/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/sessions/1ad412ad-2055-4d49-b66f-48f88d5577c9/notes.md",
+              "bytes": 46,
+              "sha256": "ec3e196a61209af9dfba68bf98cc9b90ffab4e361ce08f3e437fc09dc204b6ba"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/vaults/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/sessions/1ad412ad-2055-4d49-b66f-48f88d5577c9/_meta.json",
+              "bytes": 202,
+              "sha256": "e793ade2477feeaf36087a02c1a72f27d79ba4c3ee644b664fcd4cc3c8b62aa8"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/vaults/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/sessions/faad0137-a7e3-4cfc-b105-1bb4e1f347b4/notes.md",
+              "bytes": 46,
+              "sha256": "ec3e196a61209af9dfba68bf98cc9b90ffab4e361ce08f3e437fc09dc204b6ba"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/vaults/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/sessions/faad0137-a7e3-4cfc-b105-1bb4e1f347b4/audio.wav",
+              "bytes": 131516,
+              "sha256": "a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/vaults/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/sessions/faad0137-a7e3-4cfc-b105-1bb4e1f347b4/.recording-append-715d0329dbbebe0b2151f1f31617c642d63e304b5d7018d8bd0085c244553104.original",
+              "bytes": 128076,
+              "sha256": "4993eb434776fd3fba624234e6a694a02308663789ff5431acc9cbba5a32601a"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/vaults/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/sessions/faad0137-a7e3-4cfc-b105-1bb4e1f347b4/_meta.json",
+              "bytes": 297,
+              "sha256": "400c149ebb4ea6dac89d25b35a0aa8dfe380cfb835cecd12fedc046c9b8acf36"
+            },
+            {
+              "path": "var/lib/loofah-deployment-0bef08184d5c/vaults/88e9eb8e-2b5c-42d7-ba85-f4ff289e5506/.loofah-vault.lock",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/writer.lock",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/cache.lock",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/72c17c8626cc47ca97274d4ee52ef465.term",
+              "bytes": 811,
+              "sha256": "973a4e769648a00ead701155e040b47eb0487662db673320750c2a8753ef6fa1"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/.tantivy-writer.lock",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/72c17c8626cc47ca97274d4ee52ef465.fieldnorm",
+              "bytes": 134,
+              "sha256": "4293a973a9e0d75529933d39badfb369ae3373b7d62712c7e4fc5311b06cad99"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/8c03068ed8814c1786c5c04e97414e6c.term",
+              "bytes": 815,
+              "sha256": "661ff96cf22f81005d6ddf8be1c7993efad98dd9c954b73fe677b3bbe0015d0b"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/8c03068ed8814c1786c5c04e97414e6c.fast",
+              "bytes": 341,
+              "sha256": "87378427a0d7e0224cc8a4f3116980c114e5b97155ca7b06f869aaa3bf34cca0"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/72c17c8626cc47ca97274d4ee52ef465.store",
+              "bytes": 300,
+              "sha256": "4380952699ff9595b3a3306f89b82005800cede6a47872a25add95ed6ff794e5"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/72c17c8626cc47ca97274d4ee52ef465.pos",
+              "bytes": 147,
+              "sha256": "dc6693c998dc15b9507f9c92eb03a4364ca578151fde21223fce2c7603dae0c1"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/8c03068ed8814c1786c5c04e97414e6c.idx",
+              "bytes": 192,
+              "sha256": "5b9c74cdc62ecd151974b263d6e05b573467181e96940f5bd493a54e3fe360d1"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/.tantivy-meta.lock",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/.managed.json",
+              "bytes": 502,
+              "sha256": "350e3f12ae5e13773806ff2a61a9c01185e1d5969c62cce03a94ce01f61b78f1"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/8c03068ed8814c1786c5c04e97414e6c.fieldnorm",
+              "bytes": 134,
+              "sha256": "fa352084b12736291a340f26d21a007e63c5174bd159202d661472777819fbb1"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/72c17c8626cc47ca97274d4ee52ef465.idx",
+              "bytes": 189,
+              "sha256": "bd1b3890b964d1a413c3f6973103079aa2cc62df12abad12092a9c92d1250df9"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/meta.json",
+              "bytes": 3765,
+              "sha256": "28d305f0ea98517362bea590f78a67c67c1eebcbbd4baddc67573cfdc8bb5653"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/8c03068ed8814c1786c5c04e97414e6c.pos",
+              "bytes": 149,
+              "sha256": "1ce49ad6de41cbc512fdac07343d07b40fc1670ef076a21b549611494ff42e3d"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/8c03068ed8814c1786c5c04e97414e6c.store",
+              "bytes": 299,
+              "sha256": "8fc37ac0f36a08919f65442509596ed899805fa0eade9996a0675f47d77ce7cc"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/generations/generation-izw4qT/72c17c8626cc47ca97274d4ee52ef465.fast",
+              "bytes": 340,
+              "sha256": "241bc6c60147b6c59d04f7e2b8e35e9471b6f50757330e675af5c56069721c64"
+            },
+            {
+              "path": "var/cache/loofah-deployment-0bef08184d5c/search_index/b8044b00e5f2db2344c25fb8fbf7eea317f2bf413e937a1183ba90861055a725/CURRENT",
+              "bytes": 17,
+              "sha256": "53cc7029e8f39f6eb3efc7d9cd2b53ffd8891b37f004ffdc06f7ef92d3ffb3b4"
+            }
+          ]
+        }
+      },
+      "arm": {
+        "sha256": "62989f97f4abc654bce69b89fdf300025cd77af583471b3b01dab2dd268c81c7",
+        "report": {
+          "head": "0cbdcbdc9e16091f64a78d99529e0b713ce7582b",
+          "run": 42660864850,
+          "job": 129311750811,
+          "conclusion": "success",
+          "job_snapshot": "device-monitor-arm-latest.json",
+          "log": "device-monitor-129311750811.log",
+          "sha256": "d4bbda62e57724e2cf4098246e87bab3fe61faf0b39b223983757a5440b3c044",
+          "bytes": 688970,
+          "native_test_scope": {
+            "passed": 2346,
+            "failed": 0,
+            "ignored": 47,
+            "result_cohorts": 68,
+            "raw_results": [
+              [
+                35,
+                0,
+                3
+              ],
+              [
+                51,
+                0,
+                4
+              ],
+              [
+                172,
+                0,
+                2
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                6,
+                0,
+                1
+              ],
+              [
+                8,
+                0,
+                0
+              ],
+              [
+                95,
+                0,
+                0
+              ],
+              [
+                94,
+                0,
+                0
+              ],
+              [
+                60,
+                0,
+                1
+              ],
+              [
+                0,
+                0,
+                3
+              ],
+              [
+                2,
+                0,
+                0
+              ],
+              [
+                5,
+                0,
+                0
+              ],
+              [
+                95,
+                0,
+                0
+              ],
+              [
+                1,
+                0,
+                0
+              ],
+              [
+                1,
+                0,
+                0
+              ],
+              [
+                2,
+                0,
+                0
+              ],
+              [
+                11,
+                0,
+                0
+              ],
+              [
+                4,
+                0,
+                0
+              ],
+              [
+                6,
+                0,
+                0
+              ],
+              [
+                4,
+                0,
+                0
+              ],
+              [
+                204,
+                0,
+                3
+              ],
+              [
+                578,
+                0,
+                2
+              ],
+              [
+                16,
+                0,
+                1
+              ],
+              [
+                38,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                0,
+                0
+              ],
+              [
+                70,
+                0,
+                0
+              ],
+              [
+                6,
+                0,
+                0
+              ],
+              [
+                19,
+                0,
+                0
+              ],
+              [
+                6,
+                0,
+                1
+              ],
+              [
+                0,
+                0,
+                1
+              ],
+              [
+                0,
+                0,
+                1
+              ],
+              [
+                31,
+                0,
+                0
+              ],
+              [
+                71,
+                0,
+                9
+              ],
+              [
+                9,
+                0,
+                2
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                29,
+                0,
+                0
+              ],
+              [
+                4,
+                0,
+                0
+              ],
+              [
+                607,
+                0,
+                5
+              ],
+              [
+                5,
+                0,
+                2
+              ],
+              [
+                0,
+                0,
+                4
+              ],
+              [
+                0,
+                0,
+                2
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "separate_git_helper_cases": {
+            "cohorts": 2,
+            "passed_each": 4,
+            "failed": 0,
+            "ignored": 0
+          },
+          "installed_smoke": "Installer, app startup, installed CLI/MCP, and uninstall smoke tests passed.",
+          "artifact": {
+            "id": 13700521640,
+            "node_id": "MDg6QXJ0aWZhY3QxMzcwMDUyMTY0MA==",
+            "name": "loofah-windows-aarch64-pc-windows-msvc-0d1e530214d0dd61d303de37643e1ba13f62105d",
+            "size_in_bytes": 338499385,
+            "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13700521640",
+            "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13700521640/zip",
+            "expired": false,
+            "digest": "sha256:cd2fd744ed9bf5ddd5bc66e8f2ea5b003dabac5c5471f01e31b80ffff9c42e56",
+            "created_at": "2026-11-09T18:45:30Z",
+            "updated_at": "2026-11-09T18:45:30Z",
+            "expires_at": "2026-11-23T18:45:17Z",
+            "workflow_run": {
+              "id": 42660864850,
+              "repository_id": 1309166815,
+              "head_repository_id": 1309166815,
+              "head_branch": "refactor/frontend-backend-separation",
+              "head_sha": "0cbdcbdc9e16091f64a78d99529e0b713ce7582b"
+            }
+          },
+          "checkout_merge_observed": true,
+          "scope_limits": [
+            "Normal Native ARM job: separate real speech-model step18 was skipped; no new speech-model qualification.",
+            "Passing original Audio ownership fixture on ARM does not negate x64 race or validate unpublished fixture correction.",
+            "Published source0cbd, not unpublished owner-progress fix.",
+            "Earlier progress shorthand incorrectly called step13 tests; exact snapshot confirms it was cargo check; correction preserved separately.",
+            "No local desktop app execution by monitor."
+          ]
+        }
+      },
+      "arm_all67_required_names_independently_found_passing": true,
+      "scope": "All earlier runs terminal before corrected source publication, without cancellation/retry. Four workflows succeeded; CLI failed missing terminalready and Windowsglobal failed x64 Drop-counter witness; actual ARM native/install/runtime/uninstall succeeded. Known failures and corrections are separate preserved records. These historical passes do not qualify later owner-progress/test-fixture source or paused desktop/physical/performance gates."
     }
   },
   "local_work_focused": [
