@@ -625,10 +625,15 @@ impl VaultContext {
             .get(request)
             .ok_or_else(|| review("Local summary parent missing"))?;
         check_child_origin(&entry.record, origin)?;
+        if entry.record.cancel_requested {
+            return Err(error(
+                ErrorCode::Cancelled,
+                "Original Local capture processing was cancelled",
+            ));
+        }
         if !entry.running
             || entry.admission.is_none()
             || entry.record.status.state != LocalCaptureState::Summarizing
-            || entry.record.cancel_requested
             || entry.cancel.is_cancelled()
             || service.stop.is_cancelled()
         {
