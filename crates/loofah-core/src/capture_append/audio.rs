@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{Read, Seek},
+    io::{BufWriter, Read, Seek, Write},
     path::Path,
 };
 
@@ -51,32 +51,32 @@ pub fn normalize_baseline(
         1
     };
     let mut output_file = File::create_new(normalized_path).map_err(io)?;
-    let mut output =
-        hound::WavWriter::new(&mut output_file, pcm_spec(output_channels)).map_err(io)?;
-    let mut input = descriptor.reader().map_err(io)?;
-    for start in (0..descriptor.frames).step_by(PCM_BLOCK_FRAMES) {
-        let end = (start + PCM_BLOCK_FRAMES).min(descriptor.frames);
-        let first = input.channel(0, start..end).map_err(io)?;
-        let second = if channels == 2 {
-            Some(input.channel(1, start..end).map_err(io)?)
-        } else {
-            None
-        };
-        for (index, first) in first.into_iter().enumerate() {
-            if output_channels == 2 {
-                output.write_sample(first).map_err(io)?;
-                output
-                    .write_sample(second.as_ref().unwrap()[index])
-                    .map_err(io)?;
+    write_pcm(&mut output_file, output_channels, |output| {
+        let mut input = descriptor.reader().map_err(io)?;
+        for start in (0..descriptor.frames).step_by(PCM_BLOCK_FRAMES) {
+            let end = (start + PCM_BLOCK_FRAMES).min(descriptor.frames);
+            let first = input.channel(0, start..end).map_err(io)?;
+            let second = if channels == 2 {
+                Some(input.channel(1, start..end).map_err(io)?)
             } else {
-                let sample = second
-                    .as_ref()
-                    .map_or(first, |second| first / 2.0 + second[index] / 2.0);
-                output.write_sample(sample).map_err(io)?;
+                None
+            };
+            for (index, first) in first.into_iter().enumerate() {
+                if output_channels == 2 {
+                    output.write_sample(first).map_err(io)?;
+                    output
+                        .write_sample(second.as_ref().unwrap()[index])
+                        .map_err(io)?;
+                } else {
+                    let sample = second
+                        .as_ref()
+                        .map_or(first, |second| first / 2.0 + second[index] / 2.0);
+                    output.write_sample(sample).map_err(io)?;
+                }
             }
         }
-    }
-    output.finalize().map_err(io)?;
+        Ok(())
+    })?;
     // Windows requires a writable handle for FlushFileBuffers. Retained source
     // verification stays read-only; only this original output owner flushes it.
     output_file.sync_all().map_err(io)?;
@@ -93,6 +93,20 @@ pub fn normalize_baseline(
             },
         },
     )
+}
+
+const PCM_OUTPUT_BUFFER_BYTES: usize = 64 * 1024;
+
+fn write_pcm<W: Write + Seek>(
+    output: &mut W,
+    channels: usize,
+    samples: impl FnOnce(&mut hound::WavWriter<&mut BufWriter<&mut W>>) -> Result<(), ApplicationError>,
+) -> Result<(), ApplicationError> {
+    let mut buffered = BufWriter::with_capacity(PCM_OUTPUT_BUFFER_BYTES, output);
+    let mut wave = hound::WavWriter::new(&mut buffered, pcm_spec(channels)).map_err(io)?;
+    samples(&mut wave)?;
+    wave.finalize().map_err(io)?;
+    buffered.flush().map_err(io)
 }
 
 /// Concatenate only the admitted normalized prefix and verified suffix. The
@@ -213,6 +227,107 @@ pub(crate) fn verify_file_sha256(path: &Path, expected: &str) -> Result<(), Appl
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct CountedOutput {
+        bytes: std::io::Cursor<Vec<u8>>,
+        writes: usize,
+        maximum_write: usize,
+        flushes: usize,
+        fail_write: bool,
+        fail_flush: bool,
+    }
+    impl Write for CountedOutput {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.writes += 1;
+            self.maximum_write = self.maximum_write.max(bytes.len());
+            if self.fail_write {
+                return Err(std::io::Error::other("injected output write failure"));
+            }
+            self.bytes.write(bytes)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.flushes += 1;
+            if self.fail_flush {
+                return Err(std::io::Error::other("injected output flush failure"));
+            }
+            Ok(())
+        }
+    }
+    impl Seek for CountedOutput {
+        fn seek(&mut self, position: std::io::SeekFrom) -> std::io::Result<u64> {
+            self.bytes.seek(position)
+        }
+    }
+
+    #[test]
+    fn buffered_pcm_output_preserves_exact_wav_bytes_with_bounded_write_calls() {
+        let values: Vec<_> = (0..40_002)
+            .map(|index| match index % 6 {
+                0 => -0.0_f32,
+                1 => f32::from_bits(1),
+                2 => f32::MIN_POSITIVE,
+                3 => f32::MAX,
+                4 => -0.25,
+                _ => 0.125,
+            })
+            .collect();
+        let mut original = std::io::Cursor::new(Vec::new());
+        let mut legacy = hound::WavWriter::new(&mut original, pcm_spec(2)).unwrap();
+        for &sample in &values {
+            legacy.write_sample(sample).unwrap();
+        }
+        legacy.finalize().unwrap();
+        let mut output = CountedOutput::default();
+        write_pcm(&mut output, 2, |writer| {
+            for &sample in &values {
+                writer.write_sample(sample).map_err(io)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(output.bytes.get_ref(), original.get_ref());
+        assert!(
+            output.writes <= (values.len() * 4).div_ceil(PCM_OUTPUT_BUFFER_BYTES) + 4,
+            "{} writes",
+            output.writes
+        );
+        assert!(output.maximum_write <= PCM_OUTPUT_BUFFER_BYTES);
+        assert!(output.flushes >= 1);
+        let samples: Vec<_> =
+            hound::WavReader::new(std::io::Cursor::new(output.bytes.into_inner()))
+                .unwrap()
+                .samples::<f32>()
+                .map(|sample| sample.unwrap().to_bits())
+                .collect();
+        assert_eq!(
+            samples,
+            values.into_iter().map(f32::to_bits).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn buffered_pcm_output_propagates_underlying_write_and_final_flush_errors() {
+        for fail_write in [true, false] {
+            let mut output = CountedOutput {
+                fail_write,
+                fail_flush: !fail_write,
+                ..Default::default()
+            };
+            let failure = write_pcm(&mut output, 1, |writer| {
+                for _ in 0..20_000 {
+                    writer.write_sample(0.25_f32).map_err(io)?;
+                }
+                Ok(())
+            })
+            .unwrap_err();
+            assert_eq!(failure.code, ErrorCode::Unavailable);
+            assert!(output.writes > 0);
+            if !fail_write {
+                assert!(output.flushes > 0);
+            }
+        }
+    }
 
     fn wave(path: &Path, rate: u32, channels: u16, frames: usize) -> String {
         let mut spec = pcm_spec(channels as usize);

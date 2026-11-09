@@ -2663,3 +2663,16 @@ The macOS tap teardown audit separately found that cidre 0.15's StartedDevice,
 AggregateDevice and TapGuard destruction does not expose reliable release-build
 failure handling. That outstanding teardown issue is not fixed by callback pins
 and does not authorize a stronger restart/completion proof.
+
+
+Source review of append PCM preparation found a separate scalability defect:
+normalization passed a plain writable file to Hound, issuing one output write per
+f32 sample. It now uses a fixed 64 KiB output buffer, explicitly finalizes and
+flushes before syncing the same original writable file (preserving Windows
+FlushFileBuffers ownership). Existing input decoding, channel/downmix rules,
+frame counts and hashes are unchanged. A real counted Write/Seek adapter checks
+bounded output calls, byte-for-byte WAV identity including signed zero/subnormal
+samples, and propagation of underlying write/final-flush errors. These are
+source-only regressions pending integration validation, not a demonstrated fix
+for the separate full-cohort append timeout whose precise combine substage is
+still under diagnosis.
