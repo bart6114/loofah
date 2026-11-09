@@ -1047,10 +1047,21 @@ before the broad run; the first two failing runs remain recorded.
 
 Actual loopback Native Ollama preview/automatic summary/title/replay acceptance
 passed in 2.04 seconds (`native-real-ollama-preview-acceptance-second.log`). A valid
-short summary in the first attempt exposed an arbitrary80-byte fixture heuristic;
+short summary in the first attempt exposed an arbitrary 80-byte fixture heuristic;
 the fixture now requires the meeting subject and a relevant fact while retaining
 all nonempty partial, identity, filtering, canonical preservation and replay
-assertions. There was no extra paid work or provider fallback. The35-case focused
+assertions. There was no extra paid work or provider fallback. The 35-case focused
 Native preview/window/adoption/guard/export cohort also passed. Preview capability
 activation follows this qualification; Local checked lifecycle/output/transcript
 UI activation remains default off for final platform/physical acceptance.
+
+
+Private processing previews are now advertised only with the configured summary
+worker capability. The configured/unconfigured Native server pair passed both
+cases; the Local facade/preview/scope cohort passed97 cases and desktop typecheck
+passed. The stable21-package all-target check passed in34.41s and all selected
+debug binaries built in1m24s. Logs are `native-preview-capability-pair.log`,
+`preview-capability-frontend.log`, `native-all-target-window-preview-adoption.log`
+and `native-window-preview-adoption-binaries.log`. These supplement the preceding
+full Native/frontend/model results; fresh hosted Windows/Linux qualification and
+physical production QA remain open.
