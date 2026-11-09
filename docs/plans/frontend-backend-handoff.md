@@ -2774,3 +2774,17 @@ wizard. Shared operation activation, fresh platform CI, production responsivenes
 and physical acceptance remain required. Desktop testing is still user-paused,
 production company SSO still deferred, model semantic quality still unqualified,
 and no activation, merge, release or version change occurred.
+
+The f96f84 native Windows x64 run reached the Local conflict-resolution fixtures
+but failed their whole-fixture byte snapshots with Windows OS33 at
+`fixture_files` (`local_capture_intents/tests.rs:1466`). The snapshot included the
+live, exclusively locked `vault/.loofah-vault.lock`, whose location is defined by
+`storage::VaultLease`. The fixture now omits only that exact root-relative
+bookkeeping entry and still checks that it is a regular file. Every other read
+error remains fatal. The positive resolution fixture includes a same-named file
+inside the session and verifies that it remains in the byte-for-byte preservation
+snapshot across resolution and replay. Production locking and lifecycle behavior
+are unchanged. Rust formatting and diff checks passed; this fixture correction
+has not yet run on either Windows architecture. The healthy f96f84 jobs continue
+without cancellation or retry, and installer/uninstall qualification remains
+separate from this test-only correction.

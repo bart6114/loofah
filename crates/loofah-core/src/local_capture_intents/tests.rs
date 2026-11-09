@@ -1458,13 +1458,16 @@ fn fixture_files(root: &std::path::Path) -> BTreeMap<PathBuf, Vec<u8>> {
         for entry in std::fs::read_dir(directory).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
+            let relative = path.strip_prefix(root).unwrap();
+            if relative == std::path::Path::new("vault/.loofah-vault.lock") {
+                // Windows denies byte reads while the original exclusive vault lease is held.
+                assert!(entry.file_type().unwrap().is_file());
+                continue;
+            }
             if entry.file_type().unwrap().is_dir() {
                 visit(root, &path, files);
             } else {
-                files.insert(
-                    path.strip_prefix(root).unwrap().to_owned(),
-                    std::fs::read(path).unwrap(),
-                );
+                files.insert(relative.to_owned(), std::fs::read(path).unwrap());
             }
         }
     }
@@ -1506,6 +1509,11 @@ async fn local_capture_reviewed_conflict_resolution_preserves_content_and_replay
             b"unknown private bytes",
         )
         .unwrap();
+        std::fs::write(
+            path.join("vault/sessions/note/.loofah-vault.lock"),
+            b"same basename at an unrelated preserved path",
+        )
+        .unwrap();
         summary.release.notify_one();
         assert_eq!(
             terminal(&service, &input.request_id).await.state,
@@ -1545,6 +1553,14 @@ async fn local_capture_reviewed_conflict_resolution_preserves_content_and_replay
         let snapshot = service.control_status(&input.request_id).await.unwrap();
         let resolution = resolution_request(&snapshot);
         let mut before = fixture_files(&path);
+        assert_eq!(
+            before
+                .get(std::path::Path::new(
+                    "vault/sessions/note/.loofah-vault.lock"
+                ))
+                .map(Vec::as_slice),
+            Some(b"same basename at an unrelated preserved path".as_slice())
+        );
         let closed = service
             .resolve(input.request_id.clone(), resolution.clone())
             .await
