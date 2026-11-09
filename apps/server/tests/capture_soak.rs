@@ -160,7 +160,95 @@ async fn provider_at(port: u16) -> (String, tokio::task::JoinHandle<()>) {
         tokio::spawn(async move { axum::serve(listener, router).await.unwrap() }),
     )
 }
+const SHAPING: [(u64, u64, u64); 3] =
+    [(50, 5, 2_097_152), (150, 20, 1_048_576), (500, 50, 524_288)];
+const SHAPING_SEED: u64 = 0x5eed_cafe;
+const PROXY_BUFFER: usize = 16 * 1024;
+
+fn profile_at(elapsed: u64, duration: u64) -> u64 {
+    let windows = if duration >= 7200 {
+        [(300, 420), (1200, 1320), (3600, 3720)]
+    } else {
+        [
+            (duration / 6, duration / 6 + duration / 10),
+            (duration * 11 / 20, duration * 13 / 20),
+            (duration * 17 / 20, duration * 19 / 20),
+        ]
+    };
+    windows
+        .iter()
+        .position(|(start, end)| elapsed >= *start && elapsed < *end)
+        .map_or(0, |index| index as u64 + 1)
+}
+fn added_rtt(profile: u64, request: u64) -> u64 {
+    let (rtt, jitter, _) = SHAPING[profile as usize - 1];
+    let sample = request
+        .wrapping_mul(6_364_136_223_846_793_005)
+        .wrapping_add(SHAPING_SEED);
+    rtt - jitter + sample % (2 * jitter + 1)
+}
+struct Shaping {
+    active: AtomicU64,
+    requests: [AtomicU64; 3],
+    bytes: [[AtomicU64; 2]; 3],
+    clocks: [tokio::sync::Mutex<(u64, tokio::time::Instant)>; 2],
+    connections: Arc<tokio::sync::Semaphore>,
+}
+impl Shaping {
+    fn new() -> Self {
+        Self {
+            active: AtomicU64::new(0),
+            requests: std::array::from_fn(|_| AtomicU64::new(0)),
+            bytes: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
+            clocks: std::array::from_fn(|_| {
+                tokio::sync::Mutex::new((0, tokio::time::Instant::now()))
+            }),
+            connections: Arc::new(tokio::sync::Semaphore::new(64)),
+        }
+    }
+    async fn pace(&self, direction: usize, bytes: usize) -> u64 {
+        let profile = self.active.load(Ordering::SeqCst);
+        if profile == 0 {
+            return 0;
+        }
+        let now = tokio::time::Instant::now();
+        let mut clock = self.clocks[direction].lock().await;
+        if clock.0 != profile {
+            *clock = (profile, now);
+        }
+        let deadline = clock.1.max(now)
+            + Duration::from_secs_f64(bytes as f64 / SHAPING[profile as usize - 1].2 as f64);
+        clock.1 = deadline;
+        drop(clock);
+        // At most 64 connections reserve one 16KiB chunk each: <=2s of debt
+        // at the slowest rate, with no profile/network lock held while waiting.
+        tokio::time::sleep_until(deadline).await;
+        profile
+    }
+}
+async fn copy_shaped<R: tokio::io::AsyncRead + Unpin, W: tokio::io::AsyncWrite + Unpin>(
+    mut reader: R,
+    mut writer: W,
+    state: Arc<Faults>,
+    direction: usize,
+) -> std::io::Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut buffer = [0u8; PROXY_BUFFER];
+    loop {
+        let count = reader.read(&mut buffer).await?;
+        if count == 0 {
+            return writer.shutdown().await;
+        }
+        let profile = state.shaping.pace(direction, count).await;
+        writer.write_all(&buffer[..count]).await?;
+        if profile != 0 {
+            state.shaping.bytes[profile as usize - 1][direction]
+                .fetch_add(count as u64, Ordering::SeqCst);
+        }
+    }
+}
 struct Faults {
+    shaping: Shaping,
     upstream: RwLock<String>,
     offline: AtomicBool,
     lose_chunk: AtomicBool,
@@ -172,9 +260,20 @@ struct Faults {
     http: reqwest::Client,
 }
 async fn forward(State(state): State<Arc<Faults>>, request: Request) -> Response {
-    state.requests.fetch_add(1, Ordering::SeqCst);
+    let request_sequence = state.requests.fetch_add(1, Ordering::SeqCst);
+    let profile = state.shaping.active.load(Ordering::SeqCst);
+    let request_started = Instant::now();
+    let delay = if profile == 0 {
+        0
+    } else {
+        state.shaping.requests[profile as usize - 1].fetch_add(1, Ordering::SeqCst);
+        added_rtt(profile, request_sequence)
+    };
     if state.offline.load(Ordering::SeqCst) {
         return (axum::http::StatusCode::SERVICE_UNAVAILABLE,Json(json!({"code":"unavailable","message":"operator-injected link outage","retryable":true}))).into_response();
+    }
+    if delay != 0 {
+        tokio::time::sleep(Duration::from_millis(delay / 2)).await;
     }
     let path = request.uri().to_string();
     let method = request.method().clone();
@@ -198,6 +297,15 @@ async fn forward(State(state): State<Arc<Faults>>, request: Request) -> Response
         Ok(v) => v,
         Err(_) => return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
+    if delay != 0 {
+        tokio::time::sleep(Duration::from_millis(delay - delay / 2)).await;
+    }
+    if profile != 0 {
+        record(
+            &state.root,
+            json!({"shaped_request":request_sequence,"profile":profile,"configured_added_rtt_ms":delay,"jitter_seed":SHAPING_SEED,"observed_proxy_request_to_response_headers_ms":request_started.elapsed().as_millis()}),
+        );
+    }
     let status = response.status();
     let headers = response.headers().clone();
     if headers
@@ -265,6 +373,7 @@ async fn proxy_at(
     let http = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let http_address = http.local_addr().unwrap();
     let state = Arc::new(Faults {
+        shaping: Shaping::new(),
         upstream: RwLock::new(String::new()),
         offline: AtomicBool::new(false),
         lose_chunk: AtomicBool::new(true),
@@ -303,15 +412,30 @@ async fn proxy_at(
         .unwrap();
     let origin = format!("https://localhost:{}/", tls.local_addr().unwrap().port());
     let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+    let tls_state = state.clone();
     let tls_task = tokio::spawn(async move {
         loop {
             let (socket, _) = tls.accept().await.unwrap();
             let acceptor = acceptor.clone();
+            let permit = tls_state
+                .shaping
+                .connections
+                .clone()
+                .acquire_owned()
+                .await
+                .unwrap();
+            let state = tls_state.clone();
             tokio::spawn(async move {
-                if let Ok(mut secure) = acceptor.accept(socket).await
-                    && let Ok(mut plain) = tokio::net::TcpStream::connect(http_address).await
+                let _permit = permit;
+                if let Ok(secure) = acceptor.accept(socket).await
+                    && let Ok(plain) = tokio::net::TcpStream::connect(http_address).await
                 {
-                    let _ = tokio::io::copy_bidirectional(&mut secure, &mut plain).await;
+                    let (secure_read, secure_write) = tokio::io::split(secure);
+                    let (plain_read, plain_write) = plain.into_split();
+                    let _ = tokio::try_join!(
+                        copy_shaped(secure_read, plain_write, state.clone(), 0),
+                        copy_shaped(plain_read, secure_write, state, 1),
+                    );
                 }
             });
         }
@@ -520,12 +644,26 @@ async fn run_capture_acceptance(realtime: bool) {
         (duration / 3, long),
         (duration * 3 / 4, 5),
     ];
+    let mut previous_profile = 0;
     let mut previous = false;
     let mut restarted = false;
     let mut next_log = 0;
     let producer_budget = if realtime { duration + 5 } else { 1800 };
     while start.elapsed().as_secs() < producer_budget {
         let elapsed = start.elapsed().as_secs();
+        let profile = if realtime {
+            profile_at(elapsed, duration)
+        } else {
+            0
+        };
+        faults.shaping.active.store(profile, Ordering::SeqCst);
+        if profile != previous_profile {
+            record(
+                &root,
+                json!({"network_profile":profile,"elapsed":elapsed,"configured_rtt_jitter_bandwidth":if profile==0 {None} else {Some(SHAPING[profile as usize-1])},"jitter_seed":SHAPING_SEED,"buffer_bytes":PROXY_BUFFER,"max_connections":64}),
+            );
+            previous_profile = profile;
+        }
         let offline = realtime
             && events
                 .iter()
@@ -566,7 +704,22 @@ async fn run_capture_acceptance(realtime: bool) {
             .unwrap()
             .success()
     );
+    faults.shaping.active.store(0, Ordering::SeqCst);
     if realtime {
+        for (index, settings) in SHAPING.iter().enumerate() {
+            let requests = faults.shaping.requests[index].load(Ordering::SeqCst);
+            let upstream_bytes = faults.shaping.bytes[index][0].load(Ordering::SeqCst);
+            let downstream_bytes = faults.shaping.bytes[index][1].load(Ordering::SeqCst);
+            record(
+                &root,
+                json!({"network_profile_exercised":index+1,"configured_rtt_jitter_bandwidth":settings,"requests":requests,"upstream_plaintext_bytes":upstream_bytes,"downstream_plaintext_bytes":downstream_bytes}),
+            );
+            assert!(
+                requests > 0 && upstream_bytes > 0 && downstream_bytes > 0,
+                "network profile {} did not carry actual requests and bytes",
+                index + 1
+            );
+        }
         assert!(start.elapsed() >= Duration::from_secs(duration));
     } else {
         check_server_memory(&root, &server, "before_memory_replay_restart");
@@ -1187,4 +1340,66 @@ async fn capture_retirement_existing_replay() {
     for task in proxy_tasks {
         task.abort();
     }
+}
+
+#[test]
+fn shaped_profiles_have_deterministic_bounded_jitter_and_avoid_scheduled_outages() {
+    for (duration, starts) in [(60, [10, 33, 51]), (7200, [300, 1200, 3600])] {
+        for (index, start) in starts.into_iter().enumerate() {
+            assert_eq!(profile_at(start, duration), index as u64 + 1);
+            assert_eq!(profile_at(start - 1, duration), 0);
+        }
+        let long = if duration >= 7200 { 600 } else { duration / 5 };
+        for (start, length) in [
+            (duration / 10, 3),
+            (duration / 3, long),
+            (duration * 3 / 4, 5),
+        ] {
+            for second in start..start + length {
+                assert_eq!(profile_at(second, duration), 0);
+            }
+        }
+    }
+    for profile in 1..=3 {
+        let (rtt, jitter, _) = SHAPING[profile as usize - 1];
+        let delays = (0..100)
+            .map(|request| added_rtt(profile, request))
+            .collect::<Vec<_>>();
+        assert!(
+            delays
+                .iter()
+                .all(|value| *value >= rtt - jitter && *value <= rtt + jitter)
+        );
+        assert!(delays.windows(2).any(|pair| pair[0] != pair[1]));
+        assert_eq!(
+            delays,
+            (0..100)
+                .map(|request| added_rtt(profile, request))
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[tokio::test]
+async fn shaping_bandwidth_is_shared_per_direction_without_holding_clock_during_sleep() {
+    let shaping = Arc::new(Shaping::new());
+    shaping.active.store(1, Ordering::SeqCst);
+    let start = Instant::now();
+    let tasks = (0..4)
+        .map(|_| {
+            let shaping = shaping.clone();
+            tokio::spawn(async move { shaping.pace(0, PROXY_BUFFER).await })
+        })
+        .collect::<Vec<_>>();
+    tokio::task::yield_now().await;
+    assert!(shaping.clocks[0].try_lock().is_ok());
+    assert!(shaping.clocks[1].try_lock().is_ok());
+    for task in tasks {
+        assert_eq!(task.await.unwrap(), 1);
+    }
+    assert!(
+        start.elapsed() >= Duration::from_secs_f64((4 * PROXY_BUFFER) as f64 / SHAPING[0].2 as f64)
+    );
+    shaping.active.store(0, Ordering::SeqCst);
+    assert_eq!(shaping.pace(0, PROXY_BUFFER).await, 0);
 }
