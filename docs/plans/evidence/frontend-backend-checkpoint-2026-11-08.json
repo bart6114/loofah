@@ -4013,6 +4013,740 @@
         "Windows and independent speech validation remain separate qualifications; no cancellation or push performed for this evidence update.",
         "No production artifact refresh is required by this cfg(test)-only correction; prior physical QA and activation gates remain unchanged."
       ]
+    },
+    "hosted_36_speech_single_retry_terminal_2026_11_09": {
+      "source": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+      "scope": "One failed-jobs-only retry, both architectures successful at the original direct checkout. Later fixture/docs-only checkpoints retain identical processing production code; this does not qualify changed runtime source.",
+      "result": {
+        "run_id": 42568044984,
+        "attempt": 2,
+        "conclusion": "success",
+        "each_architecture": {
+          "cohorts": 7,
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      "chronology": "The original jobs and first availability preflight failed HTTP 504 before speaker inference. A later bounded official-URL/API preflight succeeded, then the single authorized failed-jobs retry ran. Earlier pending/failure records retain their original point-in-time states. No healthy job was cancelled and no new workflow was dispatched.",
+      "fixture_provenance": "Both successful preflight GETs returned identical 1,303,284-byte PCM16 mono 16 kHz WAV files. SHA256 51a8b70d0213e25b410aa9494044f8a031177c144ffeca2a72f70aded939f760 was computed locally; no upstream or committed trusted digest pin was available.",
+      "records": [
+        {
+          "original_path": "logs/ci-36f85d0-audit/speech-download-failures-final.json",
+          "sha256": "3ab2af06086c3e9ba6a091bbb2d7d44755c146105670c743ffcd11e8cfb33441",
+          "record": {
+            "head": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+            "run_id": 42568044984,
+            "job_id": 128998811023,
+            "architecture": "Windows x64",
+            "failed_at_utc": "2026-11-09T05:53:31.9617672Z",
+            "failed_step": "Run real speaker detection",
+            "failure": "Invoke-WebRequest of public six-speaker fixture returned504GatewayTime-out before speaker inference",
+            "fixture_url": "https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav",
+            "speaker_test_executed": false,
+            "prior_whisper_and_onnx_transcription_passed": true,
+            "arm64_status_at_receipt": "stillrunning; no outcome inferred",
+            "no_retry_cancel_or_redispatch": true,
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998811023.log",
+            "sha256": "70d0b74305426f2152f3801b815cb2811ea9979111b8a32d634c7b362807c22b",
+            "arm64": {
+              "job_id": 128998810702,
+              "failed_at_utc": "2026-11-09T06:01:09.8724910Z",
+              "failure": "Same public six-speaker fixture GET returned504 before speaker inference",
+              "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998810702.log",
+              "sha256": "bd49ab828150af1bb8f5e061d9f17c9dd81a2ccd05af681484ae45d5414abb0a",
+              "speaker_test_executed": false
+            },
+            "all_workflows_terminal_at_utc": "2026-11-09T06:01:31.061061+00:00",
+            "preflight": {
+              "started_at_utc": "2026-11-09T06:04:16.760441+00:00",
+              "ended_at_utc": "2026-11-09T06:04:27.889109+00:00",
+              "url": "https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav",
+              "attempts": 1,
+              "curl_exit_code": 56,
+              "transfer_summary": "504 0 text/html 11.115946",
+              "stderr": "curl: (56) The requested URL returned error: 504\n",
+              "upstream_asset_id": 191578385,
+              "upstream_size_bytes": 1303284,
+              "upstream_digest": null,
+              "expected_committed_sha256": null,
+              "hash_scope": "Computed from this GET only; no trusted upstream or committed digest pin was available.",
+              "available": false
+            },
+            "retry_state": "Authorizedonefailed-jobsretry held; preflightURLstill504. No rerun request sent."
+          }
+        },
+        {
+          "original_path": "qa/speaker-fixture-routes-20261109/report.json",
+          "sha256": "ba0937a0dd446fe68490849d75c1482b60ea3b9cc2532c3f908b2bf7bb269df5",
+          "record": {
+            "asset_id": 191578385,
+            "documentation": "https://docs.github.com/en/rest/releases/assets#get-a-release-asset",
+            "authorization": "Public unauthenticated requests only",
+            "routes": [
+              {
+                "route": "github_api_octet",
+                "url": "https://api.github.com/repos/thewh1teagle/pyannote-rs/releases/assets/191578385",
+                "started_at_utc": "2026-11-09T06:08:05.246315+00:00",
+                "ended_at_utc": "2026-11-09T06:08:05.879234+00:00",
+                "attempts": 1,
+                "curl_exit_code": 0,
+                "transfer": "200 1303284 application/octet-stream 0.620124",
+                "stderr": "",
+                "bytes": 1303284,
+                "sha256": "51a8b70d0213e25b410aa9494044f8a031177c144ffeca2a72f70aded939f760",
+                "riff_wave": true,
+                "expected_asset_size": 1303284,
+                "size_matches": true,
+                "trusted_sha256": null,
+                "available": true,
+                "wav_chunks": [
+                  {
+                    "id": "fmt ",
+                    "bytes": 16,
+                    "format_tag": 1,
+                    "channels": 1,
+                    "sample_rate": 16000,
+                    "byte_rate": 32000,
+                    "block_align": 2,
+                    "bits_per_sample": 16
+                  },
+                  {
+                    "id": "LIST",
+                    "bytes": 26
+                  },
+                  {
+                    "id": "data",
+                    "bytes": 1303206
+                  }
+                ],
+                "riff_declared_bytes": 1303284
+              },
+              {
+                "route": "original_browser",
+                "url": "https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav",
+                "started_at_utc": "2026-11-09T06:08:05.246645+00:00",
+                "ended_at_utc": "2026-11-09T06:08:16.355837+00:00",
+                "attempts": 1,
+                "curl_exit_code": 0,
+                "transfer": "200 1303284 application/octet-stream 11.095496",
+                "stderr": "",
+                "bytes": 1303284,
+                "sha256": "51a8b70d0213e25b410aa9494044f8a031177c144ffeca2a72f70aded939f760",
+                "riff_wave": true,
+                "expected_asset_size": 1303284,
+                "size_matches": true,
+                "trusted_sha256": null,
+                "available": true,
+                "wav_chunks": [
+                  {
+                    "id": "fmt ",
+                    "bytes": 16,
+                    "format_tag": 1,
+                    "channels": 1,
+                    "sample_rate": 16000,
+                    "byte_rate": 32000,
+                    "block_align": 2,
+                    "bits_per_sample": 16
+                  },
+                  {
+                    "id": "LIST",
+                    "bytes": 26
+                  },
+                  {
+                    "id": "data",
+                    "bytes": 1303206
+                  }
+                ],
+                "riff_declared_bytes": 1303284
+              }
+            ],
+            "limits": [
+              "One bounded GET per route; no retries.",
+              "Computed digest only, no upstream or committed trusted digest pin.",
+              "No models, inference, CI retry, repo writes or source changes."
+            ],
+            "request_headers": {
+              "Accept": "application/octet-stream",
+              "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "same_download_bytes": true
+          }
+        },
+        {
+          "original_path": "logs/ci-36f85d0-audit/speech-retry-once/retry-request.json",
+          "sha256": "35fd42881a04c7cb4f3a712a4577a986943d6ea6dea5cf96aa47661599aff252",
+          "record": {
+            "requested_at_utc": "2026-11-09T06:09:41.020793+00:00",
+            "method": "GitHub rerun_failed_workflow_run_jobs",
+            "run_id": 42568044984,
+            "head_sha": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+            "run_attempt": 2,
+            "retry_budget": 1,
+            "response_success": true,
+            "fresh_dispatch": false
+          }
+        },
+        {
+          "original_path": "logs/ci-36f85d0-audit/speech-retry-once/terminal-qualification.json",
+          "sha256": "57baf48428e31c1875f0ea15bdc2db05de835dd90f39aad8dad92dba21ce4e22",
+          "record": {
+            "source": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+            "run_id": 42568044984,
+            "attempt": 2,
+            "conclusion": "success",
+            "terminal_observed_at_utc": "2026-11-09T06:38:12.701326+00:00",
+            "jobs": [
+              {
+                "id": 129009178891,
+                "checkout": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/speech-retry-once/129009178891.log",
+                "sha256": "71e3c870b2556c04790c1f18f9d19c4de52d259220dea388f08c5806ca9741ac",
+                "cohorts": 7,
+                "counts": [
+                  8,
+                  0,
+                  0
+                ]
+              },
+              {
+                "id": 129009178966,
+                "checkout": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/speech-retry-once/129009178966.log",
+                "sha256": "2f7bafb576b70239640280cf44457bba8153497cb5b4ded8e78ef546e57bf47e",
+                "cohorts": 7,
+                "counts": [
+                  8,
+                  0,
+                  0
+                ]
+              }
+            ],
+            "first_attempt": "Both jobs failed on the public fixture GET with HTTP 504 before speaker inference; original logs remain preserved outside the retry directory.",
+            "retry_authorization": "One failed-jobs-only retry after successful provider preflight; no new workflow dispatch or healthy cancellation.",
+            "computed_fixture_sha256": "51a8b70d0213e25b410aa9494044f8a031177c144ffeca2a72f70aded939f760",
+            "fixture_hash_scope": "Computed matching public GETs; no upstream or committed trusted pin."
+          }
+        }
+      ],
+      "runtime_source_equivalence": {
+        "original_path": "logs/ci-8ca3db9-audit/runtime-source-equivalence.json",
+        "sha256": "945ea02841fb59fee2ab2aeba5d9fb029ac2b5772a1cdf4e12d6d81bbb622c19",
+        "record": {
+          "from": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+          "to": "582d6d858e1e4029d418cd42307fd3f79dfb6213",
+          "changed_paths": [
+            "crates/listener-core/src/actors/root.rs",
+            "docs/plans/evidence/frontend-backend-checkpoint-2026-11-08.json",
+            "docs/plans/frontend-backend-handoff.md",
+            "plugins/misc/tests/build_git.rs"
+          ],
+          "scope": "Only standalone Git test fixture, cfg(test) listener identities/coverage, and docs differ. The listener production prefix before cfg(test) is byte-identical. No processing production source changed.",
+          "listener_production_prefix_sha256": "c92ff32ef02f08f41dfee3056622e8333c95ac7e43ee2a3dad47c627184a78e6"
+        }
+      }
+    },
+    "native_production_append_http_routes_2026_11_09": {
+      "original_path": "logs/native-append-http-qualification.json",
+      "sha256": "e00607de03fb28f22636333e720a03a3ab77c2d67dc0e99d2860717c8de7e652",
+      "record": {
+        "source": "67b9213990798a5080292ac67bd20195da776e0d",
+        "at": "2026-11-09T06:57:20.490531+00:00",
+        "graph": "unchanged stable21 with loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+        "filter": "tests::capture_append::",
+        "counts": {
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "qualifying_cohorts": 1,
+          "other_targets_with_zero_matches": 20
+        },
+        "tests": [
+          "tests::capture_append::append_http_admission_rechecks_reader_and_exact_authenticated_request_scope",
+          "tests::capture_append::append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission",
+          "tests::capture_append::raw_append_http_publishes_exact_channels_and_replays_after_service_reopen"
+        ],
+        "test_scope": "Actual authenticated production Axum router in process; generated raw PCM, no inference or physical capture. Includes mono and stereo exact publication, restart replay, CAS and role/scope rejection.",
+        "all_target_check": "Passed in 21.24 seconds; existing nine desktop library and four test warnings.",
+        "activation": "capture_append remains unadvertised; Local lifecycle/output/transcript gates remain off",
+        "logs": {
+          "native-append-http-tests.log": {
+            "sha256": "060711d1dc05ee06bb108442313bc0b4a71d9eadb68e401dae40aadcdeb8ac79",
+            "bytes": 7891
+          },
+          "native-append-http-check.log": {
+            "sha256": "4b4a912da4f1c19f15881df9d41aec89c5a0e4b096efc53a042c20a0fb7c967d",
+            "bytes": 3894
+          }
+        }
+      }
+    },
+    "hosted_8ca3db9_pr_terminal_2026_11_09": {
+      "original_path": "logs/ci-8ca3db9-audit/terminal-summary.json",
+      "sha256": "f447e052714af5dc66f9000bd857ce17e5b3fb3bda1505cdb0287b1b654c2f2d",
+      "record": {
+        "workflow_head": "8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1",
+        "snapshot_at_utc": "2026-11-09T07:13:59.395490+00:00",
+        "all_terminal": true,
+        "pr_checkout": {
+          "sha": "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29",
+          "parents": [
+            "a6a8f001d9165881e59fd0fa29df944da26b8801",
+            "8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1"
+          ],
+          "commit": {
+            "message": "Merge 8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1 into a6a8f001d9165881e59fd0fa29df944da26b8801"
+          }
+        },
+        "runs": [
+          {
+            "id": 42570167196,
+            "name": "backend-ci",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42570167196",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 129005473577,
+                "name": "container",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "eb945a46a5253db6c809d8b58ff428cea5cf708aa2beac74dcf41dd4e585da73",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005473577.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              },
+              {
+                "id": 129005473703,
+                "name": "headless",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "c5afc9ec89f23a4184713fe0050908588639216e44e88bfb82010e589d3fa565",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005473703.log",
+                "rust_cohorts": 22,
+                "rust_totals": {
+                  "passed": 1663,
+                  "failed": 0,
+                  "ignored": 19
+                },
+                "new_principal_tests": {
+                  "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                  "local_principal_still_requires_original_host_authorization": true,
+                  "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                },
+                "new_fence_tests": {
+                  "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                  "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                  "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                  "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                  "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                },
+                "sdk_refresh_tests": {
+                  "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                  "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                },
+                "git_helper_tests": {
+                  "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                  "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                  "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                  "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                },
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              },
+              {
+                "id": 129005473742,
+                "name": "linux-cpu-stt",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "3e83d4e8cf72498828c6dc1e9e9917591a565e839491b7a932dee6f5abc22c91",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005473742.log",
+                "count_note": "CPU command reprints successful summaries for exact-selection checks; do not aggregate duplicate lines.",
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              }
+            ],
+            "artifacts": [
+              {
+                "id": 13653493005,
+                "node_id": "MDg6QXJ0aWZhY3QxMzY1MzQ5MzAwNQ==",
+                "name": "linux-cpu-stt",
+                "size_in_bytes": 86917,
+                "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13653493005",
+                "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13653493005/zip",
+                "expired": false,
+                "digest": "sha256:b2760406128c27607e3e814210b0737cc1e0349168a0e25dfec5492c71bbe901",
+                "created_at": "2026-11-09T06:15:36Z",
+                "updated_at": "2026-11-09T06:15:36Z",
+                "expires_at": "2026-11-16T06:15:36Z",
+                "workflow_run": {
+                  "id": 42570167196,
+                  "repository_id": 1309166815,
+                  "head_repository_id": 1309166815,
+                  "head_branch": "refactor/frontend-backend-separation",
+                  "head_sha": "8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1"
+                }
+              }
+            ]
+          },
+          {
+            "id": 42570167182,
+            "name": "desktop-ci",
+            "status": "completed",
+            "conclusion": "failure",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42570167182",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 129005473438,
+                "name": "rust",
+                "status": "completed",
+                "conclusion": "failure",
+                "active": [],
+                "failed_steps": [
+                  "Run cargo test --workspace \\"
+                ],
+                "log_sha256": "702efbde6ca1555a16870fea27825b534a3a3f7f19189970bee32b1c7145d841",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005473438.log",
+                "rust_cohorts": 33,
+                "rust_totals": {
+                  "passed": 595,
+                  "failed": 1,
+                  "ignored": 16
+                },
+                "new_principal_tests": {
+                  "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": false,
+                  "local_principal_still_requires_original_host_authorization": false,
+                  "local_principal_survives_submit_result_replay_and_journal_reopen": false
+                },
+                "new_fence_tests": {
+                  "final_generation_preserves_literal_fences_in_first_indented_code_line": false,
+                  "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": false,
+                  "fence_only_generation_fails_without_an_additional_model_attempt": false,
+                  "historical_fence_only_retained_result_remains_readable_without_replay": false,
+                  "fence_only_job_preserves_canonical_summary_and_retains_no_result": false
+                },
+                "sdk_refresh_tests": {
+                  "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": false,
+                  "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": false
+                },
+                "git_helper_tests": {
+                  "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                  "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                  "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                  "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                },
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              },
+              {
+                "id": 129005473542,
+                "name": "frontend",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "dd785b79f25943f67bb78cc20a91a184132d49dccbe16ae1141c2fc03d3ba41b",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005473542.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              }
+            ],
+            "artifacts": []
+          },
+          {
+            "id": 42570167621,
+            "name": "windows-ci",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42570167621",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 129005474856,
+                "name": "native (windows-2025, x86_64-pc-windows-msvc)",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "bd926e44b84bc74bbb36a7b4063495cb9c886063cc0b67e5f94a67e803181318",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005474856.log",
+                "rust_cohorts": 70,
+                "rust_totals": {
+                  "passed": 2249,
+                  "failed": 0,
+                  "ignored": 47
+                },
+                "new_principal_tests": {
+                  "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                  "local_principal_still_requires_original_host_authorization": true,
+                  "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                },
+                "new_fence_tests": {
+                  "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                  "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                  "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                  "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                  "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                },
+                "sdk_refresh_tests": {
+                  "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                  "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                },
+                "git_helper_tests": {
+                  "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": true,
+                  "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": true,
+                  "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": true,
+                  "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": true
+                },
+                "installer_runtime_smoke_passed": true,
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              },
+              {
+                "id": 129005475066,
+                "name": "native (windows-11-arm, aarch64-pc-windows-msvc)",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "0b65d60b11945d322a1567bc443141cf6bec57df597dd0338f595b5cb25d8581",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005475066.log",
+                "rust_cohorts": 70,
+                "rust_totals": {
+                  "passed": 2249,
+                  "failed": 0,
+                  "ignored": 47
+                },
+                "new_principal_tests": {
+                  "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                  "local_principal_still_requires_original_host_authorization": true,
+                  "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                },
+                "new_fence_tests": {
+                  "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                  "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                  "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                  "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                  "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                },
+                "sdk_refresh_tests": {
+                  "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                  "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                },
+                "git_helper_tests": {
+                  "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": true,
+                  "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": true,
+                  "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": true,
+                  "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": true
+                },
+                "installer_runtime_smoke_passed": true,
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              },
+              {
+                "id": 129005476640,
+                "name": "speech-models",
+                "status": "completed",
+                "conclusion": "skipped",
+                "active": [],
+                "failed_steps": []
+              }
+            ],
+            "artifacts": [
+              {
+                "id": 13656176331,
+                "node_id": "MDg6QXJ0aWZhY3QxMzY1NjE3NjMzMQ==",
+                "name": "loofah-windows-aarch64-pc-windows-msvc-6d46da2f1dd9bd1bcc66577fa3cf48e644763d29",
+                "size_in_bytes": 338204176,
+                "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13656176331",
+                "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13656176331/zip",
+                "expired": false,
+                "digest": "sha256:0cc99663907ba30c7bc7a71904b5cc010f157db875b10597099bd1b296524a93",
+                "created_at": "2026-11-09T07:12:51Z",
+                "updated_at": "2026-11-09T07:12:51Z",
+                "expires_at": "2026-11-23T07:12:38Z",
+                "workflow_run": {
+                  "id": 42570167621,
+                  "repository_id": 1309166815,
+                  "head_repository_id": 1309166815,
+                  "head_branch": "refactor/frontend-backend-separation",
+                  "head_sha": "8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1"
+                }
+              },
+              {
+                "id": 13654649310,
+                "node_id": "MDg6QXJ0aWZhY3QxMzY1NDY0OTMxMA==",
+                "name": "loofah-windows-x86_64-pc-windows-msvc-6d46da2f1dd9bd1bcc66577fa3cf48e644763d29",
+                "size_in_bytes": 371590034,
+                "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13654649310",
+                "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13654649310/zip",
+                "expired": false,
+                "digest": "sha256:cc547bfd2061bfe909043407a539b6daf6abc50c8556deaa261258206e3e4142",
+                "created_at": "2026-11-09T06:51:59Z",
+                "updated_at": "2026-11-09T06:51:59Z",
+                "expires_at": "2026-11-23T06:51:47Z",
+                "workflow_run": {
+                  "id": 42570167621,
+                  "repository_id": 1309166815,
+                  "head_repository_id": 1309166815,
+                  "head_branch": "refactor/frontend-backend-separation",
+                  "head_sha": "8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1"
+                }
+              }
+            ]
+          },
+          {
+            "id": 42570167230,
+            "name": "ci",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42570167230",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 129005473138,
+                "name": "fmt",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "d339c11889d024fc977939baf35a1953777e2b95fa17b8ce0b9fa1f8c862753e",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005473138.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              },
+              {
+                "id": 129005473416,
+                "name": "lint",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "999ea7113f7718371e3d2fd47be92908b9a37f816fd4e425508cc748023af8f4",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005473416.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              }
+            ],
+            "artifacts": []
+          },
+          {
+            "id": 42570167163,
+            "name": "cli-ci",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42570167163",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 129005473203,
+                "name": "cli-ci",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "4a1abcb7251bb1f339efb2e4621b89e722fd627caed3a76d0ea6821b7187310d",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005473203.log",
+                "rust_cohorts": 20,
+                "rust_totals": {
+                  "passed": 274,
+                  "failed": 0,
+                  "ignored": 2
+                },
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              }
+            ],
+            "artifacts": []
+          },
+          {
+            "id": 42570167173,
+            "name": "zizmor",
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42570167173",
+            "event": "pull_request",
+            "jobs": [
+              {
+                "id": 129005473188,
+                "name": "zizmor",
+                "status": "completed",
+                "conclusion": "success",
+                "active": [],
+                "failed_steps": [],
+                "log_sha256": "7461d89f2bc1ce1e3502bd3f34fbdae8a7057a6c8d5c3e95a16d4766a58c6efb",
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-8ca3db9-audit/129005473188.log",
+                "rust_cohorts": 0,
+                "rust_totals": {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                "checkout_observed": [
+                  "6d46da2f1dd9bd1bcc66577fa3cf48e644763d29"
+                ]
+              }
+            ],
+            "artifacts": []
+          }
+        ],
+        "qualification_limit": "Counts describe actual logged executions at 8ca. Windows totals include separate standalone Git-helper and release-policy tests; exact names and the two SDK concurrency regressions are verified separately. The macOS listener fixture failure is preserved. No physical capture or production SSO claim.",
+        "frontend": {
+          "desktop": {
+            "tests_passed": 2622,
+            "files_passed": 298
+          },
+          "editor": {
+            "tests_passed": 303,
+            "files_passed": 31
+          },
+          "typecheck": "passed"
+        },
+        "macos_limit": "The workspace stopped at the listener fixture: 595 passing executions, one failed, 16 ignored across 33 cohorts. Its desktop library passed 193 with 2 ignored. Core and SDK cases were not reached in this job; Linux and both Windows logs independently prove their named cases."
+      },
+      "scope": "Five successful PR workflows; desktop workflow failed only its macOS listener fixture. Later local fixture corrections and append HTTP tests are separate qualifications, not a relabelled hosted pass. All current jobs completed before the next checkpoint push."
     }
   },
   "local_work_focused": [

@@ -1,18 +1,18 @@
 # Frontend/backend separation handoff
 
-Current acceptance status, 2026-11-09: all six PR workflows at `36f85d04c8` are
-terminal. Five passed; native Windows x64 and ARM64 each failed four new fixture
-cases during Git configuration setup, before the production helper or Cargo suite
-ran. Both new SDK concurrency regressions passed on Linux and macOS. The isolated
-fixture correction is locally qualified and awaits the next Windows PR run. The
-independent direct-36 Windows speech run remains in progress: x64 stopped on a
-504 fixture-download response before speaker inference, while ARM64 is still
-running. Its branch-ref concurrency group is separate from the next PR group. The prior `073`
-checkpoint's full platform successes remain source-scoped evidence. Physical
-capture awaits OS permission confirmation, production HTTPS SSO needs staging
-configuration, and observed Qwen accuracy and conciseness remain failed. Local
-lifecycle, output deletion and transcript activation gates remain default off;
-no merge or release is authorized.
+Current acceptance status, 2026-11-09: all six PR workflows at `8ca3db9a40` are
+terminal. Five passed. Both native Windows architectures passed their suites,
+all four standalone Git helpers, both SDK refresh regressions and installer/runtime
+smoke tests. The desktop workflow failed its macOS listener fixture; the isolated
+identity correction subsequently passed the full 91-case listener library and
+all-target checking locally. Its next hosted qualification remains pending. The
+single authorized retry of direct-`36` Windows speech passed on both architectures;
+original HTTP 504 failures remain preserved. Production processing code is
+unchanged across these fixture-only checkpoints. Physical capture awaits OS
+permission confirmation, production HTTPS SSO needs staging configuration, and
+observed Qwen accuracy and conciseness remain failed. Local lifecycle, output
+deletion and transcript activation gates remain default off; no merge or release
+is authorized.
 
 This document retains chronological checkpoint history. Later dated evidence
 supersedes earlier uses of “current”, “pending” and “analysis-only”; those older
@@ -1851,3 +1851,86 @@ prefix hash. Prior failure and qualification records remain unchanged. This is
 local fixture validation, not a new hosted Windows or physical-QA pass. No CI
 retry/cancellation, production artifact change, build by the docs worker,
 inference or push occurred; ongoing hosted checks retain their separate scope.
+
+
+## Windows speech retry at the original source, 2026-11-09
+
+The direct `36f85d04c80cc4a03ac779ba9979f9581e012115` speech run
+`42568044984` completed successfully on its second attempt, observed at
+06:38:12 UTC. Both Windows x64 and ARM64 logged eight passing tests, zero failed
+and zero ignored across seven cohorts: strict Whisper CPU, live/batch ownership,
+ONNX transcription, real speaker labels and the reference embedding. Both raw
+checkout logs identify the original direct branch commit, not a later PR merge.
+
+The first attempt on each architecture failed the public six-speaker fixture GET
+with HTTP 504 before speaker inference. Those logs and the first failed local
+availability check remain preserved. After a later bounded public-URL/API
+preflight returned identical valid 1,303,284-byte PCM16 mono 16 kHz WAV files, the
+single authorized failed-jobs-only retry ran. Its computed fixture SHA256 is
+`51a8b70d0213e25b410aa9494044f8a031177c144ffeca2a72f70aded939f760`;
+no upstream or committed trusted digest pin was available. No healthy job was
+cancelled and no new manual workflow was dispatched.
+
+Portable record `hosted_36_speech_single_retry_terminal_2026_11_09` retains the
+failure, preflight, retry authorization, exact source and both successful raw-log
+hashes. A source comparison through local `582d6d858e` confirms only docs,
+standalone Git fixtures and listener `cfg(test)` code changed after `36`; the
+listener production prefix is byte-identical. This permits source-equivalent
+processing qualification without claiming later changed runtime code was tested.
+
+## Production append HTTP contract coverage, 2026-11-09
+
+Frozen local source `67b9213990798a5080292ac67bd20195da776e0d` passed exactly
+three authenticated production Axum-router tests: exact mono/stereo raw append
+publication and replay after service reopen, stale transcript CAS rejection
+without refreshed authority, and reader/original-request scope enforcement.
+The unchanged stable-21 graph ran one qualifying server cohort; the other 20
+executables intentionally selected zero cases and are not qualified by this run.
+All-target checking passed in 21.24 seconds with the existing nine desktop library
+and four test warnings.
+
+Portable record `native_production_append_http_routes_2026_11_09` includes the
+three exact names and independently verified test/check log hashes. These tests
+used generated raw PCM, with no inference or physical capture. The
+`capture_append` capability remains unadvertised, and Local lifecycle, output
+deletion and transcript activation gates remain off. This is local source-scoped
+coverage, separate from the hosted `8ca` results.
+
+
+## Hosted PR checkpoint `8ca3db9a40`, terminal 2026-11-09
+
+All six PR workflows were terminal at 07:13:59 UTC. Backend, native Windows, CLI,
+formatting/lint and security passed. The desktop workflow retained its macOS
+listener fixture failure; its frontend job passed. PR jobs checked out synthetic
+merge `6d46da2f1dd9bd1bcc66577fa3cf48e644763d29`, with parents
+`a6a8f001d9165881e59fd0fa29df944da26b8801` and branch head
+`8ca3db9a4055fe257a73f21dd5caa6a8c9ebc9a1`.
+
+Each native Windows architecture logged **2,249 passing executions, zero failed
+and 47 ignored across 70 cohorts**. This aggregate includes four standalone Git
+helper tests and four release-policy tests outside Cargo. Raw logs independently
+confirm all four exact Git helper names, both blocked-refresh SDK regressions,
+all three Local-principal cases and all five empty-fence cases passed on each
+architecture. Both NSIS builds and installer, app startup, installed CLI/MCP and
+uninstall smoke tests passed. Artifact metadata records x64 artifact `13654649310`
+with digest `cc547bfd2061bfe909043407a539b6daf6abc50c8556deaa261258206e3e4142`,
+and ARM64 artifact `13656176331` with digest
+`0cc99663907ba30c7bc7a71904b5cc010f157db875b10597099bd1b296524a93`.
+
+Linux headless passed 1,663 tests, zero failed and 19 ignored across 22 cohorts;
+both new SDK regressions passed there. Configured Linux CPU, reserved live/batch
+overlap and container checks passed. Frontend passed 2,622 desktop tests in 298
+files and 303 editor tests in 31 files plus typechecking. CLI passed 274 tests,
+zero failed and two ignored. macOS stopped at the already diagnosed listener
+fixture after 595 passing executions, one failed and 16 ignored across 33 cohorts;
+that job did not reach the SDK/Core cases. Its earlier desktop library passed 193
+cases with two ignored. The later local 91-case listener correction and three
+append HTTP cases above remain separate source-scoped evidence.
+
+Portable record `hosted_8ca3db9_pr_terminal_2026_11_09` preserves exact head/merge
+parents, workflow/job outcomes, named-case checks, raw log hashes and artifact
+metadata. The successful speech retry is recorded separately at original source
+`36`, rather than presented as a new `8ca` dispatch. No current PR job was retried
+or cancelled. Later implementation work and the next head's hosted qualification
+remain outside this record; physical capture, production SSO and model-quality
+gates remain open.
