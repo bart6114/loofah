@@ -1459,15 +1459,22 @@ fn fixture_files(root: &std::path::Path) -> BTreeMap<PathBuf, Vec<u8>> {
             let entry = entry.unwrap();
             let path = entry.path();
             let relative = path.strip_prefix(root).unwrap();
-            if relative == std::path::Path::new("vault/.loofah-vault.lock") {
-                // Windows denies byte reads while the original exclusive vault lease is held.
+            if relative == std::path::Path::new("vault/.loofah-vault.lock")
+                || relative == std::path::Path::new("operations/jobs/.lock")
+            {
+                // Windows denies byte reads while either original exclusive owner is held.
                 assert!(entry.file_type().unwrap().is_file());
                 continue;
             }
             if entry.file_type().unwrap().is_dir() {
                 visit(root, &path, files);
             } else {
-                files.insert(relative.to_owned(), std::fs::read(path).unwrap());
+                files.insert(
+                    relative.to_owned(),
+                    std::fs::read(&path).unwrap_or_else(|error| {
+                        panic!("fixture snapshot read {relative:?}: {error}")
+                    }),
+                );
             }
         }
     }
@@ -1512,6 +1519,11 @@ async fn local_capture_reviewed_conflict_resolution_preserves_content_and_replay
         std::fs::write(
             path.join("vault/sessions/note/.loofah-vault.lock"),
             b"same basename at an unrelated preserved path",
+        )
+        .unwrap();
+        std::fs::write(
+            path.join("vault/sessions/note/.lock"),
+            b"same job-lock basename at an unrelated preserved path",
         )
         .unwrap();
         summary.release.notify_one();
@@ -1560,6 +1572,12 @@ async fn local_capture_reviewed_conflict_resolution_preserves_content_and_replay
                 ))
                 .map(Vec::as_slice),
             Some(b"same basename at an unrelated preserved path".as_slice())
+        );
+        assert_eq!(
+            before
+                .get(std::path::Path::new("vault/sessions/note/.lock"))
+                .map(Vec::as_slice),
+            Some(b"same job-lock basename at an unrelated preserved path".as_slice())
         );
         let closed = service
             .resolve(input.request_id.clone(), resolution.clone())
