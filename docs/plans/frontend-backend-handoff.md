@@ -2497,40 +2497,6 @@ the last checked publication error without increasing its deadline. Shared worke
 and title corrections remain in progress. This is not a passing cancellation or
 resolution checkpoint. The 62 frontend tests and actual locale checks passed
 separately, as preserved in the portable record.
-### Original Local capture owner in actual native workers (source only)
-
-The recorder now retains the original opaque runtime owner inside its disk sink,
-through WAV finalization, MP3 encoding and final file-handle destruction. Source
-producer tasks retain that owner independently of their supervisor and pass it to
-three additive owned-open provider methods before dispatch. Legacy/mock provider
-defaults keep their existing behavior and gain no stopped-owner proof.
-
-ActualAudio installs the pin before input opening. The CPAL microphone thread,
-Windows WASAPI thread, macOS device/callback lifetime, native stream workers and
-Windows recovery factories retain it. A blocked recovery factory keeps its own
-owner even if the observer and recovery task disappear. Control/receipt observers
-do not own that pin, so retaining a completed control cannot form a runtime-owner
-cycle. Normal drain and abnormal task loss remain distinct; this checkpoint does
-not rewrite legacy capture intents, assert their completion, enable a recovery
-proof schema or authorize quarantine.
-
-Five deterministic source regressions cover source-open panic after native
-startup, blocked recovery-factory observer loss, native unwind, controls retained
-after actual drain, and disk finalization/file-close ownership. No microphone,
-application or model is needed by these fixtures. They are unexecuted pending the
-sole integration lane; dprint and diff checks passed. Both native Windows
-architectures still require qualification for the platform-specific thread pins.
-
-The stored lifecycle follow-up uses the same durable admission predicate in an
-initialized Local intent service. A terminal enum alone is insufficient: modern
-Succeeded, Skipped, Conflict, Cancelled and Closed receipts require recorded
-physical, persistence and processing drain. Legacy terminal receipts remain
-readable without rewriting their bytes but cannot invent missing drain evidence.
-NotStarted still requires a genuinely undispatched record. Additional fixtures
-cover both standalone and initialized-service refusal, including the crash window
-between publishing a terminal state and saving the final drain receipt.
-
-
 ### Bounded Local capture active inventory and immutable history (source only)
 
 The Local capture journal now separates confirmed-drained terminal receipts from
@@ -2578,3 +2544,17 @@ file preservation, link refusal, and cancelled-caller I/O drain. Formatting and
 source review are complete; Rust execution, generated Native bindings and the
 lazy history UI's integrated qualification remain pending. Desktop app testing
 stays paused and all existing activation gates remain unchanged.
+### Standalone Local lifecycle guard for retained capture intents (source only)
+
+A restarted standalone CLI owner now checks the bounded private Local capture
+intent inventory before lifecycle reads or deletion when no Native intent service
+is registered. Unknown, unfinished, malformed, future-schema and mismatched
+receipts fail closed; inspection does not initialize the service, upgrade receipts,
+reconstruct producer completion, or dispatch processing. The original vault lease
+stays pinned through the actual blocking read. A recognized versioned history
+layout is validated and excluded from the active scan, without enumerating history
+payloads or unrelated session contents. Terminal drained receipts remain usable.
+Focused source regressions cover the real standalone CLI path, unchanged receipt
+and note bytes, malformed/future inventories, and read-only history handling.
+These regressions await the sole integration build; no worker Cargo or application
+execution was performed for this checkpoint.

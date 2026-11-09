@@ -21,10 +21,12 @@ use crate::{
 };
 
 mod controls;
-pub use controls::{LocalCaptureAction, LocalCaptureControlSnapshot};
 mod history;
+mod idle;
 mod journal;
+pub use controls::{LocalCaptureAction, LocalCaptureControlSnapshot};
 pub use history::LocalCaptureHistoryPage;
+pub(crate) use idle::ensure_stored_session_idle;
 mod recovery;
 mod resolution;
 pub use resolution::{LocalCaptureResolution, LocalCaptureResolutionDecision};

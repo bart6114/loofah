@@ -94,6 +94,20 @@ impl VaultContext {
                 .ok_or_else(|| error(ErrorCode::Unavailable, "Local capture owner unavailable"))?
                 .ensure_idle(id)
                 .await?;
+        } else {
+            let root = self
+                .operations
+                .as_ref()
+                .ok_or_else(crate::session_lifecycle_gate::session_lifecycle_busy)?
+                .root
+                .join("local-capture-intents");
+            crate::local_capture_intents::ensure_stored_session_idle(
+                root,
+                self.events.vault_id(),
+                id.to_owned(),
+                self.lease_pin(),
+            )
+            .await?;
         }
         if let Some(service) = self.processing.get() {
             service.journal.ensure_session_idle(id.to_owned()).await?;
