@@ -3066,3 +3066,15 @@ The existing portable record preserves failures, exact successful job scopes,
 source/hash provenance, the superseded source-only Close assumption and these
 allowed local checks. ARM native CI remains live; no healthy job was cancelled,
 no capability activated, and desktop tests remain user-paused.
+
+
+The original 6e56 Windows runs are now terminal (15:02:01 UTC snapshot). Both
+native architectures independently report 2,346 passed / one failed / 47 ignored
+across 70 result cohorts, including eight standalone policy/metadata passes. Only
+the positive resolution snapshot failed; all other 59 named required cases passed,
+and installer/uninstall steps skipped. Speech x64 passed eight cases including
+all three shaped profiles; ARM passed four then failed the 50 ms aggregate fixture
+deadline, so its later profiles and ONNX/speaker steps did not execute. The final
+receipt, exact checkout parents and raw byte/hash fidelity are copied into the
+existing portable record. Healthy runs finished without cancellation or retry;
+corrected source will receive a fresh CI checkpoint.
