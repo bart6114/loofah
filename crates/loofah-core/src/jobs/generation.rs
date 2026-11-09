@@ -448,13 +448,57 @@ impl Output {
         } else {
             self.footer.as_deref().and_then(parse_footer)
         };
+        let normalized = normalize_bullets(&self.body);
+        let first_line = normalized
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or("");
+        // Trimming code indentation can turn literal backticks into an empty fence.
+        let markdown = if first_line.starts_with("    ")
+            || first_line.trim_start_matches(' ').starts_with('\t')
+        {
+            normalized[normalized.find(first_line).unwrap()..].trim_end()
+        } else {
+            normalized.trim()
+        };
         let output = GeneratedDocument {
-            markdown: normalize_bullets(&self.body).trim().into(),
+            markdown: markdown.into(),
             suggested_tags,
         };
+        if !has_generated_body(&output.markdown) {
+            return Err(ProcessingJobFailure::InvalidOutput);
+        }
         super::result::validate_output(&output).map_err(|_| ProcessingJobFailure::InvalidOutput)?;
         Ok(output)
     }
+}
+
+fn has_generated_body(markdown: &str) -> bool {
+    let mut fence = None;
+    for line in markdown.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let trimmed = line.trim_start_matches(' ');
+        let indent = line.len() - trimmed.len();
+        let marker = trimmed.as_bytes().first().copied().unwrap();
+        if indent > 3 || !matches!(marker, b'`' | b'~') {
+            return true;
+        }
+        let width = trimmed.bytes().take_while(|byte| *byte == marker).count();
+        let tail = &trimmed[width..];
+        if let Some((opening, length)) = fence {
+            if marker == opening && width >= length && tail.trim().is_empty() {
+                fence = None;
+                continue;
+            }
+        } else if width >= 3 && (marker != b'`' || !tail.contains('`')) {
+            fence = Some((marker, width));
+            continue;
+        }
+        return true;
+    }
+    false
 }
 
 fn parse_footer(footer: &str) -> Option<Vec<ScoredTagSuggestion>> {

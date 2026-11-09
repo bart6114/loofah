@@ -710,6 +710,23 @@ async fn restarting_a_worker_marks_orphaned_execution_interrupted_without_regene
 }
 
 #[tokio::test]
+async fn historical_fence_only_retained_result_remains_readable_without_replay() {
+    let f = Fixture::new("# Never regenerate", false).await;
+    let job = f.submit().await;
+    f.journal.claim(job.id.clone()).await.unwrap();
+    let historical = GeneratedDocument {
+        markdown: "```html".into(),
+        suggested_tags: None,
+    };
+    f.journal
+        .retain_result(job.id.clone(), historical.clone())
+        .await
+        .unwrap();
+    assert_eq!(f.journal.result(job.id).await.unwrap(), Some(historical));
+    assert_eq!(f.generator.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn retained_output_is_immutable_and_invalid_records_are_preserved_for_recovery() {
     let f = Fixture::new("# First result", false).await;
     let job = f.submit().await;

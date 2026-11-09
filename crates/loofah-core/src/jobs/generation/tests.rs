@@ -374,6 +374,80 @@ async fn custom_short_and_second_attempt_outputs_preserve_existing_validation_po
 }
 
 #[tokio::test]
+async fn fence_only_generation_fails_without_an_additional_model_attempt() {
+    for scripts in [
+        vec![vec![text("```html\n"), finished()]],
+        vec![
+            vec![text("Invalid prefix once"), finished()],
+            vec![text("```html\n"), finished()],
+        ],
+    ] {
+        let attempts = scripts.len();
+        let model = Model::new(scripts);
+        let result = SummaryGenerator::new(source(false), model.clone())
+            .generate(work(), CancellationToken::new())
+            .await;
+        assert_eq!(result.unwrap_err(), ProcessingJobFailure::InvalidOutput);
+        assert_eq!(model.requests.lock().unwrap().len(), attempts);
+        assert_eq!(model.drained.load(Ordering::SeqCst), attempts * 2);
+    }
+}
+
+#[test]
+fn final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content() {
+    for body in [
+        "```html",
+        "```",
+        "~~~text\n\n~~~",
+        "  ```html\n  ```",
+        "```html\n```\n~~~text\n~~~",
+        "```html\n<loofah-tags>{\"tags\":[]}</loofah-tags>",
+    ] {
+        let mut output = Output::default();
+        output.push(body).unwrap();
+        output.finished = true;
+        assert_eq!(
+            output.finish().unwrap_err(),
+            ProcessingJobFailure::InvalidOutput,
+            "{body:?}"
+        );
+    }
+    for body in [
+        "Short",
+        "é",
+        "# Heading",
+        "```html\n<p>Ship Friday.</p>\n```",
+        "~~~text\nShip Friday.\n~~~",
+        "```text\n é \n```",
+        "Before\n```html\n```",
+        "```html\n```\nAfter",
+        "`` literal ticks",
+    ] {
+        let mut output = Output::default();
+        output.push(body).unwrap();
+        output.finished = true;
+        assert_eq!(output.finish().unwrap().markdown, body.trim(), "{body:?}");
+    }
+}
+
+#[test]
+fn final_generation_preserves_literal_fences_in_first_indented_code_line() {
+    for (body, expected) in [
+        ("    ```html", "    ```html"),
+        (" \n    ```html\n  \n", "    ```html"),
+        ("\n\t~~~\n", "\t~~~"),
+        ("  \t```html", "  \t```html"),
+        ("\n    code\n    ```\n", "    code\n    ```"),
+        ("  ordinary prose \n", "ordinary prose"),
+    ] {
+        let mut output = Output::default();
+        output.push(body).unwrap();
+        output.finished = true;
+        assert_eq!(output.finish().unwrap().markdown, expected, "{body:?}");
+    }
+}
+
+#[tokio::test]
 async fn provider_failure_unconfirmed_eof_and_invalid_stream_order_do_not_return_partial_success() {
     for script in [
         vec![
@@ -550,6 +624,108 @@ impl super::super::JobAuthorizer for Authorizer {
     ) -> JobFuture<'a, Result<Box<dyn Send>, ProcessingJobFailure>> {
         Box::pin(async { Ok(Box::new(()) as Box<dyn Send>) })
     }
+}
+
+#[tokio::test]
+async fn fence_only_job_preserves_canonical_summary_and_retains_no_result() {
+    use crate::VaultRuntime;
+    use hypr_loofah_protocol::{
+        DocumentTarget, ProcessingJobState, SaveDocumentRequest, SummaryJobRequest,
+    };
+    let root = tempfile::tempdir().unwrap();
+    let vault = root.path().join("vault");
+    let mut runtime = VaultRuntime::open_with_changes(
+        "vault-one".into(),
+        &vault,
+        &root.path().join("cache"),
+        &root.path().join("operations"),
+        tokio::sync::mpsc::unbounded_channel().1,
+    )
+    .await
+    .unwrap();
+    let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"Original title","created_at":"2026-11-07T10:00:00Z","tags":[]})).unwrap();
+    runtime
+        .context
+        .store
+        .create_note_session(&meta, "Ship Friday.")
+        .await
+        .unwrap();
+    runtime.context.store.ensure_summary("note").await.unwrap();
+    let empty = runtime
+        .context
+        .read_document("note", &DocumentTarget::Summary)
+        .await
+        .unwrap();
+    runtime
+        .context
+        .save_document(
+            "note",
+            &DocumentTarget::Summary,
+            SaveDocumentRequest {
+                markdown: "# Existing summary\nPreserve the original.".into(),
+                expected_revision: empty.revision,
+            },
+        )
+        .await
+        .unwrap();
+    let baseline = runtime
+        .context
+        .read_document("note", &DocumentTarget::Summary)
+        .await
+        .unwrap();
+    let original_bytes = std::fs::read(vault.join("sessions/note/summary.md")).unwrap();
+    let model = Model::new(vec![vec![text("```html\n"), finished()]]);
+    runtime
+        .enable_processing(
+            Arc::new(SummaryGenerator::new(source(false), model.clone())),
+            Arc::new(Authorizer),
+        )
+        .await
+        .unwrap();
+    let journal = runtime.context.processing_jobs().unwrap().clone();
+    let job = journal
+        .submit(
+            "local-owner".into(),
+            uuid::Uuid::new_v4().to_string(),
+            SummaryJobRequest {
+                only_if_empty: false,
+                title_policy: Default::default(),
+                session_id: "note".into(),
+                target: DocumentTarget::Summary,
+                expected_revision: baseline.revision.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let snapshot = journal.get(job.id.clone()).await.unwrap().unwrap();
+            if snapshot.state.is_terminal() {
+                assert_eq!(snapshot.state, ProcessingJobState::Failed);
+                assert_eq!(snapshot.failure, Some(ProcessingJobFailure::InvalidOutput));
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(journal.result(job.id).await.unwrap().is_none());
+    assert_eq!(
+        runtime
+            .context
+            .read_document("note", &DocumentTarget::Summary)
+            .await
+            .unwrap(),
+        baseline
+    );
+    assert_eq!(
+        std::fs::read(vault.join("sessions/note/summary.md")).unwrap(),
+        original_bytes
+    );
+    assert_eq!(model.requests.lock().unwrap().len(), 1);
+    assert_eq!(model.drained.load(Ordering::SeqCst), 2);
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
