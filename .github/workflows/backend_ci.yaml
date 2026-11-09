@@ -125,8 +125,8 @@ jobs:
           cargo test --locked --release -p transcribe-whisper-local --lib "$typed_live_case" -- --exact --ignored --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/typed-live-cpu.log"
       - run: |
           set -euo pipefail
-          cargo test --locked --release -p transcribe-whisper-local --test inference delayed_proxy:: -- --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log"
-          grep -F 'test result: ok. 2 passed; 0 failed; 0 ignored' "$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log"
+          cargo test --locked --release -p transcribe-whisper-local --test inference -- --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log"
+          grep -F 'test result: ok. 9 passed; 0 failed; 2 ignored' "$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log"
           cargo test --locked --release -p transcribe-whisper-local --test inference -- --ignored --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/http-live-cpu.log"
           for websocket_rtt in 50 150 500; do
             test "$(grep -c "^websocket shaped profile: rtt_ms=$websocket_rtt " "$RUNNER_TEMP/loofah-cpu-stt/http-live-cpu.log")" = 1

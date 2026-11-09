@@ -14847,6 +14847,2086 @@
         "meaning": "Supports a fixture-only correction. No SDK guard, saved request identity, production profile, producer or canonical content changed. Not a new Native runtime pass."
       },
       "pending": "Corrected actual systemd/Caddy append and restart execution requires a new source push after all healthy6e56 jobs finish. No cancellation/retry or local app test performed."
+    },
+    "hosted_6e56_partial_terminal_and_bounded_probe_second_correction_2026_11_09": {
+      "tested_source": "6e56a7d60360b3d8f333ba930bf6f563427bc567",
+      "scoped_terminal_successes": {
+        "sha256": "4c93a8f33564958b04b3f0e7e255f2ccd1775ddfc594e09cc046c4d8367e26cf",
+        "report": {
+          "source": "6e56a7d60360b3d8f333ba930bf6f563427bc567",
+          "merge": "5d2fd0e447fb4f29b6e193f0effa5ade82578c8e",
+          "parents": [
+            "a6a8f001d9165881e59fd0fa29df944da26b8801",
+            "6e56a7d60360b3d8f333ba930bf6f563427bc567"
+          ],
+          "jobs": [
+            {
+              "job_id": 129198384863,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-6e56a7-audit/129198384863.log",
+              "bytes": 20144,
+              "sha256": "b09015de38a059461dc70be406682efc91d93cad3b07fe831693b60bed9f2ecd",
+              "selected_lines": []
+            },
+            {
+              "job_id": 129198384571,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-6e56a7-audit/129198384571.log",
+              "bytes": 21006,
+              "sha256": "b9004e3ac0c69e907749a2bd1cce5674474fd9f69f4a6d1dd1579817eccb66e3",
+              "selected_lines": []
+            },
+            {
+              "job_id": 129198384865,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-6e56a7-audit/129198384865.log",
+              "bytes": 87147,
+              "sha256": "8d0c422bf3027f2285f5c394292c48d48506954b6f27ead9b0a9565f0188f00b",
+              "selected_lines": [
+                {
+                  "line": 367,
+                  "text": "2026-11-09T13:47:35.2501377Z SpeechCore verified artifact cached (26 bytes)"
+                },
+                {
+                  "line": 368,
+                  "text": "2026-11-09T13:47:35.2501747Z SpeechCore verified cache hit"
+                },
+                {
+                  "line": 369,
+                  "text": "2026-11-09T13:47:35.2502160Z SpeechCore verified artifact cached (26 bytes)"
+                }
+              ]
+            },
+            {
+              "job_id": 129198384944,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-6e56a7-audit/129198384944.log",
+              "bytes": 162785,
+              "sha256": "327d4de4fa5b7cb4179a919da4ec45af10d2b98549ffb0cbba672407e09ada60",
+              "selected_lines": [
+                {
+                  "line": 327,
+                  "text": "2026-11-09T13:48:06.9721955Z  Test Files  31 passed (31)"
+                },
+                {
+                  "line": 328,
+                  "text": "2026-11-09T13:48:06.9723003Z       Tests  303 passed (303)"
+                },
+                {
+                  "line": 1240,
+                  "text": "2026-11-09T13:52:32.5152529Z     at collectTests (file:///home/runner/work/loofah/loofah/node_modules/.pnpm/@vitest+runner@4.1.4/node_modules/@vitest/runner/dist/chunk-artifact.js:2433:3)"
+                },
+                {
+                  "line": 1278,
+                  "text": "2026-11-09T13:52:55.4828156Z  Test Files  298 passed (298)"
+                },
+                {
+                  "line": 1279,
+                  "text": "2026-11-09T13:52:55.4843259Z       Tests  2660 passed (2660)"
+                }
+              ]
+            },
+            {
+              "job_id": 129198384791,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-6e56a7-audit/129198384791.log",
+              "bytes": 189186,
+              "sha256": "3153568c2e793c61c1af859b670938fbeff942c5f564e5a1b73deced059fcb68",
+              "selected_lines": [
+                {
+                  "line": 1152,
+                  "text": "2026-11-09T13:49:51.7149765Z test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+                },
+                {
+                  "line": 1160,
+                  "text": "2026-11-09T13:49:51.7262167Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 1166,
+                  "text": "2026-11-09T13:49:51.8089243Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1210,
+                  "text": "2026-11-09T13:49:57.3972473Z test result: ok. 31 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.35s"
+                },
+                {
+                  "line": 1216,
+                  "text": "2026-11-09T13:49:57.4915452Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1249,
+                  "text": "2026-11-09T13:50:04.1418919Z test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s"
+                },
+                {
+                  "line": 1255,
+                  "text": "2026-11-09T13:50:04.2440451Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1294,
+                  "text": "2026-11-09T13:50:22.5860299Z test result: ok. 17 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 5.55s"
+                },
+                {
+                  "line": 1300,
+                  "text": "2026-11-09T13:50:22.6682875Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1499,
+                  "text": "2026-11-09T13:52:13.0240757Z test result: ok. 96 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.10s"
+                },
+                {
+                  "line": 1507,
+                  "text": "2026-11-09T13:52:13.0532143Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1514,
+                  "text": "2026-11-09T13:52:13.3676781Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s"
+                },
+                {
+                  "line": 1522,
+                  "text": "2026-11-09T13:52:13.4232178Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+                },
+                {
+                  "line": 1540,
+                  "text": "2026-11-09T13:52:13.9041813Z test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s"
+                },
+                {
+                  "line": 1553,
+                  "text": "2026-11-09T13:52:18.6441845Z test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.74s"
+                },
+                {
+                  "line": 1565,
+                  "text": "2026-11-09T13:52:18.9370983Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
+                },
+                {
+                  "line": 1575,
+                  "text": "2026-11-09T13:52:19.1974837Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s"
+                },
+                {
+                  "line": 1581,
+                  "text": "2026-11-09T13:52:19.6420982Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1655,
+                  "text": "2026-11-09T13:52:21.3123423Z test result: ok. 66 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s"
+                },
+                {
+                  "line": 1661,
+                  "text": "2026-11-09T13:52:21.3465368Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                }
+              ]
+            },
+            {
+              "job_id": 129198385490,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-6e56a7-audit/129198385490.log",
+              "bytes": 233305,
+              "sha256": "4cb9ad96fb3e573646452624ca04945ba84b5e5383fff51f512f30109aebc172",
+              "selected_lines": [
+                {
+                  "line": 1309,
+                  "text": "2026-11-09T13:49:51.5355372Z test resources::tests::native_panic_releases_source_and_reports_actual_failed_completion ... ok"
+                },
+                {
+                  "line": 1354,
+                  "text": "2026-11-09T13:49:51.7026999Z test result: ok. 72 passed; 0 failed; 9 ignored; 0 measured; 0 filtered out; finished in 1.64s"
+                },
+                {
+                  "line": 1368,
+                  "text": "2026-11-09T13:49:51.7360485Z   test \"$(grep -c '^test result: ok\\. 1 passed; 0 failed; 0 ignored; 0 measured;' \"$kernel_log\")\" = 1"
+                },
+                {
+                  "line": 1431,
+                  "text": "2026-11-09T13:49:52.3003744Z resources::tests::native_panic_releases_source_and_reports_actual_failed_completion: test"
+                },
+                {
+                  "line": 1483,
+                  "text": "2026-11-09T13:50:00.1314290Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 7.27s"
+                },
+                {
+                  "line": 1491,
+                  "text": "2026-11-09T13:50:01.1592979Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 0.46s"
+                },
+                {
+                  "line": 1499,
+                  "text": "2026-11-09T13:50:04.2295229Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 2.50s"
+                },
+                {
+                  "line": 1568,
+                  "text": "2026-11-09T13:50:04.8248874Z resources::tests::native_panic_releases_source_and_reports_actual_failed_completion: test"
+                },
+                {
+                  "line": 1621,
+                  "text": "2026-11-09T13:50:51.0723152Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 45.69s"
+                },
+                {
+                  "line": 1626,
+                  "text": "2026-11-09T13:50:51.1024377Z grep -F 'test result: ok. 2 passed; 0 failed; 0 ignored' \"$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log\""
+                },
+                {
+                  "line": 1629,
+                  "text": "2026-11-09T13:50:51.1026769Z   test \"$(grep -c \"^websocket shaped profile: rtt_ms=$websocket_rtt \" \"$RUNNER_TEMP/loofah-cpu-stt/http-live-cpu.log\")\" = 1"
+                },
+                {
+                  "line": 1661,
+                  "text": "2026-11-09T13:51:11.3860454Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.11s"
+                },
+                {
+                  "line": 1663,
+                  "text": "2026-11-09T13:51:11.4069314Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.11s"
+                },
+                {
+                  "line": 1714,
+                  "text": "2026-11-09T13:51:24.9167577Z websocket shaped connection: rtt_ms=50 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1715,
+                  "text": "2026-11-09T13:51:24.9170120Z websocket shaped connection: rtt_ms=50 index=1 upload_bytes=320333 upload_slabs=23 completed_upload_bytes=320333 download_bytes=2801 download_slabs=4 completed_download_bytes=2801 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1716,
+                  "text": "2026-11-09T13:51:24.9171536Z websocket shaped connection: rtt_ms=50 index=2 upload_bytes=320308 upload_slabs=23 completed_upload_bytes=320308 download_bytes=872 download_slabs=3 completed_download_bytes=872 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1717,
+                  "text": "2026-11-09T13:51:24.9172877Z websocket shaped connection: rtt_ms=50 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1718,
+                  "text": "2026-11-09T13:51:24.9174219Z websocket shaped connection: rtt_ms=50 index=4 upload_bytes=320302 upload_slabs=22 completed_upload_bytes=320302 download_bytes=870 download_slabs=2 completed_download_bytes=870 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1719,
+                  "text": "2026-11-09T13:51:24.9175566Z websocket shaped connection: rtt_ms=50 index=5 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1720,
+                  "text": "2026-11-09T13:51:24.9176919Z websocket shaped profile: rtt_ms=50 health_ms=58 handshake_ms=102 finalize_ms=3756 replacement_cancel_drain_ms=186 abrupt_reconnect_ms=Some(177) total_ms=10502 connections=6 slab_bytes=16384 fixture_budget_ms=259200"
+                },
+                {
+                  "line": 1743,
+                  "text": "2026-11-09T13:51:33.5289915Z websocket shaped connection: rtt_ms=150 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1744,
+                  "text": "2026-11-09T13:51:33.5292753Z websocket shaped connection: rtt_ms=150 index=1 upload_bytes=320333 upload_slabs=23 completed_upload_bytes=320333 download_bytes=2801 download_slabs=4 completed_download_bytes=2801 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1745,
+                  "text": "2026-11-09T13:51:33.5295198Z websocket shaped connection: rtt_ms=150 index=2 upload_bytes=320308 upload_slabs=23 completed_upload_bytes=320308 download_bytes=872 download_slabs=3 completed_download_bytes=872 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1746,
+                  "text": "2026-11-09T13:51:33.5297579Z websocket shaped connection: rtt_ms=150 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1747,
+                  "text": "2026-11-09T13:51:33.5300119Z websocket shaped profile: rtt_ms=150 health_ms=157 handshake_ms=193 finalize_ms=4700 replacement_cancel_drain_ms=438 abrupt_reconnect_ms=None total_ms=8611 connections=4 slab_bytes=16384 fixture_budget_ms=278400"
+                },
+                {
+                  "line": 1770,
+                  "text": "2026-11-09T13:51:50.3105057Z websocket shaped connection: rtt_ms=500 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1771,
+                  "text": "2026-11-09T13:51:50.3108025Z websocket shaped connection: rtt_ms=500 index=1 upload_bytes=320333 upload_slabs=23 completed_upload_bytes=320333 download_bytes=2801 download_slabs=4 completed_download_bytes=2801 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1772,
+                  "text": "2026-11-09T13:51:50.3111736Z websocket shaped connection: rtt_ms=500 index=2 upload_bytes=320308 upload_slabs=23 completed_upload_bytes=320308 download_bytes=872 download_slabs=3 completed_download_bytes=872 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1773,
+                  "text": "2026-11-09T13:51:50.3114167Z websocket shaped connection: rtt_ms=500 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+                },
+                {
+                  "line": 1774,
+                  "text": "2026-11-09T13:51:50.3116579Z websocket shaped profile: rtt_ms=500 health_ms=508 handshake_ms=545 finalize_ms=7995 replacement_cancel_drain_ms=1313 abrupt_reconnect_ms=None total_ms=16781 connections=4 slab_bytes=16384 fixture_budget_ms=368000"
+                },
+                {
+                  "line": 1777,
+                  "text": "2026-11-09T13:51:50.3232120Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 38.37s"
+                },
+                {
+                  "line": 1889,
+                  "text": "2026-11-09T13:58:37.8333493Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 183 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1896,
+                  "text": "2026-11-09T13:58:37.8385887Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 186 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1926,
+                  "text": "2026-11-09T13:58:37.8454827Z test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 176 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1937,
+                  "text": "2026-11-09T13:58:37.8514471Z test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 182 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1949,
+                  "text": "2026-11-09T13:58:37.9772881Z test result: ok. 3 passed; 0 failed; 4 ignored; 0 measured; 181 filtered out; finished in 0.12s"
+                },
+                {
+                  "line": 1958,
+                  "text": "2026-11-09T13:58:37.9845088Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 184 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2290,
+                  "text": "2026-11-09T14:04:33.2604329Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 4.84s"
+                },
+                {
+                  "line": 2292,
+                  "text": "2026-11-09T14:04:33.3196397Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 4.84s"
+                },
+                {
+                  "line": 2297,
+                  "text": "2026-11-09T14:04:55.3450109Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 21.91s"
+                },
+                {
+                  "line": 2299,
+                  "text": "2026-11-09T14:04:55.4132946Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 21.91s"
+                },
+                {
+                  "line": 2304,
+                  "text": "2026-11-09T14:05:48.1072881Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 52.58s"
+                },
+                {
+                  "line": 2306,
+                  "text": "2026-11-09T14:05:48.1573105Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 52.58s"
+                },
+                {
+                  "line": 2309,
+                  "text": "2026-11-09T14:06:14.6217463Z reserved CPU acceptance: total=2 reserved_live=1 batch_frames=5120000 source_sha256=938170e91687b18f8f9c4c289fd579770163ca2df9485b591d2c15578ddd926d first_caption_ms=6579 concurrent_http_ms=9 actual_drain_ms=14279"
+                },
+                {
+                  "line": 2312,
+                  "text": "2026-11-09T14:06:14.9472371Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 26.67s"
+                },
+                {
+                  "line": 2314,
+                  "text": "2026-11-09T14:06:15.0058940Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 26.67s"
+                }
+              ]
+            },
+            {
+              "job_id": 129198384810,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-6e56a7-audit/129198384810.log",
+              "bytes": 628566,
+              "sha256": "dd441a80b282e0a0406abeac721540a0e7b9e74d42f408b0fb3a50427d1a331e",
+              "selected_lines": [
+                {
+                  "line": 739,
+                  "text": "2026-11-09T13:48:52.4510250Z SpeechCore verified cache hit"
+                },
+                {
+                  "line": 780,
+                  "text": "2026-11-09T13:49:36.7984870Z [27/31] Compiling NotificationTests RustBridgeStubs.swift"
+                },
+                {
+                  "line": 782,
+                  "text": "2026-11-09T13:49:36.7987100Z [29/31] Compiling NotificationTests NotificationLifetimeTests.swift"
+                },
+                {
+                  "line": 784,
+                  "text": "2026-11-09T13:49:38.8858400Z [31/33] Compiling notification_swiftPackageTests runner.swift"
+                },
+                {
+                  "line": 791,
+                  "text": "2026-11-09T13:49:41.9030280Z Test Case '-[NotificationTests.NotificationLifetimeTests testExpandedReminderDoesNotStartTimerUntilCollapsed]' started."
+                },
+                {
+                  "line": 792,
+                  "text": "2026-11-09T13:49:41.9031540Z Test Case '-[NotificationTests.NotificationLifetimeTests testExpandedReminderDoesNotStartTimerUntilCollapsed]' passed (0.164 seconds)."
+                },
+                {
+                  "line": 793,
+                  "text": "2026-11-09T13:49:41.9032880Z Test Case '-[NotificationTests.NotificationLifetimeTests testExplicitDismissStillCancelsMicrophoneReminderImmediately]' started."
+                },
+                {
+                  "line": 794,
+                  "text": "2026-11-09T13:49:41.9035310Z Test Case '-[NotificationTests.NotificationLifetimeTests testExplicitDismissStillCancelsMicrophoneReminderImmediately]' passed (0.005 seconds)."
+                },
+                {
+                  "line": 795,
+                  "text": "2026-11-09T13:49:41.9036790Z Test Case '-[NotificationTests.NotificationLifetimeTests testFocusCleanupPreservesMicrophoneReminderDeadline]' started."
+                },
+                {
+                  "line": 796,
+                  "text": "2026-11-09T13:49:41.9038380Z Test Case '-[NotificationTests.NotificationLifetimeTests testFocusCleanupPreservesMicrophoneReminderDeadline]' passed (0.004 seconds)."
+                },
+                {
+                  "line": 797,
+                  "text": "2026-11-09T13:49:41.9039940Z Test Case '-[NotificationTests.NotificationLifetimeTests testGlobalHoverUpdatesViewStateAndPausesTimer]' started."
+                },
+                {
+                  "line": 798,
+                  "text": "2026-11-09T13:49:41.9041330Z Test Case '-[NotificationTests.NotificationLifetimeTests testGlobalHoverUpdatesViewStateAndPausesTimer]' passed (0.003 seconds)."
+                },
+                {
+                  "line": 799,
+                  "text": "2026-11-09T13:49:41.9051590Z Test Case '-[NotificationTests.NotificationLifetimeTests testPauseResumeKeepsRemainingTime]' started."
+                },
+                {
+                  "line": 800,
+                  "text": "2026-11-09T13:49:41.9052610Z Test Case '-[NotificationTests.NotificationLifetimeTests testPauseResumeKeepsRemainingTime]' passed (0.108 seconds)."
+                },
+                {
+                  "line": 801,
+                  "text": "2026-11-09T13:49:41.9053780Z Test Case '-[NotificationTests.NotificationLifetimeTests testRepeatedResumeDoesNotResetRunningTimer]' started."
+                },
+                {
+                  "line": 802,
+                  "text": "2026-11-09T13:49:41.9054980Z Test Case '-[NotificationTests.NotificationLifetimeTests testRepeatedResumeDoesNotResetRunningTimer]' passed (0.002 seconds)."
+                },
+                {
+                  "line": 803,
+                  "text": "2026-11-09T13:49:41.9056100Z Test Case '-[NotificationTests.NotificationLifetimeTests testThirtySecondTimerStartsPausedWhenPointerAlreadyOverReminder]' started."
+                },
+                {
+                  "line": 804,
+                  "text": "2026-11-09T13:49:41.9057440Z Test Case '-[NotificationTests.NotificationLifetimeTests testThirtySecondTimerStartsPausedWhenPointerAlreadyOverReminder]' passed (0.003 seconds)."
+                },
+                {
+                  "line": 805,
+                  "text": "2026-11-09T13:49:41.9058630Z Test Case '-[NotificationTests.NotificationLifetimeTests testUnpausedTimerExpiresAndEmitsTimeout]' started."
+                },
+                {
+                  "line": 806,
+                  "text": "2026-11-09T13:49:41.9059670Z Test Case '-[NotificationTests.NotificationLifetimeTests testUnpausedTimerExpiresAndEmitsTimeout]' passed (1.016 seconds)."
+                },
+                {
+                  "line": 1441,
+                  "text": "2026-11-09T14:09:03.3250340Z test result: ok. 196 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 10.78s"
+                },
+                {
+                  "line": 1447,
+                  "text": "2026-11-09T14:09:03.4557740Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1453,
+                  "text": "2026-11-09T14:09:06.5177510Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1725,
+                  "text": "2026-11-09T14:22:05.2388590Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1748,
+                  "text": "2026-11-09T14:22:05.5665460Z test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s"
+                },
+                {
+                  "line": 1778,
+                  "text": "2026-11-09T14:22:05.5959760Z test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1786,
+                  "text": "2026-11-09T14:22:05.5963220Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1795,
+                  "text": "2026-11-09T14:22:05.9627180Z test capture::stream::ownership_tests::dropped_observer_cannot_release_original_owner_while_native_factory_is_blocked ... ok"
+                },
+                {
+                  "line": 1796,
+                  "text": "2026-11-09T14:22:05.9629220Z test capture::stream::ownership_tests::original_owner_retires_after_actual_native_drain_even_if_control_survives ... ok"
+                },
+                {
+                  "line": 1799,
+                  "text": "2026-11-09T14:22:05.9641150Z test capture::stream::ownership_tests::native_panic_releases_owner_only_after_the_actual_worker_unwinds ... ok"
+                },
+                {
+                  "line": 1811,
+                  "text": "2026-11-09T14:22:06.1131250Z test mic::ownership_tests::backend_callback_holders_keep_original_owner_after_outer_stream_thread_drops ... ok"
+                },
+                {
+                  "line": 1820,
+                  "text": "2026-11-09T14:22:06.1171140Z test speaker::teardown::tests::each_native_failure_or_panic_retains_context_owner_and_remaining_handles_without_retry ... ok"
+                },
+                {
+                  "line": 1822,
+                  "text": "2026-11-09T14:22:06.1173910Z test speaker::teardown::tests::successful_checked_teardown_closes_every_original_handle_once_before_releasing_context ... ok"
+                },
+                {
+                  "line": 1823,
+                  "text": "2026-11-09T14:22:06.1175600Z test speaker::teardown::tests::unknown_registration_and_startup_unwind_never_free_a_live_callback_context ... ok"
+                },
+                {
+                  "line": 1829,
+                  "text": "2026-11-09T14:22:06.9647730Z test result: ok. 35 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 1.01s"
+                },
+                {
+                  "line": 1853,
+                  "text": "2026-11-09T14:22:10.7689270Z test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.76s"
+                },
+                {
+                  "line": 1860,
+                  "text": "2026-11-09T14:22:10.7811730Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1867,
+                  "text": "2026-11-09T14:22:10.7872270Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1873,
+                  "text": "2026-11-09T14:22:10.7988700Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1895,
+                  "text": "2026-11-09T14:22:20.1965790Z test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.39s"
+                },
+                {
+                  "line": 1902,
+                  "text": "2026-11-09T14:22:20.2091570Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1917,
+                  "text": "2026-11-09T14:22:20.2738880Z test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+                },
+                {
+                  "line": 1925,
+                  "text": "2026-11-09T14:22:21.0233210Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s"
+                },
+                {
+                  "line": 1946,
+                  "text": "2026-11-09T14:22:25.5937820Z test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.55s"
+                },
+                {
+                  "line": 1958,
+                  "text": "2026-11-09T14:22:25.8872440Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s"
+                },
+                {
+                  "line": 2021,
+                  "text": "2026-11-09T14:22:28.7201660Z test result: ok. 53 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 2.81s"
+                },
+                {
+                  "line": 2027,
+                  "text": "2026-11-09T14:22:28.7247890Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2033,
+                  "text": "2026-11-09T14:22:28.7315840Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2039,
+                  "text": "2026-11-09T14:22:28.7463140Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2045,
+                  "text": "2026-11-09T14:22:28.7556310Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2061,
+                  "text": "2026-11-09T14:22:29.0349170Z test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s"
+                },
+                {
+                  "line": 2069,
+                  "text": "2026-11-09T14:22:29.0869030Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+                },
+                {
+                  "line": 2082,
+                  "text": "2026-11-09T14:22:29.2064150Z test result: ok. 3 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.09s"
+                },
+                {
+                  "line": 2088,
+                  "text": "2026-11-09T14:22:29.2131860Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2191,
+                  "text": "2026-11-09T14:22:45.0993410Z test result: ok. 97 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.86s"
+                },
+                {
+                  "line": 2201,
+                  "text": "2026-11-09T14:22:45.1359610Z test result: ok. 1 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+                },
+                {
+                  "line": 2207,
+                  "text": "2026-11-09T14:22:45.1508200Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2214,
+                  "text": "2026-11-09T14:22:45.1577870Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2230,
+                  "text": "2026-11-09T14:22:45.1723670Z test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2329,
+                  "text": "2026-11-09T14:22:47.9674030Z test result: ok. 94 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.53s"
+                },
+                {
+                  "line": 2396,
+                  "text": "2026-11-09T14:22:48.4411550Z test result: ok. 60 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.19s"
+                },
+                {
+                  "line": 2405,
+                  "text": "2026-11-09T14:22:48.5317670Z test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2413,
+                  "text": "2026-11-09T14:22:48.5808460Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2425,
+                  "text": "2026-11-09T14:22:48.6202940Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2562,
+                  "text": "2026-11-09T14:22:52.0607280Z test result: ok. 96 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.37s"
+                },
+                {
+                  "line": 2570,
+                  "text": "2026-11-09T14:22:52.1073070Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2577,
+                  "text": "2026-11-09T14:22:53.0563340Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.93s"
+                },
+                {
+                  "line": 2586,
+                  "text": "2026-11-09T14:22:53.2085920Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s"
+                },
+                {
+                  "line": 2603,
+                  "text": "2026-11-09T14:22:54.6850410Z test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.45s"
+                },
+                {
+                  "line": 2616,
+                  "text": "2026-11-09T14:22:55.9489370Z test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.24s"
+                },
+                {
+                  "line": 2628,
+                  "text": "2026-11-09T14:22:56.9439620Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.96s"
+                },
+                {
+                  "line": 2638,
+                  "text": "2026-11-09T14:22:57.6668030Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s"
+                },
+                {
+                  "line": 2857,
+                  "text": "2026-11-09T14:24:11.8065250Z test result: ok. 210 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 74.11s"
+                },
+                {
+                  "line": 3458,
+                  "text": "2026-11-09T14:26:01.1012310Z test result: ok. 590 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 109.27s"
+                },
+                {
+                  "line": 3469,
+                  "text": "2026-11-09T14:26:01.1486680Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3494,
+                  "text": "2026-11-09T14:26:06.3282450Z test result: ok. 18 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 5.16s"
+                },
+                {
+                  "line": 3538,
+                  "text": "2026-11-09T14:26:06.3854630Z test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+                },
+                {
+                  "line": 3544,
+                  "text": "2026-11-09T14:26:06.4065240Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3706,
+                  "text": "2026-11-09T14:26:48.8112280Z test result: ok. 156 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 42.37s"
+                },
+                {
+                  "line": 3712,
+                  "text": "2026-11-09T14:26:48.8312670Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3718,
+                  "text": "2026-11-09T14:26:48.8488960Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3725,
+                  "text": "2026-11-09T14:26:48.8783310Z test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3732,
+                  "text": "2026-11-09T14:26:49.1673960Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s"
+                },
+                {
+                  "line": 3744,
+                  "text": "2026-11-09T14:26:50.2673500Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.08s"
+                },
+                {
+                  "line": 3751,
+                  "text": "2026-11-09T14:26:50.2862990Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3759,
+                  "text": "2026-11-09T14:26:50.3115980Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 3778,
+                  "text": "2026-11-09T14:26:51.3984740Z test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.07s"
+                },
+                {
+                  "line": 3788,
+                  "text": "2026-11-09T14:26:51.4199020Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3802,
+                  "text": "2026-11-09T14:26:51.4335950Z test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 3817,
+                  "text": "2026-11-09T14:26:51.4660240Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+                },
+                {
+                  "line": 3826,
+                  "text": "2026-11-09T14:26:51.4858920Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3850,
+                  "text": "2026-11-09T14:26:51.5445290Z test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+                },
+                {
+                  "line": 3856,
+                  "text": "2026-11-09T14:26:51.5912530Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3868,
+                  "text": "2026-11-09T14:26:51.5992580Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3873,
+                  "text": "2026-11-09T14:26:51.6078650Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3897,
+                  "text": "2026-11-09T14:26:51.6205610Z test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3913,
+                  "text": "2026-11-09T14:26:51.6318120Z test result: ok. 5 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4255,
+                  "text": "2026-11-09T14:26:51.7947110Z test result: ok. 290 passed; 0 failed; 46 ignored; 0 measured; 0 filtered out; finished in 0.11s"
+                },
+                {
+                  "line": 4268,
+                  "text": "2026-11-09T14:26:51.8318800Z test result: ok. 0 passed; 0 failed; 7 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4290,
+                  "text": "2026-11-09T14:26:51.8617750Z test result: ok. 0 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4298,
+                  "text": "2026-11-09T14:26:51.8851810Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4312,
+                  "text": "2026-11-09T14:26:54.5579270Z test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.65s"
+                },
+                {
+                  "line": 4318,
+                  "text": "2026-11-09T14:26:54.5970730Z test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4356,
+                  "text": "2026-11-09T14:26:55.4338530Z test result: ok. 31 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.82s"
+                },
+                {
+                  "line": 4363,
+                  "text": "2026-11-09T14:26:55.4493890Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4443,
+                  "text": "2026-11-09T14:26:55.5139080Z test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+                },
+                {
+                  "line": 4476,
+                  "text": "2026-11-09T14:26:58.0111130Z test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.50s"
+                },
+                {
+                  "line": 4482,
+                  "text": "2026-11-09T14:26:58.0627110Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4491,
+                  "text": "2026-11-09T14:26:58.1235210Z test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+                },
+                {
+                  "line": 4500,
+                  "text": "2026-11-09T14:26:58.1544380Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4506,
+                  "text": "2026-11-09T14:26:58.1688750Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4514,
+                  "text": "2026-11-09T14:26:58.1997240Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4555,
+                  "text": "2026-11-09T14:26:58.8867040Z test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s"
+                },
+                {
+                  "line": 4561,
+                  "text": "2026-11-09T14:26:58.9026390Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4607,
+                  "text": "2026-11-09T14:26:59.0247520Z test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s"
+                },
+                {
+                  "line": 4631,
+                  "text": "2026-11-09T14:26:59.0643310Z test result: ok. 12 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4639,
+                  "text": "2026-11-09T14:26:59.0915880Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4646,
+                  "text": "2026-11-09T14:26:59.1564830Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+                },
+                {
+                  "line": 4652,
+                  "text": "2026-11-09T14:26:59.1732240Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4724,
+                  "text": "2026-11-09T14:26:59.2889900Z test result: ok. 66 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s"
+                },
+                {
+                  "line": 4753,
+                  "text": "2026-11-09T14:26:59.6157020Z test result: ok. 22 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.27s"
+                },
+                {
+                  "line": 4766,
+                  "text": "2026-11-09T14:26:59.7172850Z test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.06s"
+                },
+                {
+                  "line": 4773,
+                  "text": "2026-11-09T14:26:59.7563000Z test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4780,
+                  "text": "2026-11-09T14:26:59.7909500Z test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4822,
+                  "text": "2026-11-09T14:26:59.8252930Z test result: ok. 31 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4915,
+                  "text": "2026-11-09T14:26:59.8485260Z test result: ok. 86 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4920,
+                  "text": "2026-11-09T14:26:59.8742750Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4956,
+                  "text": "2026-11-09T14:26:59.8885270Z test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4966,
+                  "text": "2026-11-09T14:26:59.9040670Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 5626,
+                  "text": "2026-11-09T14:27:16.6701850Z test result: ok. 631 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 16.76s"
+                },
+                {
+                  "line": 5636,
+                  "text": "2026-11-09T14:27:16.7015740Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5648,
+                  "text": "2026-11-09T14:27:16.7564760Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+                },
+                {
+                  "line": 5659,
+                  "text": "2026-11-09T14:27:21.7851100Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.01s"
+                },
+                {
+                  "line": 5669,
+                  "text": "2026-11-09T14:27:22.6231870Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.81s"
+                },
+                {
+                  "line": 5678,
+                  "text": "2026-11-09T14:27:22.6735210Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+                },
+                {
+                  "line": 5684,
+                  "text": "2026-11-09T14:27:22.8388030Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5690,
+                  "text": "2026-11-09T14:27:23.1764760Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5696,
+                  "text": "2026-11-09T14:27:23.2830890Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5702,
+                  "text": "2026-11-09T14:27:23.3432040Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5708,
+                  "text": "2026-11-09T14:27:23.6642870Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5714,
+                  "text": "2026-11-09T14:27:23.7444910Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5720,
+                  "text": "2026-11-09T14:27:23.7976460Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5726,
+                  "text": "2026-11-09T14:27:23.8439710Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5732,
+                  "text": "2026-11-09T14:27:23.9142420Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5738,
+                  "text": "2026-11-09T14:27:24.0068120Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5744,
+                  "text": "2026-11-09T14:27:24.0697350Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5750,
+                  "text": "2026-11-09T14:27:24.1264720Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5756,
+                  "text": "2026-11-09T14:27:24.2191170Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5762,
+                  "text": "2026-11-09T14:27:24.2888910Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5768,
+                  "text": "2026-11-09T14:27:24.4985950Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5774,
+                  "text": "2026-11-09T14:27:24.5673070Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5780,
+                  "text": "2026-11-09T14:27:24.7391600Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5786,
+                  "text": "2026-11-09T14:27:24.7928280Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5792,
+                  "text": "2026-11-09T14:27:24.8475210Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5798,
+                  "text": "2026-11-09T14:27:25.2664190Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5804,
+                  "text": "2026-11-09T14:27:25.3911790Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5810,
+                  "text": "2026-11-09T14:27:25.4759660Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5816,
+                  "text": "2026-11-09T14:27:25.6040390Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5822,
+                  "text": "2026-11-09T14:27:25.6553500Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5828,
+                  "text": "2026-11-09T14:27:25.7282520Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5834,
+                  "text": "2026-11-09T14:27:25.7730310Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5840,
+                  "text": "2026-11-09T14:27:25.8290710Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5846,
+                  "text": "2026-11-09T14:27:26.3832120Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5852,
+                  "text": "2026-11-09T14:27:26.6370710Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5858,
+                  "text": "2026-11-09T14:27:26.7364780Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5864,
+                  "text": "2026-11-09T14:27:26.8108140Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5870,
+                  "text": "2026-11-09T14:27:27.2265790Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5876,
+                  "text": "2026-11-09T14:27:27.6317080Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5882,
+                  "text": "2026-11-09T14:27:28.2393110Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5888,
+                  "text": "2026-11-09T14:27:28.4109150Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5894,
+                  "text": "2026-11-09T14:27:28.5575290Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5900,
+                  "text": "2026-11-09T14:27:29.1526470Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5906,
+                  "text": "2026-11-09T14:27:29.4297220Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5912,
+                  "text": "2026-11-09T14:27:29.5295480Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5918,
+                  "text": "2026-11-09T14:27:29.5905960Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5924,
+                  "text": "2026-11-09T14:27:29.6480230Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5930,
+                  "text": "2026-11-09T14:27:29.7070030Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5936,
+                  "text": "2026-11-09T14:27:29.7875670Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5942,
+                  "text": "2026-11-09T14:27:29.8648100Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5948,
+                  "text": "2026-11-09T14:27:29.9819190Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5954,
+                  "text": "2026-11-09T14:27:30.2296250Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5961,
+                  "text": "2026-11-09T14:27:30.7038000Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5966,
+                  "text": "2026-11-09T14:27:30.8885110Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5972,
+                  "text": "2026-11-09T14:27:30.9589770Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5978,
+                  "text": "2026-11-09T14:27:31.2161210Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5984,
+                  "text": "2026-11-09T14:27:31.3688320Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5990,
+                  "text": "2026-11-09T14:27:31.4451960Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5996,
+                  "text": "2026-11-09T14:27:31.5146010Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6003,
+                  "text": "2026-11-09T14:27:31.5938950Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6008,
+                  "text": "2026-11-09T14:27:31.8443560Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6014,
+                  "text": "2026-11-09T14:27:31.9609380Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6020,
+                  "text": "2026-11-09T14:27:32.1010910Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6026,
+                  "text": "2026-11-09T14:27:32.2255110Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6032,
+                  "text": "2026-11-09T14:27:32.3119670Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6038,
+                  "text": "2026-11-09T14:27:32.5829520Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6044,
+                  "text": "2026-11-09T14:27:32.6334610Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6050,
+                  "text": "2026-11-09T14:27:32.7702700Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6056,
+                  "text": "2026-11-09T14:27:32.8522900Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6062,
+                  "text": "2026-11-09T14:27:32.9582220Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6068,
+                  "text": "2026-11-09T14:27:33.0744120Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6074,
+                  "text": "2026-11-09T14:27:33.1358650Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6080,
+                  "text": "2026-11-09T14:27:33.2228150Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6086,
+                  "text": "2026-11-09T14:27:33.3653260Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6092,
+                  "text": "2026-11-09T14:27:33.4564390Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6098,
+                  "text": "2026-11-09T14:27:33.5759000Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6104,
+                  "text": "2026-11-09T14:27:33.6870500Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6110,
+                  "text": "2026-11-09T14:27:33.7751770Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6116,
+                  "text": "2026-11-09T14:27:34.1772380Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6122,
+                  "text": "2026-11-09T14:27:34.2572200Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6128,
+                  "text": "2026-11-09T14:27:34.3317150Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                }
+              ]
+            }
+          ],
+          "status": "All assigned seven jobs completed/success. Backend headless/container tracked independently by device agent. Separate ARM speech129198657378 failed fixture aggregate deadline; see its preserved failure evidence. This is not all-platform success. No CI controls or local desktop/model work."
+        }
+      },
+      "headless": {
+        "sha256": "da320258e109cfaaaa2427550cf8fda6203e4f32c5b84bddb2699c1b8dbbd586",
+        "report": {
+          "job": 129198385472,
+          "conclusion": "success",
+          "head": "6e56a7d60360b3d8f333ba930bf6f563427bc567",
+          "merge": "5d2fd0e447fb4f29b6e193f0effa5ade82578c8e",
+          "raw_log_sha256": "1c478a66f3ad72d075042c2bb7abbf974bed6b84ab8c771a9ca2a22ece1ae5fa",
+          "cohorts": [
+            {
+              "cohort": "2026-11-09T13:50:47.5224875Z      Running unittests src/lib.rs (target/debug/deps/capture_store-62266d1fd409c47b)",
+              "result": "ok",
+              "passed": 53,
+              "failed": 0,
+              "ignored": 4
+            },
+            {
+              "cohort": "2026-11-09T13:50:51.3700739Z      Running unittests src/lib.rs (target/debug/deps/loofah_client-ebb943c182e5b7e0)",
+              "result": "ok",
+              "passed": 210,
+              "failed": 0,
+              "ignored": 3
+            },
+            {
+              "cohort": "2026-11-09T13:51:53.4783330Z      Running unittests src/lib.rs (target/debug/deps/loofah_core-0511e7b01b490853)",
+              "result": "ok",
+              "passed": 590,
+              "failed": 0,
+              "ignored": 2
+            },
+            {
+              "cohort": "2026-11-09T13:52:54.5925254Z      Running unittests src/lib.rs (target/debug/deps/loofah_protocol-c64f6ba189507c66)",
+              "result": "ok",
+              "passed": 38,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:52:54.5983079Z      Running unittests src/bin/export-types.rs (target/debug/deps/export_types-275b1de52d936b52)",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:52:54.5991764Z      Running unittests src/lib.rs (target/debug/deps/loofah_server-ef51f91b85ac0006)",
+              "result": "ok",
+              "passed": 156,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:27.0917391Z      Running tests/capture_soak.rs (target/debug/deps/capture_soak-2b36fc9151b827da)",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:27.0917391Z      Running tests/capture_soak.rs (target/debug/deps/capture_soak-2b36fc9151b827da)",
+              "result": "ok",
+              "passed": 2,
+              "failed": 0,
+              "ignored": 4
+            },
+            {
+              "cohort": "2026-11-09T13:53:27.1267791Z      Running tests/deployment.rs (target/debug/deps/deployment-bb830afc0894d67b)",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 1
+            },
+            {
+              "cohort": "2026-11-09T13:53:27.1288297Z      Running tests/executable.rs (target/debug/deps/executable-a0a69e88d7bfa7fc)",
+              "result": "ok",
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:27.1635563Z      Running tests/maintenance.rs (target/debug/deps/maintenance-6937ab26fd8262c9)",
+              "result": "ok",
+              "passed": 5,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:27.7251828Z      Running unittests src/lib.rs (target/debug/deps/search_cache-426b5163984b6d4c)",
+              "result": "ok",
+              "passed": 31,
+              "failed": 0,
+              "ignored": 1
+            },
+            {
+              "cohort": "2026-11-09T13:53:28.0709824Z      Running unittests src/lib.rs (target/debug/deps/vault_read-aaf146436e6105df)",
+              "result": "ok",
+              "passed": 29,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:28.0760358Z      Running tests/flat_layout.rs (target/debug/deps/flat_layout-2c0d245ab845da9b)",
+              "result": "ok",
+              "passed": 5,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:28.0797414Z      Running unittests src/lib.rs (target/debug/deps/vault_write-e129f2eaca5fc807)",
+              "result": "ok",
+              "passed": 631,
+              "failed": 0,
+              "ignored": 5
+            },
+            {
+              "cohort": "2026-11-09T13:53:36.8981532Z    Doc-tests capture_store",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:37.0026386Z    Doc-tests loofah_client",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:37.4913058Z    Doc-tests loofah_core",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:38.2271695Z    Doc-tests loofah_protocol",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:39.0495557Z    Doc-tests loofah_server",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:39.2583225Z    Doc-tests search_cache",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:39.3456390Z    Doc-tests vault_read",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "cohort": "2026-11-09T13:53:39.4196853Z    Doc-tests vault_write",
+              "result": "ok",
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0
+            }
+          ],
+          "totals": {
+            "passed": 1751,
+            "failed": 0,
+            "ignored": 20
+          },
+          "append_cases": [
+            "2026-11-09T13:53:00.2902067Z test tests::capture_append::append_http_admission_rechecks_reader_and_exact_authenticated_request_scope ... ok",
+            "2026-11-09T13:53:00.3501267Z test tests::capture_append::append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission ... ok",
+            "2026-11-09T13:53:00.8693675Z test tests::capture_append::raw_append_http_publishes_exact_channels_and_replays_after_service_reopen ... ok"
+          ],
+          "deployment_case": [
+            "2026-11-09T13:53:27.1285284Z test packaged_caddy_append_and_restart ... ignored, requires disposable systemd host, packaged executable and actual Caddy TLS coordinator"
+          ],
+          "other_checks": {
+            "server_version": "0.45.7",
+            "protocol_export_check": "success",
+            "headless_dependency_guard": "success"
+          }
+        }
+      },
+      "linux_cpu_shaped_and_packaged": {
+        "sha256": "9bd4efd3640f9a3e950ad01f4bb527ed16140fe4199fe0610357f01f30da4a45",
+        "report": {
+          "source": "6e56a7d60360b3d8f333ba930bf6f563427bc567",
+          "merge": "5d2fd0e447fb4f29b6e193f0effa5ade82578c8e",
+          "job_id": 129198385490,
+          "job_status": "completed",
+          "job_conclusion": "success",
+          "log_sha256": "4cb9ad96fb3e573646452624ca04945ba84b5e5383fff51f512f30109aebc172",
+          "log_bytes": 233305,
+          "profiles": [
+            {
+              "line": 1720,
+              "text": "2026-11-09T13:51:24.9176919Z websocket shaped profile: rtt_ms=50 health_ms=58 handshake_ms=102 finalize_ms=3756 replacement_cancel_drain_ms=186 abrupt_reconnect_ms=Some(177) total_ms=10502 connections=6 slab_bytes=16384 fixture_budget_ms=259200"
+            },
+            {
+              "line": 1747,
+              "text": "2026-11-09T13:51:33.5300119Z websocket shaped profile: rtt_ms=150 health_ms=157 handshake_ms=193 finalize_ms=4700 replacement_cancel_drain_ms=438 abrupt_reconnect_ms=None total_ms=8611 connections=4 slab_bytes=16384 fixture_budget_ms=278400"
+            },
+            {
+              "line": 1774,
+              "text": "2026-11-09T13:51:50.3116579Z websocket shaped profile: rtt_ms=500 health_ms=508 handshake_ms=545 finalize_ms=7995 replacement_cancel_drain_ms=1313 abrupt_reconnect_ms=None total_ms=16781 connections=4 slab_bytes=16384 fixture_budget_ms=368000"
+            }
+          ],
+          "connections": [
+            {
+              "line": 1714,
+              "text": "2026-11-09T13:51:24.9167577Z websocket shaped connection: rtt_ms=50 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1715,
+              "text": "2026-11-09T13:51:24.9170120Z websocket shaped connection: rtt_ms=50 index=1 upload_bytes=320333 upload_slabs=23 completed_upload_bytes=320333 download_bytes=2801 download_slabs=4 completed_download_bytes=2801 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1716,
+              "text": "2026-11-09T13:51:24.9171536Z websocket shaped connection: rtt_ms=50 index=2 upload_bytes=320308 upload_slabs=23 completed_upload_bytes=320308 download_bytes=872 download_slabs=3 completed_download_bytes=872 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1717,
+              "text": "2026-11-09T13:51:24.9172877Z websocket shaped connection: rtt_ms=50 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1718,
+              "text": "2026-11-09T13:51:24.9174219Z websocket shaped connection: rtt_ms=50 index=4 upload_bytes=320302 upload_slabs=22 completed_upload_bytes=320302 download_bytes=870 download_slabs=2 completed_download_bytes=870 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1719,
+              "text": "2026-11-09T13:51:24.9175566Z websocket shaped connection: rtt_ms=50 index=5 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1743,
+              "text": "2026-11-09T13:51:33.5289915Z websocket shaped connection: rtt_ms=150 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1744,
+              "text": "2026-11-09T13:51:33.5292753Z websocket shaped connection: rtt_ms=150 index=1 upload_bytes=320333 upload_slabs=23 completed_upload_bytes=320333 download_bytes=2801 download_slabs=4 completed_download_bytes=2801 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1745,
+              "text": "2026-11-09T13:51:33.5295198Z websocket shaped connection: rtt_ms=150 index=2 upload_bytes=320308 upload_slabs=23 completed_upload_bytes=320308 download_bytes=872 download_slabs=3 completed_download_bytes=872 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1746,
+              "text": "2026-11-09T13:51:33.5297579Z websocket shaped connection: rtt_ms=150 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1770,
+              "text": "2026-11-09T13:51:50.3105057Z websocket shaped connection: rtt_ms=500 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1771,
+              "text": "2026-11-09T13:51:50.3108025Z websocket shaped connection: rtt_ms=500 index=1 upload_bytes=320333 upload_slabs=23 completed_upload_bytes=320333 download_bytes=2801 download_slabs=4 completed_download_bytes=2801 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1772,
+              "text": "2026-11-09T13:51:50.3111736Z websocket shaped connection: rtt_ms=500 index=2 upload_bytes=320308 upload_slabs=23 completed_upload_bytes=320308 download_bytes=872 download_slabs=3 completed_download_bytes=872 client_closed=true server_eof=true"
+            },
+            {
+              "line": 1773,
+              "text": "2026-11-09T13:51:50.3114167Z websocket shaped connection: rtt_ms=500 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+            }
+          ],
+          "outer_websocket_tests": 1,
+          "executed_profiles": 3,
+          "limits": "Configured half-RTT delay per bounded16KiB slab also limits throughput. Old cancellation Close observation follows actual CPU completion in the service; proxy EOF alone is not CPU-drain proof. No local inference or desktop activity.",
+          "selected_executions": [
+            {
+              "line": 1354,
+              "text": "2026-11-09T13:49:51.7026999Z test result: ok. 72 passed; 0 failed; 9 ignored; 0 measured; 0 filtered out; finished in 1.64s"
+            },
+            {
+              "line": 1368,
+              "text": "2026-11-09T13:49:51.7360485Z   test \"$(grep -c '^test result: ok\\. 1 passed; 0 failed; 0 ignored; 0 measured;' \"$kernel_log\")\" = 1"
+            },
+            {
+              "line": 1483,
+              "text": "2026-11-09T13:50:00.1314290Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 7.27s"
+            },
+            {
+              "line": 1491,
+              "text": "2026-11-09T13:50:01.1592979Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 0.46s"
+            },
+            {
+              "line": 1499,
+              "text": "2026-11-09T13:50:04.2295229Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 2.50s"
+            },
+            {
+              "line": 1621,
+              "text": "2026-11-09T13:50:51.0723152Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 45.69s"
+            },
+            {
+              "line": 1626,
+              "text": "2026-11-09T13:50:51.1024377Z grep -F 'test result: ok. 2 passed; 0 failed; 0 ignored' \"$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log\""
+            },
+            {
+              "line": 1658,
+              "text": "2026-11-09T13:51:11.2808979Z test delayed_proxy::delayed_proxy_drains_original_source_after_destination_disconnect ... ok"
+            },
+            {
+              "line": 1659,
+              "text": "2026-11-09T13:51:11.3859064Z test delayed_proxy::delayed_proxy_preserves_bytes_and_half_close_in_both_directions ... ok"
+            },
+            {
+              "line": 1661,
+              "text": "2026-11-09T13:51:11.3860454Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.11s"
+            },
+            {
+              "line": 1663,
+              "text": "2026-11-09T13:51:11.4069314Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.11s"
+            },
+            {
+              "line": 1777,
+              "text": "2026-11-09T13:51:50.3232120Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 38.37s"
+            },
+            {
+              "line": 1889,
+              "text": "2026-11-09T13:58:37.8333493Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 183 filtered out; finished in 0.00s"
+            },
+            {
+              "line": 1896,
+              "text": "2026-11-09T13:58:37.8385887Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 186 filtered out; finished in 0.00s"
+            },
+            {
+              "line": 1926,
+              "text": "2026-11-09T13:58:37.8454827Z test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 176 filtered out; finished in 0.00s"
+            },
+            {
+              "line": 1937,
+              "text": "2026-11-09T13:58:37.8514471Z test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 182 filtered out; finished in 0.00s"
+            },
+            {
+              "line": 1941,
+              "text": "2026-11-09T13:58:37.8817799Z test tests::transcription_host::absent_operator_configuration_keeps_notes_without_a_transcription_runtime_or_model ... ok"
+            },
+            {
+              "line": 1943,
+              "text": "2026-11-09T13:58:37.9144495Z test tests::transcription_host::failed_configured_model_keeps_notes_and_reports_engine_unavailable_without_fallback ... ok"
+            },
+            {
+              "line": 1944,
+              "text": "2026-11-09T13:58:37.9766939Z test tests::transcription_host::injected_global_capacity_is_shared_between_vaults_and_shutdown_retains_actual_source_work ... ok"
+            },
+            {
+              "line": 1949,
+              "text": "2026-11-09T13:58:37.9772881Z test result: ok. 3 passed; 0 failed; 4 ignored; 0 measured; 181 filtered out; finished in 0.12s"
+            },
+            {
+              "line": 1958,
+              "text": "2026-11-09T13:58:37.9845088Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 184 filtered out; finished in 0.00s"
+            },
+            {
+              "line": 2288,
+              "text": "2026-11-09T14:04:33.2602783Z test tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source ... ok"
+            },
+            {
+              "line": 2290,
+              "text": "2026-11-09T14:04:33.2604329Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 4.84s"
+            },
+            {
+              "line": 2292,
+              "text": "2026-11-09T14:04:33.3196397Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 4.84s"
+            },
+            {
+              "line": 2295,
+              "text": "2026-11-09T14:04:55.3448638Z test tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication ... ok"
+            },
+            {
+              "line": 2297,
+              "text": "2026-11-09T14:04:55.3450109Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 21.91s"
+            },
+            {
+              "line": 2299,
+              "text": "2026-11-09T14:04:55.4132946Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 21.91s"
+            },
+            {
+              "line": 2302,
+              "text": "2026-11-09T14:05:48.1072081Z test transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join ... ok"
+            },
+            {
+              "line": 2304,
+              "text": "2026-11-09T14:05:48.1072881Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 52.58s"
+            },
+            {
+              "line": 2306,
+              "text": "2026-11-09T14:05:48.1573105Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 52.58s"
+            },
+            {
+              "line": 2309,
+              "text": "2026-11-09T14:06:14.6217463Z reserved CPU acceptance: total=2 reserved_live=1 batch_frames=5120000 source_sha256=938170e91687b18f8f9c4c289fd579770163ca2df9485b591d2c15578ddd926d first_caption_ms=6579 concurrent_http_ms=9 actual_drain_ms=14279"
+            },
+            {
+              "line": 2310,
+              "text": "2026-11-09T14:06:14.9471026Z test tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive ... ok"
+            },
+            {
+              "line": 2312,
+              "text": "2026-11-09T14:06:14.9472371Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 26.67s"
+            },
+            {
+              "line": 2314,
+              "text": "2026-11-09T14:06:15.0058940Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 26.67s"
+            }
+          ]
+        }
+      },
+      "x64_speech_shaped": {
+        "sha256": "1932e9d9dbeadc465b42d46c10b196a6bc5a67a486af875efe7bcabbb73e306f",
+        "report": {
+          "head": "6e56a7d60360b3d8f333ba930bf6f563427bc567",
+          "job": 129198657909,
+          "run": 42628580362,
+          "attempt": 1,
+          "conclusion": "success",
+          "rust_passed": 8,
+          "rust_failed": 0,
+          "rust_ignored": 0,
+          "outer_case": "real_websocket_finalizes_and_recovers_from_cancellation",
+          "profiles_are_not_additional_rust_tests": true,
+          "profiles": [
+            {
+              "line": 830,
+              "raw": "2026-11-09T13:58:36.4392154Z websocket shaped profile: rtt_ms=50 health_ms=71 handshake_ms=117 finalize_ms=28236 replacement_cancel_drain_ms=219 abrupt_reconnect_ms=Some(204) total_ms=58363 connections=6 slab_bytes=16384 fixture_budget_ms=259200",
+              "metrics": {
+                "rtt_ms": 50,
+                "health_ms": 71,
+                "handshake_ms": 117,
+                "finalize_ms": 28236,
+                "replacement_cancel_drain_ms": 219,
+                "abrupt_reconnect_ms": 204,
+                "total_ms": 58363,
+                "connections": 6,
+                "slab_bytes": 16384,
+                "fixture_budget_ms": 259200
+              }
+            },
+            {
+              "line": 857,
+              "raw": "2026-11-09T13:59:22.1319492Z websocket shaped profile: rtt_ms=150 health_ms=155 handshake_ms=220 finalize_ms=28827 replacement_cancel_drain_ms=476 abrupt_reconnect_ms=None total_ms=45692 connections=4 slab_bytes=16384 fixture_budget_ms=278400",
+              "metrics": {
+                "rtt_ms": 150,
+                "health_ms": 155,
+                "handshake_ms": 220,
+                "finalize_ms": 28827,
+                "replacement_cancel_drain_ms": 476,
+                "abrupt_reconnect_ms": null,
+                "total_ms": 45692,
+                "connections": 4,
+                "slab_bytes": 16384,
+                "fixture_budget_ms": 278400
+              }
+            },
+            {
+              "line": 884,
+              "raw": "2026-11-09T14:00:17.4056352Z websocket shaped profile: rtt_ms=500 health_ms=516 handshake_ms=569 finalize_ms=32971 replacement_cancel_drain_ms=1381 abrupt_reconnect_ms=None total_ms=55273 connections=4 slab_bytes=16384 fixture_budget_ms=368000",
+              "metrics": {
+                "rtt_ms": 500,
+                "health_ms": 516,
+                "handshake_ms": 569,
+                "finalize_ms": 32971,
+                "replacement_cancel_drain_ms": 1381,
+                "abrupt_reconnect_ms": null,
+                "total_ms": 55273,
+                "connections": 4,
+                "slab_bytes": 16384,
+                "fixture_budget_ms": 368000
+              }
+            }
+          ],
+          "connection_lines": [
+            {
+              "line": 824,
+              "raw": "2026-11-09T13:58:36.4383580Z websocket shaped connection: rtt_ms=50 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true"
+            },
+            {
+              "line": 825,
+              "raw": "2026-11-09T13:58:36.4385058Z websocket shaped connection: rtt_ms=50 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true"
+            },
+            {
+              "line": 826,
+              "raw": "2026-11-09T13:58:36.4386552Z websocket shaped connection: rtt_ms=50 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true"
+            },
+            {
+              "line": 827,
+              "raw": "2026-11-09T13:58:36.4387953Z websocket shaped connection: rtt_ms=50 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+            },
+            {
+              "line": 828,
+              "raw": "2026-11-09T13:58:36.4389361Z websocket shaped connection: rtt_ms=50 index=4 upload_bytes=320302 upload_slabs=21 completed_upload_bytes=320302 download_bytes=880 download_slabs=2 completed_download_bytes=880 client_closed=true server_eof=true"
+            },
+            {
+              "line": 829,
+              "raw": "2026-11-09T13:58:36.4390743Z websocket shaped connection: rtt_ms=50 index=5 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+            },
+            {
+              "line": 853,
+              "raw": "2026-11-09T13:59:22.1314147Z websocket shaped connection: rtt_ms=150 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true"
+            },
+            {
+              "line": 854,
+              "raw": "2026-11-09T13:59:22.1315453Z websocket shaped connection: rtt_ms=150 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true"
+            },
+            {
+              "line": 855,
+              "raw": "2026-11-09T13:59:22.1316709Z websocket shaped connection: rtt_ms=150 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true"
+            },
+            {
+              "line": 856,
+              "raw": "2026-11-09T13:59:22.1318270Z websocket shaped connection: rtt_ms=150 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+            },
+            {
+              "line": 880,
+              "raw": "2026-11-09T14:00:17.4051222Z websocket shaped connection: rtt_ms=500 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true"
+            },
+            {
+              "line": 881,
+              "raw": "2026-11-09T14:00:17.4052543Z websocket shaped connection: rtt_ms=500 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true"
+            },
+            {
+              "line": 882,
+              "raw": "2026-11-09T14:00:17.4053817Z websocket shaped connection: rtt_ms=500 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true"
+            },
+            {
+              "line": 883,
+              "raw": "2026-11-09T14:00:17.4055056Z websocket shaped connection: rtt_ms=500 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true"
+            }
+          ],
+          "log_sha256": "0a77a6bdfa4cc8d27961ebf53b81cc6368629811c0e2cab6127885ea74dd99cd"
+        }
+      },
+      "x64_native_failure": {
+        "sha256": "b7e110c03c87eab7e423d5d20b0850e03d2204fdd1a63832bcce4a275f41dff2",
+        "report": {
+          "head": "6e56a7d60360b3d8f333ba930bf6f563427bc567",
+          "merge": "5d2fd0e447fb4f29b6e193f0effa5ade82578c8e",
+          "run": 42628502114,
+          "job": 129198386381,
+          "attempt": 1,
+          "conclusion": "failure",
+          "log_bytes": 567235,
+          "log_sha256": "ab1657f1ae44daa4e18794ed20c79e7e18769cbecd169cab99607c95af0aadee",
+          "overall_rust": {
+            "cohorts": 70,
+            "passed": 2346,
+            "failed": 1,
+            "ignored": 47
+          },
+          "cargo_only": {
+            "cohorts": 68,
+            "passed": 2338,
+            "failed": 1,
+            "ignored": 47
+          },
+          "standalone_git_helpers": 4,
+          "standalone_release_policy": 4,
+          "failed_case": "local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen",
+          "failure": "fixture_files byte snapshot read at tests.rs:1470:71 returned Windows OS33 (locked region).",
+          "negative_resolution_case": "passed",
+          "required_named_cases": {
+            "passed": 59,
+            "failed": 1,
+            "total": 60
+          },
+          "ordinary_proxy_cases": "Both passed in the normal native test graph.",
+          "read_only_source_trace": "The positive fixture starts processing; runtime/processing.rs opens JobJournal at operations/jobs; jobs/mod.rs holds an exclusive File::try_lock on operations/jobs/.lock. The negative fixture never starts processing. The actual panic did not print its path.",
+          "fixture_only_correction": "27d7f0dca adds only exact operations/jobs/.lock exclusion, regular-file metadata assertion, preserved session/.lock sentinel, and relative path disclosure on future read errors. Root owns integration/validation.",
+          "installer_scope": "Installer process fixture, build and actual install/uninstall skipped after Rust test failure. Prior ARM uninstall cause remains unqualified."
+        }
+      },
+      "arm_speech_failure": {
+        "sha256": "bde82e26abc1837e668646abf31afabf8ec12899b031ab34d792fece336c99be",
+        "report": {
+          "head": "6e56a7d60360b3d8f333ba930bf6f563427bc567",
+          "run": 42628580362,
+          "job": 129198657378,
+          "attempt": 1,
+          "conclusion": "failure",
+          "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-6e56a7-audit/129198657378.log",
+          "log_bytes": 82656,
+          "log_sha256": "f516691568e3ceee2aea2455615d203b64b94410131324bf4961c9b13b5aa337",
+          "cohorts": 4,
+          "passed": 4,
+          "failed": 1,
+          "ignored": 0,
+          "failed_case": "real_websocket_finalizes_and_recovers_from_cancellation",
+          "failure": "tests/inference.rs:272: live transcription stalled at 50 ms RTT",
+          "completed_profile_lines": [],
+          "profiles_not_reached": [
+            150,
+            500
+          ],
+          "subsequent_onnx_and_speaker_steps": "skipped",
+          "observed_timeline": [
+            "14:11:22.263Z outer case began; budget 240s + 19.2s transport = 259.2s",
+            "14:12:27.473Z first native inference completed in 64.460s",
+            "14:13:33.234Z second native inference completed in 65.760s; finalization succeeded",
+            "14:14:38.636Z third native inference completed in 64.492s; replacement-cancel path completed",
+            "14:14:39.743Z fourth inference began for abrupt-disconnect scenario",
+            "14:15:41.479Z outer deadline expired 61.736s into fourth inference"
+          ],
+          "source_assessment": "The added abrupt-disconnect scenario adds another actual inference while the outer fixture retains its original 240s model allowance. Timing is consistent with workload/budget mismatch; no production deadlock has been established. No timeout change or retry was made.",
+          "raw_fidelity": "Connector decoded UTF-8 equals saved raw bytes, including BOM and CRLF."
+        }
+      },
+      "corrected_source": "eeaaf4c31572b9287391eab3ea8202093c69d532",
+      "pre_peer_compile_only": {
+        "sha256": "106b655f926ef13600ea754ec7471a8d579120b3597d6d86732d883abed42531",
+        "report": {
+          "source": "5dccfbc94d287606a4393f481487694097369eb7",
+          "exit": 0,
+          "seconds": 12.40968941700703,
+          "sha256": "9847953729c01d431507cf40a82515761ddc92dc1d601e4b47097e33a5f37fc7"
+        }
+      },
+      "confirmed_compile": {
+        "request": {
+          "sha256": "ceb0640340d00d806bb0cca35913d6fdaf72c26a5dbc2c3c8b995b321987a244",
+          "report": {
+            "source": "eeaaf4c31572b9287391eab3ea8202093c69d532",
+            "command": [
+              "nice",
+              "-n",
+              "5",
+              "cargo",
+              "check",
+              "--locked",
+              "-p",
+              "desktop",
+              "-p",
+              "loof-cli",
+              "-p",
+              "loofah-local-owner",
+              "-p",
+              "loofah-local-media",
+              "-p",
+              "loofah-client",
+              "-p",
+              "loofah-core",
+              "-p",
+              "loofah-protocol",
+              "-p",
+              "loofah-server",
+              "-p",
+              "capture-store",
+              "-p",
+              "vault-read",
+              "-p",
+              "vault-write",
+              "-p",
+              "search-cache",
+              "-p",
+              "listener-core",
+              "-p",
+              "listener2-core",
+              "-p",
+              "transcribe-whisper-local",
+              "-p",
+              "tauri-plugin-transcription",
+              "-p",
+              "storage",
+              "-p",
+              "export-core",
+              "-p",
+              "fs-sync-core",
+              "-p",
+              "tauri-plugin-fs-sync",
+              "-p",
+              "tauri-plugin-windows",
+              "-p",
+              "audio-actual",
+              "--features",
+              "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+              "--all-targets"
+            ],
+            "dirty": [
+              " M .github/workflows/backend_ci.yaml"
+            ],
+            "scope": "22-package stable Native graph; compile only after original-worker completion trace and abrupt EOF correction. No apps or model inference"
+          }
+        },
+        "result": {
+          "sha256": "3cfcf15005f481e4154c5cd1eae9babc52f4bde6aab93d1eb88248e6fac9b30d",
+          "report": {
+            "source": "eeaaf4c31572b9287391eab3ea8202093c69d532",
+            "exit": 0,
+            "seconds": 16.95648016600171,
+            "sha256": "64bca4f0026ee3de12e27281d0038e8c2de1138e40e42be33c595fb335a8b681"
+          }
+        }
+      },
+      "allowed_local_runtime": {
+        "request": {
+          "sha256": "2df3ab5fcc10641a529ca809c8e5f66dd1b3953cc551261c9042527db9443608",
+          "report": {
+            "source": "eeaaf4c31572b9287391eab3ea8202093c69d532",
+            "cases": [
+              {
+                "name": "nine-ordinary-fixtures",
+                "command": [
+                  "nice",
+                  "-n",
+                  "5",
+                  "cargo",
+                  "test",
+                  "--locked",
+                  "-p",
+                  "desktop",
+                  "-p",
+                  "loof-cli",
+                  "-p",
+                  "loofah-local-owner",
+                  "-p",
+                  "loofah-local-media",
+                  "-p",
+                  "loofah-client",
+                  "-p",
+                  "loofah-core",
+                  "-p",
+                  "loofah-protocol",
+                  "-p",
+                  "loofah-server",
+                  "-p",
+                  "capture-store",
+                  "-p",
+                  "vault-read",
+                  "-p",
+                  "vault-write",
+                  "-p",
+                  "search-cache",
+                  "-p",
+                  "listener-core",
+                  "-p",
+                  "listener2-core",
+                  "-p",
+                  "transcribe-whisper-local",
+                  "-p",
+                  "tauri-plugin-transcription",
+                  "-p",
+                  "storage",
+                  "-p",
+                  "export-core",
+                  "-p",
+                  "fs-sync-core",
+                  "-p",
+                  "tauri-plugin-fs-sync",
+                  "-p",
+                  "tauri-plugin-windows",
+                  "-p",
+                  "audio-actual",
+                  "--features",
+                  "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+                  "--test",
+                  "inference",
+                  "--",
+                  "--nocapture",
+                  "--test-threads=1"
+                ],
+                "runner": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/deployment-network-acceptance/inference-only-runner.sh"
+              },
+              {
+                "name": "two-core-resolution-fixtures",
+                "command": [
+                  "nice",
+                  "-n",
+                  "5",
+                  "cargo",
+                  "test",
+                  "--locked",
+                  "-p",
+                  "desktop",
+                  "-p",
+                  "loof-cli",
+                  "-p",
+                  "loofah-local-owner",
+                  "-p",
+                  "loofah-local-media",
+                  "-p",
+                  "loofah-client",
+                  "-p",
+                  "loofah-core",
+                  "-p",
+                  "loofah-protocol",
+                  "-p",
+                  "loofah-server",
+                  "-p",
+                  "capture-store",
+                  "-p",
+                  "vault-read",
+                  "-p",
+                  "vault-write",
+                  "-p",
+                  "search-cache",
+                  "-p",
+                  "listener-core",
+                  "-p",
+                  "listener2-core",
+                  "-p",
+                  "transcribe-whisper-local",
+                  "-p",
+                  "tauri-plugin-transcription",
+                  "-p",
+                  "storage",
+                  "-p",
+                  "export-core",
+                  "-p",
+                  "fs-sync-core",
+                  "-p",
+                  "tauri-plugin-fs-sync",
+                  "-p",
+                  "tauri-plugin-windows",
+                  "--features",
+                  "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+                  "--lib",
+                  "--no-fail-fast",
+                  "-p",
+                  "audio-actual",
+                  "--",
+                  "local_capture_intents::tests::local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen",
+                  "local_capture_intents::tests::local_capture_resolution_refuses_unknown_or_live_ownership_and_changed_session_generation"
+                ],
+                "runner": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/generated-heading-native/four-shared-libraries-only-runner.sh"
+              }
+            ]
+          }
+        },
+        "result": {
+          "sha256": "4967ab9ab805b377f4b34fc4d0f1d89ecff4761c04fedcbb78fb26f84f1ec27c",
+          "report": {
+            "source": "eeaaf4c31572b9287391eab3ea8202093c69d532",
+            "scope": "No local desktop/audio/model execution. Nine ordinary inference-target fixtures; two Core cases only, other libraries zero matches or NOT EXECUTED. Windows lock semantics and actual models still require hosted qualification.",
+            "steps": [
+              {
+                "name": "nine-ordinary-fixtures",
+                "exit": 0,
+                "seconds": 12.445728665989009,
+                "sha256": "915255520f5de747aa96e914f8ddc7a27cfc06065f2354a86c80d16422ebd0d0"
+              },
+              {
+                "name": "two-core-resolution-fixtures",
+                "exit": 0,
+                "seconds": 65.21492108301027,
+                "sha256": "d2dbc4e8b741167ed1d17b4d0fd59d3580ca431ced7c023c8774fb86805f2873"
+              }
+            ]
+          }
+        },
+        "actual_counts": {
+          "ordinary_fixtures": {
+            "passed": 9,
+            "failed": 0,
+            "ignored_model_tests": 2
+          },
+          "core_resolution": {
+            "passed": 2,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 590
+          }
+        }
+      },
+      "peer_correction": "Earlier source-only mandatory Close for abrupt EOF was superseded before local model execution. Abrupt loss can terminate tungstenite without Close. The corrected case requires the exact original request ID completion acknowledgement plus original EOF; cooperative connections still require decoded Close. Two DEBUG observations follow existing worker-start/completion.await boundaries; cleanup, public protocols and production deadlines are unchanged. A Native entry/no-normal-completion witness is not inside-kernel proof or physical/canonical recovery authority.",
+      "model_budget_scope": "Original240s model allowance is attached separately to each semantic setup/finalization, not renewed per internal inference. Original15s cancellation allowance retains finite transport additions and includes original worker/connection retirement. Three RTTs and early disconnect remain required.",
+      "remaining": "Normal ARM native job still running. Corrected Windows, actual-model and installed deployment execution require fresh source after healthy jobs finish. No CI retry/cancellation, local desktop/audio/model execution, activation, merge or release."
     }
   },
   "local_work_focused": [

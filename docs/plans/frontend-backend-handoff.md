@@ -3026,3 +3026,43 @@ There are six observer and three proxy ordinary tests, plus two ignored real
 model tests. All three RTT profiles and per-semantic budgets remain unchanged.
 This follow-up is formatted source only; no build, test execution, inference,
 application launch or workflow control was performed in the worker.
+
+
+## Reviewed Windows fixture and WebSocket follow-up validation
+
+Fresh 6e56 x64 passed the negative resolution fixture and both ordinary proxy
+cases, but the positive fixture still failed its byte snapshot with OS33. Its
+`start_processing` call holds the independent `JobJournal` owner at exactly
+`operations/jobs/.lock` (`runtime/processing.rs` and `jobs/mod.rs`). The fixture
+now omits that exact leased bookkeeping path alongside the exact vault lease,
+asserts regular-file metadata for both, and preserves a session `.lock` sentinel
+in the full byte comparison. All other read failures remain fatal and now name
+the relative path. Production file locking is unchanged. New native Windows
+execution remains required; the previous x64 installer/uninstall steps skipped.
+
+At integrated `eeaaf4c315`, the sole stable 22-package all-target check passed in
+16.96 seconds. Nine ordinary transport/frame/observer fixtures passed, with the
+two real-model tests explicitly ignored. Both Core resolution cases passed
+(2/0/0, 590 filtered); three other executed shared libraries matched zero, and
+18 library binaries including desktop/audio were explicitly not executed. The
+Core command's 65.21 seconds includes compilation/linking; actual two-case run
+was 0.50 seconds. This is no local desktop, microphone or inference acceptance.
+
+The current Linux CPU and x64 speech jobs passed their original three shaped
+profiles, while ARM speech expired its aggregate fixture budget before completing
+the 50 ms profile. Its first finalized session completed in 130.838 seconds,
+consistent with the earlier passing ARM artifact's 132.112 seconds; new awaited
+speech probes added another full encode each. Per-probe setup/finalization now
+has the original 240-second allowance plus finite transport delay, and triggered
+cancellation retains 15 seconds plus its bounded transport. No allowance renews
+per native call. Corrected actual-model execution remains pending.
+
+The debug worker observations confirm only the original CPU work acknowledgement
+after the existing completion await. They do not assert an OS-thread join,
+physical-device cleanup, canonical publication or legacy producer recovery
+eligibility. The test's started/uncompleted attempt witness also does not claim
+an inside-kernel callback. Separate native abort fixtures retain that scope.
+The existing portable record preserves failures, exact successful job scopes,
+source/hash provenance, the superseded source-only Close assumption and these
+allowed local checks. ARM native CI remains live; no healthy job was cancelled,
+no capability activated, and desktop tests remain user-paused.
