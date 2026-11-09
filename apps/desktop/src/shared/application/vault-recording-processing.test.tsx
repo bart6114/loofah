@@ -19,6 +19,7 @@ import type {
   LocalCaptureControlSnapshot,
   LocalCaptureStatus,
   LocalCaptureResolution,
+  LocalCaptureHistoryPage,
 } from "~/types/tauri.gen";
 
 const scopes: VaultScope[] = [];
@@ -53,6 +54,14 @@ async function fixture() {
   };
   const api = {
     controls: vi.fn(async () => [control]),
+    history: vi.fn(
+      async (
+        _session: string | null,
+        _cursor: string | null,
+        _limit: number,
+        _options?: { signal?: AbortSignal },
+      ): Promise<LocalCaptureHistoryPage> => ({ items: [], next_cursor: null }),
+    ),
     cancel: vi.fn(async () => control),
     recover: vi.fn(async () => status),
     resolve: vi.fn(
@@ -397,4 +406,231 @@ it("aborts the original resolution lifetime on navigation and never applies late
     screen.queryByText("Recording processing closed by review"),
   ).toBeNull();
   expect(f.api.resolve).toHaveBeenCalledOnce();
+});
+
+it("loads history only when explicitly opened even when no active controls exist", async () => {
+  const f = await fixture();
+  f.api.controls.mockResolvedValue([]);
+  Object.assign(f.scope.client, { canEdit: false });
+  render(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+  const toggle = await screen.findByRole("button", {
+    name: "Processing history",
+  });
+  await waitFor(() => expect(f.api.controls).toHaveBeenCalledOnce());
+  expect(f.api.history).not.toHaveBeenCalled();
+  expect(toggle.getAttribute("disabled")).toBeNull();
+  fireEvent.click(toggle);
+  await screen.findByText("No processing history on this page.");
+  expect(f.api.history).toHaveBeenCalledWith(
+    "note",
+    null,
+    25,
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(f.api.recover).not.toHaveBeenCalled();
+});
+
+it("navigates an empty filtered history page without concatenating or retaining previous pages", async () => {
+  const f = await fixture();
+  f.api.controls.mockResolvedValue([]);
+  const archived = structuredClone(f.control);
+  archived.status.state = "succeeded";
+  archived.status.message = "Archived result";
+  archived.actions = ["recover", "cancel", "keep_current_content"];
+  f.api.history.mockImplementation(async (_session, cursor) =>
+    cursor === null
+      ? { items: [], next_cursor: "opaque-next" }
+      : { items: [archived], next_cursor: null },
+  );
+  render(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Processing history" }),
+  );
+  await screen.findByText("No processing history on this page.");
+  fireEvent.click(screen.getByRole("button", { name: "Next history page" }));
+  await screen.findByText("Archived result");
+  expect(f.api.history.mock.calls[1][1]).toBe("opaque-next");
+  expect(
+    screen.queryByRole("button", { name: "Recover recording processing" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Cancel processing" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Review processing conflict" }),
+  ).toBeNull();
+  await waitFor(() =>
+    expect(
+      f.scope.queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ["recording_processing_history"] }),
+    ).toHaveLength(1),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "First history page" }));
+  await screen.findByText("No processing history on this page.");
+  expect(screen.queryByText("Archived result")).toBeNull();
+  expect(f.api.history.mock.calls[2][1]).toBeNull();
+  expect(f.api.resolve).not.toHaveBeenCalled();
+});
+
+it("bounds archived display and never shows a different session's history", async () => {
+  const f = await fixture();
+  f.api.controls.mockResolvedValue([]);
+  f.api.history.mockResolvedValue({
+    items: Array.from({ length: 30 }, (_, index) => ({
+      ...f.control,
+      status: {
+        ...f.status,
+        declaration: {
+          ...f.status.declaration,
+          request_id: crypto.randomUUID(),
+        },
+        message: `Historical ${index}`,
+      },
+    })).concat([
+      {
+        ...f.control,
+        status: {
+          ...f.status,
+          declaration: { ...f.status.declaration, session_id: "other" },
+          message: "Foreign history",
+        },
+      },
+    ]),
+    next_cursor: "next",
+  });
+  render(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Processing history" }),
+  );
+  await screen.findByText("Historical 0");
+  expect(screen.getAllByRole("listitem")).toHaveLength(25);
+  expect(screen.queryByText("Historical 25")).toBeNull();
+  expect(screen.queryByText("Foreign history")).toBeNull();
+});
+
+it("blocks history network requests during reconnect and discards the cursor on session navigation", async () => {
+  const f = await fixture();
+  f.api.controls.mockResolvedValue([]);
+  f.api.history.mockResolvedValue({
+    items: [],
+    next_cursor: "original-cursor",
+  });
+  const view = render(
+    <VaultRecordingProcessing scope={f.scope} sessionId="note" />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Processing history" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Next history page" }),
+  );
+  await waitFor(() => expect(f.api.history).toHaveBeenCalledTimes(2));
+  act(() => f.emit({ kind: "connection", state: "reconnecting", error: null }));
+  expect(
+    screen
+      .getByRole("button", { name: "Next history page" })
+      .getAttribute("disabled"),
+  ).not.toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Next history page" }));
+  expect(f.api.history).toHaveBeenCalledTimes(2);
+  view.rerender(<VaultRecordingProcessing scope={f.scope} sessionId="other" />);
+  expect(
+    screen.queryByRole("region", { name: "Archived recording processing" }),
+  ).toBeNull();
+  act(() => f.emit({ kind: "connection", state: "connected", error: null }));
+  expect(f.api.history).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole("button", { name: "Processing history" }));
+  await waitFor(() => expect(f.api.history).toHaveBeenCalledTimes(3));
+  expect(f.api.history.mock.calls[2].slice(0, 3)).toEqual(["other", null, 25]);
+});
+
+it("aborts an outstanding history page on collapse and does not show its late result", async () => {
+  const f = await fixture();
+  f.api.controls.mockResolvedValue([]);
+  let finish!: (value: LocalCaptureHistoryPage) => void;
+  f.api.history.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+  const toggle = await screen.findByRole("button", {
+    name: "Processing history",
+  });
+  fireEvent.click(toggle);
+  await waitFor(() => expect(f.api.history).toHaveBeenCalledOnce());
+  const signal = f.api.history.mock.calls[0][3]!.signal!;
+  fireEvent.click(toggle);
+  expect(signal.aborted).toBe(true);
+  await act(async () => finish({ items: [f.control], next_cursor: null }));
+  expect(
+    screen.queryByRole("region", { name: "Archived recording processing" }),
+  ).toBeNull();
+  expect(f.api.history).toHaveBeenCalledOnce();
+});
+
+it("retries a history read only on request and hides all history after access denial", async () => {
+  const f = await fixture();
+  f.api.controls.mockResolvedValue([]);
+  f.api.history.mockRejectedValueOnce(new Error("History unavailable"));
+  render(<VaultRecordingProcessing scope={f.scope} sessionId="note" />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Processing history" }),
+  );
+  await screen.findByText("History unavailable");
+  expect(f.api.history).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Retry history" }));
+  await screen.findByText("No processing history on this page.");
+  expect(f.api.history).toHaveBeenCalledTimes(2);
+  act(() =>
+    f.emit({ kind: "connection", state: "access_denied", error: null }),
+  );
+  expect(
+    screen.queryByRole("button", { name: "Processing history" }),
+  ).toBeNull();
+  expect(f.api.history).toHaveBeenCalledTimes(2);
+});
+
+it("does not reopen old history or reuse a cursor when the original scope changes", async () => {
+  const first = await fixture();
+  const second = await fixture();
+  first.api.controls.mockResolvedValue([]);
+  second.api.controls.mockResolvedValue([]);
+  first.api.history.mockResolvedValue({
+    items: [],
+    next_cursor: "first-scope-cursor",
+  });
+  const view = render(
+    <VaultRecordingProcessing scope={first.scope} sessionId="note" />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Processing history" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Next history page" }),
+  );
+  await waitFor(() => expect(first.api.history).toHaveBeenCalledTimes(2));
+  view.rerender(
+    <VaultRecordingProcessing scope={second.scope} sessionId="note" />,
+  );
+  expect(
+    screen.queryByRole("region", { name: "Archived recording processing" }),
+  ).toBeNull();
+  expect(second.api.history).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Processing history" }));
+  await waitFor(() => expect(second.api.history).toHaveBeenCalledOnce());
+  expect(second.api.history.mock.calls[0].slice(0, 3)).toEqual([
+    "note",
+    null,
+    25,
+  ]);
+  view.rerender(
+    <VaultRecordingProcessing scope={first.scope} sessionId="note" />,
+  );
+  expect(
+    screen.queryByRole("region", { name: "Archived recording processing" }),
+  ).toBeNull();
+  expect(first.api.history).toHaveBeenCalledTimes(2);
 });
