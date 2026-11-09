@@ -225,7 +225,7 @@ impl MicInput {
         let capture_thread = std::thread::spawn(move || {
             // This thread can outlive an abnormal MicStream drop.
             let original_owner = owner;
-            fn build_stream<S: ToSample<f32> + SizedSample>(
+            fn build_stream<S: ToSample<f32> + SizedSample + 'static>(
                 device: &cpal::Device,
                 config: &cpal::SupportedStreamConfig,
                 mut producer: HeapProd<f32>,
