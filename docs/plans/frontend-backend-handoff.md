@@ -1417,7 +1417,20 @@ This is not production HTTPS SSO or physical capture acceptance. One explicit
 Remote summary reported saved but contained only an opening HTML fence; semantic
 summary acceptance remains open; the later narrow empty-fence publication guard
 requires its own verification. The
-About panel opened without Local vault statistics, but its cached build-commit label
-requires the later metadata fix's refreshed artifact. The exact receipt is embedded
-under `native_remote_reader_menu_2263_2026_11_09`. Physical recording, production
-HTTPS SSO and final current-head platform qualification remain separate gates.
+About panel opened without Local vault statistics; its cached build-commit label
+was subsequently corrected and qualified by the `6e7656d1b2` artifact. The Reader/menu
+receipt remains embedded under `native_remote_reader_menu_2263_2026_11_09`.
+
+The actual `6e7656d1b2` artifact, in a fresh task-only profile, completed synthetic
+Alice browser PKCE, reopened Personal, and displayed version `0.45.7` and commit
+`6e7656d1b2` through the native About menu, without Local vault statistics or any
+inference request. Reusing the older unsigned profile had blocked credential loading
+in `SecKeychainFindGenericPassword`/SecurityServer IPC while the main thread remained
+in its normal AppKit event loop. An unsigned identity/credential ACL mismatch is an
+inference, not an established OS prompt diagnosis. The older process quit normally;
+no OS grant was made, no existing credential was deleted, and original global/profile
+and journal files remained byte-identical. A new profile identity avoided modifying
+that original state. Portable records `native_remote_about_6e_2026_11_09` and
+`native_remote_unsigned_startup_6e_2026_11_09` retain the receipts and their hashes.
+Physical recording, production HTTPS SSO and final current-head platform
+qualification remain separate gates.

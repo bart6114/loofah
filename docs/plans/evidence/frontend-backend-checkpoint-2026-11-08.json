@@ -1741,6 +1741,61 @@
         "local_mode": "not changed",
         "release": "no merge/release/version change"
       }
+    },
+    "native_remote_about_6e_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-metadata-fresh/about-gui-acceptance.json",
+      "sha256": "e1a6db1fec8fc581fac1a01a1c95c05c7a32786aadcc272168e8dde6c85e6202",
+      "record": {
+        "observed_at_utc": "2026-11-09T03:36:46.480317+00:00",
+        "source": "6e7656d1b2c307a9bf84a129176f8fe067206aec",
+        "binary_sha256": "c0d4271cfec7c7ec8ab0d31b8fbbce254b9e388e9773b7616ca429472a440810",
+        "manifest_sha256": "b1426f20adeec0cbbb58980bb2ca94f45479267d54fe6e1c742ef24dc9fa5220",
+        "pid": 5656,
+        "profile": "fresh task-only remote-qa-a-metadata-fresh",
+        "company_sign_in": "synthetic Alice browser PKCE passed; Personal vault reopened",
+        "about": {
+          "opened_via": "Native application menu",
+          "version": "0.45.7",
+          "displayed_sha": "6e7656d1b2",
+          "matches_frozen_source": true,
+          "local_vault_statistics_absent": true
+        },
+        "no_inference_requested": true,
+        "old_profile_and_journals_preserved": true,
+        "no_os_access_grants": true,
+        "old_unsigned_profile_keychain_read": "blocked; process sample and unchanged-state hashes retained separately; process exited via ordinary Quit",
+        "production_sso": "unqualified; synthetic loopback HTTP issuer with exact verified HTTPS dev API fixture"
+      }
+    },
+    "native_remote_unsigned_startup_6e_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-metadata-fresh/blocked-startup-evidence.json",
+      "sha256": "67df14f93d77cde9f22f248dd447618467033d1c1f9df92f558242d762ecac2f",
+      "record": {
+        "observed_at_utc": "2026-11-09T03:35:55.777322+00:00",
+        "blocked_pid": 99179,
+        "artifact_source": "6e7656d1b2c307a9bf84a129176f8fe067206aec",
+        "cause_observed": "Credential load blocked in SecKeychainFindGenericPassword and SecurityServer decrypt IPC for duration of3s native sample; main thread remained in normal AppKit event loop; no API socket present.",
+        "cause_inferred": "Unsigned executable identity changed while reusing original profile credential service. No SecurityAgent dialog was observed by Root; exact OS prompt/ACL reason is not established.",
+        "sample_file": "../a-metadata/logs/startup-sample.txt",
+        "source_path": "crates/loofah-client/src/os_credentials.rs::OsCredentials::load",
+        "original_state_after_preparation": {
+          "global": {
+            "added": [],
+            "removed": [],
+            "changed": []
+          },
+          "journals": {
+            "added": [],
+            "removed": [],
+            "changed": []
+          }
+        },
+        "root_shutdown": "Root reported ordinary Native Quit and verified PID absent; no OS grant.",
+        "keychain_modified_by_preparation": false,
+        "fresh_profile": "first-start.json",
+        "launch_script": "../../remote_metadata_fresh.py",
+        "app_launched_by_preparation": false
+      }
     }
   },
   "local_work_focused": [
