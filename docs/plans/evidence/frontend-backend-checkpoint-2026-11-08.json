@@ -2450,6 +2450,97 @@
           "sha256": "8926d250151fc966b6b2680cd76d1f077581a86c7a85773e6b87a62daf267f35"
         }
       }
+    },
+    "native_local_physical_artifact_aa0_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/verification.json",
+      "sha256": "305663cb65e4099cac701257a789cc2700055a939c4d1dfcebb73082d9eeb896",
+      "record": {
+        "source": "aa0a5ed1c70ac6ecd767e2bebc8567ea4d7f142d",
+        "tracked_tree_clean": true,
+        "verified_utc": "2026-11-09T04:44:43.807094+00:00",
+        "app": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/Loofah Local Performance QA.app",
+        "binary_sha256": "bd94f90970b421e9f35c586f2f68f741c18eab5b3d9dff52f6454b81039c5dd8",
+        "binary_contains_actual_git_sha": true,
+        "vergen_git_sha": "aa0a5ed1c70ac6ecd767e2bebc8567ea4d7f142d",
+        "vergen_build_output": "/Users/bartsmeets/Library/Caches/loofah-separation/build/release/build/tauri-plugin-misc-bba4de125adad113/output",
+        "manifest_sha256": "e82c92ceea286a96d9a802daa7d90582725242342e1d559fce9284ca6db64d73",
+        "cargo_result_sha256": "001dfa7515a842dc36546044fbbe82b7ce21bc88ea50fcf3a8fb72848dd6c7ac",
+        "cargo_exit_code": 0,
+        "cargo_elapsed_seconds": 260.724974155426,
+        "preserved_original_files": 14258,
+        "changed_original_files": [],
+        "launched": false,
+        "inference": false,
+        "launch_script": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/launch.sh",
+        "free_bytes": 7839977472
+      },
+      "bundle_manifest": {
+        "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/bundle-manifest.json",
+        "sha256": "e82c92ceea286a96d9a802daa7d90582725242342e1d559fce9284ca6db64d73"
+      },
+      "launch_script": {
+        "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/launch.sh",
+        "sha256": "288d8884f63fd6343418e2d52440ad4de5a6e673bd675f3b9e95f34705c06532",
+        "executed": false
+      },
+      "native_graph": {
+        "packages": [
+          "desktop",
+          "loof-cli",
+          "loofah-local-owner",
+          "loofah-local-media",
+          "loofah-client",
+          "loofah-core",
+          "loofah-protocol",
+          "loofah-server",
+          "capture-store",
+          "vault-read",
+          "vault-write",
+          "search-cache",
+          "listener-core",
+          "listener2-core",
+          "transcribe-whisper-local",
+          "tauri-plugin-transcription",
+          "storage",
+          "export-core",
+          "fs-sync-core",
+          "tauri-plugin-fs-sync",
+          "tauri-plugin-windows"
+        ],
+        "features": [
+          "desktop/dev",
+          "loofah-client/dev-fixtures",
+          "loofah-server/cpu-transcription",
+          "tauri/custom-protocol"
+        ],
+        "target": "/Users/bartsmeets/Library/Caches/loofah-separation/target/target-root",
+        "locked": true,
+        "bins": true,
+        "optimized": true,
+        "sole_native_source_path": "/Users/bartsmeets/src/loofah-backend-separation",
+        "graph_and_model_roots_unchanged": true
+      },
+      "reused_local_data": {
+        "reused_vault": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/vault",
+        "reused_global": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/global",
+        "reused_models": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-performance/global/models",
+        "original_journal_root": "/Users/bartsmeets/Library/Application Support/io.loofah.separation-qa/backend/7c5fba6b92c52919176c3bf27b036c0c6a608ec32483ee1634f43bebdda54455",
+        "expected_identity": "io.loofah.separation-qa"
+      },
+      "preservation": {
+        "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/preservation-before.json",
+        "sha256": "175e4b1bfeaa48cb8f658e3c8071a9a05391f58e7a9b3958e6c90a0e717f1698",
+        "files_checked": 14258,
+        "changed_files": 0,
+        "includes": "Original synthetic vault, global configuration, models, private journals and both prior Local artifact executables/manifests; no raw bytes embedded."
+      },
+      "limits": [
+        "UNLAUNCHED: artifact preparation only, not GUI or physical microphone/system-audio acceptance.",
+        "No OS permission grants, recording, model download, inference or Local gate activation.",
+        "No production source, global configuration, vault or model-root changes; earlier artifacts and evidence preserved.",
+        "Launch script is historical workstation evidence; validate current permissions, source and runtime ownership before any future use.",
+        "No current hosted Windows acceptance claim; earlier 073 checks were still running."
+      ]
     }
   },
   "local_work_focused": [

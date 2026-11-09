@@ -1584,3 +1584,40 @@ JSON embeds the exact result and SHA256 hashes of
 verifier checked the exact test name, 21 cohort result lines and the one-pass total.
 Hosted CI for the earlier `073e5b7cd3` source was still in flight at this checkpoint;
 no push, CI cancellation or new source build is represented by this evidence.
+
+## Current Local physical-QA artifact prepared, 2026-11-09
+
+An optimized, unsigned Local QA artifact was built from clean frozen source
+`aa0a5ed1c70ac6ecd767e2bebc8567ea4d7f142d` in the sole Native worktree. Cargo
+completed successfully in 4m20s using the existing 21-package graph, `--locked`
+and `--bins`, with `desktop/dev`, `loofah-client/dev-fixtures`,
+`loofah-server/cpu-transcription` and `tauri/custom-protocol`. Actual generated
+`VERGEN_GIT_SHA` equals that source and is present in the executable; no metadata
+environment pin, version change or cache reset was used. The helper's three tests
+and bounded performance-overlay check passed.
+
+The new artifact is **UNLAUNCHED** at
+`~/Library/Caches/loofah-separation/qa/remote-browser-lab/local-physical-current/Loofah Local Performance QA.app`.
+Its executable SHA256 is
+`bd94f90970b421e9f35c586f2f68f741c18eab5b3d9dff52f6454b81039c5dd8`;
+`bundle-manifest.json` SHA256 is
+`e82c92ceea286a96d9a802daa7d90582725242342e1d559fce9284ca6db64d73`.
+`verification.json` records the exact source, build receipt and preservation
+checks. The adjacent `launch.sh` was prepared but not executed; its exact path
+and SHA256 are recorded in the portable JSON.
+
+The bundle retains `io.loofah.separation-qa`, the existing isolated
+`local-performance` vault/global/model roots and original private journal root.
+The task-only profiler overlay, separate temporary/download/log directories and
+Native feature graph are unchanged in purpose. All 14,258 baseline files were
+byte-identical after the build, including the original synthetic vault, global
+configuration, models, journals and prior Local artifact executables/manifests.
+No existing Local process was stopped. No OS grants, recording, download or
+inference occurred, and no Local capability gate was activated. This prepares
+an artifact for later authorized physical/concurrent-performance QA; it does
+not qualify that acceptance or replace the earlier frozen Local GUI evidence.
+
+The existing portable JSON appends
+`records.native_local_physical_artifact_aa0_2026_11_09`, embedding the exact
+verification receipt plus manifest/launch/preservation hashes, build features
+and unchanged task data roots. Previous records remain unchanged.
