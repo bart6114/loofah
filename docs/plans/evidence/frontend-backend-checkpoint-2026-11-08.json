@@ -2413,6 +2413,43 @@
         "crates/loofah-client/src/tests/capture_upload.rs": "aa44b0672148ff5884f5e5a7829c04fd2c8d6f8375acdd670bdf7414c1184101",
         ".github/workflows/windows_ci.yaml": "c0f9f4f8de9085b6b242ceefe5c416173aed81a8c4a9e957b30ab7aca0645f95"
       }
+    },
+    "capture_retirement_deadline_explicit_2026_11_09": {
+      "recorded_at_utc": "2026-11-09T04:18:01.379389+00:00",
+      "source": "24198b3296ca4afcb5817ab51d29b21ac4e1c1a6",
+      "cohorts": 21,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "case": "tests::capture_upload::cleanup_retirement_budget_outlives_ordinary_capture_timeout_without_changing_identity",
+      "sdk_test_result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 206 filtered out; finished in 73.37s",
+      "scope": "Explicit --ignored --exact invocation, same stable21 Native graph. Separate from prior21/0/1 focused result.",
+      "inference": "None; real fixture TLS retirement response deliberately delayed36s, longer than ordinary35s timeout.",
+      "sdk_elapsed_seconds": 73.37,
+      "comparison": "Actual ordinary35s request timeout followed by successful36s delayed retirement response; original capture/request identity retained.",
+      "separate_run": true,
+      "prior_focused_cohort_unchanged": {
+        "passed": 21,
+        "failed": 0,
+        "ignored": 1
+      },
+      "qualification_limits": [
+        "Not a two-hour capture soak or model inference run.",
+        "Uses the same stable21 Native graph and frozen source241, not a rebuilt source graph.",
+        "Hosted073 CI remained in flight at this checkpoint and is a separate qualification; no push/cancellation represented."
+      ],
+      "logs": {
+        "native-capture-retirement-deadline-explicit.log": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-capture-retirement-deadline-explicit.log",
+          "bytes": 7528,
+          "sha256": "defb0f62f03e35b11f0aa168430963436f25fa9e2be75e7a392a53a591f29bb6"
+        },
+        "native-capture-retirement-deadline-explicit.json": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-capture-retirement-deadline-explicit.json",
+          "bytes": 607,
+          "sha256": "8926d250151fc966b6b2680cd76d1f077581a86c7a85773e6b87a62daf267f35"
+        }
+      }
     }
   },
   "local_work_focused": [

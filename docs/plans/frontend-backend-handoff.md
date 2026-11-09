@@ -1567,3 +1567,20 @@ of the six actual validation logs. The primary logs are
 `native-capture-refresh-fence-tests.log`, its `.json` result,
 `native-capture-refresh-fence-check.log` and `capture-refresh-{workflow-tests,actionlint,zizmor}.log`
 under the local task cache. All prior evidence records remain unchanged.
+
+A separate explicit `--ignored --exact` invocation then passed
+`tests::capture_upload::cleanup_retirement_budget_outlives_ordinary_capture_timeout_without_changing_identity`
+on the same stable 21-package graph and source
+`24198b3296ca4afcb5817ab51d29b21ac4e1c1a6`: one passed, zero failed or ignored.
+The SDK case took 73.37 seconds, exercising an actual ordinary 35-second timeout
+followed by a successful 36-second delayed fixture TLS retirement response while
+preserving the original capture/request identity. It performed no inference and
+was not a soak run. The earlier focused cohort remains historically 21 passed,
+zero failed, one ignored; this later result does not rewrite that run.
+
+`records.capture_retirement_deadline_explicit_2026_11_09` in the existing portable
+JSON embeds the exact result and SHA256 hashes of
+`native-capture-retirement-deadline-explicit.log` and its `.json` verifier. The
+verifier checked the exact test name, 21 cohort result lines and the one-pass total.
+Hosted CI for the earlier `073e5b7cd3` source was still in flight at this checkpoint;
+no push, CI cancellation or new source build is represented by this evidence.
