@@ -5708,6 +5708,810 @@
         "historical_two_hour_capture_evidence": "preserved separately, not recast as latest-source qualification",
         "merge_release_push": "none by this documentation task"
       }
+    },
+    "hosted_0534474_terminal_2026_11_09": {
+      "source": "053447421f2333737fd720c7905b8bd51cad447e",
+      "recorded_at_utc": "2026-11-09T09:02:52.000835+00:00",
+      "scope": "Terminal hosted qualification of the published test/docs checkpoint only. Later retirement implementation, local validation and CI prewarm source are separate; their hosted acceptance is not inferred from these results.",
+      "outcome": "Five PR workflows succeeded. Desktop CI failed both its original macOS attempt and the single authorized failed-jobs retry on the same external HTTP 504 before workspace tests; successful frontend execution was carried over unchanged.",
+      "terminal": {
+        "original_path": "logs/ci-0534474-audit/terminal-summary.json",
+        "sha256": "d40fe33ca475652cfc895b2c405ab2d5e1cee5dd5e2bdd26e94809b2b4c51abd",
+        "record": {
+          "workflow_head": "053447421f2333737fd720c7905b8bd51cad447e",
+          "snapshot_at_utc": "2026-11-09T08:54:44.303811+00:00",
+          "all_terminal": true,
+          "pr_checkout": {
+            "sha": "65df6a3223c1af40bf1f11680cd56c626d0599bd",
+            "parents": [
+              "a6a8f001d9165881e59fd0fa29df944da26b8801",
+              "053447421f2333737fd720c7905b8bd51cad447e"
+            ],
+            "commit": {
+              "message": "Merge 053447421f2333737fd720c7905b8bd51cad447e into a6a8f001d9165881e59fd0fa29df944da26b8801"
+            }
+          },
+          "runs": [
+            {
+              "id": 42578497085,
+              "name": "backend-ci",
+              "status": "completed",
+              "conclusion": "success",
+              "url": "https://github.com/bart6114/loofah/actions/runs/42578497085",
+              "event": "pull_request",
+              "run_attempt": 1,
+              "jobs": [
+                {
+                  "id": 129031491773,
+                  "name": "headless",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "d0939f1fd77a56c1e3bda852092bc1f1bcb2c589fa287539cdde4fb9ae7cb177",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031491773.log",
+                  "rust_cohorts": 22,
+                  "rust_totals": {
+                    "passed": 1666,
+                    "failed": 0,
+                    "ignored": 19
+                  },
+                  "new_principal_tests": {
+                    "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                    "local_principal_still_requires_original_host_authorization": true,
+                    "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                  },
+                  "new_fence_tests": {
+                    "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                    "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                    "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                    "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                    "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                  },
+                  "sdk_refresh_tests": {
+                    "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                    "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                  },
+                  "git_helper_tests": {
+                    "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                    "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                    "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                    "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                  },
+                  "listener_identity_tests": {
+                    "same_label_device_fixtures_keep_independent_actor_names_and_drains": false,
+                    "all_recovery_masks_interrupt_device_prefix_without_reopening_source": false,
+                    "maintenance_rejects_active_retiring_and_storage_finalizing_capture": false
+                  },
+                  "append_http_tests": {
+                    "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": true,
+                    "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": true,
+                    "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": true
+                  },
+                  "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                },
+                {
+                  "id": 129031492014,
+                  "name": "linux-cpu-stt",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "1e575a6e0ac304ff5501e7c3f1b8b4b6c762947d311505cb49b6350e014a4cf1",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031492014.log",
+                  "count_note": "CPU command reprints successful summaries for exact-selection checks; do not aggregate duplicate lines.",
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                },
+                {
+                  "id": 129031492245,
+                  "name": "container",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "b3588406742252655655517f9e4b61a674dde243755850cdedf969bc9405f6f9",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031492245.log",
+                  "rust_cohorts": 0,
+                  "rust_totals": {
+                    "passed": 0,
+                    "failed": 0,
+                    "ignored": 0
+                  },
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                }
+              ],
+              "artifacts": [
+                {
+                  "id": 13657226792,
+                  "node_id": "MDg6QXJ0aWZhY3QxMzY1NzIyNjc5Mg==",
+                  "name": "linux-cpu-stt",
+                  "size_in_bytes": 87059,
+                  "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13657226792",
+                  "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13657226792/zip",
+                  "expired": false,
+                  "digest": "sha256:adab2deaeed864448021770a1071e93c0bc609c44d1a6d8ce619705a51e9094d",
+                  "created_at": "2026-11-09T07:37:56Z",
+                  "updated_at": "2026-11-09T07:37:56Z",
+                  "expires_at": "2026-11-16T07:37:55Z",
+                  "workflow_run": {
+                    "id": 42578497085,
+                    "repository_id": 1309166815,
+                    "head_repository_id": 1309166815,
+                    "head_branch": "refactor/frontend-backend-separation",
+                    "head_sha": "053447421f2333737fd720c7905b8bd51cad447e"
+                  }
+                }
+              ]
+            },
+            {
+              "id": 42578497189,
+              "name": "desktop-ci",
+              "status": "completed",
+              "conclusion": "failure",
+              "url": "https://github.com/bart6114/loofah/actions/runs/42578497189",
+              "event": "pull_request",
+              "run_attempt": 2,
+              "jobs": [
+                {
+                  "id": 129034442435,
+                  "name": "rust",
+                  "status": "completed",
+                  "conclusion": "failure",
+                  "active": [],
+                  "failed_steps": [
+                    "Run cargo check -p desktop"
+                  ],
+                  "log_sha256": "6c8332398715802292c817114ea0fbdd3b211ee9cd3146983be75ef48f8de6a8",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129034442435.log",
+                  "rust_cohorts": 0,
+                  "rust_totals": {
+                    "passed": 0,
+                    "failed": 0,
+                    "ignored": 0
+                  },
+                  "new_principal_tests": {
+                    "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": false,
+                    "local_principal_still_requires_original_host_authorization": false,
+                    "local_principal_survives_submit_result_replay_and_journal_reopen": false
+                  },
+                  "new_fence_tests": {
+                    "final_generation_preserves_literal_fences_in_first_indented_code_line": false,
+                    "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": false,
+                    "fence_only_generation_fails_without_an_additional_model_attempt": false,
+                    "historical_fence_only_retained_result_remains_readable_without_replay": false,
+                    "fence_only_job_preserves_canonical_summary_and_retains_no_result": false
+                  },
+                  "sdk_refresh_tests": {
+                    "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": false,
+                    "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": false
+                  },
+                  "git_helper_tests": {
+                    "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": false,
+                    "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": false,
+                    "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": false,
+                    "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": false
+                  },
+                  "listener_identity_tests": {
+                    "same_label_device_fixtures_keep_independent_actor_names_and_drains": false,
+                    "all_recovery_masks_interrupt_device_prefix_without_reopening_source": false,
+                    "maintenance_rejects_active_retiring_and_storage_finalizing_capture": false
+                  },
+                  "append_http_tests": {
+                    "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": false,
+                    "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": false,
+                    "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": false
+                  },
+                  "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                },
+                {
+                  "id": 129034444764,
+                  "name": "frontend",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "199689d722fcbcd7111d4adf986b8951b5cf6e4d077eb2f936564afcf2ad5096",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129034444764.log",
+                  "rust_cohorts": 0,
+                  "rust_totals": {
+                    "passed": 0,
+                    "failed": 0,
+                    "ignored": 0
+                  },
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                }
+              ],
+              "artifacts": []
+            },
+            {
+              "id": 42578497116,
+              "name": "windows-ci",
+              "status": "completed",
+              "conclusion": "success",
+              "url": "https://github.com/bart6114/loofah/actions/runs/42578497116",
+              "event": "pull_request",
+              "run_attempt": 1,
+              "jobs": [
+                {
+                  "id": 129031492033,
+                  "name": "native (windows-11-arm, aarch64-pc-windows-msvc)",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "888dbf9036f8987c29c8afb7233e7d9be14a00aed787b120d34625486ae02b61",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031492033.log",
+                  "rust_cohorts": 70,
+                  "rust_totals": {
+                    "passed": 2250,
+                    "failed": 0,
+                    "ignored": 47
+                  },
+                  "new_principal_tests": {
+                    "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                    "local_principal_still_requires_original_host_authorization": true,
+                    "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                  },
+                  "new_fence_tests": {
+                    "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                    "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                    "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                    "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                    "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                  },
+                  "sdk_refresh_tests": {
+                    "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                    "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                  },
+                  "git_helper_tests": {
+                    "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": true,
+                    "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": true,
+                    "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": true,
+                    "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": true
+                  },
+                  "listener_identity_tests": {
+                    "same_label_device_fixtures_keep_independent_actor_names_and_drains": true,
+                    "all_recovery_masks_interrupt_device_prefix_without_reopening_source": true,
+                    "maintenance_rejects_active_retiring_and_storage_finalizing_capture": true
+                  },
+                  "append_http_tests": {
+                    "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": false,
+                    "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": false,
+                    "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": false
+                  },
+                  "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+                  "listener_cohort": {
+                    "passed": 91,
+                    "failed": 0,
+                    "ignored": 0,
+                    "seconds": 1.67
+                  },
+                  "installer_runtime_smoke_passed": true,
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                },
+                {
+                  "id": 129031492274,
+                  "name": "native (windows-2025, x86_64-pc-windows-msvc)",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "1a456d2b0180ed6ca83166493e45a5ca8d8c918e480b89fcb9b9f2df49466564",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031492274.log",
+                  "rust_cohorts": 70,
+                  "rust_totals": {
+                    "passed": 2250,
+                    "failed": 0,
+                    "ignored": 47
+                  },
+                  "new_principal_tests": {
+                    "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals": true,
+                    "local_principal_still_requires_original_host_authorization": true,
+                    "local_principal_survives_submit_result_replay_and_journal_reopen": true
+                  },
+                  "new_fence_tests": {
+                    "final_generation_preserves_literal_fences_in_first_indented_code_line": true,
+                    "final_generation_rejects_empty_fences_but_preserves_short_prose_and_code_content": true,
+                    "fence_only_generation_fails_without_an_additional_model_attempt": true,
+                    "historical_fence_only_retained_result_remains_readable_without_replay": true,
+                    "fence_only_job_preserves_canonical_summary_and_retains_no_result": true
+                  },
+                  "sdk_refresh_tests": {
+                    "append_dispatch_releases_profile_while_concurrent_refresh_waits_for_credentials": true,
+                    "cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials": true
+                  },
+                  "git_helper_tests": {
+                    "linked_worktree_tracks_common_loose_ref_when_symbolic_head_does_not_change": true,
+                    "packed_ref_tracks_existing_ancestor_for_the_next_loose_commit": true,
+                    "detached_head_and_branch_switch_are_tracked_without_object_directory_watches": true,
+                    "ordinary_repository_and_source_archive_keep_existing_fallback_behavior": true
+                  },
+                  "listener_identity_tests": {
+                    "same_label_device_fixtures_keep_independent_actor_names_and_drains": true,
+                    "all_recovery_masks_interrupt_device_prefix_without_reopening_source": true,
+                    "maintenance_rejects_active_retiring_and_storage_finalizing_capture": true
+                  },
+                  "append_http_tests": {
+                    "append_http_admission_rechecks_reader_and_exact_authenticated_request_scope": false,
+                    "append_http_stale_transcript_revision_rejects_begin_without_refreshing_admission": false,
+                    "raw_append_http_publishes_exact_channels_and_replays_after_service_reopen": false
+                  },
+                  "named_case_flags_note": "True means an actual successful test line; false means no recorded successful execution, not an inferred test failure. The Windows package list excludes loofah-server append HTTP tests.",
+                  "listener_cohort": {
+                    "passed": 91,
+                    "failed": 0,
+                    "ignored": 0,
+                    "seconds": 1.78
+                  },
+                  "installer_runtime_smoke_passed": true,
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                },
+                {
+                  "id": 129031493268,
+                  "name": "speech-models",
+                  "status": "completed",
+                  "conclusion": "skipped",
+                  "active": [],
+                  "failed_steps": []
+                }
+              ],
+              "artifacts": [
+                {
+                  "id": 13660137719,
+                  "node_id": "MDg6QXJ0aWZhY3QxMzY2MDEzNzcxOQ==",
+                  "name": "loofah-windows-aarch64-pc-windows-msvc-65df6a3223c1af40bf1f11680cd56c626d0599bd",
+                  "size_in_bytes": 338207848,
+                  "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13660137719",
+                  "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13660137719/zip",
+                  "expired": false,
+                  "digest": "sha256:e471bdc9b007c08644727aa38c2a9b220f3e00fb87c8b9432d284362670d3620",
+                  "created_at": "2026-11-09T08:54:21Z",
+                  "updated_at": "2026-11-09T08:54:21Z",
+                  "expires_at": "2026-11-23T08:54:09Z",
+                  "workflow_run": {
+                    "id": 42578497116,
+                    "repository_id": 1309166815,
+                    "head_repository_id": 1309166815,
+                    "head_branch": "refactor/frontend-backend-separation",
+                    "head_sha": "053447421f2333737fd720c7905b8bd51cad447e"
+                  }
+                },
+                {
+                  "id": 13659680853,
+                  "node_id": "MDg6QXJ0aWZhY3QxMzY1OTY4MDg1Mw==",
+                  "name": "loofah-windows-x86_64-pc-windows-msvc-65df6a3223c1af40bf1f11680cd56c626d0599bd",
+                  "size_in_bytes": 371624220,
+                  "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13659680853",
+                  "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13659680853/zip",
+                  "expired": false,
+                  "digest": "sha256:2bd5e4ebec838a6ebd96d40dc06c50bee333303884fab39ad3f8e9a17d88f2ae",
+                  "created_at": "2026-11-09T08:30:44Z",
+                  "updated_at": "2026-11-09T08:30:44Z",
+                  "expires_at": "2026-11-23T08:30:29Z",
+                  "workflow_run": {
+                    "id": 42578497116,
+                    "repository_id": 1309166815,
+                    "head_repository_id": 1309166815,
+                    "head_branch": "refactor/frontend-backend-separation",
+                    "head_sha": "053447421f2333737fd720c7905b8bd51cad447e"
+                  }
+                }
+              ]
+            },
+            {
+              "id": 42578497092,
+              "name": "ci",
+              "status": "completed",
+              "conclusion": "success",
+              "url": "https://github.com/bart6114/loofah/actions/runs/42578497092",
+              "event": "pull_request",
+              "run_attempt": 1,
+              "jobs": [
+                {
+                  "id": 129031491882,
+                  "name": "lint",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "1c94d41e909b28cce8fea3bf870f397c8fddb25a7c3300333b82a5cc8687c1ed",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031491882.log",
+                  "rust_cohorts": 0,
+                  "rust_totals": {
+                    "passed": 0,
+                    "failed": 0,
+                    "ignored": 0
+                  },
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                },
+                {
+                  "id": 129031492189,
+                  "name": "fmt",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "40c7aa4e5f72faf645ec5045ae82de622f9886224c1263083d381adf411373e1",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031492189.log",
+                  "rust_cohorts": 0,
+                  "rust_totals": {
+                    "passed": 0,
+                    "failed": 0,
+                    "ignored": 0
+                  },
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                }
+              ],
+              "artifacts": []
+            },
+            {
+              "id": 42578497063,
+              "name": "cli-ci",
+              "status": "completed",
+              "conclusion": "success",
+              "url": "https://github.com/bart6114/loofah/actions/runs/42578497063",
+              "event": "pull_request",
+              "run_attempt": 1,
+              "jobs": [
+                {
+                  "id": 129031491949,
+                  "name": "cli-ci",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "3e9bc8698755004585826291ab02be2321c145d74df83143ac0713545a27a181",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031491949.log",
+                  "rust_cohorts": 20,
+                  "rust_totals": {
+                    "passed": 274,
+                    "failed": 0,
+                    "ignored": 2
+                  },
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                }
+              ],
+              "artifacts": []
+            },
+            {
+              "id": 42578497067,
+              "name": "zizmor",
+              "status": "completed",
+              "conclusion": "success",
+              "url": "https://github.com/bart6114/loofah/actions/runs/42578497067",
+              "event": "pull_request",
+              "run_attempt": 1,
+              "jobs": [
+                {
+                  "id": 129031491685,
+                  "name": "zizmor",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "active": [],
+                  "failed_steps": [],
+                  "log_sha256": "2b42dd8122ef0d88482d834ed31865d3bca668a3054565394f9064193f94805a",
+                  "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031491685.log",
+                  "rust_cohorts": 0,
+                  "rust_totals": {
+                    "passed": 0,
+                    "failed": 0,
+                    "ignored": 0
+                  },
+                  "checkout_observed": [
+                    "65df6a3223c1af40bf1f11680cd56c626d0599bd"
+                  ]
+                }
+              ],
+              "artifacts": []
+            }
+          ],
+          "qualification_limit": "Counts describe actual logged executions at 0534474. Windows aggregate includes separate standalone Git-helper and release-policy tests; verify their exact names and the two SDK concurrency regressions separately. No physical capture or production SSO claim.",
+          "frontend": {
+            "desktop": {
+              "passed": 2622,
+              "files": 298
+            },
+            "editor": {
+              "passed": 303,
+              "files": 31
+            },
+            "typecheck": "passed",
+            "execution_scope": "Original successful frontend job 129031492494 was carried into attempt 2 as 129034444764 with identical timestamps and steps; it was not executed twice."
+          },
+          "macos_scope": "Both attempts stopped during cargo check at the same pinned SpeechCore download HTTP 504, before workspace tests. The one authorized failed-jobs retry is exhausted; no further retry was requested.",
+          "speech_scope": "No manual speech dispatch for this test/docs-only checkpoint. Successful model runs at original direct source 36 qualify unchanged processing production source; see runtime-source-equivalence.json.",
+          "supporting_receipts": [
+            {
+              "path": "macos-soniqo-artifact-download-failure.json",
+              "sha256": "3b7485da32459eeaf88359890c384a6b9247d2e4ce376472976a0de52a6e2eb7"
+            },
+            {
+              "path": "desktop-retry-once/terminal-failure.json",
+              "sha256": "1cbc95409b1efca73b48175bb0a4cfc33698c0ecd3dbf42563c445baf51d2c7d"
+            },
+            {
+              "path": "desktop-retry-once/retry-request.json",
+              "sha256": "9dc0dae8ee5971e8d81bd45726abcb3d3cb6366879f407665118dd55aeb119b0"
+            },
+            {
+              "path": "desktop-retry-once/speechcore-preflight.json",
+              "sha256": "4f1cedc70314cc2a98b76a7292cbcda8f94a05b3ab2406e1351a87573cf6703f"
+            },
+            {
+              "path": "desktop-retry-once/frontend-success-carried-over.json",
+              "sha256": "c2bb9e89de4813ec4744c80786465aa90897b9fae90b575978070f6d2cb677c6"
+            },
+            {
+              "path": "linux-cpu-qualification.json",
+              "sha256": "e9759986a413531d9c706186cb1c9d8e7e6f32b6104ae50dcb0b1b0cf582831b"
+            },
+            {
+              "path": "runtime-source-equivalence.json",
+              "sha256": "ca657617ad9f8e5ab63681bc6b2e49c93411cd95b8a5b4d33e8abef61c968ceb"
+            }
+          ]
+        }
+      },
+      "supporting_receipts": [
+        {
+          "original_path": "logs/ci-0534474-audit/macos-soniqo-artifact-download-failure.json",
+          "sha256": "3b7485da32459eeaf88359890c384a6b9247d2e4ce376472976a0de52a6e2eb7",
+          "record": {
+            "source": "053447421f2333737fd720c7905b8bd51cad447e",
+            "pr_merge": "65df6a3223c1af40bf1f11680cd56c626d0599bd",
+            "run_id": 42578497189,
+            "job_id": 129031492297,
+            "architecture": "macOS",
+            "failed_step": "Run cargo check -p desktop",
+            "failure": "SwiftPM dependency resolution failed downloading the Soniqo SpeechCore binary artifact with HTTP 504.",
+            "url": "https://github.com/soniqo/speech-core/releases/download/v0.0.14/SpeechCore.xcframework.zip",
+            "failure_at_utc": "2026-11-09T07:21:42.3098530Z",
+            "log_lines": [
+              1079,
+              1088
+            ],
+            "build_script": "crates/transcribe-soniqo/build.rs:143",
+            "scope": "Workspace tests, including the new listener and append HTTP cases, were not reached. Frontend job succeeded independently. No inference was reached by this cargo-check step.",
+            "retry": "None requested; healthy other workflows continue unchanged.",
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031492297.log",
+            "sha256": "f54faabb4e60291731d8aef7100fc7099731aeb2b773e0d943fcafd313cf7754"
+          }
+        },
+        {
+          "original_path": "logs/ci-0534474-audit/desktop-retry-once/terminal-failure.json",
+          "sha256": "1cbc95409b1efca73b48175bb0a4cfc33698c0ecd3dbf42563c445baf51d2c7d",
+          "record": {
+            "source": "053447421f2333737fd720c7905b8bd51cad447e",
+            "checkout": "65df6a3223c1af40bf1f11680cd56c626d0599bd",
+            "run_id": 42578497189,
+            "attempt": 2,
+            "job_id": 129034442435,
+            "conclusion": "failure",
+            "failed_step": "Run cargo check -p desktop",
+            "failure_at_utc": "2026-11-09T07:31:56.5291670Z",
+            "error": "SwiftPM again received HTTP 504 while downloading the original pinned SpeechCore binary artifact, before workspace tests.",
+            "url": "https://github.com/soniqo/speech-core/releases/download/v0.0.14/SpeechCore.xcframework.zip",
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129034442435.log",
+            "sha256": "6c8332398715802292c817114ea0fbdd3b211ee9cd3146983be75ef48f8de6a8",
+            "log_lines": [
+              1165,
+              1168
+            ],
+            "preflight": "The preceding single local GET succeeded with the pinned SwiftPM checksum; it did not establish runner availability.",
+            "retry_budget": "One failed-jobs-only retry used. No further retry, fresh dispatch or healthy cancellation requested.",
+            "frontend": "Original successful execution was carried over with identical timestamps and steps; not executed again.",
+            "terminal_observed_at_utc": "2026-11-09T07:32:39.978450+00:00"
+          }
+        },
+        {
+          "original_path": "logs/ci-0534474-audit/desktop-retry-once/retry-request.json",
+          "sha256": "9dc0dae8ee5971e8d81bd45726abcb3d3cb6366879f407665118dd55aeb119b0",
+          "record": {
+            "recorded_at_utc": "2026-11-09T07:27:29.500846+00:00",
+            "method": "GitHub rerun_failed_workflow_run_jobs",
+            "run_id": 42578497189,
+            "head_sha": "053447421f2333737fd720c7905b8bd51cad447e",
+            "expected_attempt": 2,
+            "retry_budget": 1,
+            "response_success": true,
+            "fresh_dispatch": false,
+            "scope": "Only the failed macOS job; successful frontend and healthy other workflows were not rerun or cancelled."
+          }
+        },
+        {
+          "original_path": "logs/ci-0534474-audit/desktop-retry-once/speechcore-preflight.json",
+          "sha256": "4f1cedc70314cc2a98b76a7292cbcda8f94a05b3ab2406e1351a87573cf6703f",
+          "record": {
+            "started_at_utc": "2026-11-09T07:26:03.155829+00:00",
+            "completed_at_utc": "2026-11-09T07:26:13.653206+00:00",
+            "url": "https://github.com/soniqo/speech-core/releases/download/v0.0.14/SpeechCore.xcframework.zip",
+            "source_pin": {
+              "identity": "speech-swift",
+              "kind": "remoteSourceControl",
+              "location": "https://github.com/soniqo/speech-swift",
+              "state": {
+                "revision": "7f382bb4bf24d560e927893a64d8ffb9cf30bc89",
+                "version": "0.0.29"
+              }
+            },
+            "committed_resolved_sha256": "3a59946657cc80d9441155fe647cbe92d17a6d2b00bb80325283711f0bf24865",
+            "checksum_manifest_url": "https://raw.githubusercontent.com/soniqo/speech-swift/7f382bb4bf24d560e927893a64d8ffb9cf30bc89/Package.swift",
+            "checksum_manifest_sha256": "70ede143bccfbe839daf7b43e762726d67493cda2d5cbc5b23589978ae713339",
+            "expected_swiftpm_sha256": "68517f044b98a54e8779dccab850ae383ad5a5595471430c9e10118abec345cd",
+            "curl_exit": 0,
+            "http_status": 200,
+            "received_bytes": 2112822,
+            "sha256": "68517f044b98a54e8779dccab850ae383ad5a5595471430c9e10118abec345cd",
+            "checksum_matches": true,
+            "zip_magic": "504b0304",
+            "elapsed_seconds": 10.488148,
+            "redirect_count": 1,
+            "response_content_type": "application/octet-stream",
+            "attempts": 1,
+            "max_seconds": 120,
+            "max_bytes": 536870912,
+            "disk_free_before": 3297619968,
+            "disk_free_after": 3506262016,
+            "scope": "Official asset availability and pinned checksum only; no build, extraction, model inference, CI retry or source changes.",
+            "archive_entries": 17,
+            "uncompressed_bytes": 6054776,
+            "has_xcframework_info_plist": true,
+            "ci_Package_swift_sha256": "4a371e2f157663e39466f56c57f939253c93a9cfdbe23fcb82a608fb7aa5a479",
+            "ci_Package_resolved_sha256": "3a59946657cc80d9441155fe647cbe92d17a6d2b00bb80325283711f0bf24865",
+            "failed_ci_source": "053447421f2333737fd720c7905b8bd51cad447e",
+            "failed_ci_log_sha256": "f54faabb4e60291731d8aef7100fc7099731aeb2b773e0d943fcafd313cf7754",
+            "failed_ci_at_utc": "2026-11-09T07:21:42.3098530Z",
+            "assessment": "One failed-jobs-only macOS retry is justified by exact URL recovery and checksum match; runner network recovery is not guaranteed and no tests/build are qualified by this GET."
+          }
+        },
+        {
+          "original_path": "logs/ci-0534474-audit/desktop-retry-once/frontend-success-carried-over.json",
+          "sha256": "c2bb9e89de4813ec4744c80786465aa90897b9fae90b575978070f6d2cb677c6",
+          "record": {
+            "scope": "GitHub assigned a copied frontend job ID to attempt2; identical start/end and complete step records prove the successful job was carried over, not executed again.",
+            "old_job_id": 129031492494,
+            "copied_job_id": 129034444764,
+            "started_at": "2026-11-09T07:18:32Z",
+            "completed_at": "2026-11-09T07:23:22Z",
+            "steps_identical": true
+          }
+        },
+        {
+          "original_path": "logs/ci-0534474-audit/linux-cpu-qualification.json",
+          "sha256": "e9759986a413531d9c706186cb1c9d8e7e6f32b6104ae50dcb0b1b0cf582831b",
+          "record": {
+            "source": "053447421f2333737fd720c7905b8bd51cad447e",
+            "checkout": "65df6a3223c1af40bf1f11680cd56c626d0599bd",
+            "job_id": 129031492014,
+            "conclusion": "success",
+            "configured_cases": [
+              {
+                "name": "service::recorded::tests::cpu_http_json_and_sse_keep_existing_wire_shapes_and_terminal_order",
+                "passed": 1,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 4.5
+              },
+              {
+                "name": "service::recorded::tests::cpu_kernel_cancellation_reaches_preparation_vad_and_native_inference",
+                "passed": 1,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 0.48
+              },
+              {
+                "name": "service::recorded::tests::cpu_kernel_preserves_channels_timestamps_progress_and_rejects_failed_emitters",
+                "passed": 1,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 2.57
+              },
+              {
+                "name": "resources::live::tests::real_cpu_two_typed_sessions_emit_before_finish_and_drain_independently",
+                "passed": 1,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 37.45
+              },
+              {
+                "name": "tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source",
+                "passed": 1,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 4.9
+              },
+              {
+                "name": "tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication",
+                "passed": 1,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 23.31
+              },
+              {
+                "name": "transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join",
+                "passed": 1,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 55.69
+              },
+              {
+                "name": "tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive",
+                "passed": 1,
+                "failed": 0,
+                "ignored": 0,
+                "seconds": 27.87
+              }
+            ],
+            "reserved_overlap": {
+              "total": 2,
+              "reserved_live": 1,
+              "batch_frames": 5120000,
+              "source_sha256": "938170e91687b18f8f9c4c289fd579770163ca2df9485b591d2c15578ddd926d",
+              "first_caption_ms": 6853,
+              "concurrent_http_ms": 10,
+              "actual_drain_ms": 15092
+            },
+            "counting": "The workflow repeats selected result summaries to verify exact selection; duplicate printed summaries are not additional test executions. Other light unit/boundary tests are retained in the raw log, not included in this configured-case list.",
+            "verified_assets": 8,
+            "manifest_sha256": "768b4761a329de89dfec7f88f0e5d339a2580352041a5f36702444947ded0d15",
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-0534474-audit/129031492014.log",
+            "log_sha256": "1e575a6e0ac304ff5501e7c3f1b8b4b6c762947d311505cb49b6350e014a4cf1"
+          }
+        },
+        {
+          "original_path": "logs/ci-0534474-audit/runtime-source-equivalence.json",
+          "sha256": "ca657617ad9f8e5ab63681bc6b2e49c93411cd95b8a5b4d33e8abef61c968ceb",
+          "record": {
+            "from": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+            "to": "053447421f2333737fd720c7905b8bd51cad447e",
+            "changed_paths": [
+              "apps/server/README.md",
+              "apps/server/src/tests.rs",
+              "apps/server/src/tests/capture_append.rs",
+              "crates/listener-core/src/actors/root.rs",
+              "docs/plans/evidence/frontend-backend-checkpoint-2026-11-08.json",
+              "docs/plans/frontend-backend-handoff.md",
+              "plugins/misc/tests/build_git.rs"
+            ],
+            "scope": "Only docs, standalone Git test fixtures, server test modules and listener cfg(test) code changed. Server tests remain behind cfg(test); the listener production prefix is byte-identical. Processing production code is unchanged.",
+            "listener_production_prefix_sha256": "c92ff32ef02f08f41dfee3056622e8333c95ac7e43ee2a3dad47c627184a78e6"
+          }
+        }
+      ],
+      "later_prewarm": {
+        "source": "1101693d0521f2c89b5aedaa60756b4aa6977f3b",
+        "scope": "Later CI-only source, absent from both failed 053 attempts. Offline helper and workflow validation are recorded separately in the handoff. Hosted prewarm/cache consumption and the previously unreached macOS workspace tests remain unqualified.",
+        "no_reinterpretation": "A checksum-matched local artifact GET does not establish hosted-runner availability, and no third attempt was requested."
+      },
+      "acceptance_limits": {
+        "production_https_sso": "Explicitly deferred by the user. This is a scope deferral, not successful production SSO acceptance; earlier synthetic identity tests keep their original scope.",
+        "physical_capture": "Not qualified by these CI results; OS-device capture acceptance remains separate.",
+        "model_quality": "Previously observed Qwen accuracy and conciseness failures remain preserved. Functional publication is not semantic quality acceptance.",
+        "activation": "Local lifecycle, output deletion and transcript activation remain default off; server append and media retirement capabilities remain unadvertised in their recorded scopes.",
+        "release": "No merge, release, version change or extra workflow dispatch. Only the one authorized failed-macOS retry occurred; successful jobs were not rerun or cancelled."
+      }
     }
   },
   "local_work_focused": [

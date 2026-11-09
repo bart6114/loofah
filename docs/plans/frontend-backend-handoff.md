@@ -1,18 +1,17 @@
 # Frontend/backend separation handoff
 
-Current acceptance status, 2026-11-09: all six PR workflows at `8ca3db9a40` are
-terminal. Five passed. Both native Windows architectures passed their suites,
-all four standalone Git helpers, both SDK refresh regressions and installer/runtime
-smoke tests. The desktop workflow failed its macOS listener fixture; the isolated
-identity correction subsequently passed the full 91-case listener library and
-all-target checking locally. Its next hosted qualification remains pending. The
-single authorized retry of direct-`36` Windows speech passed on both architectures;
-original HTTP 504 failures remain preserved. Production processing code is
-unchanged across these fixture-only checkpoints. Physical capture awaits OS
-permission confirmation, production HTTPS SSO needs staging configuration, and
-observed Qwen accuracy and conciseness remain failed. Local lifecycle, output
-deletion and transcript activation gates remain default off; no merge or release
-is authorized.
+Current acceptance status, 2026-11-09: all six PR workflows at `053447421f` are
+terminal. Five passed. Each native Windows architecture passed 2,250 executions,
+including the 91-case listener library, all four Git helpers, both SDK refresh
+regressions and installer/runtime smoke checks. Linux headless passed 1,666 tests,
+including all three append HTTP cases. macOS stopped before workspace tests on
+an external SpeechCore HTTP 504 in both the original attempt and its single
+authorized retry; that retry budget is exhausted. Frontend passed and was not
+rerun. The later CI prewarm is not qualified by those runs. Production HTTPS SSO
+is explicitly deferred by the user, not passed. Physical capture remains separate
+acceptance work, and observed Qwen accuracy and conciseness remain failed. Local
+lifecycle, output deletion and transcript activation gates remain default off;
+no merge or release is authorized.
 
 This document retains chronological checkpoint history. Later dated evidence
 supersedes earlier uses of “current”, “pending” and “analysis-only”; those older
@@ -2096,3 +2095,57 @@ unchanged. The later all-target check also passed on exact `0833c8ccf9` in
 20.21 seconds, retaining the existing nine desktop-library and four test
 warnings. No optimized retirement QA build or actual retirement UI run is
 qualified by this checkpoint.
+
+
+## Hosted checkpoint `053447421f`, terminal 2026-11-09
+
+All six PR workflows were terminal at **08:54:44 UTC**. Backend, native Windows,
+CLI, formatting/lint and security passed. Jobs checked out merge
+`65df6a3223c1af40bf1f11680cd56c626d0599bd`, whose parents are base
+`a6a8f001d9165881e59fd0fa29df944da26b8801` and exact branch head
+`053447421f2333737fd720c7905b8bd51cad447e`.
+
+Each Windows architecture logged **2,250 passing executions, zero failed and
+47 ignored across 70 cohorts**, including the four standalone Git helpers and
+four release-policy cases outside Cargo. Both listener libraries passed all
+91 tests (x64 1.78 seconds; ARM64 1.67 seconds), including the new simultaneous
+same-label fixture regression, recovery-mask case and maintenance collision case.
+Both SDK refresh regressions, all three Local-principal cases and all five
+empty-fence cases passed on each architecture. Both NSIS builds and installed
+app, CLI/MCP and uninstall smoke checks passed. Portable artifact metadata
+preserves the exact x64 and ARM64 artifact IDs, sizes and digests.
+
+Linux headless passed **1,666/0/19** across 22 cohorts, including all three new
+production-router append HTTP cases. Windows does not select the server package,
+so those cases are not claimed there. Packaged Linux CPU and container checks
+passed. With total CPU capacity two and one reserved live slot, the overlap case
+emitted its first caption after 6,853 ms while the batch owned the model,
+completed the concurrent HTTP request in 10 ms and recorded
+15,092 ms of actual drain. Duplicate printed exact-selection summaries are not
+counted as additional test executions. CLI passed **274/0/2**. Frontend passed
+**2,622 desktop tests in 298 files**, **303 editor tests in 31 files**, and typechecking.
+
+macOS jobs `129031492297` and `129034442435` both stopped during `cargo check`
+when SwiftPM received HTTP 504 for the pinned SpeechCore v0.0.14 archive, before
+workspace tests. Between attempts, one bounded official GET returned 2,112,822
+bytes matching the pinned SwiftPM checksum. That local availability proof did
+not establish runner availability. Only the failed macOS job was retried once;
+the frontend's copied attempt-2 job has identical original timestamps and steps,
+proving its successful execution was carried over rather than repeated. Both
+failures, the preflight and the exhausted retry remain preserved. No third attempt,
+healthy-job cancellation or manual speech dispatch occurred.
+
+Record `hosted_0534474_terminal_2026_11_09` embeds the terminal summary and seven
+hashed supporting receipts, including raw-log hashes, source equivalence,
+configured CPU evidence and both failure attempts. Original direct-`36` Windows
+speech success remains source-equivalent processing evidence through `053`;
+later retirement code is outside that comparison. CI prewarm `1101693d05` is
+later source with separate offline validation; its hosted cache consumption and
+the previously unreached macOS workspace cohort remain pending. This checkpoint
+does not qualify that helper or the later retirement implementation.
+
+The user explicitly deferred production HTTPS SSO acceptance. Earlier statements
+that staging configuration was required remain historical; this deferral is not
+a production SSO pass and does not change prior synthetic-login evidence. Physical
+capture, remaining activation gates and the observed model-quality failures keep
+their separate scopes. No merge or release is authorized.
