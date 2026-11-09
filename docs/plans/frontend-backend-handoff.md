@@ -28,8 +28,9 @@ and replay passed, and all-target checks plus debug binaries passed. Qualified
 previews are now advertised with configured workers. The exact dev-only A/B QA
 trust allowlist passed its default-build negative test. Checked Local lifecycle,
 output deletion and transcript UI activation remain default off pending final
-platform/physical acceptance. A corrected, shaped two-hour paced run is active;
-its outcome is not yet qualified. Actual Native A/B browser sign-in, shared editing, Reader downgrade, child-window
+platform/physical acceptance. The corrected, shaped two-hour paced SDK/server run
+passed on its frozen source; physical capture and later source remain separate
+qualification gates. Actual Native A/B browser sign-in, shared editing, Reader downgrade, child-window
 vault/parent-close isolation and live access revocation passed on the frozen
 `71ea43cf94` QA artifacts. Native menu and connected-Reader header gaps found
 through that run are being corrected and need patched-artifact acceptance.
@@ -108,7 +109,8 @@ explicit immutable manual transcription recovery and recording-parent status.
 The local storage-volume fixture passed 7,200 stereo chunks, 115,200,000 frames
 and 921,600,000 bytes with exact reopening/seal/hash and a 750-byte maximum
 manifest. This is four minutes of storage-volume work, not two-hour wall-clock
-capture qualification. A separate paced, real CPU SDK/server soak is in progress.
+capture qualification. The separate corrected paced, real CPU SDK/server soak
+passed as recorded below.
 Four real Linux ARM64 executable maintenance tests passed against frozen source
 `7b50d486b9` plus their committed fixtures and a lock-only dependency overlay;
 they cover split secrets, unknown files, pending capture publication, rollback,
@@ -1089,7 +1091,8 @@ the original outages/restarts and adds bounded network shaping without host
 network changes. It uses immutable server source 573 and a separately hashed
 harness overlay 5be/31ad; current Native production behavior is unchanged except
 the subsequently qualified preview capability declaration. Monitor/evidence
-paths remain under the local task cache. No long-run pass is claimed yet.
+paths remain under the local task cache. The subsequent corrected long run passed
+as recorded below.
 
 Local startup no longer enumerates unrelated speech-model caches or downloads a missing diarizer when a vault opens. Explicit user speech-model downloads still request the optional diarizer on completion; existing downloaded diarization remains available, and a missing diarizer does not block transcription. This shared initialization rule applies to both macOS and Windows.
 
@@ -1252,3 +1255,72 @@ The follow-up empty-stream display fix passed 43 timeline cases and typechecking
 an initial wrong-path test selection is likewise not a test pass. Both corrections
 are local follow-ups until the remaining healthy hosted jobs finish. Local lifecycle,
 output deletion and transcript activation gates remain default off.
+
+## Corrected paced capture acceptance, 2026-11-09
+
+The corrected real-time run passed `capture_soak_wall_clock`: one passed, zero
+failed or ignored, 7,477.73 seconds total. The producer ran for 7,200.914 seconds
+before its deliberate process exit, sealing 7,200 chunks, 115,200,000 frames and
+921,600,000 PCM bytes at 16 kHz, with distinct microphone/system stereo channels.
+Maximum producer lateness was 50 ms. A separate process resumed the original
+capture identity and processing declaration. This is generated audio through the
+actual authenticated SDK/server, not OS physical capture.
+
+Production source was frozen at `573da5761740040aee94d57f71ca9cdb3379cab9`;
+only the test harness overlays `5be9242930` and `31ad81601` were added. The immutable
+server SHA256 was `0f22f2467c50461eda818f726921a4ae5632134e8905a69e528b7c62f636d6fd`;
+the harness SHA256 was `02b1c1299a518a156a9e6be4a30300a07b83ded0c5544becd2e282f8b7734e03`.
+The controlled Linux ARM64 build used the verified base-q8 Whisper model already
+recorded in the portable evidence. It does not qualify later current-head code,
+production amd64 packaging, native Windows or microphone permissions.
+
+All original faults occurred: 3-, 600- and 5-second network outages, a server
+restart at 70 minutes, two lost successful chunk replies, one lost successful
+publication reply, and producer/app restart after sealing. Bounded proxy shaping
+also exercised these profiles without changing host networking:
+
+| Added RTT / deterministic jitter | Per-direction bandwidth | Successful chunk PUTs | Observed proxy-to-header median |
+| --- | --- | --- | --- |
+| 50 ms / ±5 ms | 2 MiB/s | 120 | 63 ms |
+| 150 ms / ±20 ms | 1 MiB/s | 119 | 174 ms |
+| 500 ms / ±50 ms | 512 KiB/s | 120 | 518.5 ms |
+
+Observed proxy-to-header durations are separate from configured added RTT and
+are not end-to-end latency measurements. Every profile carried over 15 MB of
+upstream plaintext and nonzero downstream traffic. The 600-second outage exceeded
+the existing 120-second no-admitted-audio deadline: live processing retained its
+40 unique caption sequences and required canonical repair. This is expected
+bounded idle behavior, not a claim of uninterrupted live captions across the outage.
+
+Exactly one canonical repair job succeeded, from 02:12:16.760 to 02:15:14.173 UTC.
+Each of the 24 speech windows independently contained the required recognizable
+English words. The verifier compared every PCM sample in both channels, frame
+count, WAV length and an independently streamed SHA256. Canonical audio was
+921,600,068 bytes with SHA256
+`9d6cde6f90951a0a9ba5505160633baa599bd413e45db2a657bf942d54f7c7ca`.
+Maximum observed server RSS/high-water was 448,384 KiB before restart and
+372,036 KiB afterward. The explicit final gates read 447,584 and 371,516 KiB;
+all were below the unchanged 786,432 KiB limit.
+
+Fresh authenticated canonical verification and actual-use drains preceded raw
+retirement. Both server and device retained `retired` tombstones with zero chunks;
+a separate read-only inspection confirmed both physical chunk directories empty.
+They share cleanup UUID `1be02e04-bd82-4769-917b-67cd4eb090b1`. Acceptance completed
+at 02:16:22.681 UTC, then the server/test container exited successfully.
+
+The run deliberately overlapped two bounded, single-CPU fixture checks with no
+inference, the optimized Native 5,001-session startup/model prewarm, and one
+Native GPU Ollama summary job from 01:49:52.312 to 01:49:58.111 UTC. Capture lateness
+remained 50 ms. These exact intervals and their qualification limits are preserved
+in the evidence; no additional CPU transcription ran during canonical repair.
+
+The portable JSON record is
+`docs/plans/evidence/frontend-backend-checkpoint-2026-11-08.json`, under
+`records.corrected_paced_capture_2026_11_09`. It embeds source/artifact/model hashes,
+fault events, shaping counters, semantic/PCM results, sampled memory, tombstone
+inspection, concurrent intervals and hashes of the local evidence files. Full
+logs and canonical output remain under the local cache in
+`tmp-linux/soak-shaped-paced-7200-31ad81601` and
+`logs/soak-shaped-31ad81601-provenance.json`. Earlier failed paced runs and the
+separately labelled non-paced repair replay remain preserved; this corrected pass
+does not rewrite their outcomes or mark the full implementation plan complete.

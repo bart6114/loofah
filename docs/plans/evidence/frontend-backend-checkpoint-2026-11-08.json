@@ -826,6 +826,487 @@
           "cli-open-desktop-create.json"
         ]
       }
+    },
+    "corrected_paced_capture_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/soak-shaped-31ad81601-provenance.json",
+      "sha256": "4f8f7b6dceca20d84f6bd2e70bdc8f2168d6fc49a9ff161aeb3eda6838750d12",
+      "record": {
+        "source_commit": "573da5761740040aee94d57f71ca9cdb3379cab9",
+        "source_archive": "/Users/bartsmeets/Library/Caches/loofah-separation/soak-final-source-573da57617.tar",
+        "source_archive_sha256": "670f46afd15793d929f196feacdd2b1b9142958179ea80c8f4367bd6c4ce46fc",
+        "source_archive_bytes": 231598080,
+        "image": "loofah-soak-rust-ubuntu:1.94.0",
+        "image_id": "sha256:6423cbf2241e2a5f7fce64669b1cdb2c8c3777e22e054766c4baadd09ad28c48",
+        "platform": "linux/arm64 controlled test build; not production amd64 image qualification",
+        "model": "ggml-base-q8_0.bin",
+        "model_sha256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
+        "status": "PASS: corrected real-time 7200-second capture acceptance",
+        "created_utc": "2026-11-08T23:43:39.961403+00:00",
+        "artifacts": [
+          {
+            "name": "loofah-server",
+            "path": "/Users/bartsmeets/Library/Caches/loofah-separation/soak-final-artifacts-573da57617/loofah-server",
+            "bytes": 669354552,
+            "sha256": "0f22f2467c50461eda818f726921a4ae5632134e8905a69e528b7c62f636d6fd"
+          },
+          {
+            "name": "capture_soak",
+            "path": "/Users/bartsmeets/Library/Caches/loofah-separation/soak-shaped-artifacts-31ad81601/capture-soak",
+            "sha256": "02b1c1299a518a156a9e6be4a30300a07b83ded0c5544becd2e282f8b7734e03",
+            "bytes": 114704648
+          }
+        ],
+        "build_completed_utc": "2026-11-08T23:55:53.896396+00:00",
+        "harness_overlay_file_sha256": "b24b0a0bb3ea2ce9e49d086ace5fb3cf2299d5ae5ac518361007862138c219d9",
+        "harness_overlay_commits": [
+          "5be9242930",
+          "31ad81601"
+        ],
+        "smoke": {
+          "root": "/Users/bartsmeets/Library/Caches/loofah-separation/tmp-linux/soak-shaped-smoke-60-31ad81601",
+          "result": "PASS",
+          "elapsed_seconds": 81.01,
+          "paced_audio_seconds": 60,
+          "profiles_successful_capture_chunks": [
+            6,
+            13,
+            18
+          ]
+        },
+        "launch_utc": "2026-11-09T00:11:44.452442+00:00",
+        "launch_free_bytes": 25300148224,
+        "run_script": "/Users/bartsmeets/Library/Caches/loofah-separation/run-soak-shaped-paced-7200-31ad81601.sh",
+        "concurrent_validation": [
+          {
+            "kind": "maintenance_fixture_compilation_and_test",
+            "start_utc": "2026-11-09T01:12:11.390219+00:00",
+            "end_utc": "2026-11-09T01:13:58.740222+00:00",
+            "cpu_limit": 1,
+            "jobs": 1,
+            "model_inference": false,
+            "source": "573da57617 + ce165008db maintenance fixture only",
+            "result": "1 passed",
+            "max_capture_lateness_ms_before_during_after": 50
+          },
+          {
+            "kind": "native_profiled_large_vault_startup_and_model_prewarm",
+            "start_utc": "2026-11-09T01:45:01.727+00:00",
+            "end_utc": "2026-11-09T01:45:18.248+00:00",
+            "source": "b755769c25",
+            "pid": 51398,
+            "model": "existing selected Whisper model; Metal requested and enabled",
+            "model_inference": false,
+            "download": false,
+            "model_prewarm_elapsed_seconds": 16.543,
+            "index_sessions": 5001,
+            "index_other_items": 2501,
+            "index_completed_utc": "2026-11-09T01:45:02.581+00:00",
+            "index_after_actor_start_seconds": 1.42,
+            "max_capture_lateness_ms_before_during_after": 50,
+            "reported_by": "parent/provider Native QA"
+          },
+          {
+            "kind": "transcription_policy_fixture_compilation_and_test",
+            "start_utc": "2026-11-09T01:48:35+00:00",
+            "end_utc": "2026-11-09T01:50:48+00:00",
+            "cpu_limit": 1,
+            "jobs": 1,
+            "model_inference": false,
+            "source": "573da57617 + e03e0042e transcription policy fixture only",
+            "fixture_sha256_prefix": "498944d9",
+            "result": "1 passed, 0 failed, 0 ignored; 0.19 seconds",
+            "compile_elapsed_seconds": 123,
+            "max_capture_lateness_ms_before_during_after": 50
+          },
+          {
+            "kind": "native_local_ollama_summary_and_search",
+            "canonical_summary_written_utc": "2026-11-09T01:49:58.065726+00:00",
+            "source": "b755769c25",
+            "model": "qwen2.5:1.5b via task-owned 127.0.0.1:11439",
+            "model_inference": true,
+            "inference_device": "Native GPU Ollama; no CPU ASR/import",
+            "vault_sessions": 5001,
+            "result": "Summary saved; partial summary observed while search opened",
+            "search_open_cua_inclusive_ms": 484,
+            "eight_key_query_and_accessibility_cua_inclusive_ms": 628,
+            "max_capture_lateness_ms_before_during_after": 50,
+            "timestamp_precision": "Exact durable job receipt created/succeeded; canonical file mtime. Earlier 01:49:59 timestamp was delayed watcher notification.",
+            "start_utc": "2026-11-09T01:49:52.312+00:00",
+            "end_utc": "2026-11-09T01:49:58.111+00:00",
+            "job_elapsed_seconds": 5.799,
+            "user_requests": 1,
+            "jobs": 1,
+            "overlapping_metrics": {
+              "frame_p95_ms": [
+                18,
+                18
+              ],
+              "input_max_ms": [
+                16,
+                15
+              ],
+              "input_samples": [
+                2,
+                9
+              ],
+              "entirely_within_inference": false
+            },
+            "provider_detail": "Two serial HTTP completions within same job under read-only audit; no additional inference."
+          }
+        ],
+        "result": {
+          "test": "capture_soak_wall_clock",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0,
+          "test_total_elapsed_seconds": 7477.73,
+          "producer_wall_elapsed_ms": 7200914,
+          "accepted_utc": "2026-11-09T02:16:22.681000+00:00",
+          "accepted": {
+            "accepted": true,
+            "canonical_sha256": "9d6cde6f90951a0a9ba5505160633baa599bd413e45db2a657bf942d54f7c7ca",
+            "frames": 115200000,
+            "http_requests": 22602,
+            "lost_chunk_replies": 2,
+            "lost_publication_replies": 1,
+            "paced": true,
+            "real_time_qualification": true,
+            "seconds": 7200
+          },
+          "max_producer_lateness_ms": 50,
+          "speech_windows": [
+            0,
+            300,
+            600,
+            900,
+            1200,
+            1500,
+            1800,
+            2100,
+            2400,
+            2700,
+            3000,
+            3300,
+            3600,
+            3900,
+            4200,
+            4500,
+            4800,
+            5100,
+            5400,
+            5700,
+            6000,
+            6300,
+            6600,
+            6900
+          ],
+          "speech_words": [
+            "hello",
+            "jersey"
+          ],
+          "live_unique_caption_sequences": 40,
+          "live_idle_policy": "600-second network outage exceeded 120-second no-admitted-audio deadline; live authority retained 40 captions and required canonical repair. This is not uninterrupted live caption qualification.",
+          "memory_gates": [
+            {
+              "memory_stage": "before_scheduled_restart",
+              "server_peak_rss_kib": 447584,
+              "server_pid": 9,
+              "server_rss_limit_kib": 786432
+            },
+            {
+              "memory_stage": "canonical_verified",
+              "server_peak_rss_kib": 371516,
+              "server_pid": 2972,
+              "server_rss_limit_kib": 786432
+            },
+            {
+              "memory_stage": "retirement_completed",
+              "server_peak_rss_kib": 371516,
+              "server_pid": 2972,
+              "server_rss_limit_kib": 786432
+            }
+          ],
+          "shaping_profiles": [
+            {
+              "configured_rtt_jitter_bandwidth": [
+                50,
+                5,
+                2097152
+              ],
+              "downstream_plaintext_bytes": 245597,
+              "network_profile_exercised": 1,
+              "requests": 372,
+              "successful_capture_chunk_requests": 120,
+              "upstream_plaintext_bytes": 15804035,
+              "observed_proxy_request_to_response_headers_ms": {
+                "samples": 372,
+                "min": 49,
+                "median": 63.0,
+                "max": 162
+              },
+              "configured_added_rtt_ms_range": [
+                45,
+                55
+              ]
+            },
+            {
+              "configured_rtt_jitter_bandwidth": [
+                150,
+                20,
+                1048576
+              ],
+              "downstream_plaintext_bytes": 198703,
+              "network_profile_exercised": 2,
+              "requests": 303,
+              "successful_capture_chunk_requests": 119,
+              "upstream_plaintext_bytes": 15598993,
+              "observed_proxy_request_to_response_headers_ms": {
+                "samples": 303,
+                "min": 136,
+                "median": 174,
+                "max": 279
+              },
+              "configured_added_rtt_ms_range": [
+                130,
+                170
+              ]
+            },
+            {
+              "configured_rtt_jitter_bandwidth": [
+                500,
+                50,
+                524288
+              ],
+              "downstream_plaintext_bytes": 101915,
+              "network_profile_exercised": 3,
+              "requests": 194,
+              "successful_capture_chunk_requests": 120,
+              "upstream_plaintext_bytes": 15510537,
+              "observed_proxy_request_to_response_headers_ms": {
+                "samples": 194,
+                "min": 459,
+                "median": 518.5,
+                "max": 628
+              },
+              "configured_added_rtt_ms_range": [
+                450,
+                550
+              ]
+            }
+          ],
+          "retirement_independent_inspection": [
+            {
+              "owner": "device",
+              "path": "/Users/bartsmeets/Library/Caches/loofah-separation/tmp-linux/soak-shaped-paced-7200-31ad81601/device/b62af2c718ff56cfc970c91ab817a835e0e1fed3136390c4772f041cbca9b564/6335d203-b813-4fa8-b5cd-e4e75bf18b77/retirement.json",
+              "state": "retired",
+              "remaining_chunk_files": 0,
+              "cleanup_request_id": "1be02e04-bd82-4769-917b-67cd4eb090b1"
+            },
+            {
+              "owner": "server",
+              "path": "/Users/bartsmeets/Library/Caches/loofah-separation/tmp-linux/soak-shaped-paced-7200-31ad81601/server/runtime/e6e924f4-156c-4cff-a173-3d20f003388e/creates/captures/b62af2c718ff56cfc970c91ab817a835e0e1fed3136390c4772f041cbca9b564/6335d203-b813-4fa8-b5cd-e4e75bf18b77/retirement.json",
+              "state": "retired",
+              "remaining_chunk_files": 0,
+              "cleanup_request_id": "1be02e04-bd82-4769-917b-67cd4eb090b1"
+            }
+          ],
+          "repair_job": {
+            "id": "5464c2fb-29ae-4b70-8466-aa2689837ef7",
+            "session_id": "ce208d39-b707-40c4-9020-ca9348eacd5e",
+            "state": "succeeded",
+            "phase": null,
+            "created_at": "2026-11-09T02:12:16.760326584+00:00",
+            "updated_at": "2026-11-09T02:15:14.173063971+00:00",
+            "result_available": true,
+            "failure": null,
+            "publication": {
+              "revision": "f6f9968d7bfa1e9b92dcfcabe4643fa376a9ff1abbe5b53ab4aec6604dd439e8",
+              "transcript_id": "846b6c6a-61ae-4d2b-bbef-cdf18dab10d5"
+            }
+          },
+          "processing_jobs": 1,
+          "limitations": [
+            "Generated 16kHz stereo audio through real SDK/server, not physical OS capture.",
+            "Controlled Linux ARM64 test build, not production amd64 Docker or native Windows qualification."
+          ],
+          "logs": {
+            "test": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/soak-shaped-paced-7200-31ad81601.log",
+            "monitor": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/soak-shaped-paced-7200-31ad81601-monitor.jsonl",
+            "events": "/Users/bartsmeets/Library/Caches/loofah-separation/tmp-linux/soak-shaped-paced-7200-31ad81601/events.jsonl"
+          },
+          "evidence_file_sha256": {
+            "events.jsonl": "e875b5755e78106bb112966fce721b3dd10c3b3a2fbac48227612f318319c3b0",
+            "publication.json": "1cb0c6e24265cdb2c826ea108a22be4057b632c0e109762252a673c627eca606",
+            "verified-transcripts.json": "5f084ee752c106e4b0fb885b7cad3c9abf56693c904de9bea709ffb546601b78",
+            "identity.json": "600e7534e8e587e6537562af4931475fc26beb6dd0f58c1382357e26758d4181"
+          },
+          "fault_events": [
+            {
+              "at_ms": 1794183105156,
+              "event": {
+                "server_started_pid": 9
+              }
+            },
+            {
+              "at_ms": 1794183106787,
+              "event": {
+                "lost_committed_reply": "/api/v1/vaults/e6e924f4-156c-4cff-a173-3d20f003388e/captures/6335d203-b813-4fa8-b5cd-e4e75bf18b77/chunks/0",
+                "status": 200
+              }
+            },
+            {
+              "at_ms": 1794183405241,
+              "event": {
+                "buffer_bytes": 16384,
+                "configured_rtt_jitter_bandwidth": [
+                  50,
+                  5,
+                  2097152
+                ],
+                "elapsed": 300,
+                "jitter_seed": 1592642302,
+                "max_connections": 64,
+                "network_profile": 1
+              }
+            },
+            {
+              "at_ms": 1794183525686,
+              "event": {
+                "buffer_bytes": 16384,
+                "configured_rtt_jitter_bandwidth": null,
+                "elapsed": 420,
+                "jitter_seed": 1592642302,
+                "max_connections": 64,
+                "network_profile": 0
+              }
+            },
+            {
+              "at_ms": 1794183825769,
+              "event": {
+                "elapsed": 720,
+                "link_offline": true
+              }
+            },
+            {
+              "at_ms": 1794183828781,
+              "event": {
+                "elapsed": 723,
+                "link_offline": false
+              }
+            },
+            {
+              "at_ms": 1794184305406,
+              "event": {
+                "buffer_bytes": 16384,
+                "configured_rtt_jitter_bandwidth": [
+                  150,
+                  20,
+                  1048576
+                ],
+                "elapsed": 1200,
+                "jitter_seed": 1592642302,
+                "max_connections": 64,
+                "network_profile": 2
+              }
+            },
+            {
+              "at_ms": 1794184425797,
+              "event": {
+                "buffer_bytes": 16384,
+                "configured_rtt_jitter_bandwidth": null,
+                "elapsed": 1320,
+                "jitter_seed": 1592642302,
+                "max_connections": 64,
+                "network_profile": 0
+              }
+            },
+            {
+              "at_ms": 1794185505606,
+              "event": {
+                "elapsed": 2400,
+                "link_offline": true
+              }
+            },
+            {
+              "at_ms": 1794186105857,
+              "event": {
+                "elapsed": 3000,
+                "link_offline": false
+              }
+            },
+            {
+              "at_ms": 1794186705966,
+              "event": {
+                "buffer_bytes": 16384,
+                "configured_rtt_jitter_bandwidth": [
+                  500,
+                  50,
+                  524288
+                ],
+                "elapsed": 3600,
+                "jitter_seed": 1592642302,
+                "max_connections": 64,
+                "network_profile": 3
+              }
+            },
+            {
+              "at_ms": 1794186825374,
+              "event": {
+                "buffer_bytes": 16384,
+                "configured_rtt_jitter_bandwidth": null,
+                "elapsed": 3720,
+                "jitter_seed": 1592642302,
+                "max_connections": 64,
+                "network_profile": 0
+              }
+            },
+            {
+              "at_ms": 1794187306288,
+              "event": {
+                "server_started_pid": 2972
+              }
+            },
+            {
+              "at_ms": 1794187315114,
+              "event": {
+                "lost_committed_reply": "/api/v1/vaults/e6e924f4-156c-4cff-a173-3d20f003388e/captures/6335d203-b813-4fa8-b5cd-e4e75bf18b77/chunks/4200",
+                "status": 200
+              }
+            },
+            {
+              "at_ms": 1794188505720,
+              "event": {
+                "elapsed": 5400,
+                "link_offline": true
+              }
+            },
+            {
+              "at_ms": 1794188510739,
+              "event": {
+                "elapsed": 5405,
+                "link_offline": false
+              }
+            },
+            {
+              "at_ms": 1794190306132,
+              "event": {
+                "producer_process_exited": true,
+                "wall_elapsed_ms": 7200914
+              }
+            },
+            {
+              "at_ms": 1794190336159,
+              "event": {
+                "lost_committed_reply": "/api/v1/vaults/e6e924f4-156c-4cff-a173-3d20f003388e/captures/6335d203-b813-4fa8-b5cd-e4e75bf18b77/publish",
+                "status": 200
+              }
+            }
+          ],
+          "max_observed_server_rss_or_high_water_kib": 448384,
+          "max_observed_post_restart_rss_or_high_water_kib": 372036,
+          "qualification_scope": "Frozen production commit573da57617 with harness-only5be9242930+31ad81601. Does not qualify later current-head changes, physical capture, native Windows or production amd64 packaging."
+        }
+      }
     }
   },
   "local_work_focused": [
