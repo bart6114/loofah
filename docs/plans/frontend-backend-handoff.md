@@ -2164,3 +2164,87 @@ that staging configuration was required remain historical; this deferral is not
 a production SSO pass and does not change prior synthetic-login evidence. Physical
 capture, remaining activation gates and the observed model-quality failures keep
 their separate scopes. No merge or release is authorized.
+
+## Short Local physical capture and explicit desktop pause, 2026-11-09
+
+After the user approved QA microphone and system-audio access, the isolated
+`io.loofah.separation-qa` bundle (display name “Loofah Local Performance QA”)
+exercised the actual Logitech StreamCam microphone and system-audio inputs.
+No OS permission prompt or setting was changed during these captures. Execution
+belongs to clean source `aa0a5ed1c70ac6ecd767e2bebc8567ea4d7f142d`, executable
+SHA-256 `bd94f90970b421e9f35c586f2f68f741c18eab5b3d9dff52f6454b81039c5dd8`.
+The reused disposable vault indexed 5,003 sessions, 6,672 notes and 2,502
+transcripts. Local startup displayed no login or SSO flow.
+
+Session `b94b1b04-f3bb-46f8-9c06-776b4b12e845` captured twice using Quantized
+Whisper Base in English batch mode. The first MP3 was 98.892 seconds; Resume
+extended the same recording to 194.184 seconds, excluding the intervening pause.
+Both are 16 kHz stereo with finite nonzero decoded signal on both channels and
+no NaN/Inf samples. The controlled English2 system-audio fixture appears around
+55–72 seconds in the first transcript and 55–72/116–133 seconds after resume.
+The batch transcript grew from 100 to 225 unique word IDs; all original IDs were
+replaced, so neither ID/prefix preservation nor frame-perfect PCM continuity is
+claimed. The first capture's owned files remain retained separately.
+
+Note editing stayed available during capture. Resume opened Note; Summary
+displayed its recording read-only notice and returned to editing after completion.
+Both stops finalized, both Whisper batches completed (2.828/3.853 seconds), and
+both automatic summaries saved. Tiny Qwen summary accuracy/conciseness failed;
+only functional saving is qualified. Quiet microphone text is excluded from the
+report. Controlled spoken microphone accuracy, live/long physical capture,
+Windows physical capture and the full recording UX matrix remain unqualified.
+
+Read-only analysis retained 319 independent five-second performance windows.
+Wholly contained capture windows numbered 19 initially and 18 during resume;
+their highest individual frame-interval p95 was 18 ms, with maxima 45/33 ms.
+Across the broader capture/postprocessing interval, eight windows contained 166
+input-to-next-frame samples: highest individual window p95 18 ms, maximum 20 ms.
+These are paint-feedback measurements, not save latency or an aggregate p95.
+The selected intervals precede compilation. They do not qualify the full
+concurrent capture/upload/search/AI or controlled-baseline responsiveness gate.
+
+Exact file/tree comparisons identify unchanged Local production paths between
+AA0 and `94c0cf6b90`; the portable record contains those hashes and relevant
+Remote/test/generated exceptions. This supports source attribution only, not
+execution of the 94 artifact or whole-head equivalence. All canonical files
+stayed unchanged during evidence analysis. The user's later instruction paused
+desktop tests until their signal; both idle QA apps were stopped. No further
+desktop testing, capture, launch or permission change occurred. The
+physical stdout has no separate owner-shutdown receipt, so no additional drain
+qualification is inferred from stopping the idle process.
+
+## Real HTTP media retirement and same-source restart, 2026-11-09
+
+Immutable server `94c0cf6b9005701c09942b36bfe5ec6cf8b1c560`, SHA-256
+`e38a9605c88f6f79d74054632b9acd15c591ecda5ef97f799cf36783db58259a`, passed
+27 actual authenticated TLS requests for a new synthetic two-word SRT with no
+summary declaration. The original download matched its 49-byte source and
+SHA-256 before fsynced no-clobber publication. An explicit Exported decision was
+persisted before POST. All three retirement POSTs used the same UUID: initial,
+identical replay, and replay after graceful restart of the same binary. They
+returned the identical Retired receipt with quota released. Original terminal
+status, result and skipped-summary receipt remained unchanged; no model job or
+inference was created.
+
+The dispatcher upload file and active admission were removed. Its empty source
+directory, canonical content, lower `source.srt` and operation/result journals
+remain intentionally. All 40 preexisting fixture storage files, including both
+historical summary jobs/results, stayed byte-identical. All 53 current files
+survived restart unchanged. Original-source GET returns 503 Unavailable after
+retirement. The first harness assumed 409 and later assumed the empty directory
+would disappear; both test assumptions are preserved and corrected without a
+new import or inference. This is not total disk erasure.
+
+The initial task-only capability proxy failed by touching its already-closed
+socket after fully consuming Content-Length. Its backed-up version reproduces
+EBADF; the completion fix passes all nine offline helper tests. Actual TLS
+capabilities then returned 200/1,032 bytes versus the real upstream's
+200/1,013 bytes, with only `media_retirement` added. The overlay was disabled
+after acceptance, and the production capability remains absent. No production
+source, trust or authentication setting changed for this fixture correction.
+
+The portable record embeds the headless receipt and helper repair/restart
+provenance. Direct Python HTTP acceptance supplements the Core/route tests; it
+does not qualify Native SDK export or the paused retirement UI. All owned QA
+desktop apps, fixture services and task-local Ollama have since stopped, while
+their data, models, binaries and logs remain preserved for the user's signal.

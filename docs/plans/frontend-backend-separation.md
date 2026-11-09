@@ -25,8 +25,12 @@ default off pending final producer/persistence and platform acceptance. Bounded
 private processing previews and independent Remote note windows are implemented
 and Native-qualified. Frozen two-client browser/editing/window/role checks passed;
 the refreshed `2263b47eb7` artifact also qualified the patched Reader controls and
-native File → New Note routing. Physical capture and production HTTPS SSO remain
-unqualified. The older `6e7656d1b2` client passed persisted-login restart, read-only
+native File → New Note routing. Short physical Local batch capture and resume are
+qualified separately on the `aa0a5ed1c7` artifact; controlled microphone speech,
+live/long physical capture and the complete production responsiveness matrix
+remain unqualified. Desktop app testing on this workstation is paused until the
+user's signal. Production HTTPS SSO acceptance is explicitly deferred by the
+user. The older `6e7656d1b2` client passed persisted-login restart, read-only
 offline display without Local fallback, and automatic reconnect to guarded server
 `080764fe20`, preserving historical jobs and canonical bytes. A fresh explicit
 summary passed functional retention/publication, but model accuracy and conciseness
@@ -353,11 +357,11 @@ qualification gates; historical checkpoints after this audit describe their
 original source state, not an outstanding-work list.
 
 - [ ] **Phase 1: shared application layer.** Shared vault writes, application operations, ownership, startup, settings, watcher, search and generated contracts are implemented. Complete final adapter/platform qualification.
-- [ ] **Phase 2: frontend client.** The shared main shell, scoped requests/subscriptions, editing/recovery, content, assets, jobs and device capture are integrated. Complete actual independent-client GUI/platform acceptance, postqualification Local activation and final regressions.
+- [ ] **Phase 2: frontend client.** The shared main shell, scoped requests/subscriptions, editing/recovery, content, assets, jobs and device capture are integrated. Independent Native client/window/Reader/menu checks passed on their recorded artifacts. Complete final platform/GUI qualification, postqualification Local activation and final regressions; workstation desktop testing is user-paused.
 - [ ] **Phase 3: first remote slice.** OIDC/PKCE, OS credentials, private provisioning, HTTPS, SSE and saved-profile Remote-only startup are implemented. Existing Native TLS/media tests include 50/150/500 ms RTT and reconnects. Complete clean deployment and actual-client compatibility acceptance.
-- [ ] **Phase 4: vault sharing and content.** Shared roles, checked mutations, attachment staging/recovery, authenticated playback, source export, import/export and Local/Remote CLI ownership are implemented. Complete final Native and Windows qualification, guarded Local lifecycle/output activation and stopped Local-vault adoption.
+- [ ] **Phase 4: vault sharing and content.** Shared roles, checked mutations, attachment staging/recovery, authenticated playback, source export, import/export and Local/Remote CLI ownership are implemented. Stopped Local-vault adoption passed on the recorded Linux artifacts. Explicit media source retirement is integrated with its capability held off. Complete final Native and Windows qualification and guarded Local lifecycle/output/transcript activation.
 - [ ] **Phase 5: processing.** Shared summary/title/tag/template and transcription policies, durable jobs/recovery, owner-managed provider secrets and configured CPU models are implemented. Bounded private previews are advertised with configured workers after Native/TLS/provider qualification. Complete actual production UI and final platform acceptance.
-- [ ] **Phase 6: resilient remote capture.** Durable native staging/uploader, processing intent, pending/append/repair, live captions and verified cleanup are implemented. Controlled outage/restart, exact-source repair and full-size replay evidence is recorded honestly in the handoff. Complete physical capture, realistic latency/jitter/bandwidth and final sustained/platform acceptance.
+- [ ] **Phase 6: resilient remote capture.** Durable native staging/uploader, processing intent, pending/append/repair, live captions and verified cleanup are implemented. The corrected paced Linux run passed shaped latency/jitter/bandwidth, outages/restart, exact-source repair and full-size replay on its frozen source. Short Local physical batch capture/resume passed functionally on AA0. Complete Native live/long physical capture, controlled microphone speech and final sustained/platform acceptance after the user's desktop-test signal.
 - [ ] **Phase 7: release hardening.** Linux images, systemd/Caddy, readiness, private operational observations, retention, stopped-service maintenance, upgrade and interrupted large-copy recovery are implemented and qualified on recorded artifacts. Complete final-head hosted Linux x64/Windows x64/ARM64 checks, compatibility/deployment and production macOS QA.
 
 Local startup needs no authentication or account provisioning. Remote remains
