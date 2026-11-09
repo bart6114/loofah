@@ -1,5 +1,22 @@
 # Frontend/backend separation handoff
 
+Current acceptance status, 2026-11-09: published `073e5b7cd3` has passed backend,
+Linux CPU/container, frontend/editor, CLI, macOS workspace, formatting/security and
+both Windows speech qualifications. Native Windows x64 and ARM64 each passed
+2,243 tests and their installer/runtime checks; all seven workflows are terminal green. These PR checks use synthetic merge
+`a471c04829`; the separate speech dispatch uses `073e5b7cd3` directly. The newer
+SDK dispatch-fence correction and Windows Git-helper test step still need their
+own hosted checkpoint. Physical capture awaits OS permission confirmation,
+production HTTPS SSO needs staging configuration, and observed Qwen accuracy and
+conciseness remain failed. Local lifecycle, output deletion and transcript
+activation gates remain default off; no merge or release is authorized.
+
+This document retains chronological checkpoint history. Later dated evidence
+supersedes earlier uses of “current”, “pending” and “analysis-only”; those older
+paragraphs are not a fresh backlog. In particular, earlier remaining-gates text
+about owner-only provider credentials predates their implemented checked workflow.
+Historical failures and their source-scoped corrections remain preserved.
+
 The `2263b47eb7` optimized Remote artifact exposed a cached About commit label:
 `tauri-plugin-misc` still embedded `0d8596eb5d` even though its independently
 verified build and bundle manifests identified current source. `vergen-gix`
@@ -37,7 +54,7 @@ existing managed Context and original lease. Its shutdown joins admitted owner
 work before the final Store flush. Generated contracts and full Native/platform
 validation remain integration gates; source checkpoints alone do not prove them.
 
-Latest full Native checkpoint: 2,429 library tests passed (34 explicit ignored),
+Latest full local stable-21 Native checkpoint: 2,429 library tests passed (34 explicit ignored),
 using the actual macOS `/var` alias at test runtime. Separately, the `080764fe20`
 empty-fence guard passed 12 focused tests across the same 21 library targets,
 including five new regressions, and its all-target check passed in 28.17 seconds. The complete frontend cohort passed
@@ -1649,3 +1666,58 @@ or Native build, inference or permission changes occurred. The current `aa0`
 Local physical-QA artifact's production code is unchanged and the app remains
 unlaunched. Earlier-source hosted Windows checks remain a separate pending
 gate; no push or cancellation is represented here.
+
+
+## Original Local owner shutdown, 2026-11-09
+
+After the unlaunched `aa0` artifact was prepared, the original `8eb` Local app
+quit through its normal Native menu and PID 50115 was verified absent. Before
+quit, `english2` showed Media Saved and Summary Saved, with no active capture,
+pending job or UUID error. An independent comparison found six canonical files
+and 18 private journals byte-identical, with the same eight job/result/title/preview
+files and no additions or removals. The current `aa0` artifact remains unlaunched;
+this only frees the original owner for later permission-stage QA. The earlier
+build-time statement that no old process was stopped remains true for that build.
+Portable record `native_local_old_owner_shutdown_2026_11_09` retains the exact
+receipt and hashes. It makes no global Ollama request-count claim, and does not
+qualify physical capture or OS permission acceptance.
+
+
+## Terminal hosted checkpoint `073e5b7cd3`, 2026-11-09
+
+All seven workflows completed successfully, observed at
+`2026-11-09T05:29:44.812031+00:00`. PR jobs checked out synthetic merge
+`a471c04829c9fec21ab0f3fd0fe4069fc3d3f2d7` of
+`073e5b7cd3e50caa890c48e317894582de39d878` into unchanged base `a6a8f001d9`.
+The separately authorized Windows speech dispatch checked out `073e5b7cd3`
+directly. No healthy job was cancelled or retried.
+
+- Native Windows x64 and ARM64 each passed 2,243 tests, zero failed and 47 ignored
+  across 69 cohorts, then NSIS installation, app startup, installed CLI/MCP and
+  uninstall smoke checks. All three Local-principal and five empty-fence regression
+  names actually executed successfully on both architectures. The four Git
+  metadata helper tests were absent: this workflow did not select their package.
+  The new standalone Windows step is a later-source coverage gate, not an inferred
+  pass at this checkpoint.
+- macOS completed 3,231 passing test executions, zero failed and 124 ignored across
+  182 desktop/workspace cohorts; this is a different scope from the local
+  stable-21 suite. Frontend passed 2,622 desktop tests in 298 files and 303 editor
+  tests in 31 files, with typechecking. CLI passed 274 tests, zero failed and two
+  ignored across 20 cohorts, plus its release build.
+- Headless backend passed 1,661 tests, zero failed and 19 ignored across 22 cohorts,
+  including all five maintenance integration cases. Container, configured Linux
+  CPU, formatting, lint and security checks passed. Each original configured
+  kernel case selected exactly one passing test. Reserved ONNX overlap delivered
+  its first caption while batch owned its model, with concurrent HTTP at 12 ms.
+  Windows real Whisper/ONNX transcription and speaker checks passed on both
+  architectures.
+
+`records.hosted_073e5b7_terminal_2026_11_09` embeds the terminal receipt with run/job
+URLs, raw log hashes, exact-case checks and both installer artifact IDs/digests.
+The raw audit remains in `logs/ci-073e5b7-audit`. Later SDK lock-order correction
+and Git fixture changes retain their separate local qualifications: 21 focused
+passes with one initially ignored deadline test, that explicit deadline test
+subsequently passing, all-target checking, and four standalone macOS Git tests.
+Their next hosted checkpoint still needs both Windows architectures. Physical
+capture/OS permission confirmation, production SSO staging and the observed LLM
+quality limitation remain open; Local activation gates remain default off.
