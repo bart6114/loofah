@@ -618,7 +618,7 @@ mod tests {
         collections::VecDeque,
         sync::{
             Mutex,
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicU64, Ordering},
         },
         time::Duration,
     };
@@ -914,9 +914,15 @@ mod tests {
             Ok(*self.totals.lock().unwrap())
         }
     }
+    fn fixture_key(label: u64) -> DeviceCaptureKey {
+        // Session actors register process-wide names, even for independent fake roots.
+        static NEXT_CAPTURE: AtomicU64 = AtomicU64::new(1);
+        let sequence = NEXT_CAPTURE.fetch_add(1, Ordering::Relaxed);
+        DeviceCaptureKey::new(format!("{label:016x}{sequence:048x}")).unwrap()
+    }
     fn args(id: char, sink: Arc<Sink>, runtime: Arc<Runtime>) -> DeviceCaptureArgs {
         DeviceCaptureArgs {
-            key: DeviceCaptureKey::new(id.to_string().repeat(64)).unwrap(),
+            key: fixture_key(u64::from(u32::from(id))),
             sink,
             runtime,
             mode: ChannelMode::MicAndSpeaker,
@@ -956,6 +962,74 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn same_label_device_fixtures_keep_independent_actor_names_and_drains() {
+        let mut captures = Vec::new();
+        for _ in 0..2 {
+            let audio = Arc::new(Audio::default());
+            let frames = audio.source();
+            let runtime = Arc::new(Runtime::default());
+            let sink = Sink::new(false);
+            let (root, task) = Actor::spawn(
+                None,
+                RootActor,
+                RootArgs {
+                    maintenance: CaptureMaintenanceGate::default(),
+                    runtime: Arc::new(Runtime::default()),
+                    audio: audio.clone(),
+                },
+            )
+            .await
+            .unwrap();
+            let capture = args('e', sink.clone(), runtime.clone());
+            let key = capture.key.clone();
+            ractor::call!(root, RootMsg::StartDeviceCapture, capture)
+                .unwrap()
+                .unwrap();
+            frames.send(Ok(frame())).await.unwrap();
+            ready(&runtime).await;
+            captures.push((root, task, key, audio, frames, runtime, sink));
+        }
+        assert_ne!(captures[0].2, captures[1].2);
+        for (root, _, key, audio, _, _, _) in &captures {
+            assert_eq!(
+                ractor::call!(root, RootMsg::GetState).unwrap(),
+                State::Active
+            );
+            assert_eq!(audio.1.load(Ordering::SeqCst), 1);
+            assert!(
+                ractor::registry::where_is(crate::actors::session::session_supervisor_name(
+                    &key.actor_id()
+                ))
+                .is_some()
+            );
+        }
+        for (root, task, key, audio, frames, runtime, sink) in captures {
+            assert_eq!(
+                ractor::call!(root, RootMsg::GetState).unwrap(),
+                State::Active
+            );
+            assert!(ractor::call!(root, RootMsg::StopDeviceCapture, key.clone()).unwrap());
+            ended(&runtime).await;
+            admitted(&root).await;
+            assert_eq!(audio.1.load(Ordering::SeqCst), 1);
+            assert_eq!(sink.totals.lock().unwrap().frames, 16_000);
+            assert_eq!(
+                *sink.end.lock().unwrap(),
+                Some(DeviceRecordingEnd::Complete)
+            );
+            assert!(
+                ractor::registry::where_is(crate::actors::session::session_supervisor_name(
+                    &key.actor_id()
+                ))
+                .is_none()
+            );
+            drop(frames);
+            root.stop(None);
+            task.await.unwrap();
+        }
     }
 
     #[tokio::test]
@@ -1804,7 +1878,7 @@ mod tests {
     }
     fn numbered_args(id: u64, sink: Arc<Sink>, runtime: Arc<Runtime>) -> DeviceCaptureArgs {
         let mut result = args('0', sink, runtime);
-        result.key = DeviceCaptureKey::new(format!("{id:064x}")).unwrap();
+        result.key = fixture_key(id);
         result
     }
     #[tokio::test]
