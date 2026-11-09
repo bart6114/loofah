@@ -579,6 +579,80 @@ fn review(cause: impl std::fmt::Display) -> ApplicationError {
 }
 
 impl VaultContext {
+    pub(crate) async fn local_capture_cancellation(
+        &self,
+        owner: &str,
+        request: &str,
+        origin: Option<&LocalCaptureChildOrigin>,
+    ) -> Result<Option<CancellationToken>, ApplicationError> {
+        let Some(origin) = origin else {
+            return Ok(None);
+        };
+        let service = self.local_capture_parent(owner, request, origin)?;
+        let state = service.state.lock().await;
+        let entry = state
+            .get(request)
+            .ok_or_else(|| review("Local summary parent missing"))?;
+        check_child_origin(&entry.record, origin)?;
+        Ok(Some(entry.cancel.clone()))
+    }
+
+    pub(crate) async fn local_capture_dispatch_guard(
+        &self,
+        owner: &str,
+        request: &str,
+        origin: Option<&LocalCaptureChildOrigin>,
+    ) -> Result<Option<tokio::sync::OwnedMutexGuard<()>>, ApplicationError> {
+        let Some(origin) = origin else {
+            return Ok(None);
+        };
+        let service = self.local_capture_parent(owner, request, origin)?;
+        let dispatch = service
+            .state
+            .lock()
+            .await
+            .get(request)
+            .ok_or_else(|| review("Local summary parent missing"))?
+            .dispatch
+            .clone();
+        let guard = dispatch.lock_owned().await;
+        let state = service.state.lock().await;
+        let entry = state
+            .get(request)
+            .ok_or_else(|| review("Local summary parent missing"))?;
+        check_child_origin(&entry.record, origin)?;
+        if !entry.running
+            || entry.admission.is_none()
+            || entry.record.status.state != LocalCaptureState::Summarizing
+            || entry.record.cancel_requested
+            || entry.cancel.is_cancelled()
+            || service.stop.is_cancelled()
+        {
+            return Err(review("Local summary parent is not ready"));
+        }
+        Ok(Some(guard))
+    }
+
+    fn local_capture_parent(
+        &self,
+        owner: &str,
+        request: &str,
+        origin: &LocalCaptureChildOrigin,
+    ) -> Result<Arc<LocalCaptureIntents>, ApplicationError> {
+        if owner != SUMMARY_OWNER || request != origin.request_id {
+            return Err(review("Local summary child identity changed"));
+        }
+        let service = self
+            .local_capture_intents
+            .get()
+            .and_then(std::sync::Weak::upgrade)
+            .ok_or_else(|| review("Local summary parent unavailable"))?;
+        if !std::ptr::eq(self, service.context.as_ref()) {
+            return Err(review("Local summary context changed"));
+        }
+        Ok(service)
+    }
+
     pub(crate) async fn guard_local_capture_summary(
         &self,
         owner: &str,
@@ -629,4 +703,19 @@ impl VaultContext {
             .map(Some)
             .ok_or_else(|| review("Local summary source disappeared"))
     }
+}
+
+fn check_child_origin(
+    record: &Record,
+    origin: &LocalCaptureChildOrigin,
+) -> Result<(), ApplicationError> {
+    if record.status.declaration.request_id != origin.request_id
+        || record.status.declaration.session_id != origin.session_id
+        || record.source.as_ref() != Some(&origin.source)
+        || record.physical != Some(Ok(()))
+        || !matches!(record.persistence, Some(Ok(_)))
+    {
+        return Err(review("Local summary origin changed"));
+    }
+    Ok(())
 }
