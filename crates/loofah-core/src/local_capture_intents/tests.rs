@@ -749,8 +749,9 @@ async fn local_capture_cancel_waits_for_native_source_drain_retains_late_result_
     assert!(!record.processing_drained);
     // A separate stopped snapshot has no live capability and cannot infer a drain.
     let second = tempfile::tempdir().unwrap();
-    let second_context = super::tests::context(&second.path().canonicalize().unwrap()).await;
-    let directory = second.path().join("operations/local-capture-intents");
+    let second_root = second.path().canonicalize().unwrap();
+    let second_context = super::tests::context(&second_root).await;
+    let directory = second_root.join("operations/local-capture-intents");
     journal::persist(&directory, &record, true).unwrap();
     let restored = LocalCaptureIntents::open(second_context.clone())
         .await
@@ -1068,14 +1069,15 @@ async fn local_capture_private_schema_preserves_legacy_without_inventing_cancel_
         json.as_object_mut().unwrap().remove(key);
     }
     let other = tempfile::tempdir().unwrap();
-    let directory = other.path().join(&input.request_id);
+    let other_root = other.path().canonicalize().unwrap();
+    let directory = other_root.join(&input.request_id);
     std::fs::create_dir(&directory).unwrap();
     std::fs::write(
         directory.join("intent.json"),
         serde_json::to_vec(&json).unwrap(),
     )
     .unwrap();
-    let loaded = journal::load(other.path(), "vault").unwrap();
+    let loaded = journal::load(&other_root, "vault").unwrap();
     assert_eq!(loaded[0].version, 1);
     assert_eq!(
         std::fs::read(directory.join("intent.json")).unwrap(),
@@ -1089,7 +1091,7 @@ async fn local_capture_private_schema_preserves_legacy_without_inventing_cancel_
     assert_eq!(loaded[0].status.state, LocalCaptureState::NotStarted);
     let mut future = loaded[0].clone();
     future.version = 4;
-    assert!(journal::persist(other.path(), &future, false).is_err());
+    assert!(journal::persist(&other_root, &future, false).is_err());
     service.shutdown().await;
 }
 
@@ -1485,9 +1487,10 @@ async fn local_capture_reviewed_conflict_resolution_preserves_content_and_replay
         let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
         let (input, token) = live_summary_capture(&context, &service, &path).await;
         notified(&summary.entered).await;
+        assert_eq!(context.store.ensure_summary("note").await.unwrap(), "");
         context
             .store
-            .save_summary("note", "User-edited summary", None, None)
+            .save_summary("note", "User-edited summary", Some(""), None)
             .await
             .unwrap();
         context
