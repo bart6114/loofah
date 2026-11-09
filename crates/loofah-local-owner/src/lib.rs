@@ -1,8 +1,6 @@
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 
-use hypr_loofah_protocol::{
-    LocalCliOperation, LocalCliOperationKind, LocalCliProgress, LocalCliResponse,
-};
+use hypr_loofah_protocol::{LocalCliOperation, LocalCliOperationKind, LocalCliResponse};
 use hypr_storage::vault::VaultLease;
 
 mod blob;
@@ -12,12 +10,14 @@ mod core;
 pub use core::CoreOwner;
 mod client;
 mod platform;
+mod progress;
 mod server;
 mod wire;
 
 pub use blob::Blob;
 pub use client::{OwnerClient, OwnerResolution};
 pub use platform::EndpointRoot;
+pub use progress::ProgressReporter;
 pub use server::OwnerServer;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -51,16 +51,6 @@ pub struct OwnerRequest {
     pub operation: LocalCliOperation,
     pub blob: Option<Blob>,
     pub progress: ProgressReporter,
-}
-
-#[derive(Clone)]
-pub struct ProgressReporter(pub(crate) tokio::sync::mpsc::Sender<LocalCliProgress>);
-impl ProgressReporter {
-    pub fn report(&self, progress: LocalCliProgress) {
-        if progress.phase.len() <= 256 && progress.schema_version.len() <= 64 {
-            let _ = self.0.try_send(progress);
-        }
-    }
 }
 
 pub struct OwnerResponse {

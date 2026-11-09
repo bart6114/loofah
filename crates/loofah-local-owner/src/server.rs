@@ -186,14 +186,18 @@ async fn serve(
         return Err(Error::Stopped);
     }
     // Once dispatched, losing the client never cancels actual filesystem/native work.
-    let (progress, mut progress_events) = tokio::sync::mpsc::channel(16);
+    let (progress, mut progress_events, completion) = crate::progress::channel();
     let mut progress_open = true;
-    let mut operation = tokio::spawn(handler.execute(OwnerRequest {
+    let operation = handler.execute(OwnerRequest {
         request_id: request_id.clone(),
         operation,
         blob,
-        progress: crate::ProgressReporter(progress),
-    }));
+        progress,
+    });
+    let mut operation = tokio::spawn(async move {
+        let _completion = completion;
+        operation.await
+    });
     let mut delivery = true;
     if send_control(
         &mut io,
@@ -224,8 +228,23 @@ async fn serve(
             },
         }
     };
+    // Completion may win select with progress still queued. Close before any I/O,
+    // then flush this fixed snapshot; lingering reporter clones cannot extend it.
+    let pending = progress_events.finish();
     if !delivery || stop.is_cancelled() {
         return Ok(());
+    }
+    for progress in pending {
+        send_control(
+            &mut io,
+            &Control::Progress {
+                request_id: request_id.clone(),
+                epoch: epoch.clone(),
+                progress,
+            },
+            &stop,
+        )
+        .await?;
     }
     if output.response.result.is_err() && output.blob.is_some() {
         return Err(Error::protocol("Application error must not include a blob"));
