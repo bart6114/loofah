@@ -1178,3 +1178,20 @@ same-UID race guarantee. Existing directory pins and no-clobber publication rema
 in use. A Windows-only regression covers actual staging-name rename refusal or
 replacement, both cancellation and publication, and foreign Zone.Identifier
 preservation. Both native Windows architectures must execute this new case.
+
+
+The full default Native 21-package library graph passed **2,426 tests**, with 34
+explicit ignored cases and no failures at `0bb62618a`, including the six new
+physical export-owner sentinels. The subsequent Windows same-owner/name wrapper
+is integrated at `687e42a4b6`; the stable graph's all-target Cargo check and focused
+export cases passed. Its platform-specific staging replacement and streamed writer
+regressions require the next native Windows x64/ARM64 execution. The generated
+Native/plugin bindings were produced by the actual library exporters and directly
+formatted; the frontend type surface remains unchanged.
+
+All hosted runs for `71ea43cf94` are now terminal. Native ARM64 had the same single
+export directory-rename fixture failure as x64: 2,228 passed, one failed and 47
+ignored across 69 test cohorts, with no additional failure or CLI stack overflow.
+Its exact log SHA-256 is
+`803cb075f02e662638442f886fc15cec4dd62053c1edd498e4dbef6ccbda5c26`.
+No healthy CI run was cancelled; fresh checks can now run on the corrected head.
