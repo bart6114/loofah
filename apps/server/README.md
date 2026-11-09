@@ -514,6 +514,14 @@ Shutdown stops admission and requests cancellation early, retains vault/source o
 
 The Linux x64 CPU CI job verifies the pinned Whisper model and all eight ONNX assets, checks the exact test inventory, and packages the release server plus the matching CPU test executable through the Dockerfile's `ci-tests` target. It runs the configured Whisper and ONNX Service → Core → canonical-transcript cases and ONNX live cancellation case from that image with read-only fixtures/models, no external network, and hash/ABI readback. The same test executable also runs the reserved live/batch overlap case under two CPUs and a 6 GiB memory limit, requiring a real live caption while batch inference owns its model, responsive authenticated reads, and actual cancellation drain. The artifact inventory requires this exact case; a missing test cannot count as success. The runtime has no build-cache mount; ONNX links statically and the checks reject a dynamic ONNX Runtime dependency. The model provisioner is a CI/operator utility, not a server download path. Controlled Linux ARM64 results do not qualify this separate x64 artifact. A successful run qualifies that exact runtime artifact; [BuildKit skips the unrelated builder stage](https://docs.docker.com/build/building/multi-stage/#differences-between-legacy-builder-and-buildkit). A successful full image build remains a separate deployment gate. macOS test results do not establish Linux container support.
 
+The Whisper kernel CI step explicitly selects its three configured JSON/SSE,
+cancellation and channel/timing cases, checks their inventory, and requires one
+executed test per case. The separate retained discontinuous-speech acceptance
+requires `LOOFAH_WHISPER_RETAINED_AUDIO` and `LOOFAH_WHISPER_REPAIR_OUTPUT`; it
+remains strict about those operator-supplied fixtures and is not selected by the
+standard model-only kernel step.
+
+
 ## Optional processing host configuration
 
 Processing remains experimental. Configure the worker and summary-body job APIs
