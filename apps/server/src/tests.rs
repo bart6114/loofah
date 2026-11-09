@@ -3,6 +3,7 @@ mod attachment_upload;
 mod attachments;
 mod audio_metadata;
 mod capture;
+mod capture_append;
 mod capture_live;
 mod capture_processing;
 mod compatibility;
