@@ -2013,6 +2013,48 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async remoteMediaRetirementStatus(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+    controlId: string,
+  ): Promise<Result<MediaRetirementView, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_retirement_status", {
+          connectionId,
+          vaultId,
+          requestId,
+          controlId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaRetire(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+    input: MediaRetirementRequest,
+  ): Promise<Result<MediaRetirementView, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_retire", {
+          connectionId,
+          vaultId,
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async remoteUploadAttachmentSource(
     connectionId: string,
     upload: AttachmentUpload,
@@ -4154,6 +4196,38 @@ export type MediaRequestStatus = {
   phase: MediaPhase;
   media: LocalMediaStatus | null;
 };
+export type MediaRetirementReceipt = {
+  request: MediaRetirementRequest;
+  retired: boolean;
+};
+export type MediaRetirementRequest = {
+  retirement_id: string;
+  expected_revision: string;
+  expected_declaration_sha256: string;
+  expected_source: MediaUploadSource | null;
+  disposition: MediaSourceDisposition;
+};
+export type MediaRetirementState =
+  | "eligible"
+  | "blocked"
+  | "retiring"
+  | "retired";
+export type MediaRetirementStatus = {
+  request_id: string;
+  revision: string;
+  declaration_sha256: string;
+  source: MediaUploadSource | null;
+  state: MediaRetirementState;
+  retirement: MediaRetirementRequest | null;
+  reason: string | null;
+  quota_released: boolean;
+  allowed_dispositions: MediaSourceDisposition[];
+};
+export type MediaRetirementView = {
+  status: MediaRetirementStatus;
+  pending: MediaRetirementRequest | null;
+  verified_export: boolean;
+};
 export type MediaScope = {
   profile_id: string;
   server: string;
@@ -4166,11 +4240,18 @@ export type MediaSessionSnapshot = {
   transcript_present: boolean;
   recording: LocalMediaSourceSnapshot | null;
 };
+export type MediaSourceDisposition = "exported" | "discard" | "no_upload";
+export type MediaSourceExportObservation = {
+  declaration_sha256: string;
+  source: MediaUploadSource;
+};
 export type MediaSubmission = {
   schema_version: number;
   scope: MediaScope;
   declaration: MediaDeclaration;
   admission_revision: string | null;
+  source_export?: MediaSourceExportObservation | null;
+  retirement?: MediaRetirementReceipt | null;
 };
 export type MediaSummaryState =
   | "pending_media"

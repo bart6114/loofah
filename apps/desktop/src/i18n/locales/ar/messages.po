@@ -299,6 +299,10 @@ msgstr ""
 msgid "By tag"
 msgstr ""
 
+#: src/shared/application/media-retirement-review.tsx
+msgid "bytes in the original source"
+msgstr ""
+
 #: src/main/about-storage.tsx
 msgid "Calculating storage…"
 msgstr ""
@@ -376,6 +380,10 @@ msgstr ""
 msgid "ChatGPT subscription"
 msgstr ""
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Check cleanup status"
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Check connection"
 msgstr ""
@@ -443,6 +451,10 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Choose how Loofah writes your summaries."
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "Choose how to handle the source"
 msgstr ""
 
 #: src/settings/general/theme.tsx
@@ -885,6 +897,10 @@ msgstr ""
 msgid "Discard changes"
 msgstr ""
 
+#: src/shared/application/media-retirement-review.tsx
+msgid "Discard the retained original upload"
+msgstr ""
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Discard your unsaved instructions?"
 msgstr ""
@@ -1131,6 +1147,18 @@ msgstr ""
 msgid "How storage is measured"
 msgstr ""
 
+#: src/shared/application/media-retirement-review.tsx
+msgid "I confirm releasing this request's active quota."
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "I have kept the verified exported copy"
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "I understand that removing this retained upload may delete its only original copy."
+msgstr ""
+
 #: src/main/about-storage.tsx
 msgid "Images"
 msgstr ""
@@ -1216,6 +1244,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Keep request"
+msgstr ""
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Keep the original cleanup decision; media recovery is no longer available."
 msgstr ""
 
 #: src/shared/application/vault-provider-credentials.tsx
@@ -1649,6 +1681,10 @@ msgstr ""
 msgid "No transcription models are available for this device."
 msgstr ""
 
+#: src/shared/application/media-retirement-review.tsx
+msgid "No uploaded source; release request quota"
+msgstr ""
+
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Not downloaded"
 msgstr ""
@@ -1766,6 +1802,10 @@ msgstr ""
 
 #: src/shared/application/media-recovery-panel.tsx
 msgid "Original file saved to Downloads/Loofah."
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "Original source"
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -1924,6 +1964,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing-settings.tsx
 msgid "Reconnect to save settings. Your changes stay in this form."
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "Reconnect to the original workspace before removing retained media."
 msgstr ""
 
 #: src/shared/application/media-recovery-panel.tsx
@@ -2092,6 +2136,10 @@ msgstr ""
 msgid "Regenerate"
 msgstr ""
 
+#: src/shared/application/media-retirement-review.tsx
+msgid "Release request quota"
+msgstr ""
+
 #: src/shared/application/vault-sharing.tsx
 msgid "Reload access"
 msgstr ""
@@ -2154,6 +2202,10 @@ msgstr ""
 
 #: src/shared/application/delete-document-modal.tsx
 msgid "Remove output"
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "Remove retained upload"
 msgstr ""
 
 #: src/shared/application/delete-document-modal.tsx
@@ -2233,6 +2285,10 @@ msgstr ""
 msgid "Resume listening"
 msgstr ""
 
+#: src/shared/application/media-retirement-review.tsx
+msgid "Resume original cleanup"
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "Resume request"
 msgstr ""
@@ -2243,6 +2299,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Resuming…"
+msgstr ""
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Retained upload retired; request quota released. Canonical content and results remain available."
 msgstr ""
 
 #: src/audio-player/provider.tsx
@@ -2293,6 +2353,18 @@ msgstr ""
 
 #: src/shared/application/device-recording-host.tsx
 msgid "Retry the saved append request with its original recording and processing choices."
+msgstr ""
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Review original cleanup"
+msgstr ""
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Review retained files"
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "Review retained upload and request quota"
 msgstr ""
 
 #: src/session/components/session-date.tsx
@@ -2962,6 +3034,10 @@ msgstr ""
 msgid "The app restarts to apply."
 msgstr ""
 
+#: src/shared/application/media-retirement-review.tsx
+msgid "The app verified the copy when it was saved. Confirm that you have kept it; the app cannot guarantee it still exists."
+msgstr ""
+
 #: src/onboarding/folder-location.tsx
 msgid "The app will restart after onboarding to apply your storage changes"
 msgstr ""
@@ -2992,6 +3068,18 @@ msgstr ""
 
 #: src/sidebar/timeline/index.tsx
 msgid "The open note is outside this loaded timeline window."
+msgstr ""
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "The original cleanup decision is saved. Check or resume that decision; media will not be replayed."
+msgstr ""
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "The original media retirement request changed."
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "The original workspace is unavailable. Nothing will be removed automatically."
 msgstr ""
 
 #: src/shared/application/vault-processing-preview.tsx
@@ -3091,6 +3179,10 @@ msgstr ""
 msgid "This content changed elsewhere. Review the saved version before choosing."
 msgstr ""
 
+#: src/shared/application/media-retirement-review.tsx
+msgid "This continues the saved cleanup decision with the same request ID."
+msgstr ""
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "This document cannot be identified safely. Export is unavailable."
 msgstr ""
@@ -3134,6 +3226,10 @@ msgstr ""
 
 #: src/shared/application/device-recovery.tsx
 msgid "This recovery copy has already been cleared."
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "This removes only this request's retained upload, if any, and releases its upload and request quota. Canonical notes, recordings, transcripts, processing copies and retained results stay unchanged."
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
@@ -3397,6 +3493,10 @@ msgstr ""
 
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Upload transcript"
+msgstr ""
+
+#: src/shared/application/media-retirement-review.tsx
+msgid "Use Save original file first. Only an export verified by this app can be selected as an exported copy."
 msgstr ""
 
 #: src/shared/application/notes-workspace.tsx

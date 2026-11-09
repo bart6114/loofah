@@ -220,7 +220,15 @@ export type MediaPhase = "receiving" | "ready" | "running" | "review" | "succeed
 
 export type MediaRequestStatus = { declaration: MediaDeclaration; revision: string; phase: MediaPhase; media: LocalMediaStatus | null }
 
+export type MediaRetirementRequest = { retirement_id: string; expected_revision: string; expected_declaration_sha256: string; expected_source: MediaUploadSource | null; disposition: MediaSourceDisposition }
+
+export type MediaRetirementState = "eligible" | "blocked" | "retiring" | "retired"
+
+export type MediaRetirementStatus = { request_id: string; revision: string; declaration_sha256: string; source: MediaUploadSource | null; state: MediaRetirementState; retirement: MediaRetirementRequest | null; reason: string | null; quota_released: boolean; allowed_dispositions: MediaSourceDisposition[] }
+
 export type MediaSessionSnapshot = { metadata: MetadataSnapshot; transcript_revision: string; transcript_present: boolean; recording: LocalMediaSourceSnapshot | null }
+
+export type MediaSourceDisposition = "exported" | "discard" | "no_upload"
 
 export type MediaSummaryState = "pending_media" | "source_bound" | "skipped" | "child"
 
