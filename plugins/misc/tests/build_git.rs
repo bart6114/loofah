@@ -43,10 +43,12 @@ impl Repository {
     }
 
     fn git(&self, cwd: &Path, args: &[&str]) -> String {
+        assert!(cwd == self.main || cwd == self.linked);
+        // Keep verbatim Windows paths out of Git config and hook arguments.
         let output = Command::new("git")
             .current_dir(cwd)
             .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", self.root.join("config"))
+            .env("GIT_CONFIG_GLOBAL", "../config")
             .args([
                 "-c",
                 "user.name=Build Metadata Test",
@@ -55,7 +57,7 @@ impl Repository {
                 "-c",
                 "commit.gpgsign=false",
                 "-c",
-                &format!("core.hooksPath={}", self.root.join("hooks").display()),
+                "core.hooksPath=../hooks",
             ])
             .args(args)
             .output()
