@@ -97,7 +97,7 @@ pub fn init<R: tauri::Runtime>(options: InitOptions) -> tauri::plugin::TauriPlug
 async fn start_local_supervisor(
     state: &SharedState,
     parent: Option<ActorCell>,
-) -> Result<(), ractor::ActorProcessingErr> {
+) -> std::result::Result<(), ractor::ActorProcessingErr> {
     // Model downloads require an explicit request; opening a vault must stay offline.
     let (supervisor, handle) = server::supervisor::spawn_stt_supervisor(parent).await?;
     let mut guard = state.lock().await;
@@ -115,7 +115,9 @@ mod test {
     async fn local_startup_is_idle_without_model_storage_or_downloads() {
         struct NoModelStorage;
         impl hypr_model_downloader::ModelDownloaderRuntime<LocalModel> for NoModelStorage {
-            fn models_base(&self) -> Result<std::path::PathBuf, hypr_model_downloader::Error> {
+            fn models_base(
+                &self,
+            ) -> std::result::Result<std::path::PathBuf, hypr_model_downloader::Error> {
                 panic!("startup must not inspect or create model storage")
             }
 
