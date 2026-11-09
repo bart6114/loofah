@@ -1,5 +1,17 @@
 use super::*;
 
+pub(super) fn blocks_session_work(record: &Record) -> bool {
+    match record.status.state {
+        LocalCaptureState::NotStarted => !history::eligible(record),
+        LocalCaptureState::Succeeded
+        | LocalCaptureState::Skipped
+        | LocalCaptureState::Conflict
+        | LocalCaptureState::Cancelled
+        | LocalCaptureState::Closed => !resolution::confirmed_drain(record),
+        _ => true,
+    }
+}
+
 pub(crate) async fn ensure_stored_session_idle(
     root: PathBuf,
     vault: String,
@@ -44,7 +56,7 @@ pub(crate) async fn ensure_stored_session_idle(
             if record.vault_id != vault || record.status.declaration.request_id != name {
                 return Err(review("Local intent identity changed"));
             }
-            busy |= record.status.declaration.session_id == session && unresolved(&record);
+            busy |= record.status.declaration.session_id == session && blocks_session_work(&record);
         }
         if busy {
             return Err(review("Local capture intent requires completion or review"));

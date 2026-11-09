@@ -94,6 +94,15 @@ impl Fixture {
         })
         .await
         .unwrap();
+        let active = root.join("local-capture-intents");
+        if drained && !active.join(&id).join("intent.json").exists() {
+            // Exercise the active-journal compatibility path even when Stage C
+            // has already archived the actual completed fixture receipt.
+            let vault_id = format!("local:{}", hypr_storage::vault::canonical_vault_key(&vault));
+            let history = history::History::open(&active, &vault_id).unwrap();
+            let retained = history.read(&id).unwrap().unwrap();
+            journal::persist(&active, &retained.record, true).unwrap();
+        }
         Self {
             _temporary: temporary,
             root,
@@ -216,6 +225,73 @@ async fn known_history_layout_is_checked_without_recursively_scanning_or_initial
     std::fs::write(history.join("layout.json"), &raw).unwrap();
     assert!(check().await.is_err());
     assert_eq!(std::fs::read(history.join("layout.json")).unwrap(), raw);
+}
+
+#[tokio::test]
+async fn stored_conflict_requires_actual_drain_evidence_instead_of_a_terminal_enum() {
+    let fixture = Fixture::new(false).await;
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture.receipt()).unwrap()).unwrap();
+    record["status"]["state"] = "conflict".into();
+    for version in [1, 2] {
+        record["version"] = version.into();
+        let raw = serde_json::to_vec(&record).unwrap();
+        std::fs::write(fixture.receipt(), &raw).unwrap();
+        assert!(lifecycle(&fixture.cli().await).await.is_err());
+        assert_eq!(std::fs::read(fixture.receipt()).unwrap(), raw);
+    }
+    let drained = Fixture::new(true).await;
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(drained.receipt()).unwrap()).unwrap();
+    record["status"]["state"] = "conflict".into();
+    let raw = serde_json::to_vec(&record).unwrap();
+    std::fs::write(drained.receipt(), &raw).unwrap();
+    assert!(lifecycle(&drained.cli().await).await.is_ok());
+    assert_eq!(std::fs::read(drained.receipt()).unwrap(), raw);
+}
+
+#[tokio::test]
+async fn initialized_service_keeps_legacy_terminal_readable_but_cannot_invent_its_drain() {
+    for (version, state) in [
+        (1, "succeeded"),
+        (1, "skipped"),
+        (2, "succeeded"),
+        (2, "skipped"),
+    ] {
+        let fixture = Fixture::new(false).await;
+        let mut record: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(fixture.receipt()).unwrap()).unwrap();
+        record["version"] = version.into();
+        record["status"]["state"] = state.into();
+        record["physical"] = serde_json::json!({"Ok":null});
+        record["persistence"] = serde_json::json!({"Ok":{
+            "live_transcription_active":false,"needs_batch_repair":false,"new_transcript_id":null
+        }});
+        let raw = serde_json::to_vec(&record).unwrap();
+        std::fs::write(fixture.receipt(), &raw).unwrap();
+        assert!(lifecycle(&fixture.cli().await).await.is_err());
+        let lease = acquire(&fixture.vault);
+        let context = Arc::new(
+            VaultContext::new(
+                fixture.vault_id(),
+                Arc::new(hypr_vault_write::SessionStore::new(fixture.vault.clone())),
+                StartupState::new(Some(&fixture.vault)),
+                Arc::new(ConfigState::load_or_default(&fixture.vault)),
+                Arc::new(SearchService::default()),
+            )
+            .with_operation_storage(fixture.root.clone())
+            .with_vault_lease(lease)
+            .unwrap(),
+        );
+        let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(service.status(&fixture.id).await.unwrap()).unwrap()["state"],
+            state
+        );
+        assert!(context.ensure_session_jobs_idle("note").await.is_err());
+        assert_eq!(std::fs::read(fixture.receipt()).unwrap(), raw);
+        service.shutdown().await;
+    }
 }
 
 #[cfg(unix)]

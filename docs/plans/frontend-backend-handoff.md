@@ -2558,3 +2558,12 @@ Focused source regressions cover the real standalone CLI path, unchanged receipt
 and note bytes, malformed/future inventories, and read-only history handling.
 These regressions await the sole integration build; no worker Cargo or application
 execution was performed for this checkpoint.
+
+The stored lifecycle follow-up uses the same durable admission predicate in an
+initialized Local intent service. A terminal enum alone is insufficient: modern
+Succeeded, Skipped, Conflict, Cancelled and Closed receipts require recorded
+physical, persistence and processing drain. Legacy terminal receipts remain
+readable without rewriting their bytes but cannot invent missing drain evidence.
+NotStarted still requires a genuinely undispatched record. Additional fixtures
+cover both standalone and initialized-service refusal, including the crash window
+between publishing a terminal state and saving the final drain receipt.

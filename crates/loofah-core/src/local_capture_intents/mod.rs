@@ -444,7 +444,9 @@ impl LocalCaptureIntents {
     pub(crate) async fn ensure_idle(&self, session: &str) -> Result<(), ApplicationError> {
         if self.state.lock().await.values().any(|entry| {
             entry.record.status.declaration.session_id == session
-                && (entry.admission.is_some() || entry.running || unresolved(&entry.record))
+                && (entry.admission.is_some()
+                    || entry.running
+                    || idle::blocks_session_work(&entry.record))
         }) {
             return Err(review("Local capture intent requires completion or review"));
         }
