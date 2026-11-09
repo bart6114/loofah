@@ -3173,6 +3173,10 @@ msgstr ""
 msgid "This workspace cannot resume media uploads."
 msgstr ""
 
+#: src/shared/application/device-recording-controls.tsx
+msgid "This workspace is read-only."
+msgstr ""
+
 #: src/settings/general/timezone.tsx
 msgid "Timezone"
 msgstr ""
