@@ -19,3 +19,16 @@ describe("createStaticCloudflareWorkersAIModelResult", () => {
     });
   });
 });
+
+test("the shared catalog preserves unique model order and explicit modalities", () => {
+  const result = createStaticCloudflareWorkersAIModelResult();
+  expect(result.models).toHaveLength(10);
+  expect(new Set(result.models).size).toBe(result.models.length);
+  expect(result.models[9]).toBe("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+  expect(
+    result.metadata["@cf/meta/llama-4-scout-17b-16e-instruct"].input_modalities,
+  ).toEqual(["text", "image"]);
+  expect(
+    result.metadata["@cf/qwen/qwen3-30b-a3b-fp8"].input_modalities,
+  ).toEqual(["text"]);
+});

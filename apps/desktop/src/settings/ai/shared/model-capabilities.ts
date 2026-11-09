@@ -1,12 +1,14 @@
+import imagePolicy from "../../../../../../crates/loofah-core/assets/local-image-capabilities.json";
 import { getCloudflareWorkersAIModelMetadata } from "./list-cloudflare-workers-ai";
 
 import { chatgptModelSupportsImages } from "~/ai/chatgpt-account";
 
-const TEXT_ONLY_MODEL_RE =
-  /(?:^|[/:\-.])(?:gpt-3\.5|claude-2|claude-instant|davinci|babbage|curie|ada|dall-e|sora|gpt-image|image-generation|embed|embedding|whisper|tts|transcribe|moderation|realtime|computer)(?:$|[/:\-.])/i;
+const TEXT_ONLY_MODEL_RE = new RegExp(imagePolicy.text_only_model_pattern, "i");
 
-const IMAGE_INPUT_MODEL_RE =
-  /(?:gpt-4o|gpt-4\.1|gpt-5|claude-3|claude-sonnet|claude-opus|claude-haiku|gemini|pixtral|vision|vl|llava|llama-3\.2-vision|llama3\.2-vision|moondream|minicpm-v|internvl|qwen(?:2|2\.5|3)?-vl|gemma-3|gemma3)/i;
+const IMAGE_INPUT_MODEL_RE = new RegExp(
+  imagePolicy.image_input_model_pattern,
+  "i",
+);
 
 export function modelSupportsImageInput(
   providerId: string | undefined,

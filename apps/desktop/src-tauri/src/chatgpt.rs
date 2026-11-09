@@ -21,6 +21,7 @@ use tokio::{
     sync::{Mutex as AsyncMutex, broadcast, oneshot, watch},
 };
 
+pub(crate) mod image_capabilities;
 pub mod model;
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -283,6 +284,19 @@ pub struct ChatgptState {
     shared_cancel: Mutex<tokio_util::sync::CancellationToken>,
 }
 
+fn model_catalog_path<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<PathBuf, ChatgptError> {
+    Ok(if cfg!(debug_assertions) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/codex/models.json")
+    } else {
+        app.path()
+            .resource_dir()
+            .map_err(|_| runtime_error())?
+            .join("codex/models.json")
+    })
+}
+
 impl ChatgptState {
     async fn client<R: tauri::Runtime>(
         &self,
@@ -294,14 +308,7 @@ impl ChatgptState {
         }
         let binary = installed_codex().await?;
         check_codex_version(&binary).await?;
-        let catalog = if cfg!(debug_assertions) {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/codex/models.json")
-        } else {
-            app.path()
-                .resource_dir()
-                .map_err(|_| runtime_error())?
-                .join("codex/models.json")
-        };
+        let catalog = model_catalog_path(app)?;
         if !catalog.is_file() {
             return Err(failure(
                 "configuration",

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+mod image_capabilities;
+
 use hypr_loofah_protocol::ProcessingJobFailure;
 use tokio_util::sync::CancellationToken;
 
@@ -94,6 +96,8 @@ impl SummaryModels for LocalHttpModels {
             }
             let definition = provider_definition(&selection.provider_id)
                 .ok_or(ProcessingJobFailure::ProviderUnavailable)?;
+            let include_images =
+                image_capabilities::supports_images(&selection.provider_id, &selection.model_id);
             let base_url = if selection.base_url.is_empty() {
                 definition.base_url.unwrap_or_default()
             } else {
@@ -128,7 +132,7 @@ impl SummaryModels for LocalHttpModels {
             })?;
             Ok(SummaryModel {
                 model: Arc::new(model),
-                include_images: true,
+                include_images,
             })
         })
     }

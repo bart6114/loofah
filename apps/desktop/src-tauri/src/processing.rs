@@ -147,12 +147,18 @@ impl<R: tauri::Runtime> SummaryModels for LocalModels<R> {
                 return Err(ProcessingJobFailure::Interrupted);
             }
             if selection.provider_id == "chatgpt_subscription" {
+                let include_images = crate::chatgpt::image_capabilities::supports_images(
+                    &self.app,
+                    &selection.model_id,
+                    cancel,
+                )
+                .await?;
                 Ok(SummaryModel {
                     model: Arc::new(crate::chatgpt::model::SummaryModel::new(
                         self.app.clone(),
                         selection.model_id,
                     )),
-                    include_images: true,
+                    include_images,
                 })
             } else {
                 self.http.resolve(selection, cancel).await
