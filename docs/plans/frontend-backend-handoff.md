@@ -22,8 +22,9 @@ existing managed Context and original lease. Its shutdown joins admitted owner
 work before the final Store flush. Generated contracts and full Native/platform
 validation remain integration gates; source checkpoints alone do not prove them.
 
-Latest combined checkpoint: 2,426 Native library tests passed (34 explicit ignored),
-2,622 frontend tests passed in 298 files, actual Native Ollama preview/summary/title
+Latest Native checkpoint: 2,429 library tests passed (34 explicit ignored), using
+the actual macOS `/var` alias at test runtime. The complete frontend cohort passed
+2,622 tests in 298 files, with later timeline checks/typechecking qualified separately; actual Native Ollama preview/summary/title
 and replay passed, and all-target checks plus debug binaries passed. Qualified
 previews are now advertised with configured workers. The exact dev-only A/B QA
 trust allowlist passed its default-build negative test. Checked Local lifecycle,
@@ -1344,3 +1345,27 @@ logs and canonical output remain under the local cache in
 `logs/soak-shaped-31ad81601-provenance.json`. Earlier failed paced runs and the
 separately labelled non-paced repair replay remain preserved; this corrected pass
 does not rewrite their outcomes or mark the full implementation plan complete.
+
+
+## Local identity correction qualification, 2026-11-09
+
+The correction at `92c5fb961c` passed the complete stable Native 21-package library
+suite: **2,429 passed, 34 explicit ignored, no failures**. A task-only Cargo runner
+set the actual macOS `/var/folders/.../T/` alias only for test execution, preserving
+Cargo's dynamic-library runtime environment and canonical compiler/cache paths.
+All three new principal cases passed, along with both previously failing Local
+lifecycle fixtures and strict journal-reopen coverage. The subsequent all-target
+Cargo check passed. Generated bindings came from the real exporters and were
+formatted directly; they have no type-surface change. An initial result verifier
+mistakenly counted two pre-existing principal tests alongside the three new cases;
+its scoped-name correction did not change or rerun the successful library suite.
+
+The actual b755 audio import and automatic summary completed before this fix. Its
+73 words and 73 hints reflect one detected speaker cluster; the diarizer ran eight
+temporal segments, which is not proof of eight speakers or multi-speaker accuracy.
+The old app then quit through its ordinary menu and its verified PID stopped.
+A separate refreshed optimized artifact will reuse that original vault/journal to
+verify the status panel, without reimporting or inferring historical work. Until
+then this panel's GUI correction is not qualified. Compiler-only Debug incremental
+objects were pruned after successful checks to preserve local disk headroom;
+dependency libraries, executables, release cache, models and raw evidence remain.
