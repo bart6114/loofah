@@ -776,3 +776,233 @@ async fn media_retirement_rechecks_owned_source_identity_after_hash_before_unlin
     assert_eq!(fixture.media.inventory().await.unwrap().len(), 1);
     fixture.stop().await;
 }
+
+fn pause_verification(
+    media: &MediaDispatcher,
+    stage: VerificationStage,
+) -> (
+    tokio::sync::oneshot::Receiver<()>,
+    std::sync::mpsc::Sender<()>,
+) {
+    let (entered, reached) = tokio::sync::oneshot::channel();
+    let (release, wait) = std::sync::mpsc::channel();
+    assert!(
+        media
+            .retirement_verification_pauses
+            .lock()
+            .unwrap()
+            .insert(stage, (entered, wait))
+            .is_none()
+    );
+    (reached, release)
+}
+
+#[tokio::test]
+async fn media_retirement_allows_checked_note_appends_during_both_hashes_but_fences_final_unlink() {
+    let fixture = Fixture::new().await;
+    let declaration = successful(&fixture).await;
+    let request = declaration.request_id;
+    let status = fixture.media.retirement_status(&request).await.unwrap();
+    let input = decision(&status, MediaSourceDisposition::Exported);
+    let inventory = pause_verification(&fixture.media, VerificationStage::Inventory);
+    let cleanup = pause_verification(&fixture.media, VerificationStage::Cleanup);
+    let (entered, reached_final) = tokio::sync::oneshot::channel();
+    let (release_final, wait) = std::sync::mpsc::channel();
+    *fixture.media.retirement_pause.lock().unwrap() = Some((entered, wait));
+    let owner = fixture.media.clone();
+    let original = request.clone();
+    let retirement = tokio::spawn(async move { owner.retire(original, input).await });
+    let cli = Arc::new(LocalCli::new(fixture.runtime.context.clone()).unwrap());
+    let source_path = fixture.media.root.join(format!("{request}.source/source"));
+    for (stage, (reached, release)) in [
+        (VerificationStage::Inventory, inventory),
+        (VerificationStage::Cleanup, cleanup),
+    ] {
+        tokio::time::timeout(std::time::Duration::from_secs(10), reached)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(fixture.media.try_request_gate(&request).await.is_err());
+        assert!(
+            fixture
+                .media
+                .source_gate(&request)
+                .await
+                .try_write_owned()
+                .is_err()
+        );
+        assert!(
+            fixture
+                .runtime
+                .context
+                .admit_session_lifecycle_request(
+                    "manual-media-summary",
+                    &fixture.media.principal,
+                    uuid::Uuid::parse_str(&request).unwrap()
+                )
+                .is_err()
+        );
+        assert_eq!(fixture.media.source_reads.available_permits(), 3);
+        let before = fixture
+            .runtime
+            .context
+            .read_note(&fixture.session)
+            .await
+            .unwrap();
+        let added = format!("Note edit while {stage:?} hashes private upload bytes");
+        let written = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            cli.execute(
+                uuid::Uuid::new_v4().to_string(),
+                LocalCliOperation::AppendNote {
+                    session_id: fixture.session.clone(),
+                    markdown: added.clone(),
+                    expected_revision: before.revision.clone(),
+                },
+                None,
+                Arc::new(|_| {}),
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let LocalCliReply::NoteSaved {
+            outcome: NoteSaveOutcome::Saved(saved),
+        } = written.reply
+        else {
+            panic!("Checked note append did not commit during {stage:?}");
+        };
+        assert_ne!(saved.revision, before.revision);
+        assert!(saved.markdown.as_ref().unwrap().contains(&added));
+        assert!(
+            std::fs::read_to_string(
+                fixture
+                    .root
+                    .path()
+                    .join("vault/sessions")
+                    .join(&fixture.session)
+                    .join("notes.md")
+            )
+            .unwrap()
+            .contains(&added)
+        );
+        assert_eq!(std::fs::read(&source_path).unwrap(), SUBTITLE);
+        release.send(()).unwrap();
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(10), reached_final)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        fixture
+            .runtime
+            .context
+            .try_session_lifecycle_change(&fixture.session)
+            .is_err()
+    );
+    assert!(
+        fixture
+            .media
+            .source_gate(&request)
+            .await
+            .try_write_owned()
+            .is_err()
+    );
+    assert!(fixture.media.try_request_gate(&request).await.is_err());
+    assert_eq!(fixture.media.source_reads.available_permits(), 3);
+    assert_eq!(std::fs::read(&source_path).unwrap(), SUBTITLE);
+    release_final.send(()).unwrap();
+    let retired = tokio::time::timeout(std::time::Duration::from_secs(10), retirement)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(retired.quota_released);
+    assert!(!source_path.exists());
+    assert!(
+        fixture
+            .runtime
+            .context
+            .try_session_lifecycle_change(&fixture.session)
+            .is_ok()
+    );
+    let note = fixture
+        .runtime
+        .context
+        .read_note(&fixture.session)
+        .await
+        .unwrap()
+        .markdown
+        .unwrap();
+    assert!(note.contains("Inventory"));
+    assert!(note.contains("Cleanup"));
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn media_retirement_rechecks_session_and_authorization_after_long_verification() {
+    for revoke in [false, true] {
+        let fixture = Fixture::new().await;
+        let declaration = successful(&fixture).await;
+        let request = declaration.request_id;
+        let status = fixture.media.retirement_status(&request).await.unwrap();
+        let input = decision(&status, MediaSourceDisposition::Exported);
+        let (reached, release) = pause_verification(&fixture.media, VerificationStage::Cleanup);
+        let owner = fixture.media.clone();
+        let original = request.clone();
+        let same_input = input.clone();
+        let retirement = tokio::spawn(async move { owner.retire(original, same_input).await });
+        tokio::time::timeout(std::time::Duration::from_secs(10), reached)
+            .await
+            .unwrap()
+            .unwrap();
+        let work = if revoke {
+            fixture.authority.revoked.cancel();
+            None
+        } else {
+            Some(
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    fixture.runtime.context.admit_session_work(&fixture.session),
+                )
+                .await
+                .unwrap()
+                .unwrap(),
+            )
+        };
+        release.send(()).unwrap();
+        let failure = tokio::time::timeout(std::time::Duration::from_secs(10), retirement)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            failure.code,
+            if revoke {
+                ErrorCode::Forbidden
+            } else {
+                ErrorCode::Conflict
+            }
+        );
+        let source = fixture.media.root.join(format!("{request}.source/source"));
+        assert_eq!(std::fs::read(&source).unwrap(), SUBTITLE);
+        assert!(!retired_path(&fixture.media.root, &request).exists());
+        let retained = fixture.media.load(&request).await.unwrap().unwrap();
+        let intent = retained.retirement.as_ref().unwrap();
+        assert_eq!(intent.request, input);
+        assert!(!intent.completed);
+        assert_eq!(fixture.media.inventory().await.unwrap().len(), 1);
+        drop(work);
+        if !revoke {
+            assert!(
+                fixture
+                    .media
+                    .retire(request, input)
+                    .await
+                    .unwrap()
+                    .quota_released
+            );
+        }
+        fixture.stop().await;
+    }
+}

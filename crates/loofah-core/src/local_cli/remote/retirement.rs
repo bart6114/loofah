@@ -2,6 +2,18 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Read, path::Path};
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) enum VerificationStage {
+    Inventory,
+    Cleanup,
+}
+#[cfg(test)]
+pub(super) type VerificationPause = (
+    tokio::sync::oneshot::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+
 const MAX_TOMBSTONES: usize = 4096;
 const MAX_TOMBSTONE_BYTES: u64 = 16 * 1024 * 1024;
 
@@ -342,9 +354,13 @@ impl MediaDispatcher {
                     .created_session_id(&cli.media_namespace("local-cli-import"), &request)?
             }
         };
-        let session_guard = self.context.try_session_lifecycle_change(&session)?;
-        self.ensure_retirement_drained(&request).await?;
-        self.context.ensure_session_jobs_idle(&session).await?;
+        {
+            let _session = self.context.try_session_lifecycle_change(&session)?;
+            self.ensure_retirement_drained(&request).await?;
+            self.context.ensure_session_jobs_idle(&session).await?;
+        }
+        // Request/source ownership and the original summary pin protect private bytes
+        // during hashing; unrelated session edits need no fence until the final commit.
         if let Some(intent) = &record.retirement {
             if intent.request != input {
                 return Err(conflict("Original media retirement request changed"));
@@ -356,8 +372,19 @@ impl MediaDispatcher {
             let descriptor = source(&record);
             let disposition = input.disposition;
             let context = self.context.clone();
+            #[cfg(test)]
+            let pause = self
+                .retirement_verification_pauses
+                .lock()
+                .unwrap()
+                .remove(&VerificationStage::Inventory);
             let (present, files) = tokio::task::spawn_blocking(move || {
                 let _context = context;
+                #[cfg(test)]
+                if let Some((entered, release)) = pause {
+                    let _ = entered.send(());
+                    let _ = release.recv();
+                }
                 source_inventory(
                     &root.join(format!("{source_request}.source")),
                     descriptor.as_ref(),
@@ -389,12 +416,26 @@ impl MediaDispatcher {
         let root = self.root.clone();
         let original = record.clone();
         let context = self.context.clone();
+        #[cfg(test)]
+        let pause = self
+            .retirement_verification_pauses
+            .lock()
+            .unwrap()
+            .remove(&VerificationStage::Cleanup);
         let prepared = tokio::task::spawn_blocking(move || {
             let _context = context;
+            #[cfg(test)]
+            if let Some((entered, release)) = pause {
+                let _ = entered.send(());
+                let _ = release.recv();
+            }
             prepare_cleanup(&root, &original)
         })
         .await
         .map_err(|_| unknown("Media source verification requires explicit retry"))??;
+        let session_guard = self.context.try_session_lifecycle_change(&session)?;
+        self.ensure_retirement_drained(&request).await?;
+        self.context.ensure_session_jobs_idle(&session).await?;
         let grant = self.authorization.authorize().await?;
         let journal_guard = self.journal_gate(&request).await.write_owned().await;
         let root = self.root.clone();

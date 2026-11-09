@@ -64,6 +64,9 @@ pub struct MediaDispatcher {
         )>,
     >,
     #[cfg(test)]
+    retirement_verification_pauses:
+        std::sync::Mutex<HashMap<retirement::VerificationStage, retirement::VerificationPause>>,
+    #[cfg(test)]
     declaration_pause: std::sync::Mutex<
         Option<(
             tokio::sync::oneshot::Sender<()>,
@@ -125,6 +128,8 @@ impl MediaDispatcher {
             source_write_pause: Default::default(),
             #[cfg(test)]
             retirement_pause: Default::default(),
+            #[cfg(test)]
+            retirement_verification_pauses: Default::default(),
             #[cfg(test)]
             declaration_pause: Default::default(),
         }))
