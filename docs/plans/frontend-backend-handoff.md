@@ -1,5 +1,17 @@
 # Frontend/backend separation handoff
 
+The `2263b47eb7` optimized Remote artifact exposed a cached About commit label:
+`tauri-plugin-misc` still embedded `0d8596eb5d` even though its independently
+verified build and bundle manifests identified current source. `vergen-gix`
+watched the linked worktree's unchanged symbolic HEAD but missed the branch ref
+in Git's common directory. A narrow build helper now tracks the real loose ref,
+existing packed refs and the bounded refs ancestor needed for packed-to-loose
+transitions. Vergen still generates the value; version `0.45.7` is unchanged.
+Four standalone Rust helper tests using real temporary Git repositories passed
+for linked loose/packed/detached refs and source-archive fallback. This source
+correction still needs the next ordinary Native artifact build; no cache wipe or
+QA SHA override was used, and the earlier artifact is not relabelled stale.
+
 ## Status: resumed; implementation and integrated validation continue
 
 The implementation resumed on Apple Silicon macOS in an isolated
