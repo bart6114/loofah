@@ -1,11 +1,11 @@
 #[cfg(unix)]
 use super::staged_file::StagedFile;
+#[cfg(windows)]
+use super::staged_file_windows::StagedFile;
 use super::*;
 use sha2::{Digest, Sha256};
 use std::{io::Write, path::Path};
 use tokio::io::AsyncWriteExt;
-#[cfg(not(unix))]
-type StagedFile = tempfile::NamedTempFile;
 
 pub(super) fn image_references(
     input: &ExportInput,
@@ -237,10 +237,7 @@ pub(crate) fn stage_download(
 }
 impl StagedExport {
     pub(crate) fn mark_download(&self) {
-        #[cfg(unix)]
         let marked = self.file.mark_download();
-        #[cfg(not(unix))]
-        let marked = crate::remote::attachments::mark_download(self.file.path());
         if let Err(cause) = marked {
             tracing::warn!(%cause,"Could not apply original media download metadata");
         }
@@ -312,11 +309,8 @@ fn staging_file(
 ) -> Result<StagedFile, ApplicationError> {
     #[cfg(unix)]
     let file = StagedFile::create(identity.handle.as_file(), prefix).map_err(io_error)?;
-    #[cfg(not(unix))]
-    let file = tempfile::Builder::new()
-        .prefix(prefix)
-        .tempfile_in(root)
-        .map_err(io_error)?;
+    #[cfg(windows)]
+    let file = StagedFile::create(root, prefix).map_err(io_error)?;
     if directory(root)? != *identity {
         return Err(error(
             ErrorCode::Conflict,

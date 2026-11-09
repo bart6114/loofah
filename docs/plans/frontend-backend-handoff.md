@@ -1169,3 +1169,12 @@ Windows retains its original directory/file pins and no-clobber publication.
 Focused sentinels cover cancellation, failed publication, streamed downloads and
 replacement after directory admission. These new cases still require the stable
 Native graph and fresh Windows checks; no additional inference is involved.
+
+The Windows staged-file wrapper also retains the original file identity. Before
+marking a download or publishing, it checks the current non-symlink staging name;
+on lost ownership, it disables TempPath cleanup without changing the foreign
+entry's bytes or attributes. This is a same-owner/name check, not an adversarial
+same-UID race guarantee. Existing directory pins and no-clobber publication remain
+in use. A Windows-only regression covers actual staging-name rename refusal or
+replacement, both cancellation and publication, and foreign Zone.Identifier
+preservation. Both native Windows architectures must execute this new case.

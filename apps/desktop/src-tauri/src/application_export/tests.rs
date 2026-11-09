@@ -327,3 +327,54 @@ fn replaced_export_directory(cancel: bool, download: bool) {
         Err(cause) => panic!("Unexpected export directory rename error: {cause}"),
     }
 }
+
+#[cfg(windows)]
+#[test]
+fn windows_replaced_staging_name_never_publishes_or_deletes_foreign_bytes() {
+    for cancel in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap().join("Loofah");
+        let staged = files::stage(root.clone(), "Meeting", "txt", b"original".to_vec()).unwrap();
+        let path = std::fs::read_dir(&root)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let moved = root.join("moved-original");
+        let existing = root.join("Meeting.txt");
+        std::fs::write(&existing, b"existing export").unwrap();
+        match std::fs::rename(&path, &moved) {
+            Ok(()) => {
+                std::fs::write(&path, b"foreign sentinel").unwrap();
+                staged.mark_download();
+                let mut zone = path.as_os_str().to_os_string();
+                zone.push(":Zone.Identifier");
+                assert!(!std::path::Path::new(&zone).exists());
+                if cancel {
+                    drop(staged);
+                } else {
+                    assert!(files::publish(staged).is_err());
+                }
+                assert_eq!(std::fs::read(&path).unwrap(), b"foreign sentinel");
+                assert_eq!(std::fs::read(&moved).unwrap(), b"original");
+                assert!(!root.join("Meeting (1).txt").exists());
+            }
+            Err(cause) if matches!(cause.raw_os_error(), Some(5 | 32)) => {
+                assert!(!moved.exists());
+                assert_eq!(std::fs::read(&path).unwrap(), b"original");
+                if cancel {
+                    drop(staged);
+                    assert!(!path.exists());
+                } else {
+                    let published = files::publish(staged).unwrap();
+                    assert_ne!(published, existing);
+                    assert_eq!(std::fs::read(&published).unwrap(), b"original");
+                    std::fs::rename(&published, &moved).unwrap();
+                }
+            }
+            Err(cause) => panic!("Unexpected staging-file rename error: {cause}"),
+        }
+        assert_eq!(std::fs::read(&existing).unwrap(), b"existing export");
+    }
+}

@@ -1,6 +1,8 @@
 pub(crate) mod files;
 #[cfg(unix)]
 mod staged_file;
+#[cfg(windows)]
+mod staged_file_windows;
 mod state;
 #[cfg(test)]
 mod tests;
