@@ -117,6 +117,13 @@ impl LocalCaptureIntents {
             .await
             .map_err(review)?
     }
+    #[cfg(test)]
+    pub(crate) async fn cancel_for_test(
+        &self,
+        request: String,
+    ) -> Result<LocalCaptureControlSnapshot, ApplicationError> {
+        self.cancel_owned(request).await
+    }
     pub(super) async fn cancel_owned(
         &self,
         request: String,
