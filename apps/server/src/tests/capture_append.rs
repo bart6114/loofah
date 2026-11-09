@@ -1,5 +1,5 @@
 use super::*;
-use std::{io::Cursor, path::PathBuf, sync::atomic::Ordering};
+use std::{io::Cursor, path::PathBuf};
 
 const BASE_FRAMES: u32 = 16_001;
 const TRANSCRIPT: &[u8] = br#" {"future":true,"transcripts":[{"id":"t","session_id":"append-note","words":[{"id":"w","text":"Original","channel":0,"start_ms":0,"end_ms":1}],"speaker_hints":[]}]} "#;
@@ -113,25 +113,6 @@ async fn canonical(fixture: &Fixture, input: &CaptureAppendRequest) -> Vec<u8> {
             .is_success()
     );
     bytes
-}
-
-async fn reopen(mut fixture: Fixture) -> Fixture {
-    fixture.service.shutdown().await.unwrap();
-    fixture.service.wait_for_shutdown().await.unwrap();
-    let config = fixture.service.config.clone();
-    let root = std::mem::replace(&mut fixture._root, tempfile::tempdir().unwrap());
-    let issuer = std::mem::take(&mut fixture.issuer);
-    let issuer_task = std::mem::replace(&mut fixture.issuer_task, tokio::spawn(async {}));
-    drop(fixture);
-    let service = Service::open(config).await.unwrap();
-    service.injected_changes.store(true, Ordering::Release);
-    Fixture {
-        _root: root,
-        issuer,
-        issuer_task,
-        app: routes::router(service.clone()),
-        service,
-    }
 }
 
 #[tokio::test]
@@ -286,7 +267,7 @@ async fn raw_append_http_publishes_exact_channels_and_replays_after_service_reop
             std::fs::read(directory.join(".private")).unwrap(),
             b"keep hidden file"
         );
-        let fixture = reopen(fixture).await;
+        let fixture = fixture.reopen().await;
         assert_eq!(
             prepare(&fixture, "alice", &input).await,
             (StatusCode::OK, prepared)

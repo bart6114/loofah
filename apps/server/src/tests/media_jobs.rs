@@ -1,7 +1,7 @@
 use super::*;
 use sha2::{Digest, Sha256};
 
-const SUBTITLE: &str = "1\n00:00:00,000 --> 00:00:01,000\nRetained server subtitle\n";
+pub(super) const SUBTITLE: &str = "1\n00:00:00,000 --> 00:00:01,000\nRetained server subtitle\n";
 #[tokio::test]
 async fn media_capabilities_are_paired_even_without_optional_transcription() {
     let fixture = Fixture::new().await;
@@ -14,7 +14,7 @@ async fn media_capabilities_are_paired_even_without_optional_transcription() {
     assert!(features.contains(&json!("media_source_export")));
     assert!(features.contains(&json!("media_initial_metadata")));
 }
-async fn declare_subtitle(fixture: &Fixture, vault: &str, request: &str) -> Value {
+pub(super) async fn declare_subtitle(fixture: &Fixture, vault: &str, request: &str) -> Value {
     let context = fixture.service.vault(vault).await.unwrap();
     context.store.write_meta(&serde_json::from_value(json!({"id":"note","title":"Media note","created_at":"2026-11-08T10:00:00Z","tags":[]})).unwrap()).await.unwrap();
     let (status, source) = fixture

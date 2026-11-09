@@ -12,6 +12,7 @@ mod initial_metadata;
 mod lifecycle;
 mod maintenance_adoption;
 mod media_jobs;
+mod media_retirement;
 mod metadata;
 mod note_editor;
 mod processing;
@@ -358,6 +359,27 @@ pub(crate) struct Fixture {
 impl Fixture {
     pub(crate) async fn new() -> Self {
         Self::with_processing(None).await
+    }
+
+    async fn reopen(mut self) -> Self {
+        self.service.shutdown().await.unwrap();
+        self.service.wait_for_shutdown().await.unwrap();
+        let config = self.service.config.clone();
+        let root = std::mem::replace(&mut self._root, tempfile::tempdir().unwrap());
+        let issuer = std::mem::take(&mut self.issuer);
+        let issuer_task = std::mem::replace(&mut self.issuer_task, tokio::spawn(async {}));
+        drop(self);
+        let service = Service::open(config).await.unwrap();
+        service
+            .injected_changes
+            .store(true, std::sync::atomic::Ordering::Release);
+        Self {
+            _root: root,
+            issuer,
+            issuer_task,
+            app: routes::router(service.clone()),
+            service,
+        }
     }
 
     async fn with_processing(processing: Option<crate::processing::ProcessingConfig>) -> Self {

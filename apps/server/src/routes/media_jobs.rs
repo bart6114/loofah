@@ -7,6 +7,10 @@ pub(super) fn router() -> Router<Arc<Service>> {
         .route("/vaults/{vault}/media/requests", get(list).post(declare))
         .route("/vaults/{vault}/media/requests/{request}", get(status))
         .route(
+            "/vaults/{vault}/media/requests/{request}/retirement",
+            get(retirement_status).post(retire),
+        )
+        .route(
             "/vaults/{vault}/media/requests/{request}/source",
             get(download_source),
         )
@@ -126,6 +130,47 @@ async fn result(
         TRANSCRIPTION_RESULT_RESPONSE_LIMIT,
         async move { dispatcher.result(&request).await },
     )
+    .await
+}
+async fn retirement_status(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, request)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &vault, true).await?;
+    let dispatcher = service.media_dispatcher(&vault, &access.member_id).await?;
+    content_read(&service, access, 1024 * 1024, async move {
+        dispatcher.retirement_status(&request).await
+    })
+    .await
+}
+async fn retire(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, request)): ApiPath<(String, String)>,
+    headers: HeaderMap,
+    ApiJson(input): ApiJson<MediaRetirementRequest>,
+) -> Result<Json<MediaRetirementStatus>> {
+    validate_media_retirement_request(&input)
+        .map_err(|message| ApiError::new(ErrorCode::Validation, message))?;
+    if request_id(&headers)? != input.retirement_id {
+        let mut cause = ApiError::new(
+            ErrorCode::Validation,
+            "Request ID must match the media retirement decision",
+        );
+        cause.0.mutation_outcome = Some(MutationOutcome::NotCommitted);
+        return Err(cause);
+    }
+    let access = service.catalog.access(&identity, &vault, true).await?;
+    let dispatcher = service.media_dispatcher(&vault, &access.member_id).await?;
+    drop(access);
+    admitted_write(&service, async move {
+        dispatcher
+            .retire(request, input)
+            .await
+            .map(Json)
+            .map_err(Into::into)
+    })
     .await
 }
 async fn cancel(
