@@ -2606,3 +2606,24 @@ and maximum declaration timing distinct from completion writes. These timing
 instruments are source-only pending the integration run; the earlier 331-second
 full-cohort duration included thousands of receipt writes and does not by itself
 measure startup latency.
+
+
+Qualification at frozen `53731a0e3c` passed the stable-21 all-target check in
+124.67 seconds (existing nine desktop-library/four test warnings), followed by
+exactly one actual Native binding exporter. The lazy history/control/adapter
+cohort passed 70 tests across two files; locale extraction and strict compilation
+passed. TypeScript checking passed after giving a test fixture map callback its
+existing shared snapshot return type; the original inference-only TSC failure is
+preserved. Generated Native history types/command came from the actual exporter.
+
+Four complete executed libraries reported CLI96/0/0, Core586/2/2,
+server182/0/6 and vault-write631/0/5: 1,495 passes, two failures and 13 ignores.
+All 22 added history/lifecycle functions passed, including real 4,097 admissions
+with original UUID recovery and bounded active growth, exact archived hashes,
+interrupted moves, safe read-only fallback and abandoned-I/O shutdown drain.
+Seventeen other libraries were not executed. The two append failures remain;
+new diagnostics show the suffix model ran once and retained its exact result,
+while compound publication remained incomplete. Readiness is correctly false
+until that commit; no flag or journal check has been bypassed. The next diagnostic
+adds attempt/stage observations. Later migration-budget and native-owner changes
+remain separate source/check scopes. Desktop application testing stays paused.

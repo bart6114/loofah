@@ -477,17 +477,20 @@ it("bounds archived display and never shows a different session's history", asyn
   const f = await fixture();
   f.api.controls.mockResolvedValue([]);
   f.api.history.mockResolvedValue({
-    items: Array.from({ length: 30 }, (_, index) => ({
-      ...f.control,
-      status: {
-        ...f.status,
-        declaration: {
-          ...f.status.declaration,
-          request_id: crypto.randomUUID(),
+    items: Array.from(
+      { length: 30 },
+      (_, index): LocalCaptureControlSnapshot => ({
+        ...f.control,
+        status: {
+          ...f.status,
+          declaration: {
+            ...f.status.declaration,
+            request_id: crypto.randomUUID(),
+          },
+          message: `Historical ${index}`,
         },
-        message: `Historical ${index}`,
-      },
-    })).concat([
+      }),
+    ).concat([
       {
         ...f.control,
         status: {

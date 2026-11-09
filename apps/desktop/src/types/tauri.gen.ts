@@ -382,6 +382,25 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationRecordingProcessingHistory(
+    sessionId: string | null,
+    cursor: string | null,
+    limit: number,
+  ): Promise<Result<LocalCaptureHistoryPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recording_processing_history", {
+          sessionId,
+          cursor,
+          limit,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationCancelRecordingProcessing(
     requestId: string,
   ): Promise<Result<LocalCaptureControlSnapshot, ApplicationError>> {
@@ -4121,6 +4140,10 @@ export type LocalCaptureDeclaration = {
   batch_requested: boolean;
   transcription: LocalTranscriptionOptions | null;
   summary: CaptureProcessingSummary | null;
+};
+export type LocalCaptureHistoryPage = {
+  items: LocalCaptureControlSnapshot[];
+  next_cursor: string | null;
 };
 export type LocalCaptureResolution = {
   resolution_id: string;

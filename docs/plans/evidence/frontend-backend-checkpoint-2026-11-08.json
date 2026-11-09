@@ -11194,6 +11194,80 @@
       },
       "failures": "All10 preserved in rawlog65de875b800da3756a9bd84dd4d40a7584644ab1ef80941df759be7db0273add; source/fixture diagnosis inprogress, no cancelled check or broad pass claim",
       "storage": "First ENOSPC; scoped superseded object prune; independent rm9803 deleting shared build observed terminal before cold rebuild; same absolute path and stable21 graph retained"
+    },
+    "bounded_capture_history_first_integrated_validation_2026_11_09": {
+      "source": "53731a0e3c01ee890262935315cf05ecfef00ea1",
+      "reports": {
+        "history-integrated/result.json": {
+          "sha256": "0c50f22c4c9e15a101604e70fe972282a1ae77f009f3154046bba8e4a437179a",
+          "report": {
+            "source": "53731a0e3c01ee890262935315cf05ecfef00ea1",
+            "steps": [
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/history-integrated/all-target-check.log",
+                "exit": 0,
+                "seconds": 124.6706178188324,
+                "sha256": "9c5cb2f0116f3210128b228e399f197ae09df7a95e4baad800179ead7ce563be"
+              },
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/history-integrated/exporter.log",
+                "exit": 0,
+                "seconds": 121.70845293998718,
+                "sha256": "74d5ec93753fa4a43bba34a194dc527631db6fa7d380c118cffedd35b21593c7"
+              },
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/history-integrated/four-libraries.log",
+                "exit": 101,
+                "seconds": 402.49097204208374,
+                "sha256": "2ff9f76328dd83bbcb043a618fe29f9f38c5da6bc57a4ef0709f5dd9c74a8b66"
+              }
+            ]
+          }
+        },
+        "four-libraries-after-fixes/result.json": {
+          "sha256": "89d7988064ff6ae816b02f6bde1df3307fe01bec60084cd25a4cddbe37f7f7fa",
+          "report": {
+            "source": "43ba95293a37eb960b9ef764df0c5227bbac0175",
+            "steps": [
+              {
+                "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/local-capture-cancel-a/four-libraries-after-fixes/four-libraries.log",
+                "exit": 101,
+                "seconds": 202.69133400917053,
+                "sha256": "6cc86ec0d2cf7a4e5bc15f044478fb5b335cf83e8b50af8e3725697d9eb943d4"
+              }
+            ]
+          }
+        }
+      },
+      "qualification": {
+        "all_target_check": "Stable21 passed124.67s; baseline9desktoplibrary/4testwarnings",
+        "exporter": "Actual test::export_types passed exactly1; generatedNativehistorypage/command, directoxfmt",
+        "frontend": "70 tests/2files passed; actuallocaleextract/strictcompilepassed; TSCpassed after typing fixture map return as shared snapshot type; first TSCfailurepreserved",
+        "libraries": {
+          "cli": [
+            96,
+            0,
+            0
+          ],
+          "core": [
+            586,
+            2,
+            2
+          ],
+          "server": [
+            182,
+            0,
+            6
+          ],
+          "vault_write": [
+            631,
+            0,
+            5
+          ]
+        },
+        "new_history_idle_cases": "All22 passed including real4097admissions, exacthash, faultrecovery, lifecycle and actualabandonedIOdrain",
+        "limits": "Other17librarybinaries NOTEXECUTED. Two append failures remain; no wholecohortpass. Later boundedmigrationbudget/copy/pins not qualified by this run. Desktopbehavior paused."
+      }
     }
   },
   "local_work_focused": [

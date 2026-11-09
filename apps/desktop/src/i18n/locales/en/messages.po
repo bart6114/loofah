@@ -229,6 +229,10 @@ msgstr "Append to the verified recording. Enable transcription to include the ne
 msgid "Apply high-confidence tag suggestions"
 msgstr "Apply high-confidence tag suggestions"
 
+#: src/shared/application/vault-recording-history.tsx
+msgid "Archived recording processing"
+msgstr "Archived recording processing"
+
 #: src/task/resource-view.tsx
 msgid "Assignees:"
 msgstr "Assignees:"
@@ -352,7 +356,7 @@ msgstr "Cancelled"
 msgid "Cancelling"
 msgstr "Cancelling"
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 msgid "Cancelling recording processing"
 msgstr "Cancelling recording processing"
 
@@ -800,8 +804,8 @@ msgstr "Created"
 msgid "Creating note..."
 msgstr "Creating note..."
 
+#: src/shared/application/recording-processing-status.tsx
 #: src/shared/application/vault-media-processing.tsx
-#: src/shared/application/vault-recording-processing.tsx
 msgid "Creating summary"
 msgstr "Creating summary"
 
@@ -1073,6 +1077,10 @@ msgstr "Finish signing in in your browser…"
 #: src/shared/application/device-recording-queue.tsx
 msgid "Finishing recording and saving device audio…"
 msgstr "Finishing recording and saving device audio…"
+
+#: src/shared/application/vault-recording-history.tsx
+msgid "First history page"
+msgstr "First history page"
 
 #: src/shared/application/vault-processing.tsx
 msgid "Forget device request"
@@ -1385,6 +1393,10 @@ msgstr "Loading notes…"
 msgid "Loading preview…"
 msgstr "Loading preview…"
 
+#: src/shared/application/vault-recording-history.tsx
+msgid "Loading processing history…"
+msgstr "Loading processing history…"
+
 #: src/shared/application/delete-document-modal.tsx
 msgid "Loading saved output…"
 msgstr "Loading saved output…"
@@ -1591,6 +1603,10 @@ msgstr "New Note"
 msgid "Next"
 msgstr "Next"
 
+#: src/shared/application/vault-recording-history.tsx
+msgid "Next history page"
+msgstr "Next history page"
+
 #: src/session/components/note-input/search/bar.tsx
 msgid "Next match"
 msgstr "Next match"
@@ -1656,6 +1672,10 @@ msgstr "No note is linked to this saved request yet."
 #: src/shared/open-note-dialog.tsx
 msgid "No notes found."
 msgstr "No notes found."
+
+#: src/shared/application/vault-recording-history.tsx
+msgid "No processing history on this page."
+msgstr "No processing history on this page."
 
 #: src/shared/application/vault-provider-credentials.tsx
 msgid "No provider key is configured."
@@ -1916,6 +1936,10 @@ msgstr "Previous match"
 msgid "Processing cancellation is saved. Audio capture and upload continue."
 msgstr "Processing cancellation is saved. Audio capture and upload continue."
 
+#: src/shared/application/vault-recording-history.tsx
+msgid "Processing history"
+msgstr "Processing history"
+
 #: src/shared/application/vault-processing.tsx
 msgid "Processing may already have started. Resume uses the original request."
 msgstr "Processing may already have started. Resume uses the original request."
@@ -1995,6 +2019,10 @@ msgstr "Reconnect to the original workspace before removing retained media."
 msgid "Reconnect to the original workspace to inspect or recover requests."
 msgstr "Reconnect to the original workspace to inspect or recover requests."
 
+#: src/shared/application/vault-recording-history.tsx
+msgid "Reconnect to the original workspace to read processing history."
+msgstr "Reconnect to the original workspace to read processing history."
+
 #: src/shared/application/open-note-window.ts
 msgid "Reconnect to this workspace before opening its note."
 msgstr "Reconnect to this workspace before opening its note."
@@ -2017,7 +2045,7 @@ msgstr "Record audio"
 
 #: src/settings/general/index.tsx
 #: src/shared/application/device-recording-queue.tsx
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 #: src/sidebar/settings.tsx
 msgid "Recording"
 msgstr "Recording"
@@ -2038,7 +2066,7 @@ msgstr "Recording and transcription still work. Set up summaries when you want t
 msgid "Recording deletion was not confirmed. Reload it before trying again."
 msgstr "Recording deletion was not confirmed. Reload it before trying again."
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 msgid "Recording did not start"
 msgstr "Recording did not start"
 
@@ -2062,27 +2090,27 @@ msgstr "Recording playback is unavailable."
 msgid "Recording processing"
 msgstr "Recording processing"
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 msgid "Recording processing cancelled"
 msgstr "Recording processing cancelled"
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 msgid "Recording processing closed by review"
 msgstr "Recording processing closed by review"
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 msgid "Recording processing complete"
 msgstr "Recording processing complete"
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 msgid "Recording processing needs review"
 msgstr "Recording processing needs review"
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 msgid "Recording processing skipped"
 msgstr "Recording processing skipped"
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 msgid "Recording processing stopped because the saved content changed"
 msgstr "Recording processing stopped because the saved content changed"
 
@@ -2376,6 +2404,10 @@ msgstr "Retry cleanup"
 msgid "Retry creation"
 msgstr "Retry creation"
 
+#: src/shared/application/vault-recording-history.tsx
+msgid "Retry history"
+msgstr "Retry history"
+
 #: src/shared/application/delete-document-modal.tsx
 msgid "Retry original removal"
 msgstr "Retry original removal"
@@ -2528,7 +2560,7 @@ msgstr "Saves pending edits before using the saved notes and transcript."
 msgid "Saving date…"
 msgstr "Saving date…"
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 msgid "Saving recording"
 msgstr "Saving recording"
 
@@ -3224,8 +3256,8 @@ msgid "This attachment is no longer available."
 msgstr "This attachment is no longer available."
 
 #: src/shared/application/vault-recording-processing.tsx
-msgid "This closes only this recording's completed processing conflict. Current notes, images, transcript, summary, audio, retained results and journals stay unchanged. No transcription or summary will run."
-msgstr "This closes only this recording's completed processing conflict. Current notes, images, transcript, summary, audio, retained results and journals stay unchanged. No transcription or summary will run."
+msgid "This closes only this recording's completed processing conflict. Current notes, images, transcript, summary, audio, retained results stay unchanged. No transcription or summary will run."
+msgstr "This closes only this recording's completed processing conflict. Current notes, images, transcript, summary, audio, retained results stay unchanged. No transcription or summary will run."
 
 #: src/shared/application/notes-workspace.tsx
 msgid "This connection is no longer authorized."
@@ -3391,7 +3423,7 @@ msgstr "Transcribing"
 msgid "Transcribing on the server."
 msgstr "Transcribing on the server."
 
-#: src/shared/application/vault-recording-processing.tsx
+#: src/shared/application/recording-processing-status.tsx
 #: src/shared/application/vault-transcription.tsx
 msgid "Transcribing recording"
 msgstr "Transcribing recording"
