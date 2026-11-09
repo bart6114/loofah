@@ -23,7 +23,7 @@ mod tests {
     async fn counts_report_unavailable_under_io_lock_without_reading_source_bytes() {
         let directory = tempfile::tempdir().unwrap();
         let spool = CaptureSpool::open(
-            directory.path().join("captures"),
+            directory.path().canonicalize().unwrap().join("captures"),
             CaptureSpoolLimits::default(),
         )
         .await
