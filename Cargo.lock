@@ -7748,6 +7748,7 @@ dependencies = [
  "uuid",
  "vault-read",
  "vault-write",
+ "winapi-util",
 ]
 
 [[package]]
