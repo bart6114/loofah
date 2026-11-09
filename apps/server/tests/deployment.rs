@@ -299,7 +299,7 @@ async fn packaged_caddy_append_and_restart() {
         panic!("me reply")
     };
     let scope = CaptureScope {
-        server: origin.into(),
+        server: client.address().to_owned(),
         member_id: member.member.id,
         vault_id: member.personal_vault_id,
     };

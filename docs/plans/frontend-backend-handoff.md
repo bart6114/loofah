@@ -2888,3 +2888,72 @@ Both direct-head speech jobs passed eight cases each. The original runs were not
 cancelled or retried; all requested jobs were terminal at 13:44:03 UTC. Full raw
 hashes and named evidence are preserved in the existing portable record before
 pushing the corrected fixture and new headless acceptance batch.
+
+
+## First installed deployment run: canonical-origin fixture correction
+
+Backend run `42628502203` used PR source
+`6e56a7d60360b3d8f333ba930bf6f563427bc567`, checked out as merge
+`5d2fd0e447fb4f29b6e193f0effa5ade82578c8e` with main parent
+`a6a8f001d9165881e59fd0fa29df944da26b8801`. Headless job `129198385472`
+passed 1,751 tests / zero failures / 20 ignored across 23 result cohorts, including
+zero-test and documentation targets. All three HTTP append cases passed. The
+installed-deployment case was explicitly ignored in that ordinary cohort.
+
+Container job `129198385221` built the default image and driver, then actually ran
+`packaged_caddy_append_and_restart`: **zero passed / one failed / zero ignored**
+in 0.49 seconds. The driver used the coordinator's unnormalized origin
+`https://127.0.0.1:52765` as `CaptureScope.server`; the SDK's parsed URL is
+`https://127.0.0.1:52765/`. Its unchanged original-scope guard correctly rejected
+the first `begin_capture` locally with `Validation` / `NotCommitted`, before a
+capture POST. This is a harness identity-construction defect, not a failed
+server append or permission to relax the SDK's scope comparison. New fixture
+requests now derive their immutable server coordinate from `client.address()`.
+No saved request is retargeted. The same ignored end-to-end case remains the
+meaningful regression; corrected execution is pending.
+
+Read-only production-path review is consistent with that narrow diagnosis:
+`crates/loofah-client/src/profiles.rs` has `ConnectionProfiles::create` normalize
+through `server_origin()` / `Url::to_string()`. In
+`apps/desktop/src-tauri/src/device_capture/remote.rs`, `profile_scope` uses the
+saved canonical server and `validate_client` retains exact `client.address()`
+equality. Existing `device_capture/append_tests.rs` and `processing_tests.rs`
+fixtures derive scope from the client address. This source review is not a new
+Native runtime pass.
+
+Before that refusal, the actual packaged executable ran under the documented
+hardened systemd unit as UID 999. Its storage/cache roots were mode 0700 and
+owned by that UID. The bounded proc snapshot found exactly one owned listener,
+`127.0.0.1:46397`, with no IPv6 or additional listener. Caddy served verified
+fixture TLS; authenticated SDK provision/note creation and the corresponding
+SSE change completed. Direct production discovery omitted `capture_append`;
+the fixture added only that feature. Failure cleanup stopped the owned service
+with success/inactive status and Caddy with exit zero. Raw capture, canonical
+PCM/hash verification, append, restart/replay and post-restart SSE were **not**
+qualified. A separate search-cache initialization message reported a concurrent
+vault-reconciliation change; it did not cause the local SDK validation failure.
+
+Artifact `13680063868` (`packaged-deployment-acceptance`) and all failed evidence
+are retained under task logs `ci-6e56a7-audit/packaged-deployment-13680063868/`.
+The downloaded ZIP matches GitHub's digest
+`9b244f804b6166e3df1f52ec5ef26cfbdb193be49f8185b26d6aaafbae4463b5`;
+its evidence tar SHA-256 is
+`6f622c2017649169db556d97043560918e2f16e81915a8926b7f8807df510126`.
+The tar's packaged server bytes independently match receipt SHA-256
+`30171c0514990ec9dcd53bb5e5d26979000c9d73ed2095dbc6e40bdad0e15968`;
+driver SHA-256 is `7ad5b8760bbedbda4dace0f99bba1e961f3c450aea3ff7cc6a81658fd4fd0914`.
+
+| Failed-run evidence | SHA-256 |
+| --- | --- |
+| `acceptance.json` | `0e9c0729b40d53073fff06b3e940f3e248e68338e7eca85137109714a2393c17` |
+| `console.log` | `97011ba31f21f42d036e151434d5b26e7660bd63fb26b48d2d9a5c2e71bf79d1` |
+| `driver.log` | `55328f64c82454d1cdc267c73732a90446f5da90a060cede3a848d521002fde1` |
+| `server-journal.log` | `43edb57e225136a0e7ce884de64a3f2a0372ab3f458ccb8d210bc3e1ad9b9561` |
+| `caddy.log` | `a9735e8c6603bd38f9468aafc291935643bf69a6e8b03e620698a1a8b085109b` |
+| Headless raw job log | `1c478a66f3ad72d075042c2bb7abbf974bed6b84ab8c771a9ca2a22ece1ae5fa` |
+| Container raw job log | `1a99a3de7519156d28bde20b66d97d5a95b5e5fe7d85ec8a335f045de8b98c2a` |
+
+This correction and handoff update are source-only at this checkpoint. No local
+Cargo, Docker, application, inference or CI retry was run. Other healthy hosted
+jobs continue unchanged; desktop testing remains user-paused and production
+SSO remains deferred.
