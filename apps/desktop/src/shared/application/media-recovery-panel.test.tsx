@@ -501,7 +501,10 @@ it("loads a saved cleanup decision read-only and fences original-source recovery
     }),
   ).toBeNull();
   expect(
-    screen.queryByRole("button", { name: "Save original file" }),
+    screen.getByRole("button", { name: "Save original file" }),
+  ).toHaveProperty("disabled", false);
+  expect(
+    screen.queryByRole("button", { name: "Cancel processing" }),
   ).toBeNull();
   fireEvent.click(review);
   fireEvent.click(await screen.findByRole("checkbox"));
@@ -599,4 +602,167 @@ it("reviews request-quota release without claiming uploaded files exist for a no
     disposition: "no_upload",
     expected_source: null,
   });
+});
+
+function pendingCleanup(): MediaRetirementView {
+  const view = retirementView();
+  view.pending = {
+    retirement_id: "9b6769c3-cc92-4383-b7be-d3472457b746",
+    expected_revision: view.status.revision,
+    expected_declaration_sha256: view.status.declaration_sha256,
+    expected_source: view.status.source,
+    disposition: "discard",
+  };
+  return view;
+}
+
+it("allows a verified source save after cleanup is blocked before POST without changing its decision", async () => {
+  native.reveal.mockResolvedValue({ status: "ok", data: null });
+  const view = pendingCleanup();
+  view.status.state = "blocked";
+  view.status.reason = "Original work is still draining";
+  view.status.allowed_dispositions = [];
+  const original = structuredClone(view.pending);
+  const f = await fixture({ state: "receiving", retirement: view });
+  f.media.exportSource.mockImplementation(async () => {
+    view.verified_export = true;
+    return { path: "/downloads/Loofah/Original.wav" };
+  });
+  await f.expand();
+  await screen.findByText(view.status.reason);
+  expect(f.media.retire).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Save original file" }));
+  await screen.findByText("Original file saved to Downloads/Loofah.");
+  expect(f.media.exportSource).toHaveBeenCalledWith(
+    "original-request",
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(view.pending).toEqual(original);
+  expect(f.media.retire).not.toHaveBeenCalled();
+  expect(f.media.recover).not.toHaveBeenCalled();
+  expect(f.media.resumeSource).not.toHaveBeenCalled();
+  expect(f.media.cancel).not.toHaveBeenCalled();
+  expect(f.media.importAudio).not.toHaveBeenCalled();
+  expect(
+    screen.queryByRole("button", {
+      name: "Choose original file to resume upload",
+    }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Cancel processing" }),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Review original cleanup" }),
+  );
+  const choice = await screen.findByRole("combobox", {
+    name: "Original source",
+  });
+  expect(choice).toHaveProperty("value", "discard");
+  expect(choice).toHaveProperty("disabled", true);
+  expect(
+    screen.queryByRole("option", {
+      name: "I have kept the verified exported copy",
+    }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Resume original cleanup" }),
+  );
+  await waitFor(() => expect(f.media.retire).toHaveBeenCalledTimes(1));
+  expect(f.media.retire!.mock.calls[0][1]).toEqual(original);
+});
+
+it("allows an explicit source save with unknown cleanup status but keeps all mutation fences", async () => {
+  native.reveal.mockResolvedValue({ status: "ok", data: null });
+  const view = pendingCleanup();
+  const f = await fixture({ state: "review", retirement: view });
+  f.media.retirementStatus!.mockRejectedValue(
+    new Error("Cleanup outcome unknown"),
+  );
+  await f.expand();
+  await screen.findByText("Cleanup outcome unknown");
+  expect(
+    screen.queryByRole("button", { name: "Recover saved request" }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Save original file" }));
+  await screen.findByText("Original file saved to Downloads/Loofah.");
+  expect(f.media.exportSource).toHaveBeenCalledTimes(1);
+  expect(f.media.retire).not.toHaveBeenCalled();
+  expect(f.media.recover).not.toHaveBeenCalled();
+  expect(f.media.resumeSource).not.toHaveBeenCalled();
+  expect(f.media.cancel).not.toHaveBeenCalled();
+  expect(f.media.importAudio).not.toHaveBeenCalled();
+  expect(view.pending).toEqual(pendingCleanup().pending);
+  act(() => f.emit({ kind: "connection", state: "reconnecting", error: null }));
+  expect(
+    screen.getByRole("button", { name: "Save original file" }),
+  ).toHaveProperty("disabled", true);
+});
+
+it.each(["retiring", "retired"] as const)(
+  "hides source export when the server confirms cleanup is %s",
+  async (state) => {
+    const view = pendingCleanup();
+    view.status.state = state;
+    view.status.retirement = view.pending;
+    view.status.allowed_dispositions = [];
+    view.status.quota_released = state === "retired";
+    const f = await fixture({ state: "receiving", retirement: view });
+    await f.expand();
+    await waitFor(() => expect(f.media.retirementStatus).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Save original file" }),
+      ).toBeNull(),
+    );
+    expect(
+      screen.queryByRole("button", {
+        name: "Choose original file to resume upload",
+      }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Cancel processing" }),
+    ).toBeNull();
+    expect(f.media.exportSource).not.toHaveBeenCalled();
+    expect(f.media.retire).not.toHaveBeenCalled();
+  },
+);
+
+it("keeps pending-cleanup source export disabled for a Reader", async () => {
+  const f = await fixture({
+    state: "receiving",
+    canEdit: false,
+    retirement: pendingCleanup(),
+  });
+  await f.expand();
+  expect(
+    screen.getByRole("button", { name: "Save original file" }),
+  ).toHaveProperty("disabled", true);
+  expect(f.media.exportSource).not.toHaveBeenCalled();
+  expect(f.media.retire).not.toHaveBeenCalled();
+});
+
+it("keeps an authoritative retiring response fenced when its later status refresh fails", async () => {
+  const view = pendingCleanup();
+  view.status.state = "retiring";
+  view.status.retirement = view.pending;
+  view.status.allowed_dispositions = [];
+  const f = await fixture({ state: "receiving", retirement: view });
+  await f.expand();
+  await waitFor(() => expect(f.media.retirementStatus).toHaveBeenCalled());
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Save original file" }),
+    ).toBeNull(),
+  );
+  f.media.retirementStatus!.mockRejectedValue(
+    new Error("Cleanup status unavailable"),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Check cleanup status" }));
+  await screen.findByText("Cleanup status unavailable");
+  expect(
+    screen.queryByRole("button", { name: "Save original file" }),
+  ).toBeNull();
+  expect(f.media.exportSource).not.toHaveBeenCalled();
+  expect(f.media.retire).not.toHaveBeenCalled();
 });

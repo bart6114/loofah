@@ -280,6 +280,10 @@ function RecoveryRequest({
     !!retirement.data?.pending ||
     retirement.data?.status.state === "retiring" ||
     retirement.data?.status.state === "retired";
+  const sourceUnavailable =
+    receipt.cleanup === "retired" ||
+    retirement.data?.status.state === "retiring" ||
+    retirement.data?.status.state === "retired";
   const action = useMutation(
     {
       retry: false,
@@ -352,7 +356,7 @@ function RecoveryRequest({
           !signal.aborted &&
           scope.getSnapshot().state === "connected" &&
           scope.client.canEdit;
-        if (!current() || !api.exportSource || retiring)
+        if (!current() || !api.exportSource || sourceUnavailable)
           throw new Error(
             t`This saved request is no longer available in its original workspace.`,
           );
@@ -439,7 +443,7 @@ function RecoveryRequest({
         </p>
       )}
       <div className="mt-2 flex flex-wrap gap-2">
-        {api.exportSource && receipt.filename && !retiring && (
+        {api.exportSource && receipt.filename && !sourceUnavailable && (
           <Button
             size="sm"
             variant="outline"
