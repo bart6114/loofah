@@ -216,7 +216,11 @@ impl MediaDispatcher {
         let path = self.root.join(format!("{request}.admission.json"));
         let owner = self.context.clone();
         let complete = self.root.join(format!("{request}.source")).join("source");
-        let expected = source(record);
+        let expected = record
+            .retirement
+            .is_none()
+            .then(|| source(record))
+            .flatten();
         let (active, exportable) = tokio::task::spawn_blocking(move || {
             let _owner = owner;
             let exportable = expected.is_some_and(|expected| {
@@ -286,11 +290,6 @@ impl MediaDispatcher {
         input: MediaRetirementRequest,
     ) -> Result<MediaRetirementStatus, ApplicationError> {
         let _request = self.try_request_gate(&request).await?;
-        let _retirement_owner = self
-            .source_reads
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| unavailable("Media retirement capacity unavailable"))?;
         drop(self.authorization.authorize().await?);
         if self.stop.is_cancelled() {
             return Err(unavailable("Media service is stopping"));
@@ -316,6 +315,14 @@ impl MediaDispatcher {
                     return Ok(historical);
                 }
             }
+        }
+        let _retirement_owner = self
+            .source_reads
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| unavailable("Media retirement capacity unavailable"))?;
+        if self.stop.is_cancelled() {
+            return Err(unavailable("Media service is stopping"));
         }
         let source_gate = self
             .source_gate(&request)

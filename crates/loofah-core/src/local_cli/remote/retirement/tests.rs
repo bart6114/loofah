@@ -695,12 +695,14 @@ async fn media_retirement_completed_replay_ignores_later_work_and_preserves_reap
         .await
         .unwrap();
     let source = fixture.media.source_gate(request).await.read_owned().await;
+    let reader_capacity = fixture.media.source_reads.acquire_many(4).await.unwrap();
     let replay = fixture.media.retire(request.clone(), input).await.unwrap();
     assert_eq!(replay, retired);
     assert_eq!(std::fs::read(&later).unwrap(), bytes);
     assert!(fixture.media.inventory().await.unwrap().is_empty());
     drop(source);
     drop(session);
+    drop(reader_capacity);
     fixture.stop().await;
 }
 
