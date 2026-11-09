@@ -275,6 +275,63 @@ it("keeps reader capture unavailable without dispatching native work", async () 
   fireEvent.click(button);
   expect(native.start).not.toHaveBeenCalled();
   expect(backend.audioMetadata).not.toHaveBeenCalled();
+  const pending = await screen.findByRole("button", {
+    name: "Record a new note",
+  });
+  expect((pending as HTMLButtonElement).disabled).toBe(true);
+  const transcribe = screen.getAllByRole("checkbox", {
+    name: "Transcribe on the server",
+  });
+  expect(transcribe.every((input) => input.closest("fieldset")?.disabled)).toBe(
+    true,
+  );
+  fireEvent.click(pending);
+  expect(native.start).not.toHaveBeenCalled();
+});
+
+it("allows disconnected raw pending capture while retaining a connected reader gate", async () => {
+  const { backend } = await mount({ canEdit: false });
+  const button = await screen.findByRole("button", {
+    name: "Record a new note",
+  });
+  await waitFor(() =>
+    expect((button as HTMLButtonElement).disabled).toBe(true),
+  );
+  const receive = vi.mocked(backend.subscribe).mock.calls[0][0];
+  act(() =>
+    receive({ kind: "connection", state: "reconnecting", error: null }),
+  );
+  await waitFor(() =>
+    expect((button as HTMLButtonElement).disabled).toBe(false),
+  );
+  act(() => receive({ kind: "connection", state: "connected", error: null }));
+  await waitFor(() =>
+    expect((button as HTMLButtonElement).disabled).toBe(true),
+  );
+  act(() =>
+    receive({ kind: "connection", state: "login_required", error: null }),
+  );
+  await waitFor(() =>
+    expect((button as HTMLButtonElement).disabled).toBe(false),
+  );
+  fireEvent.click(button);
+  await waitFor(() => expect(native.start).toHaveBeenCalledOnce());
+  expect(native.start.mock.calls[0][0]).toMatchObject({
+    target: { kind: "pending_session" },
+    processing: null,
+  });
+});
+
+it("keeps existing Stop available for a connected reader", async () => {
+  await mount({ canEdit: false, active: true });
+  const stop = await screen.findByRole("button", { name: "Stop recording" });
+  fireEvent.click(stop);
+  await waitFor(() =>
+    expect(
+      native.monitors.some((item) => item.stop.mock.calls.length === 1),
+    ).toBe(true),
+  );
+  expect(native.start).not.toHaveBeenCalled();
 });
 
 it("updates retained audio status after Stop without requiring a server connection", async () => {

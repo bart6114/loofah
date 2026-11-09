@@ -34,12 +34,17 @@ function setup(start: ReturnType<typeof vi.fn>) {
     return null;
   }
   const owner = { scopeKey: "original", client: { start } } as any;
-  const ui = (recording = owner, profileId = "profile") => (
+  const ui = (
+    recording = owner,
+    profileId = "profile",
+    startAllowed = true,
+  ) => (
     <QueryClientProvider client={cache}>
       <DeviceRecordingControls
         profileId={profileId}
         recording={recording}
         monitor={null}
+        startAllowed={startAllowed}
       >
         <Probe />
       </DeviceRecordingControls>
@@ -51,6 +56,7 @@ function setup(start: ReturnType<typeof vi.fn>) {
     get actions() {
       return actions!;
     },
+    allow: (allowed: boolean) => view.rerender(ui(owner, "profile", allowed)),
     replace: () =>
       view.rerender(ui({ scopeKey: "replacement", client: { start } }, "next")),
     unmount: view.unmount,
@@ -128,4 +134,27 @@ it("places a late successful receipt in its original profile cache", async () =>
     result,
   ]);
   expect(view.cache.getQueryData(["device", "recordings", "next"])).toEqual([]);
+});
+
+it("rejects retained reminder callbacks after a connected reader downgrade without losing original retry identity", async () => {
+  const start = vi.fn().mockRejectedValueOnce(new Error("Unknown outcome"));
+  const view = setup(start);
+  const retained = view.actions.startPending;
+  await act(async () => {
+    await view.actions.startPending().catch(() => {});
+  });
+  const original = structuredClone(start.mock.calls[0][0]);
+  view.allow(false);
+  expect(view.actions.canStart).toBe(false);
+  await expect(retained({ retry: true })).rejects.toThrow("read-only");
+  expect(start).toHaveBeenCalledTimes(1);
+  view.allow(true);
+  start.mockResolvedValueOnce({
+    identity: { capture_id: "original" },
+    phase: "finished",
+  });
+  await act(async () => {
+    await view.actions.startPending({ retry: true });
+  });
+  expect(start.mock.calls[1][0]).toEqual(original);
 });

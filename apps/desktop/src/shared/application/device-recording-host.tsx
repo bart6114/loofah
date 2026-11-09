@@ -159,6 +159,17 @@ export function DeviceRecordingHost({
       <DeviceRecordingControls
         profileId={profileId}
         recording={current}
+        startAllowed={
+          !(
+            current &&
+            access?.client === current.client &&
+            access.scope.client.scope === current.scopeKey &&
+            access.scope.client.nativeConnectionId ===
+              current.destination.connectionId &&
+            connection === "connected" &&
+            !access.scope.client.canEdit
+          )
+        }
         monitor={monitor?.profileId === profileId ? monitor.client : null}
       >
         {monitor?.profileId === profileId && (
@@ -330,6 +341,7 @@ function AdmittedRecordButton({
       <DeviceProcessingOptions
         form={processing}
         disabled={
+          !permitted ||
           start.isPending ||
           !!intent.current ||
           !!appendIntent.current ||

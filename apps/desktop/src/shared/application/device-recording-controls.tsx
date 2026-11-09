@@ -1,4 +1,4 @@
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
@@ -57,13 +57,16 @@ export function DeviceRecordingControls({
   profileId,
   recording,
   monitor,
+  startAllowed = true,
   children,
 }: {
   profileId: string;
   recording: Owner | null;
   monitor: ReturnType<typeof createDeviceRecordingMonitor> | null;
+  startAllowed?: boolean;
   children: ReactNode;
 }) {
+  const { t } = useLingui();
   const cache = useQueryClient();
   const processing = useDeviceProcessingOptions();
   const key = ["device", "recordings", profileId];
@@ -84,11 +87,25 @@ export function DeviceRecordingControls({
       if (original.current === recording) original.current = null;
     };
   }, [recording]);
+  const active = inventory.data?.some(activeDeviceCapture) ?? true;
+  const availability = useRef({
+    ready: inventory.isSuccess,
+    active,
+    allowed: startAllowed,
+  });
+  availability.current = {
+    ready: inventory.isSuccess,
+    active,
+    allowed: startAllowed,
+  };
   const start = useMutation({
     networkMode: "always",
     retry: false,
-    mutationFn: (attempt: Intent) =>
-      attempt.owner.client.start(attempt.request),
+    mutationFn: (attempt: Intent) => {
+      if (!availability.current.allowed)
+        throw new Error(t`This workspace is read-only.`);
+      return attempt.owner.client.start(attempt.request);
+    },
     onSuccess: (item, attempt) => {
       cache.setQueryData<DeviceRecordingInfo[]>(
         ["device", "recordings", attempt.profileId],
@@ -108,10 +125,8 @@ export function DeviceRecordingControls({
       });
     },
   });
-  const active = inventory.data?.some(activeDeviceCapture) ?? true;
-  const canStart = !start.isPending && !active && inventory.isSuccess;
-  const availability = useRef({ ready: inventory.isSuccess, active });
-  availability.current = { ready: inventory.isSuccess, active };
+  const canStart =
+    startAllowed && !start.isPending && !active && inventory.isSuccess;
   const startPending = useCallback(
     async ({
       retry = false,
@@ -123,6 +138,8 @@ export function DeviceRecordingControls({
         !availability.current.ready
       )
         throw new Error("Recording destination is not ready");
+      if (!availability.current.allowed)
+        throw new Error(t`This workspace is read-only.`);
       const previous = intent.current;
       if (previous?.owner === recording && previous.promise)
         return previous.promise;
@@ -171,7 +188,7 @@ export function DeviceRecordingControls({
       attempt.promise = promise;
       return promise;
     },
-    [recording, profileId, inventory.isSuccess, active, processing, start],
+    [recording, profileId, inventory.isSuccess, active, processing, start, t],
   );
   return (
     <Actions.Provider
@@ -194,6 +211,7 @@ export function DeviceRecordingControls({
           <DeviceProcessingOptions
             form={processing}
             disabled={
+              !startAllowed ||
               start.isPending ||
               (intent.current?.owner === recording && !intent.current.complete)
             }
