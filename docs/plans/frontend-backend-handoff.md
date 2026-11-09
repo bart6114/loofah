@@ -1139,3 +1139,23 @@ and export cases passed at `37a5b36ab3`; actual Linux maintenance execution and 
 Windows execution remain pending. CLI/frontend/container checks and both Windows
 speech-model architectures passed on the earlier published source. The Native
 Windows ARM64 compile is still running; healthy CI has not been cancelled.
+
+
+The Reader and native-menu corrections are integrated at `2433ca73f6` and
+`2d3418d495`. The combined frontend run passed **2,622 tests in 298 files**;
+desktop typechecking and formatting passed. Focused menu/Reader/About checks passed
+111 cases. The actual Local idle-supervisor regression passed after the explicit
+result-type correction at `584233f62f`; selecting its dependency's test root did
+not change the resolved normal feature graph. The Linux eager-maintenance recovery
+fixture passed one exact case against the existing frozen `573da57617` production
+graph plus its test-only overlay. This remains distinct from final-head Linux CI.
+
+Both A/B QA processes later completed ordinary menu Quit with exit code zero.
+The post-CSP issuer counted two browser authorizations, two code exchanges, seven
+refresh rotations and no rejections; earlier failed fixture metrics remain saved.
+The final immutable UI receipt is `ui-acceptance-71ea43cf94-final.json` in the lab
+root above, with a portable copy in the checkpoint evidence. A subsequent review
+found that `NamedTempFile` cleanup after a Unix destination-directory replacement
+could target the replacement namespace. Physical staging/publication/cleanup
+ownership and same-basename sentinels are being corrected before patched PDF QA;
+the existing positive rename fixture did not establish this cleanup property.

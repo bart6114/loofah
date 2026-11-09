@@ -726,11 +726,11 @@
       }
     },
     "native_independent_clients_2026_11_09": {
-      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/ui-acceptance.json",
-      "sha256": "3b1d11c5c7d567e0b8905cac922bde2b3355c4f63aa5f9e9b6bce7ebdda03c3d",
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/ui-acceptance-71ea43cf94-final.json",
+      "sha256": "8f0a054345e03371978eea6f5b4433c4e4dd0a9d9192846f7a2c50a6178f6fbc",
       "record": {
         "source": "71ea43cf9455beb536b13dcb22481f17f62a02a8",
-        "recorded_at": "2026-11-09T01:06:35.154820+00:00",
+        "recorded_at": "2026-11-09T01:15:44.116515+00:00",
         "artifact": "Optimized macOS arm64 A/B, exact graph21 plus desktop/dev, MOCK_AUDIO=0; manifests alongside each app",
         "authentication": "Actual native browser PKCE using synthetic Alice/Bob fixture accounts; numeric loopback HTTP issuer and verified HTTPS API fixture CA. Not production HTTPS SSO qualification. No user credentials/trust changes.",
         "observed_passes": [
@@ -744,7 +744,9 @@
           "B opened independent Reader window; all three paragraphs visible with no editor",
           "Owner removed Bob; existing B child immediately replaced content with workspace-no-longer-available message",
           "Personal child stayed open after parent switched Personal to Shared and parent close; further delta edit saved only in original Personal vault, exact canonical readback verified",
-          "Sign-out returned main workspace to Connect with no Local fallback"
+          "Sign-out returned main workspace to Connect with no Local fallback",
+          "Both Native A/B apps completed ordinary menu Quit with process exit code 0 after note/window/access tests; no force termination",
+          "Post-CSP fixture metrics after both apps quit: 2 browser authorizations, 2 code exchanges, 7 refresh rotations, 0 rejections; prior failed CSP fixture metrics separately retained"
         ],
         "not_yet_qualified": [
           "Actual OS microphone/system-audio capture pending action-time permission",
