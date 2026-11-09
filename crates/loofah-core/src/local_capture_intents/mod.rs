@@ -22,7 +22,9 @@ use crate::{
 
 mod controls;
 pub use controls::{LocalCaptureAction, LocalCaptureControlSnapshot};
+mod history;
 mod journal;
+pub use history::LocalCaptureHistoryPage;
 mod recovery;
 mod resolution;
 pub use resolution::{LocalCaptureResolution, LocalCaptureResolutionDecision};
@@ -123,6 +125,8 @@ struct Entry {
 pub struct LocalCaptureIntents {
     context: Arc<VaultContext>,
     root: PathBuf,
+    history: history::History,
+    history_gate: Arc<tokio::sync::RwLock<()>>,
     state: Mutex<BTreeMap<String, Entry>>,
     stop: CancellationToken,
     changed: Notify,
@@ -171,9 +175,18 @@ impl LocalCaptureIntents {
         let directory = root.clone();
         let vault = context.events.vault_id();
         let pin = context.clone();
-        let records = tokio::task::spawn_blocking(move || {
+        let (history, records) = tokio::task::spawn_blocking(move || {
             let _pin = pin;
-            journal::load(&directory, &vault)
+            let history = history::History::open(&directory, &vault)?;
+            let mut active = Vec::new();
+            for record in journal::load(&directory, &vault)? {
+                if history::eligible(&record) {
+                    history.archive(&record)?;
+                } else {
+                    active.push(record);
+                }
+            }
+            Ok::<_, ApplicationError>((history, active))
         })
         .await
         .map_err(review)??;
@@ -181,6 +194,8 @@ impl LocalCaptureIntents {
         let service = Arc::new(Self {
             context: context.clone(),
             root,
+            history,
+            history_gate: Arc::new(tokio::sync::RwLock::new(())),
             state: Mutex::new(
                 records
                     .into_iter()
@@ -222,6 +237,8 @@ impl LocalCaptureIntents {
                 .values()
                 .any(|entry| entry.running || entry.admission.is_some())
             {
+                drop(state);
+                let _history_drain = self.history_gate.write().await;
                 return;
             }
             drop(state);
@@ -237,12 +254,17 @@ impl LocalCaptureIntents {
             .collect()
     }
     pub async fn status(&self, request: &str) -> Result<LocalCaptureStatus, ApplicationError> {
-        self.state
+        uuid(request)?;
+        if let Some(status) = self
+            .state
             .lock()
             .await
             .get(request)
             .map(|entry| entry.record.status.clone())
-            .ok_or_else(|| error(ErrorCode::NotFound, "Local capture intent not found"))
+        {
+            return Ok(status);
+        }
+        Ok(self.read_public_original(request).await?.record.status)
     }
     pub async fn declare(
         self: &Arc<Self>,
@@ -260,6 +282,21 @@ impl LocalCaptureIntents {
     ) -> Result<LocalCaptureIntent, ApplicationError> {
         if self.stop.is_cancelled() {
             return Err(review("Local capture owner is stopping"));
+        }
+        self.archive_completed().await?;
+        match self.read_original(&input.request_id).await {
+            Ok(original) => {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    if original.record.status.declaration == input {
+                        "Original capture request already exists; inspect its retained status"
+                    } else {
+                        "Original capture request declaration changed"
+                    },
+                ));
+            }
+            Err(cause) if cause.code == ErrorCode::NotFound => {}
+            Err(cause) => return Err(cause),
         }
         let admission = self.context.admit_session_work(&input.session_id).await?;
         self.context
@@ -436,6 +473,25 @@ impl LocalCaptureIntent {
     ) -> Result<(), ApplicationError> {
         let this = self.clone();
         tokio::spawn(async move {
+            let original = this.service.read_original(&this.request).await?;
+            if original.archived {
+                let record = &original.record;
+                let same = if not_started {
+                    record.status.state == LocalCaptureState::NotStarted
+                } else {
+                    physical
+                        .as_ref()
+                        .is_none_or(|value| record.physical.as_ref() == Some(value))
+                        && persistence
+                            .as_ref()
+                            .is_none_or(|value| record.persistence.as_ref() == Some(value))
+                };
+                return if same {
+                    Ok(())
+                } else {
+                    Err(review("Archived Local completion changed"))
+                };
+            }
             let mut state = this.service.state.lock().await;
             let entry = state
                 .get_mut(&this.request)
@@ -524,6 +580,7 @@ impl LocalCaptureIntent {
                 entry.running = true;
             }
             drop(state);
+            drop(original);
             this.service.changed.notify_waiters();
             if start {
                 this.service.clone().start(this.request);

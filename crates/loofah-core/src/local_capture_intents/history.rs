@@ -1,7 +1,10 @@
 use super::*;
 use std::{fs, path::Path};
 
+mod service;
+
 const VERSION: u32 = 1;
+const PROOF: &str = "history-proof.json";
 const PAGE_SIZE: u64 = 256;
 const PAGE_BYTES: u64 = 64 * 1024;
 const MAX_PAGE_READS: usize = 4;
@@ -50,7 +53,7 @@ struct Page {
     start: u64,
     items: Vec<Item>,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Pending {
     schema_version: u32,
@@ -87,6 +90,9 @@ impl History {
             directory: active.join("history"),
             vault: vault.into(),
         };
+        if !ledger::existing_directory(&this.directory)? {
+            return Ok(this);
+        }
         ledger::ensure_directory(&this.directory)?;
         let path = this.directory.join("layout.json");
         let wanted = Layout {
@@ -143,17 +149,43 @@ impl History {
         if !ledger::existing_directory(&directory)? {
             return Ok(None);
         }
-        let (record, _) = self.read_receipt(&directory, request)?;
+        let proof: Pending = read_json(&directory.join(PROOF), 4096)?;
+        if proof.schema_version != VERSION || proof.item.request != request {
+            return Err(review("Local history locator identity changed"));
+        }
+        validate_item(&proof.item)?;
+        if proof.sequence >= self.head()?.total {
+            return Err(review("Local archive index is not yet committed"));
+        }
+        let page = self
+            .read_page(proof.sequence / PAGE_SIZE)?
+            .ok_or_else(|| review("Local archive index is missing"))?;
+        if page.items.get((proof.sequence % PAGE_SIZE) as usize) != Some(&proof.item) {
+            return Err(review("Local history locator changed"));
+        }
+        let (record, raw) = self.read_receipt(&directory, request)?;
+        if ledger::hash(&raw) != proof.item.record_sha256
+            || ledger::hash(record.status.declaration.session_id.as_bytes())
+                != proof.item.session_sha256
+        {
+            return Err(review("Archived Local receipt changed"));
+        }
         if !eligible(&record) {
             return Err(review("Archived Local intent is not terminal"));
         }
         Ok(Some(LocatedRecord { record, directory }))
     }
 
+    fn initialize(&self) -> Result<(), ApplicationError> {
+        ledger::ensure_directory(&self.directory)?;
+        Self::open(&self.active, &self.vault).map(|_| ())
+    }
+
     pub fn archive(&self, expected: &Record) -> Result<(), ApplicationError> {
         if !eligible(expected) {
             return Err(review("Local intent has no confirmed terminal ownership"));
         }
+        self.initialize()?;
         self.recover()?;
         let request = &expected.status.declaration.request_id;
         let source = self.active.join(request);
@@ -164,7 +196,10 @@ impl History {
                     "Local intent exists in both active and history storage",
                 ));
             }
-            let (actual, _) = self.read_receipt(&target, request)?;
+            let actual = self
+                .read(request)?
+                .ok_or_else(|| review("Original Local history disappeared"))?
+                .record;
             if !same_record(&actual, expected)? {
                 return Err(review("Archived Local intent changed"));
             }
@@ -257,8 +292,15 @@ impl History {
                 {
                     continue;
                 }
-                let (record, raw) =
-                    self.read_receipt(&self.receipt_directory(&item.request)?, &item.request)?;
+                let directory = self.receipt_directory(&item.request)?;
+                let proof: Pending = read_json(&directory.join(PROOF), 4096)?;
+                if proof.schema_version != VERSION
+                    || proof.sequence != cursor.before
+                    || proof.item != *item
+                {
+                    return Err(review("Local history locator changed"));
+                }
+                let (record, raw) = self.read_receipt(&directory, &item.request)?;
                 if ledger::hash(&raw) != item.record_sha256
                     || ledger::hash(record.status.declaration.session_id.as_bytes())
                         != item.session_sha256
@@ -288,6 +330,13 @@ impl History {
     }
 
     fn head(&self) -> Result<Head, ApplicationError> {
+        if !ledger::existing_directory(&self.directory)? {
+            return Ok(Head {
+                schema_version: VERSION,
+                total: 0,
+            });
+        }
+        validate_layout(&self.active, &self.vault)?;
         let head: Head = read_json(&self.directory.join("head.json"), 4096)?;
         if head.schema_version != VERSION {
             return Err(review("Unsupported Local history head"));
@@ -384,6 +433,17 @@ impl History {
             return Err(review("Original Local archive receipt changed"));
         }
         check_directory(current)?;
+        let proof = current.join(PROOF);
+        if ledger::check_file(&proof)? {
+            if read_json::<Pending>(&proof, 4096)? != *pending {
+                return Err(review("Local history locator changed"));
+            }
+        } else if source_present {
+            write_new(&proof, pending)?;
+        } else {
+            return Err(review("Moved Local receipt has no original locator"));
+        }
+        self.checkpoint("locator")?;
         if source_present {
             ledger::ensure_directory(
                 target
@@ -438,8 +498,13 @@ pub(super) fn eligible(record: &Record) -> bool {
             && record.source.is_none()
             && record.result_sha256.is_none()
             && record.published_revision.is_none()
+            && record.status.transcript_id.is_none()
             && record.status.summary_job_id.is_none()
             && !record.summary_dispatch_pending
+            && !record.processing_drained
+            && !record.inference_drained
+            && !record.summary_drained
+            && record.resolution.is_none()
             && !record.cancel_requested;
     }
     matches!(record.version, 2 | 3)
@@ -469,6 +534,12 @@ fn read_json<T: serde::de::DeserializeOwned>(
     path: &Path,
     limit: u64,
 ) -> Result<T, ApplicationError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| review("Invalid history file path"))?;
+    if !ledger::existing_directory(parent)? {
+        return Err(review("History file directory is missing"));
+    }
     serde_json::from_slice(&ledger::read(path, limit)?).map_err(review)
 }
 fn write_new(path: &Path, value: &impl Serialize) -> Result<(), ApplicationError> {
@@ -478,6 +549,10 @@ fn write_new(path: &Path, value: &impl Serialize) -> Result<(), ApplicationError
     )
 }
 fn save(path: &Path, value: &impl Serialize) -> Result<(), ApplicationError> {
+    ledger::ensure_directory(
+        path.parent()
+            .ok_or_else(|| review("Invalid history file path"))?,
+    )?;
     let bytes = ledger::encode_bounded_result(value, PAGE_BYTES as usize)?;
     if ledger::check_file(path)? {
         hypr_storage::fs::atomic_write(path, std::str::from_utf8(&bytes).map_err(review)?)
@@ -491,11 +566,15 @@ fn check_directory(directory: &Path) -> Result<(), ApplicationError> {
     if !ledger::existing_directory(directory)? {
         return Err(review("Local archive directory disappeared"));
     }
-    for (count, entry) in fs::read_dir(directory).map_err(review)?.enumerate() {
-        if count >= 64 {
+    let mut count = 0;
+    for entry in fs::read_dir(directory).map_err(review)? {
+        let entry = entry.map_err(review)?;
+        if entry.file_name() != PROOF {
+            count += 1;
+        }
+        if count > 64 {
             return Err(review("Local archive directory exceeds its entry budget"));
         }
-        let entry = entry.map_err(review)?;
         let metadata = fs::symlink_metadata(entry.path()).map_err(review)?;
         if !metadata.is_file() || metadata.file_type().is_symlink() {
             return Err(review("Unsafe entry in Local archive directory"));
@@ -524,3 +603,6 @@ fn check_directory(directory: &Path) -> Result<(), ApplicationError> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod service_tests;

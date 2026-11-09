@@ -5,8 +5,9 @@ pub(super) fn load(root: &Path, vault: &str) -> Result<Vec<Record>, ApplicationE
     ledger::ensure_directory(root)?;
     let mut records = Vec::new();
     let mut bytes = 0usize;
-    for (count, entry) in std::fs::read_dir(root).map_err(review)?.enumerate() {
-        if count >= 4096 {
+    let mut count = 0;
+    for entry in std::fs::read_dir(root).map_err(review)? {
+        if count > 4096 {
             return Err(review("Local intent inventory exceeds its budget"));
         }
         let entry = entry.map_err(review)?;
@@ -14,6 +15,16 @@ pub(super) fn load(root: &Path, vault: &str) -> Result<Vec<Record>, ApplicationE
             .file_name()
             .into_string()
             .map_err(|_| review("Unknown Local intent path"))?;
+        if name == "history" {
+            if !history::validate_layout(root, vault)? {
+                return Err(review("Local history layout disappeared"));
+            }
+            continue;
+        }
+        count += 1;
+        if count > 4096 {
+            return Err(review("Local intent inventory exceeds its budget"));
+        }
         uuid(&name)?;
         if !entry.file_type().map_err(review)?.is_dir() {
             return Err(review("Unsafe Local intent directory"));
@@ -61,7 +72,7 @@ pub(super) fn persist(root: &Path, record: &Record, create: bool) -> Result<(), 
     ledger::sync_parent(&path)
 }
 
-fn validate_record(record: &Record) -> Result<(), ApplicationError> {
+pub(super) fn validate_record(record: &Record) -> Result<(), ApplicationError> {
     validate(&record.status.declaration)?;
     if !matches!(record.version, 1 | 2 | 3)
         || record.status.transcription_owner != TRANSCRIPTION_OWNER

@@ -33,8 +33,17 @@ impl LocalCaptureIntents {
         request: String,
         resolution: LocalCaptureResolution,
     ) -> Result<LocalCaptureControlSnapshot, ApplicationError> {
+        let original = self.read_original(&request).await?;
+        if original.archived {
+            if !replay(&original.record, &resolution)? {
+                return Err(review("Archived processing has no matching resolution"));
+            }
+            drop(original);
+            return self.control_status(&request).await;
+        }
         let (_, dispatch) = self.processing_control(&request).await?;
         let _dispatch = dispatch.lock().await;
+        drop(original);
         let record = {
             let state = self.state.lock().await;
             let entry = state
@@ -42,6 +51,7 @@ impl LocalCaptureIntents {
                 .ok_or_else(|| review("Original intent missing"))?;
             if replay(&entry.record, &resolution)? {
                 drop(state);
+                drop(_dispatch);
                 return self.control_status(&request).await;
             }
             eligible(entry, &resolution)?;
@@ -72,6 +82,7 @@ impl LocalCaptureIntents {
         self.persist(&next, false).await?;
         entry.record = next;
         drop(state);
+        drop(_dispatch);
         self.changed.notify_waiters();
         self.control_status(&request).await
     }

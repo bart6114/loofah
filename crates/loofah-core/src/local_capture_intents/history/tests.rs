@@ -6,6 +6,21 @@ use std::{
 
 static FAULTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
 pub(super) fn checkpoint(path: &Path, stage: &str) -> Result<(), ApplicationError> {
+    let block = {
+        let mut blocks = BLOCKS.get_or_init(Default::default).lock().unwrap();
+        if blocks
+            .get(path)
+            .is_some_and(|(wanted, _, _)| wanted == stage)
+        {
+            blocks.remove(path)
+        } else {
+            None
+        }
+    };
+    if let Some((_, entered, release)) = block {
+        let _ = entered.send(());
+        release.recv().map_err(review)?;
+    }
     let mut faults = FAULTS.get_or_init(Default::default).lock().unwrap();
     if faults.get(path).is_some_and(|wanted| wanted == stage) {
         faults.remove(path);
@@ -13,7 +28,7 @@ pub(super) fn checkpoint(path: &Path, stage: &str) -> Result<(), ApplicationErro
     }
     Ok(())
 }
-fn record() -> Record {
+pub(super) fn record() -> Record {
     Record {
         version: 2,
         vault_id: "original-vault".into(),
@@ -56,7 +71,7 @@ fn root() -> tempfile::TempDir {
 
 #[test]
 fn archive_interruptions_recover_exact_receipt_bytes_and_index_once() {
-    for stage in ["intent", "move", "page", "head"] {
+    for stage in ["intent", "locator", "move", "page", "head"] {
         let root = root();
         let active = root.path().join("local-capture-intents");
         let record = record();
@@ -250,4 +265,81 @@ fn history_pagination_is_snapshot_bound_and_does_not_adopt_later_archives() {
     );
     assert!(history.page(None, Some("{}"), 10).is_err());
     assert!(history.page(None, None, 101).is_err());
+}
+
+#[test]
+fn archived_point_reads_reject_valid_json_mutation_and_changed_sequence_locator() {
+    let root = root();
+    let active = root.path().join("local-capture-intents");
+    let history = History::open(&active, "original-vault").unwrap();
+    let first = record();
+    journal::persist(&active, &first, true).unwrap();
+    history.archive(&first).unwrap();
+    let second = record();
+    journal::persist(&active, &second, true).unwrap();
+    history.archive(&second).unwrap();
+    let directory = history
+        .receipt_directory(&first.status.declaration.request_id)
+        .unwrap();
+    let original = fs::read(directory.join("intent.json")).unwrap();
+    let mut changed = first.clone();
+    changed.status.declaration.append = true;
+    fs::write(
+        directory.join("intent.json"),
+        serde_json::to_vec(&changed).unwrap(),
+    )
+    .unwrap();
+    assert!(history.read(&first.status.declaration.request_id).is_err());
+    fs::write(directory.join("intent.json"), original).unwrap();
+    let mut proof: Pending = read_json(&directory.join(PROOF), 4096).unwrap();
+    proof.sequence = 1;
+    save(&directory.join(PROOF), &proof).unwrap();
+    assert!(history.read(&first.status.declaration.request_id).is_err());
+}
+
+#[test]
+fn empty_history_reads_do_not_migrate_legacy_private_layout() {
+    let root = root();
+    let active = root.path().join("local-capture-intents");
+    let mut legacy = record();
+    legacy.version = 1;
+    journal::persist(&active, &legacy, true).unwrap();
+    let path = active
+        .join(&legacy.status.declaration.request_id)
+        .join("intent.json");
+    let before = fs::read(&path).unwrap();
+    let history = History::open(&active, "original-vault").unwrap();
+    assert!(!active.join("history").exists());
+    assert!(history.page(None, None, 25).unwrap().items.is_empty());
+    assert!(
+        history
+            .read(&legacy.status.declaration.request_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(!active.join("history").exists());
+    assert_eq!(fs::read(path).unwrap(), before);
+}
+
+type Block = (
+    String,
+    tokio::sync::oneshot::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+static BLOCKS: OnceLock<Mutex<HashMap<PathBuf, Block>>> = OnceLock::new();
+pub(super) fn pause(
+    path: &Path,
+    stage: &str,
+) -> (
+    tokio::sync::oneshot::Receiver<()>,
+    std::sync::mpsc::Sender<()>,
+) {
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    BLOCKS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap()
+        .insert(path.into(), (stage.into(), entered, released));
+    (waiting, release)
 }

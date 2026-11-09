@@ -288,7 +288,7 @@ impl LocalCaptureIntents {
             return Err(review("Completed source changed before repair"));
         }
         let baseline = source.baseline();
-        let directory = self.root.join(request);
+        let directory = self.read_original(request).await?.directory;
         let transcript = if let Some(expected) = &record.result_sha256 {
             let path = directory.join("result.json");
             let expected = expected.clone();

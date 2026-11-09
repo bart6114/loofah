@@ -47,16 +47,21 @@ impl LocalCaptureIntents {
         &self,
         request: &str,
     ) -> Result<LocalCaptureControlSnapshot, ApplicationError> {
-        let (record, running, admitted) = {
-            let state = self.state.lock().await;
-            let entry = state
-                .get(request)
-                .ok_or_else(|| review("Original intent missing"))?;
+        uuid(request)?;
+        let active = self.state.lock().await.get(request).map(|entry| {
             (
                 entry.record.clone(),
                 entry.running,
                 entry.admission.is_some(),
             )
+        });
+        let (record, running, admitted) = match active {
+            Some(snapshot) => snapshot,
+            None => (
+                self.read_public_original(request).await?.record,
+                false,
+                false,
+            ),
         };
         self.control_snapshot(record, running, admitted).await
     }
@@ -134,8 +139,17 @@ impl LocalCaptureIntents {
         &self,
         request: String,
     ) -> Result<LocalCaptureControlSnapshot, ApplicationError> {
+        let original = self.read_original(&request).await?;
+        if original.archived {
+            if !original.record.cancel_requested {
+                return Err(review("Archived processing cannot be cancelled"));
+            }
+            drop(original);
+            return self.control_status(&request).await;
+        }
         let (_, dispatch) = self.processing_control(&request).await?;
         let _dispatch = dispatch.lock().await;
+        drop(original);
         let mut state = self.state.lock().await;
         let entry = state
             .get_mut(&request)

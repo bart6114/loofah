@@ -14,14 +14,7 @@ impl LocalCaptureIntents {
             if this.stop.is_cancelled() {
                 return Err(review("Local capture owner is stopping"));
             }
-            let record = this
-                .state
-                .lock()
-                .await
-                .get(&request)
-                .ok_or_else(|| review("Original intent missing"))?
-                .record
-                .clone();
+            let record = this.read_original(&request).await?.record;
             if record.cancel_requested {
                 return Err(review(
                     "Cancelled work cannot dispatch again; unresolved ownership requires review",
