@@ -46,6 +46,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<LocalMediaStatus>()
         .register::<MediaDeclaration>()
         .register::<MediaRequestStatus>()
+        .register::<MediaRetirementRequest>()
+        .register::<MediaRetirementStatus>()
         .register::<MediaSummaryStatus>()
         .register::<TranscriptionJobRequest>()
         .register::<TranscriptionPolicy>()
