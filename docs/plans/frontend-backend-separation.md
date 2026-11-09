@@ -21,19 +21,27 @@ Durable device capture/upload, explicit processing declarations, pending notes,
 append/repair, authenticated bounded live captions and verified cleanup are
 implemented. Native Local ownership and CLI routing are composed with the managed
 vault. Checked Local session lifecycle and output deletion activation remain
-default off pending final producer/persistence and platform acceptance. Bounded private processing previews and independent Remote note windows are
-implemented and Native-qualified; actual two-client browser/editing/window/role
-checks have passed on frozen QA artifacts, while patched GUI/platform acceptance is
-still in progress.
+default off pending final producer/persistence and platform acceptance. Bounded
+private processing previews and independent Remote note windows are implemented
+and Native-qualified. Frozen two-client browser/editing/window/role checks passed;
+the refreshed `2263b47eb7` artifact also qualified the patched Reader controls and
+native File → New Note routing. Physical capture and production HTTPS SSO remain
+unqualified; the observed Remote summary containing only an opening HTML fence
+awaits semantic verification after the narrow publication correction.
 
 Current validation includes Native, TLS/HTTP, frontend, configured local models,
 packaged Linux CPU, stopped-service upgrade and forced backup/restore interruption
 checks. Each result is scoped to its recorded source and artifact. The original
-paced two-hour run exposed semantic and memory failures; corrected full-size
-non-paced replay and original-source repair passed, without qualifying a second
-paced run. The final integrated platform matrix, physical recording, production
-responsiveness during concurrent work, deployment/client compatibility and Local
-vault adoption remain open. No full-completion claim is made.
+paced two-hour run exposed semantic and memory failures. A corrected second paced
+run passed: 7,200.914 seconds of paced producer runtime, original-identity
+restart/recovery, one canonical repair, all PCM samples and 24 speech windows
+verified, and raw retirement. This qualifies frozen Linux ARM64 source `573da57617` plus harness-only
+`5be9242930`/`31ad81601`, not later current-head code or OS physical capture. Native
+Windows x64 and ARM64 compiler/test/installer/runtime checks passed at the b755 PR
+checkpoint, and the later `92c5fb961c` Native suite passed 2,429 tests with 34 explicit
+ignored under the real macOS temporary alias. The final integrated platform matrix,
+physical recording, production responsiveness during concurrent work,
+deployment/client compatibility and Local vault adoption remain open. No full-completion claim is made.
 
 Inspection baseline: clean `main` at `a6a8f001d`, November 5, 2026. Root instructions and applicable plugin, fs-sync, and documentation instructions were inspected. No implementation or runtime testing was performed while preparing this plan.
 

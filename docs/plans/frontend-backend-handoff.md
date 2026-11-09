@@ -1269,15 +1269,16 @@ The correction separates canonical principal UUID validation from nonnil
 request/job/cursor validation, preserving the Native-injected identity, existing
 host authorization and member isolation. Source regressions cover nil-principal
 submit/list/get/result and journal reopen without regeneration, invalid principal
-forms, nil operation IDs and authorizer refusal. This correction still requires
-shared-lane Rust verification and a refreshed optimized GUI artifact before the
-Local transcription status panel is qualified. Task-only evidence is retained in
+forms, nil operation IDs and authorizer refusal. The later `92c5fb961c` Native
+suite and refreshed `8eb0b9a532` GUI artifact qualified the correction, as recorded
+below; the original b755 observation remains preserved in
 `local-performance/audio-import-diagnostics.json`.
 
 Fresh hosted frontend/editor, CLI, container, format/lint/security and configured
 Linux x64 CPU qualification passed at `b755769c25`; real Windows speech processing
-also passed on both architectures. Native Windows installer/runtime and macOS
-workspace checks remain active. The sole new backend failure came from a policy
+also passed on both architectures. Both native Windows installer/runtime jobs
+subsequently passed; macOS workspace checks found the two noncanonical temporary-root
+fixtures corrected below. The backend failure came from a policy
 fixture's global startup observer seeing legitimate eager warmup. Its corrected
 fixture blocks the target's real startup, proves policy reads still complete,
 then releases/joins that startup, retaining authorization/capability checks.
@@ -1286,7 +1287,7 @@ plus the test-only overlay. An initial Native command used its former function
 name and selected zero tests; that log is explicitly excluded from qualification.
 The follow-up empty-stream display fix passed 43 timeline cases and typechecking;
 an initial wrong-path test selection is likewise not a test pass. Both corrections
-are local follow-ups until the remaining healthy hosted jobs finish. Local lifecycle,
+remain outside that hosted checkpoint's qualification. Local lifecycle,
 output deletion and transcript activation gates remain default off.
 
 ## Corrected paced capture acceptance, 2026-11-09
@@ -1376,10 +1377,9 @@ The actual b755 audio import and automatic summary completed before this fix. It
 73 words and 73 hints reflect one detected speaker cluster; the diarizer ran eight
 temporal segments, which is not proof of eight speakers or multi-speaker accuracy.
 The old app then quit through its ordinary menu and its verified PID stopped.
-A separate refreshed optimized artifact will reuse that original vault/journal to
-verify the status panel, without reimporting or inferring historical work. Until
-then this panel's GUI correction is not qualified. Compiler-only Debug incremental
-objects were pruned after successful checks to preserve local disk headroom;
+The refreshed optimized artifact reused that original vault/journal and qualified
+the status panel without reimporting or inferring historical work, as detailed below.
+Compiler-only Debug incremental objects were pruned after successful checks to preserve local disk headroom;
 dependency libraries, executables, release cache, models and raw evidence remain.
 
 
@@ -1396,10 +1396,28 @@ were preserved. Exact source/binary/runtime and comparisons are copied into the
 portable checkpoint under `records.local_principal_refreshed_gui_2026_11_09`;
 raw evidence is in the task lab's `local-performance-refresh/reopen-acceptance.json`.
 
-At the preceding `b755769c25` hosted checkpoint, both native Windows compiler/test
-cohorts passed. X64 additionally completed NSIS, installed app startup, installed
-CLI/MCP and uninstall, with 2,235 passed/zero failed/47 ignored across 69 test
-cohorts. ARM64 installer qualification is still running. The later Core principal,
-macOS fixture and display corrections remain local until that healthy run completes;
-no healthy CI was cancelled. Physical recording permission/acceptance, production
+All hosted jobs for `b755769c25` are terminal. Both native Windows architectures
+passed NSIS, installed app startup, installed CLI/MCP and uninstall, each with
+2,235 passed/zero failed/47 ignored across 69 test cohorts. Both explicit Windows
+export ownership/writer regressions passed. The PR jobs checked out synthetic
+merge `f265e3cbe5` (b755 into `a6a8f001d9`); the separate successful Windows speech
+dispatch checked out b755 directly. Backend/macOS failures remain recorded as
+failures of their original fixtures, with later correction evidence scoped above.
+No healthy CI was cancelled or retried. Portable records
+`hosted_b755769_terminal_2026_11_09` and `native21_local_principal_var_2026_11_09`
+preserve the terminal outcomes, artifact/log hashes, Native totals and runtime-runner
+audit. These results do not qualify subsequent current-head changes.
+
+The refreshed Remote GUI at `2263b47eb7`, against server `8eb0b9a532`, qualified
+Owner File → New Note and the patched Reader controls. Reader note/date/tag/capture,
+global processing, creation and import controls were disabled; Reader File → New
+Note was refused and the original two notes remained. Synthetic browser PKCE and
+verified loopback HTTPS were used, without OS trust or user credential changes.
+This is not production HTTPS SSO or physical capture acceptance. One explicit
+Remote summary reported saved but contained only an opening HTML fence; semantic
+summary acceptance remains open; the later narrow empty-fence publication guard
+requires its own verification. The
+About panel opened without Local vault statistics, but its cached build-commit label
+requires the later metadata fix's refreshed artifact. The exact receipt is embedded
+under `native_remote_reader_menu_2263_2026_11_09`. Physical recording, production
 HTTPS SSO and final current-head platform qualification remain separate gates.

@@ -1508,6 +1508,239 @@
         },
         "read_only_reopen_passed": true
       }
+    },
+    "hosted_b755769_terminal_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-b755769-audit/portable-hosted-terminal.json",
+      "sha256": "a2bffacc6c54e942ead0f872a8f835e617c6840bb6aef430df2d222279393d76",
+      "record": {
+        "workflow_head_sha": "b755769c2542b3454b511544a9f6b7d9ea29228a",
+        "all_terminal_at_utc": "2026-11-09T03:23:57.297849+00:00",
+        "pull_request_checkout": {
+          "sha": "f265e3cbe5095b4aaca9de4a9502a0040371d60f",
+          "base_sha": "a6a8f001d9165881e59fd0fa29df944da26b8801",
+          "scope": "GitHub PR123 synthetic merge; artifact names carry this checkout SHA."
+        },
+        "speech_dispatch_checkout_sha": "b755769c2542b3454b511544a9f6b7d9ea29228a",
+        "runs": [
+          {
+            "id": 42546527094,
+            "name": "windows-ci",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42546527094"
+          },
+          {
+            "id": 42546497119,
+            "name": "desktop-ci",
+            "conclusion": "failure",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42546497119"
+          },
+          {
+            "id": 42546497117,
+            "name": "windows-ci",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42546497117"
+          },
+          {
+            "id": 42546497164,
+            "name": "cli-ci",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42546497164"
+          },
+          {
+            "id": 42546497114,
+            "name": "backend-ci",
+            "conclusion": "failure",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42546497114"
+          },
+          {
+            "id": 42546497134,
+            "name": "ci",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42546497134"
+          },
+          {
+            "id": 42546497115,
+            "name": "zizmor",
+            "conclusion": "success",
+            "url": "https://github.com/bart6114/loofah/actions/runs/42546497115"
+          }
+        ],
+        "native_windows": [
+          {
+            "job": 128932522592,
+            "cohorts": 69,
+            "passed": 2235,
+            "failed": 0,
+            "ignored": 47,
+            "smoke_passed": true,
+            "ownership_case_passed": true,
+            "writer_case_passed": true,
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-b755769-audit/128932522592.log",
+            "sha256": "d916211716fbb2cd2999b4343a2bcea1984322bb8498507fab5b8d9a0d0eb768",
+            "architecture": "x86_64",
+            "job_url": "https://github.com/bart6114/loofah/actions/runs/42546497117/job/128932522592"
+          },
+          {
+            "job": 128932522403,
+            "cohorts": 69,
+            "passed": 2235,
+            "failed": 0,
+            "ignored": 47,
+            "smoke_passed": true,
+            "ownership_case_passed": true,
+            "writer_case_passed": true,
+            "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-b755769-audit/128932522403.log",
+            "sha256": "a8e863ab1b353f30b3af784a55875239adcc98394bfa4a0ae28aeda29f8089d4",
+            "architecture": "aarch64",
+            "job_url": "https://github.com/bart6114/loofah/actions/runs/42546497117/job/128932522403"
+          }
+        ],
+        "installer_artifacts": [
+          {
+            "id": 13646349590,
+            "name": "loofah-windows-aarch64-pc-windows-msvc-f265e3cbe5095b4aaca9de4a9502a0040371d60f",
+            "size_in_bytes": 338185741,
+            "digest": "sha256:22873b4c9423bb14c59644d60f27c99fab1671d67055b47a591ea20f101456ac"
+          },
+          {
+            "id": 13645663881,
+            "name": "loofah-windows-x86_64-pc-windows-msvc-f265e3cbe5095b4aaca9de4a9502a0040371d60f",
+            "size_in_bytes": 371544300,
+            "digest": "sha256:ebb20b74543d11c0ca2b2b027c53007d7a634ea9699fef3e344a89e643feb82a"
+          }
+        ],
+        "other_passes": {
+          "frontend": {
+            "desktop_tests": 2622,
+            "desktop_files": 298,
+            "editor_tests": 303
+          },
+          "cli": {
+            "passed": 274,
+            "failed": 0,
+            "ignored": 2
+          },
+          "linux_cpu": "Original three exact configured kernel cases each ran once; checked CPU service, ONNX media/live and reserved-live overlap passed.",
+          "container": "passed",
+          "speech": "actual CPU speech cases passed on both Windows x64 and ARM64"
+        },
+        "failed_jobs": [
+          {
+            "job_id": 128932522409,
+            "failure": "Policy fixture global startup observer also saw legitimate eager readiness warmup.",
+            "fix": "e03e0042e",
+            "qualification": "Corrected exact case passed on frozen573 production plus sole fixture overlay and in the later stable Native graph. Hosted maintenance integration was not reached after the library failure."
+          },
+          {
+            "job_id": 128932522558,
+            "failures": [
+              "managed_local_proof_requires_known_physical_idle_and_both_original_generation_barriers",
+              "standalone_original_lease_moves_stale_channels_and_opaque_files_without_enabling_server_bypass"
+            ],
+            "cause": "Noncanonical macOS /var temporary fixture roots; production live-ledger symlink guard remained strict.",
+            "fix": "b56f5da40",
+            "qualification": "Both passed in the full92c5fb Native library suite using the actual /var alias only at runtime."
+          }
+        ],
+        "qualification_limit": "These terminal CI outcomes do not qualify later Local principal, fixture, display, metadata or other current-head changes. No jobs were cancelled or retried, and this worker did not push.",
+        "evidence": [
+          {
+            "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-b755769-audit/diagnosis.json",
+            "sha256": "ae3228882e689076c3a1f03a40ea52a4aa3dbf9a56bf2539839743b32fc66dc0"
+          },
+          {
+            "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-b755769-audit/terminal-summary.json",
+            "sha256": "d66e06e4ca90de8962cfa766341fab0afe33b20d732471e7270eb5baebc9c850"
+          }
+        ]
+      }
+    },
+    "native21_local_principal_var_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-b755769-audit/portable-native92-var-qualification.json",
+      "sha256": "b6b010e67099e7afc897290d6c29317dd807a9f986df8dc565e080f7ab952a42",
+      "record": {
+        "source_commit": "92c5fb961c7ae187b6df912d599aafdc11ac79d7",
+        "platform": "macOS ARM64",
+        "graph": "Stable Native21-package library graph; no desktop/dev feature expansion.",
+        "features": [
+          "loofah-client/dev-fixtures",
+          "loofah-server/cpu-transcription"
+        ],
+        "library_results": {
+          "cohorts": 21,
+          "passed": 2429,
+          "failed": 0,
+          "ignored": 34
+        },
+        "runtime_alias": {
+          "cargo_runner_entries": 21,
+          "first": "2026-11-09T02:36:27Z TMPDIR=/var/folders/m1/sp5w6mkj7zl_7df28r2hzjbr0000gn/T/ physical=/private/var/folders/m1/sp5w6mkj7zl_7df28r2hzjbr0000gn/T executable=/Users/bartsmeets/Library/Caches/loofah-separation/build/debug/deps/capture_store-75bc04b461f06366",
+          "last": "2026-11-09T02:40:07Z TMPDIR=/var/folders/m1/sp5w6mkj7zl_7df28r2hzjbr0000gn/T/ physical=/private/var/folders/m1/sp5w6mkj7zl_7df28r2hzjbr0000gn/T executable=/Users/bartsmeets/Library/Caches/loofah-separation/build/debug/deps/vault_write-195624acbcb7b902",
+          "scope": "Only test processes received actual /var/folders TMPDIR; Cargo library environment and canonical compiler/cache paths were preserved."
+        },
+        "new_principal_cases": [
+          "local_principal_does_not_relax_operation_ids_or_accept_noncanonical_principals",
+          "local_principal_still_requires_original_host_authorization",
+          "local_principal_survives_submit_result_replay_and_journal_reopen"
+        ],
+        "previously_failing_lifecycle_cases": [
+          "managed_local_proof_requires_known_physical_idle_and_both_original_generation_barriers",
+          "standalone_original_lease_moves_stale_channels_and_opaque_files_without_enabling_server_bypass"
+        ],
+        "previously_failing_policy_case": "transcription_policy_is_reader_scoped_and_does_not_wait_for_cold_vault_startup",
+        "all_target_check": {
+          "result": "passed",
+          "elapsed_seconds": 18.23,
+          "warnings": "Existing warnings were emitted; this is not a warning-free Clippy claim."
+        },
+        "evidence": [
+          {
+            "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-full-21-local-principal-var-runtime.log",
+            "sha256": "6c00721de90ea080cbe69ac7ef2cfdf035a99b710edcafa273d486b20bf8d101"
+          },
+          {
+            "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-b755769-audit/macos-var-runtime.log",
+            "sha256": "c66f6acaff9ab8041e51b450ed2111e6b7b0923ece1349a9528582cecd2410ad"
+          },
+          {
+            "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-b755769-audit/run-with-macos-var-tmp.sh",
+            "sha256": "f3aa1cb0c3812425815f6b3e34a75625da3d1b908103468c3ad4a376a4ce60f4"
+          },
+          {
+            "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/native-all-target-local-principal-final.log",
+            "sha256": "98a670f13a1ed06018ed07b19d1c57332bcb0e3a159af13c34786c3457991246"
+          }
+        ],
+        "qualification_limit": "Qualifies the92c5fb graph, not later source or physical capture. Refreshed Local GUI acceptance is separately recorded for artifact8eb0b9a532; production HTTPS SSO and final-head platform validation remain open."
+      }
+    },
+    "native_remote_reader_menu_2263_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-refresh/ui-acceptance-2263-current.json",
+      "sha256": "1a1b431a22c79f0cce001f69f4c60a057ca655189f46081688dc471d1dcbcca0",
+      "record": {
+        "observed_at_utc": "2026-11-09T03:27:31.132549+00:00",
+        "source": "2263b47eb748ae91f445b3bd49ac85c18d7b1d50",
+        "binary_sha256": "e20e3395ed880637f754c66ba31f40518661d2a9af4e5d6dd131901f984eb6bb",
+        "server_source": "8eb0b9a5325e19a6f89f81689f991537786cd0bf",
+        "server_sha256": "e077f78733355eea7be487d34f630e6ea1a98cb947bec0bed6cf1e05612cbfc4",
+        "issuer": "synthetic numeric-loopback HTTP; not production HTTPS SSO",
+        "api": "verified HTTPS loopback with exact dev fixture CA; no OS trust changes",
+        "actions": {
+          "owner_browser_pkce": "passed as Lab Alice",
+          "native_file_new_note": "passed; server-backed QA refreshed Remote processing",
+          "device_about": "opens without Local vault statistics; cached About SHA0d8596eb5d found and source fix6e7656d1b2 awaiting artifact",
+          "owner_processing_settings": "allowed ollama qwen2.5:1.5b selected and Settings saved; no credentials changed",
+          "explicit_summary": "one request reported Summary saved, but canonical output only opening HTML fence; not semantic acceptance, investigation retained",
+          "reader_browser_pkce": "passed as Lab Bob after synthetic Reader membership restored",
+          "reader_global_capture_and_processing": "all disabled",
+          "reader_sidebar_and_home_create_import_capture": "all disabled",
+          "reader_note": "read-only body visible; date/tag/capture disabled",
+          "reader_native_file_new_note": "callback refused with Could not create note; original two notes remain"
+        },
+        "physical_capture": "not attempted; OS access confirmation still pending",
+        "local_mode": "not changed",
+        "release": "no merge/release/version change"
+      }
     }
   },
   "local_work_focused": [
