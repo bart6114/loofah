@@ -3300,6 +3300,67 @@
           }
         }
       }
+    },
+    "git_metadata_windows_config_failure_and_fixture_fix_2026_11_09": {
+      "source": "c96bb69fd44eebd6a6c1611e5f8e81eca8e572ea",
+      "parent_source": "36f85d04c80cc4a03ac779ba9979f9581e012115",
+      "windows_failure": {
+        "job_id": 128998508014,
+        "step": "Test linked-worktree build metadata",
+        "result": {
+          "passed": 0,
+          "failed": 4,
+          "ignored": 0,
+          "seconds": 0.28
+        },
+        "error": "git [\"init\", \"--initial-branch=main\"]: fatal: unknown error occurred while reading the configuration files",
+        "location": "plugins/misc/tests/build_git.rs:63",
+        "production_helper_reached": false,
+        "raw_log": {
+          "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/128998508014.log",
+          "sha256": "a6ac029117b8cca88a1882e2194f142fb17cdce40524df32d3b4c9d6a9e2ea97",
+          "decisive_lines": [
+            885,
+            925
+          ]
+        },
+        "snapshot": {
+          "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-36f85d0-audit/windows-git-fixture-failure.json",
+          "sha256": "3e597028d2246cace02fa366b9da23204577157939cc94c9236b47c70d0575d7"
+        }
+      },
+      "diagnosis": "The fixture still supplied canonical Windows extended-length paths in GIT_CONFIG_GLOBAL and core.hooksPath. The observed configuration-read failure is consistent with Git external-path incompatibility; actual corrected Windows execution remains pending.",
+      "fixture_correction": [
+        "Use ../config for GIT_CONFIG_GLOBAL while retaining GIT_CONFIG_NOSYSTEM=1.",
+        "Use ../hooks for the dedicated empty hook directory.",
+        "Assert every Git command runs in the known main or linked sibling directory.",
+        "Preserve canonical paths for helper comparisons and all existing assertions; production helper unchanged."
+      ],
+      "source_sha256": {
+        "plugins/misc/tests/build_git.rs": "e1fa0011e23c07fe94d4f46dd8e9255c0374a933aae8a9ae13ceab485f7b11dd",
+        "plugins/misc/build_git.rs": "5490575b5cd950aaabdd8691dde782dd36a7e208e6b2509620cf372999c0f2e3"
+      },
+      "local_validation": {
+        "compile": "rustc --edition=2024 --test -D warnings plugins/misc/tests/build_git.rs -o /Users/bartsmeets/Library/Caches/loofah-separation/tmp/build-git-relative-config-tests",
+        "test_binary": "/Users/bartsmeets/Library/Caches/loofah-separation/tmp/build-git-relative-config-tests",
+        "host": "macOS ARM64",
+        "passed": 4,
+        "failed": 0,
+        "ignored": 0,
+        "seconds": 0.18,
+        "log": {
+          "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/git-metadata-relative-config-tests.log",
+          "sha256": "02e9cad76dafb3ccaca29921ac43e3b36c0f40084d05e490c546069f7c1d0cb8",
+          "capture": "stdout and stderr redirected directly during the actual standalone test run"
+        }
+      },
+      "official_contract": "https://doc.rust-lang.org/std/fs/fn.canonicalize.html",
+      "limits": [
+        "The earlier b929 portability adjustment did not address these config/hook arguments; its local pass is not rewritten.",
+        "No actual Windows fix pass claimed; existing other CI continues without cancellation or retry.",
+        "No production helper changes, Cargo/Native build, model inference, app launch, permission change, push or PR write.",
+        "The aa0 Local physical-QA artifact remains unchanged and unlaunched."
+      ]
     }
   },
   "local_work_focused": [

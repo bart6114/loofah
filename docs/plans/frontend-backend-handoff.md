@@ -1721,3 +1721,37 @@ subsequently passing, all-target checking, and four standalone macOS Git tests.
 Their next hosted checkpoint still needs both Windows architectures. Physical
 capture/OS permission confirmation, production SSO staging and the observed LLM
 quality limitation remain open; Local activation gates remain default off.
+
+## Windows Git fixture configuration failure and correction, 2026-11-09
+
+The actual Windows x64 standalone metadata step on
+`36f85d04c80cc4a03ac779ba9979f9581e012115` failed all four tests before the
+production helper was reached. Job `128998508014`, log lines 885–925, shows
+initial `git init --initial-branch=main` failing with “unknown error occurred
+while reading the configuration files” at `plugins/misc/tests/build_git.rs:63`.
+This is an observed fixture failure, not a production helper regression.
+
+The earlier `b929baf7d` adjustment normalized comparison paths and the worktree
+argument but still passed canonical Windows extended-length paths through
+`GIT_CONFIG_GLOBAL` and `core.hooksPath`. Fixture-only correction `c96bb69fd`
+uses `../config` and `../hooks`, with an assertion restricting each Git command
+to the known `main` or `linked` sibling directory. The empty global config,
+disabled system config, dedicated empty hooks and all existing assertions remain
+intact; production `build_git.rs` is unchanged. The configuration-read failure
+is consistent with the external-path incompatibility described in Rust's
+[canonicalize contract](https://doc.rust-lang.org/std/fs/fn.canonicalize.html);
+corrected Windows execution is still required to verify the diagnosis and fix.
+
+The actual local standalone compile with `rustc --edition=2024 --test -D warnings`
+passed all four tests on macOS ARM64 in 0.18 seconds, with zero failures or
+ignored tests. Its stdout/stderr were redirected directly to
+`git-metadata-relative-config-tests.log`. Formatting and diff checks passed.
+The existing portable JSON appends
+`records.git_metadata_windows_config_failure_and_fixture_fix_2026_11_09` with
+exact test/helper hashes, failed hosted-log/snapshot hashes and local-result
+log hash. Earlier evidence remains unchanged, including the earlier local pass.
+
+This is not a Windows fix-pass claim. Other hosted checks were left running
+without cancellation or retries. No Cargo/Native rebuild, production helper
+change, inference, permission grant, launch, push or PR write occurred. The
+`aa0` Local physical-QA artifact remains unchanged and unlaunched.
