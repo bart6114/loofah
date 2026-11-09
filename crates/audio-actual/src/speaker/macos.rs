@@ -1,3 +1,5 @@
+mod resources;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::task::Poll;
@@ -16,24 +18,27 @@ use ca::aggregate_device_keys as agg_keys;
 use cidre::{arc, av, cat, cf, core_audio as ca, ns, os};
 
 pub struct SpeakerInput {
-    tap: ca::TapGuard,
+    resources: resources::Resources,
     agg_desc: arc::Retained<cf::DictionaryOf<cf::String, cf::Type>>,
 }
 
 #[pin_project(PinnedDrop)]
 pub struct SpeakerStream {
     reader: RingbufAsyncReader<HeapCons<f32>>,
-    _device: Option<ca::hardware::StartedDevice<ca::AggregateDevice>>,
+    resources: resources::Resources,
     alive: Arc<AtomicBool>,
-    _ctx: Box<Ctx>,
-    _tap: ca::TapGuard,
+    integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+
     current_sample_rate: u32,
     sample_rate_probe_counter: u32,
     buffer_rate: u32,
-    _owner: Option<Arc<dyn Send + Sync>>,
 }
 
 impl SpeakerStream {
+    pub(crate) fn cleanup_failure(&self) -> Arc<AtomicBool> {
+        self.resources.cleanup_failed.clone()
+    }
+
     pub fn sample_rate(&self) -> u32 {
         self.buffer_rate
     }
@@ -53,49 +58,52 @@ struct Ctx {
 use super::{BUFFER_SIZE, CHUNK_SIZE};
 
 impl SpeakerInput {
-    pub fn new() -> Result<Self, Error> {
-        let tap_desc = ca::TapDesc::with_mono_global_tap_excluding_processes(&ns::Array::new());
-        let tap = tap_desc
-            .create_process_tap()
-            .map_err(|e| Error::SpeakerTapFailed(format!("create_process_tap: {e}")))?;
-
-        let tap_uid = tap
-            .uid()
-            .map_err(|e| Error::SpeakerTapFailed(format!("uid: {e}")))?;
-
-        let sub_tap = cf::DictionaryOf::with_keys_values(
-            &[ca::sub_device_keys::uid()],
-            &[tap_uid.as_type_ref()],
-        );
-
-        let agg_desc = cf::DictionaryOf::with_keys_values(
-            &[
-                agg_keys::is_private(),
-                agg_keys::tap_auto_start(),
-                agg_keys::name(),
-                agg_keys::uid(),
-                agg_keys::tap_list(),
-            ],
-            &[
-                cf::Boolean::value_true().as_type_ref(),
-                cf::Boolean::value_false(),
-                cf::String::from_str(crate::TAP_DEVICE_NAME).as_ref(),
-                &cf::Uuid::new().to_cf_string(),
-                &cf::ArrayOf::from_slice(&[sub_tap.as_ref()]),
-            ],
-        );
-
-        Ok(Self { tap, agg_desc })
+    pub(crate) fn new_owned(owner: Option<Arc<dyn Send + Sync>>) -> Result<Self, Error> {
+        let mut resources = resources::Resources::new(resources::CoreAudio, owner);
+        let result = (|| {
+            let tap_desc = ca::TapDesc::with_mono_global_tap_excluding_processes(&ns::Array::new());
+            let tap = tap_desc
+                .create_process_tap()
+                .map_err(|error| Error::SpeakerTapFailed(format!("create_process_tap: {error}")))?;
+            resources::take_tap(&mut resources, tap);
+            let tap_uid: arc::Retained<cf::String> = ca::Obj(resources.tap.unwrap())
+                .cf_prop(&ca::PropSelector::TAP_UID.global_addr())
+                .map_err(|error| Error::SpeakerTapFailed(format!("uid: {error}")))?;
+            let sub_tap = cf::DictionaryOf::with_keys_values(
+                &[ca::sub_device_keys::uid()],
+                &[tap_uid.as_type_ref()],
+            );
+            Ok(cf::DictionaryOf::with_keys_values(
+                &[
+                    agg_keys::is_private(),
+                    agg_keys::tap_auto_start(),
+                    agg_keys::name(),
+                    agg_keys::uid(),
+                    agg_keys::tap_list(),
+                ],
+                &[
+                    cf::Boolean::value_true().as_type_ref(),
+                    cf::Boolean::value_false(),
+                    cf::String::from_str(crate::TAP_DEVICE_NAME).as_ref(),
+                    &cf::Uuid::new().to_cf_string(),
+                    &cf::ArrayOf::from_slice(&[sub_tap.as_ref()]),
+                ],
+            ))
+        })();
+        match result {
+            Ok(agg_desc) => Ok(Self {
+                resources,
+                agg_desc,
+            }),
+            Err(error) => Err(resources::startup_error(&mut resources, error)),
+        }
     }
 
     pub fn sample_rate(&self) -> u32 {
-        self.tap.asbd().unwrap().sample_rate as u32
+        resources::tap_format(&self.resources).unwrap().sample_rate as u32
     }
 
-    fn start_device(
-        &self,
-        ctx: &mut Box<Ctx>,
-    ) -> Result<ca::hardware::StartedDevice<ca::AggregateDevice>, Error> {
+    fn start_device(&mut self) -> Result<(), Error> {
         extern "C" fn proc(
             _device: ca::Device,
             _now: &cat::AudioTimeStamp,
@@ -134,15 +142,7 @@ impl SpeakerInput {
             os::Status::NO_ERR
         }
 
-        let agg_device = ca::AggregateDevice::with_desc(&self.agg_desc)
-            .map_err(|e| Error::SpeakerAggregateDeviceFailed(format!("with_desc: {e}")))?;
-        let proc_id = agg_device
-            .create_io_proc_id(proc, Some(ctx))
-            .map_err(|e| Error::SpeakerAggregateDeviceFailed(format!("create_io_proc_id: {e}")))?;
-        let started_device = ca::device_start(agg_device, Some(proc_id))
-            .map_err(|e| Error::SpeakerAggregateDeviceFailed(format!("device_start: {e}")))?;
-
-        Ok(started_device)
+        resources::start(&mut self.resources, &self.agg_desc, proc)
     }
 
     pub fn stream(self) -> Result<SpeakerStream, Error> {
@@ -156,15 +156,34 @@ impl SpeakerInput {
         self.stream_owned(integrity, None)
     }
     pub(crate) fn stream_owned(
-        self,
+        mut self,
         integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
         owner: Option<Arc<dyn Send + Sync>>,
     ) -> Result<SpeakerStream, Error> {
-        let asbd = self
-            .tap
-            .asbd()
-            .map_err(|e| Error::SpeakerTapFailed(format!("asbd: {e}")))?;
+        if self.resources.owner.is_none() {
+            self.resources.owner = owner;
+        }
+        let result = self.prepare_stream(integrity.clone());
+        let (reader, alive, sample_rate) = match result {
+            Ok(value) => value,
+            Err(error) => return Err(resources::startup_error(&mut self.resources, error)),
+        };
+        Ok(SpeakerStream {
+            reader,
+            resources: self.resources,
+            alive,
+            integrity,
+            current_sample_rate: sample_rate,
+            sample_rate_probe_counter: 0,
+            buffer_rate: sample_rate,
+        })
+    }
 
+    fn prepare_stream(
+        &mut self,
+        integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+    ) -> Result<(RingbufAsyncReader<HeapCons<f32>>, Arc<AtomicBool>, u32), Error> {
+        let asbd = resources::tap_format(&self.resources)?;
         let format = av::AudioFormat::with_asbd(&asbd)
             .ok_or_else(|| Error::SpeakerTapFailed(format!("unsupported_asbd: {asbd:?}")))?;
         let common_format = format.common_format();
@@ -179,8 +198,8 @@ impl SpeakerInput {
 
         tracing::info!(init = asbd.sample_rate, "sample_rate");
 
-        let mut ctx = Box::new(Ctx {
-            _owner: owner.clone(),
+        self.resources.context = Some(Box::new(Ctx {
+            _owner: self.resources.owner.clone(),
             common_format,
             producer,
             waker: waker.clone(),
@@ -188,29 +207,18 @@ impl SpeakerInput {
             dropped_samples: dropped_samples.clone(),
             integrity,
             conversion_buffer: vec![0.0f32; crate::rt_ring::DEFAULT_SCRATCH_LEN],
-        });
+        }));
 
-        let device = self.start_device(&mut ctx)?;
+        self.start_device()?;
         let alive = Arc::new(AtomicBool::new(true));
 
-        Ok(SpeakerStream {
-            reader: RingbufAsyncReader::new(
-                consumer,
-                waker,
-                wake_pending,
-                vec![0.0f32; CHUNK_SIZE],
-            )
-            .with_dropped_samples(dropped_samples, "samples_dropped")
-            .with_alive(alive.clone()),
-            _device: Some(device),
+        Ok((
+            RingbufAsyncReader::new(consumer, waker, wake_pending, vec![0.0f32; CHUNK_SIZE])
+                .with_dropped_samples(dropped_samples, "samples_dropped")
+                .with_alive(alive.clone()),
             alive,
-            _ctx: ctx,
-            _tap: self.tap,
             current_sample_rate,
-            sample_rate_probe_counter: 0,
-            buffer_rate: asbd.sample_rate as u32,
-            _owner: owner,
-        })
+        ))
     }
 }
 
@@ -292,7 +300,7 @@ impl Stream for SpeakerStream {
                 .sample_rate_probe_counter
                 .is_multiple_of(SAMPLE_RATE_PROBE_INTERVAL)
             {
-                if let Ok(asbd) = this._tap.asbd() {
+                if let Ok(asbd) = resources::tap_format(&this.resources) {
                     let after = asbd.sample_rate as u32;
                     if this.current_sample_rate != after {
                         this.current_sample_rate = after;
@@ -319,20 +327,17 @@ impl AsyncSource for SpeakerStream {
         self.sample_rate()
     }
     fn request_stop(&mut self) -> bool {
-        if let Some(device) = self._device.take() {
-            match device.stop() {
-                Ok(device) => drop(device),
-                Err(error) => {
-                    if let Some(integrity) = &self._ctx.integrity {
-                        integrity.mark_discontinuity(false, true);
-                    }
-                    tracing::error!(?error, "system_audio_stop_failed");
-                    return false;
-                }
+        if let Err(error) = self.resources.close() {
+            if let Some(integrity) = &self.integrity {
+                integrity.mark_discontinuity(false, true);
             }
+            tracing::error!(?error, "system_audio_stop_failed");
+            return false;
         }
         self.alive.store(false, Ordering::Release);
-        self._ctx.waker.wake();
+        if let Some(context) = &self.resources.context {
+            context.waker.wake();
+        }
         true
     }
 }
@@ -340,6 +345,11 @@ impl AsyncSource for SpeakerStream {
 #[pin_project::pinned_drop]
 impl PinnedDrop for SpeakerStream {
     fn drop(self: std::pin::Pin<&mut Self>) {
-        tracing::debug!("SpeakerStream dropping");
+        let this = self.project();
+        if this.resources.close().is_err() {
+            if let Some(integrity) = this.integrity {
+                integrity.mark_discontinuity(false, true);
+            }
+        }
     }
 }

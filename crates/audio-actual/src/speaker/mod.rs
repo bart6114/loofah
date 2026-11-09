@@ -1,4 +1,6 @@
 use anyhow::Result;
+#[cfg(any(target_os = "macos", test))]
+mod teardown;
 #[cfg(any(test, not(target_os = "macos")))]
 use futures_util::Stream;
 #[cfg(any(test, not(target_os = "macos")))]
@@ -52,7 +54,16 @@ pub type SpeakerStream = macos::SpeakerStream;
 
 impl SpeakerInput {
     pub fn new() -> Result<Self> {
-        let inner = PlatformSpeakerInput::new()?;
+        Self::new_owned(None)
+    }
+    pub(crate) fn new_owned(owner: Option<std::sync::Arc<dyn Send + Sync>>) -> Result<Self> {
+        #[cfg(target_os = "macos")]
+        let inner = PlatformSpeakerInput::new_owned(owner)?;
+        #[cfg(not(target_os = "macos"))]
+        let inner = {
+            let _owner = owner;
+            PlatformSpeakerInput::new()?
+        };
         Ok(Self { inner })
     }
 

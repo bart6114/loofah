@@ -2689,3 +2689,24 @@ compares exact WAV bytes, and injects output-write/final-flush errors. Canonical
 CAS/commit and replay policy are unchanged, and the original 20-second publication
 deadline remains. This source correction still awaits focused and complete-cohort
 execution; prior failure logs remain evidence rather than being relabeled passes.
+
+The checked macOS teardown follow-up now owns the original CoreAudio identities
+outside cidre's consuming destructors. It checks Stop, IOProc destruction,
+aggregate destruction and tap destruction in order, retaining the first error
+without retries. A failed or panicking stage retains the callback context,
+original runtime owner and remaining native handles for the process lifetime;
+this is native-resource retention, not a vault-file quarantine or recovery grant.
+Startup cleanup uses the same path. An explicit `CaptureCleanupUnconfirmed` error
+keeps Source's physical-resource flag false; ordinary startup errors retain their
+existing behavior only after checked cleanup. Failure reporting uses a separate
+integrity handle rather than borrowing a possibly live callback context.
+
+Four pure injected-status/drop-probe fixtures cover success, every teardown stage
+failure/panic, partial startup and unwind. Three propagation fixtures cover the
+consuming resampler-constructor failure, NativeControl's unsuccessful drain and
+Source's distinction between uncertain cleanup and an ordinary startup failure.
+SDK headers and cached cidre source were inspected for the FFI signatures and ownership transfer. Targeted
+dprint and diff checks passed, but these new fixtures and native device behavior
+have not run: local desktop tests remain paused and the sole Native compilation
+lane belongs to Root. No dependency, feature, capability or receipt-schema change
+is included, and legacy unknown producers gain no retrospective completion proof.

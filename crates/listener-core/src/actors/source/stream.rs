@@ -166,7 +166,10 @@ async fn run_stream_loop(ctx: StreamContext, mode: ChannelMode) -> ProducerExit 
         Err(error) => {
             ctx.report_failure(error.to_string());
             return ProducerExit {
-                resources_stopped: true,
+                resources_stopped: !matches!(
+                    error,
+                    hypr_audio::Error::CaptureCleanupUnconfirmed(_)
+                ),
                 error: Some(error.to_string()),
                 ..ProducerExit::default()
             };
@@ -459,6 +462,7 @@ mod tests {
     }
     struct Probe;
     struct OpeningAudio {
+        error: Option<hypr_audio::Error>,
         release: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
         joined: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<std::thread::JoinHandle<()>>>>,
     }
@@ -468,6 +472,9 @@ mod tests {
             _: CaptureConfig,
             owner: std::sync::Arc<dyn Send + Sync>,
         ) -> Result<CaptureStream, hypr_audio::Error> {
+            if let Some(error) = &self.error {
+                return Err(error.clone());
+            }
             let release = self.release.lock().unwrap().take().unwrap();
             let task = std::thread::spawn(move || {
                 let _owner = owner;
@@ -533,6 +540,7 @@ mod tests {
             cancel_token: CancellationToken::new(),
             mic_device: None,
             audio: std::sync::Arc::new(OpeningAudio {
+                error: None,
                 release: std::sync::Mutex::new(Some(wait)),
                 joined: std::sync::Mutex::new(Some(joined)),
             }),
@@ -576,6 +584,7 @@ mod tests {
         ) -> Result<(), ActorProcessingErr> {
             let event = match message {
                 SourceMsg::DeviceHalt(_) => "interrupted",
+                SourceMsg::StreamFailed(_) => "startup failed",
                 SourceMsg::RecoveryChanged { .. } => "local recovery",
                 _ => panic!("unexpected source message"),
             };
@@ -583,6 +592,41 @@ mod tests {
             Ok(())
         }
     }
+    #[tokio::test]
+    async fn uncertain_native_startup_cleanup_never_reports_physical_resources_stopped() {
+        for (error, stopped) in [
+            (hypr_audio::Error::MicOpenFailed, true),
+            (
+                hypr_audio::Error::CaptureCleanupUnconfirmed("original stop failed".into()),
+                false,
+            ),
+        ] {
+            let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
+            let (actor, joined) = Actor::spawn(None, Probe, events).await.unwrap();
+            let context = StreamContext {
+                actor: actor.clone(),
+                cancel_token: CancellationToken::new(),
+                mic_device: None,
+                audio: std::sync::Arc::new(OpeningAudio {
+                    error: Some(error),
+                    release: Default::default(),
+                    joined: Default::default(),
+                }),
+                owner: std::sync::Arc::new(()),
+                device_ingress: None,
+                provider_integrity: None,
+                stop_interrupted: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                device_root: None,
+            };
+            let outcome = run_stream_loop(context, ChannelMode::MicAndSpeaker).await;
+            assert_eq!(outcome.resources_stopped, stopped);
+            assert!(outcome.error.is_some());
+            assert_eq!(received.recv().await, Some("startup failed"));
+            actor.stop(None);
+            joined.await.unwrap();
+        }
+    }
+
     #[tokio::test]
     async fn observed_eof_during_cancel_is_interrupted_but_local_recovery_remains_nonfatal() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

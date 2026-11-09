@@ -13,6 +13,8 @@ pub enum Error {
     NoInputDevice,
     #[error("mic_open_failed")]
     MicOpenFailed,
+    #[error("Capture cleanup could not be confirmed: {0}")]
+    CaptureCleanupUnconfirmed(String),
     #[error("mic_stream_setup_failed")]
     MicStreamSetupFailed,
     #[error(

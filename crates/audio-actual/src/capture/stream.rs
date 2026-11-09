@@ -262,7 +262,7 @@ pub(crate) fn setup_speaker_stream_owned(
 ) -> Result<ChunkStream, Error> {
     ensure_system_audio_permission()?;
 
-    let speaker = SpeakerInput::new().map_err(crate::speaker::setup_error)?;
+    let speaker = SpeakerInput::new_owned(owner.clone()).map_err(crate::speaker::setup_error)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     let speaker_stream = speaker.stream_owned(Some(integrity), owner);
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -270,11 +270,36 @@ pub(crate) fn setup_speaker_stream_owned(
         let _ = (integrity, owner);
         speaker.stream()
     };
-    speaker_stream
-        .map_err(crate::speaker::setup_error)?
+    let speaker_stream = speaker_stream.map_err(crate::speaker::setup_error)?;
+    #[cfg(all(target_os = "macos", not(test)))]
+    let cleanup_failed = Some(speaker_stream.cleanup_failure());
+    #[cfg(not(all(target_os = "macos", not(test))))]
+    let cleanup_failed = None;
+    resample_speaker(speaker_stream, sample_rate, chunk_size, cleanup_failed)
+}
+
+fn resample_speaker<S>(
+    source: S,
+    sample_rate: u32,
+    chunk_size: usize,
+    cleanup_failed: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<ChunkStream, Error>
+where
+    S: hypr_audio_interface::AsyncSource + Send + Unpin + 'static,
+{
+    source
         .resampled_chunks(sample_rate, chunk_size)
         .map(|stream| Box::pin(ResampledChunks(stream)) as ChunkStream)
-        .map_err(|err| Error::SpeakerStreamSetupFailed(format!("resample: {err}")))
+        .map_err(|error| {
+            if cleanup_failed.is_some_and(|state| state.load(std::sync::atomic::Ordering::Acquire))
+            {
+                Error::CaptureCleanupUnconfirmed(format!(
+                    "resample: {error}; original speaker cleanup failed"
+                ))
+            } else {
+                Error::SpeakerStreamSetupFailed(format!("resample: {error}"))
+            }
+        })
 }
 
 // NEVER_ASKED must pass through so first tap use can trigger the OS prompt;
@@ -1065,6 +1090,105 @@ mod tests {
         assert_eq!(alignment.mic_delay_samples(), 320);
         assert_eq!(alignment.speaker_delay_samples(), 0);
     }
+    #[test]
+    fn speaker_setup_preserves_uncertain_cleanup_through_error_wrappers() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        struct Source {
+            failed: Arc<AtomicBool>,
+            dropped: Arc<AtomicBool>,
+            confirmed: bool,
+        }
+        impl hypr_audio_interface::AsyncSource for Source {
+            fn as_stream(&mut self) -> impl Stream<Item = f32> + '_ {
+                futures_util::stream::pending()
+            }
+            fn sample_rate(&self) -> u32 {
+                48_000
+            }
+            fn request_stop(&mut self) -> bool {
+                self.failed.store(!self.confirmed, Ordering::Release);
+                self.confirmed
+            }
+        }
+        impl Drop for Source {
+            fn drop(&mut self) {
+                self.dropped.store(true, Ordering::Release);
+            }
+        }
+        let original = Error::CaptureCleanupUnconfirmed("original stop failed".into());
+        assert_eq!(
+            crate::speaker::setup_error(original.clone().into()),
+            original
+        );
+        for confirmed in [false, true] {
+            let failed = Arc::new(AtomicBool::new(false));
+            let dropped = Arc::new(AtomicBool::new(false));
+            let result = resample_speaker(
+                Source {
+                    failed: failed.clone(),
+                    dropped: dropped.clone(),
+                    confirmed,
+                },
+                0,
+                160,
+                Some(failed),
+            );
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("zero resampling rate must fail"),
+            };
+            assert!(dropped.load(Ordering::Acquire));
+            assert_eq!(
+                matches!(error, Error::CaptureCleanupUnconfirmed(_)),
+                !confirmed
+            );
+            assert_eq!(
+                matches!(error, Error::SpeakerStreamSetupFailed(_)),
+                confirmed
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unconfirmed_native_stop_never_produces_a_successful_control_receipt() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        struct Unconfirmed(Arc<AtomicBool>);
+        impl Stream for Unconfirmed {
+            type Item = Result<Vec<f32>, hypr_resampler::Error>;
+            fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+                Poll::Pending
+            }
+        }
+        impl ChunkSource for Unconfirmed {
+            fn request_stop(self: Pin<&mut Self>) -> bool {
+                false
+            }
+        }
+        impl Drop for Unconfirmed {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Release);
+            }
+        }
+        let dropped = Arc::new(AtomicBool::new(false));
+        let mut stream = open_single(
+            Box::pin(Unconfirmed(dropped.clone())),
+            CaptureSide::Speaker,
+            None,
+        );
+        let control = stream.drain_control().unwrap();
+        control.request_stop().unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            assert!(stream.next().await.is_none());
+            assert!(matches!(
+                control.completion().await,
+                Err(CaptureDrainError::Unsupported)
+            ));
+        })
+        .await
+        .unwrap();
+        assert!(dropped.load(Ordering::Acquire));
+    }
+
     #[tokio::test]
     async fn complete_recovery_between_polls_still_latches_integrity_without_local_warning_changes()
     {

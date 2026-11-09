@@ -34,9 +34,15 @@ pub(crate) fn open_capture_owned(
         Ok(stream) => stream,
         Err(error) => {
             // An open failure must not leave the microphone running after returning Err.
-            let _ = mic_stream.as_mut().request_stop();
+            let mic_stopped = mic_stream.as_mut().request_stop();
             drop(mic_stream);
-            return Err(error);
+            return Err(if mic_stopped {
+                error
+            } else {
+                Error::CaptureCleanupUnconfirmed(format!(
+                    "{error}; microphone startup cleanup was not confirmed"
+                ))
+            });
         }
     };
 
