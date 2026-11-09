@@ -1,10 +1,12 @@
 use super::*;
+mod retirement;
 mod source_export;
 use crate::attachment_upload::{DeviceAttachmentSource, DeviceUploadIo, UploadReader};
 use hypr_loofah_client::media_jobs::{
     MediaAuthority, MediaScope, MediaSubmission, MediaSubmissions,
 };
 use hypr_loofah_protocol::*;
+pub use retirement::*;
 pub use source_export::*;
 use std::sync::Weak;
 
@@ -259,6 +261,7 @@ pub async fn remote_media_recover<R: tauri::Runtime>(
         .for_request(cancel);
     let receipts = media.receipts(&app).await?;
     let submission = original(&receipts, &authority, &request_id).await?;
+    ensure_not_retiring(&submission)?;
     let status = authority.recover(&submission).await?;
     let admission = MediaAdmission {
         declaration: status.declaration.clone(),
@@ -339,6 +342,7 @@ pub async fn remote_media_resume_source<R: tauri::Runtime>(
         status,
     };
     let submission = receipts.observe_admission(&submission, &admission).await?;
+    ensure_not_retiring(&submission)?;
     let reader = reader(&app, window.label(), &submission, Some(source))?
         .ok_or_else(|| invalid("Original source required"))?;
     authority
@@ -429,4 +433,14 @@ fn unavailable() -> ApplicationError {
 
 fn invalid(message: &str) -> ApplicationError {
     failure(ErrorCode::Validation, message)
+}
+
+fn ensure_not_retiring(submission: &MediaSubmission) -> Result<(), ApplicationError> {
+    if submission.retirement.is_some() {
+        return Err(failure(
+            ErrorCode::Conflict,
+            "Retirement was requested; review its original cleanup receipt instead of recovering media",
+        ));
+    }
+    Ok(())
 }

@@ -25,6 +25,7 @@ impl MediaAuthority {
         let request = &submission.declaration.request_id;
         let prepared=async {
             self.validate_submission(submission)?;
+            ensure_active_submission(submission)?;
             validate_status(&admission.status)?;
             if submission.admission_revision.as_deref()!=Some(admission.revision.as_str()) || admission.declaration!=submission.declaration || admission.status.declaration!=submission.declaration || admission.revision!=admission.status.revision || admission.status.phase!=MediaPhase::Receiving {
                 return Err(failure(ErrorCode::Conflict,"Original media request is not awaiting source; inspect or explicitly recover it"));

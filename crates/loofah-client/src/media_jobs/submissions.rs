@@ -6,6 +6,8 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+#[path = "submissions_retirement.rs"]
+mod retirement;
 const MAX_BYTES: u64 = 16 * 1024 * 1024;
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(deny_unknown_fields)]
@@ -14,6 +16,22 @@ pub struct MediaSubmission {
     pub scope: MediaScope,
     pub declaration: MediaDeclaration,
     pub admission_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_export: Option<MediaSourceExportObservation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retirement: Option<MediaRetirementReceipt>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaSourceExportObservation {
+    pub declaration_sha256: String,
+    pub source: MediaUploadSource,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaRetirementReceipt {
+    pub request: MediaRetirementRequest,
+    pub retired: bool,
 }
 pub struct MediaSubmissions {
     root: PathBuf,
@@ -44,6 +62,8 @@ impl MediaSubmissions {
             scope: scope.clone(),
             declaration,
             admission_revision: None,
+            source_export: None,
+            retirement: None,
         };
         self.run(scope, move |directory| {
             prepare_directory(directory)?;
@@ -225,6 +245,7 @@ fn read(path: &Path) -> Result<Option<MediaSubmission>> {
     }
     validate_scope(&value.scope)?;
     validate_media_declaration(&value.declaration).map_err(|_| damaged())?;
+    retirement::validate_observations(&value)?;
     Ok(Some(value))
 }
 fn validate_scope(scope: &MediaScope) -> Result<()> {

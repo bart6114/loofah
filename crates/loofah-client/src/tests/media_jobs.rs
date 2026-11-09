@@ -458,6 +458,7 @@ async fn cancelled_media_upload_keeps_original_profile_until_actual_source_read_
     }
 }
 
+mod retirement;
 mod source_export;
 
 #[tokio::test]

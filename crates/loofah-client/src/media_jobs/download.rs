@@ -16,6 +16,7 @@ impl MediaAuthority {
     ) -> Result<(W, G)> {
         self.client.media_source_export_capability(&self.cancel)?;
         self.validate_submission(submission)?;
+        ensure_active_submission(submission)?;
         let revision = submission
             .admission_revision
             .as_deref()

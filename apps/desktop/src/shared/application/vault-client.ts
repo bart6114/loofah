@@ -23,6 +23,7 @@ import {
 } from "./playback";
 import type {
   ApplicationError,
+  MediaRetirementRequest,
   AttachmentPage,
   AttachmentUploadStatus,
   UploadAttachmentRequest,
@@ -119,6 +120,7 @@ import {
   commands,
   events,
   type ConnectionState,
+  type MediaRetirementView,
   type LocalCaptureStatus,
   type ManualMediaSummaryStatus,
   type SessionExportInput,
@@ -173,6 +175,15 @@ export type VaultClient = {
     ) => Promise<ProviderCredentialSaveOutcome>;
   };
   media?: {
+    retirementStatus?: (
+      requestId: string,
+      options?: RequestOptions,
+    ) => Promise<MediaRetirementView>;
+    retire?: (
+      requestId: string,
+      input: MediaRetirementRequest,
+      options?: RequestOptions,
+    ) => Promise<MediaRetirementView>;
     exportSource?: (
       requestId: string,
       options?: RequestOptions,
@@ -182,6 +193,7 @@ export type VaultClient = {
         request_id: string;
         filename: string | null;
         session_id: string | null;
+        cleanup?: "pending" | "retired";
       }>
     >;
     source: (

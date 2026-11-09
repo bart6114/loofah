@@ -11,6 +11,7 @@ import type {
   UploadAttachmentRequest,
   MediaDeclaration,
   MediaRequestStatus,
+  MediaRetirementRequest,
 } from "./protocol.gen";
 import type { RequestOptions } from "./vault-client";
 
@@ -254,6 +255,42 @@ export class NativeRemoteConnection {
           vaultId,
           declaration,
           source,
+        ),
+      ),
+    );
+  }
+
+  mediaRetirementStatus(
+    vaultId: string,
+    requestId: string,
+    options?: RequestOptions,
+  ) {
+    const controlId = options?.requestId ?? crypto.randomUUID();
+    return this.mediaAction(controlId, options, false, async () =>
+      applicationResult(
+        await commands.remoteMediaRetirementStatus(
+          this.info.connection_id,
+          vaultId,
+          requestId,
+          controlId,
+        ),
+      ),
+    );
+  }
+
+  retireMedia(
+    vaultId: string,
+    requestId: string,
+    input: MediaRetirementRequest,
+    options?: RequestOptions,
+  ) {
+    return this.mediaAction(input.retirement_id, options, true, async () =>
+      applicationResult(
+        await commands.remoteMediaRetire(
+          this.info.connection_id,
+          vaultId,
+          requestId,
+          input,
         ),
       ),
     );

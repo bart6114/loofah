@@ -59,6 +59,15 @@ export function remoteMedia(
     };
   };
   return {
+    retirementStatus: connection.info.capabilities.features.includes(
+      "media_retirement",
+    )
+      ? (id, options) => connection.mediaRetirementStatus(vaultId, id, options)
+      : undefined,
+    retire: connection.info.capabilities.features.includes("media_retirement")
+      ? (id, input, options) =>
+          connection.retireMedia(vaultId, id, input, options)
+      : undefined,
     exportSource: connection.info.capabilities.features.includes(
       "media_source_export",
     )
@@ -66,8 +75,13 @@ export function remoteMedia(
       : undefined,
     pendingSubmissions: async (options) =>
       (await connection.mediaSubmissions(vaultId, options)).map(
-        ({ declaration }) => ({
+        ({ declaration, retirement }) => ({
           request_id: declaration.request_id,
+          cleanup: retirement
+            ? retirement.retired
+              ? ("retired" as const)
+              : ("pending" as const)
+            : undefined,
           filename:
             declaration.operation.kind === "transcribe"
               ? null

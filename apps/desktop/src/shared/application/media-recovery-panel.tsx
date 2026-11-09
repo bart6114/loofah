@@ -17,8 +17,11 @@ import {
   prepareDeviceAttachmentSource,
 } from "./device-attachment-source";
 import { ApplicationRequestError } from "./errors";
+import { MediaRetirementReview } from "./media-retirement-review";
 import { mediaPending, type MediaStatus } from "./vault-client";
 import type { VaultScope } from "./vault-scope";
+
+import type { MediaRetirementView } from "~/types/tauri.gen";
 
 const PAGE_SIZE = 10;
 const deniedStates = [
@@ -165,6 +168,7 @@ function RecoveryRequest({
     request_id: string;
     filename: string | null;
     session_id: string | null;
+    cleanup?: "pending" | "retired";
   };
   connected: boolean;
 }) {
@@ -223,11 +227,68 @@ function RecoveryRequest({
     },
     scope.queryClient,
   );
+  const retirementKey = [
+    "vault",
+    scope.client.scope,
+    "media_retirement",
+    receipt.request_id,
+  ];
+  const [reviewRequested, setReviewRequested] = useState(false);
+  const [retirementReview, setRetirementReview] =
+    useState<MediaRetirementView | null>(null);
+  const retirement = useQuery(
+    {
+      queryKey: retirementKey,
+      queryFn: async ({ signal }) => {
+        const view = await scope.run(() =>
+          api.retirementStatus!(receipt.request_id, { signal }),
+        );
+        if (view.status.request_id !== receipt.request_id)
+          throw new Error(t`The original media retirement request changed.`);
+        return view;
+      },
+      enabled:
+        connected &&
+        !!api.retirementStatus &&
+        (reviewRequested ||
+          !!retirementReview ||
+          receipt.cleanup === "pending"),
+      networkMode: "always",
+      retry: false,
+      staleTime: 0,
+      refetchOnWindowFocus: false,
+      refetchInterval: (query) =>
+        connected && query.state.data?.status.state === "retiring"
+          ? 5000
+          : false,
+    },
+    scope.queryClient,
+  );
+  useEffect(() => {
+    if (reviewRequested && retirement.data && !retirement.isFetching) {
+      if (
+        retirement.data.pending ||
+        retirement.data.status.state === "eligible"
+      ) {
+        setRetirementReview(structuredClone(retirement.data));
+      }
+      setReviewRequested(false);
+    }
+  }, [reviewRequested, retirement.data, retirement.isFetching]);
+  const retiring =
+    !!receipt.cleanup ||
+    !!retirement.data?.pending ||
+    retirement.data?.status.state === "retiring" ||
+    retirement.data?.status.state === "retired";
   const action = useMutation(
     {
       retry: false,
       networkMode: "always",
       mutationFn: async (kind: "recover" | "resume" | "cancel") => {
+        if (retiring)
+          throw new Error(
+            t`Keep the original cleanup decision; media recovery is no longer available.`,
+          );
         const signal = lifetime.abort.signal;
         const current = () =>
           lifetime.active &&
@@ -291,7 +352,7 @@ function RecoveryRequest({
           !signal.aborted &&
           scope.getSnapshot().state === "connected" &&
           scope.client.canEdit;
-        if (!current() || !api.exportSource)
+        if (!current() || !api.exportSource || retiring)
           throw new Error(
             t`This saved request is no longer available in its original workspace.`,
           );
@@ -303,6 +364,10 @@ function RecoveryRequest({
         if (reveal.status === "error") throw new Error(reveal.error);
         return result;
       },
+      onSuccess: () => {
+        if (lifetime.active)
+          void scope.queryClient.invalidateQueries({ queryKey: retirementKey });
+      },
     },
     scope.queryClient,
   );
@@ -310,7 +375,8 @@ function RecoveryRequest({
     !connected ||
     !scope.client.canEdit ||
     action.isPending ||
-    sourceExport.isPending;
+    sourceExport.isPending ||
+    !!retirementReview;
   const review =
     query.isError ||
     (query.isSuccess &&
@@ -334,7 +400,28 @@ function RecoveryRequest({
           </Trans>
         </p>
       )}
-      {job && <p role="status">{statusLabel(job)}</p>}
+      {job && !retiring && <p role="status">{statusLabel(job)}</p>}
+      {(receipt.cleanup === "retired" ||
+        retirement.data?.status.state === "retired") && (
+        <p role="status">
+          <Trans>
+            Retained upload retired; request quota released. Canonical content
+            and results remain available.
+          </Trans>
+        </p>
+      )}
+      {retiring &&
+        receipt.cleanup !== "retired" &&
+        retirement.data?.status.state !== "retired" && (
+          <p role="status">
+            <Trans>
+              The original cleanup decision is saved. Check or resume that
+              decision; media will not be replayed.
+            </Trans>
+          </p>
+        )}
+      {retirement.data?.status.reason && <p>{retirement.data.status.reason}</p>}
+      {retirement.error && <p role="alert">{retirement.error.message}</p>}
       {!receipt.session_id && !job?.session_id && (
         <p className="text-neutral-600">
           <Trans>No note is linked to this saved request yet.</Trans>
@@ -352,7 +439,7 @@ function RecoveryRequest({
         </p>
       )}
       <div className="mt-2 flex flex-wrap gap-2">
-        {api.exportSource && receipt.filename && (
+        {api.exportSource && receipt.filename && !retiring && (
           <Button
             size="sm"
             variant="outline"
@@ -362,7 +449,7 @@ function RecoveryRequest({
             <Trans>Save original file</Trans>
           </Button>
         )}
-        {review && (
+        {review && !retiring && (
           <Button
             size="sm"
             variant="outline"
@@ -372,7 +459,7 @@ function RecoveryRequest({
             <Trans>Recover saved request</Trans>
           </Button>
         )}
-        {job?.state === "receiving" && api.resumeSource && (
+        {job?.state === "receiving" && api.resumeSource && !retiring && (
           <Button
             size="sm"
             variant="outline"
@@ -382,7 +469,7 @@ function RecoveryRequest({
             <Trans>Choose original file to resume upload</Trans>
           </Button>
         )}
-        {job && mediaPending(job) && (
+        {job && mediaPending(job) && !retiring && (
           <Button
             size="sm"
             variant="outline"
@@ -390,6 +477,32 @@ function RecoveryRequest({
             onClick={() => action.mutate("cancel")}
           >
             <Trans>Cancel processing</Trans>
+          </Button>
+        )}
+        {api.retire &&
+          receipt.cleanup !== "retired" &&
+          retirement.data?.status.state !== "retired" && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={disabled || retirement.isFetching}
+              onClick={() => setReviewRequested(true)}
+            >
+              {receipt.cleanup === "pending" || retirement.data?.pending ? (
+                <Trans>Review original cleanup</Trans>
+              ) : (
+                <Trans>Review retained files</Trans>
+              )}
+            </Button>
+          )}
+        {api.retirementStatus && (retiring || retirement.isError) && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!connected || retirement.isFetching}
+            onClick={() => void retirement.refetch()}
+          >
+            <Trans>Check cleanup status</Trans>
           </Button>
         )}
         {query.isError && (
@@ -403,6 +516,18 @@ function RecoveryRequest({
           </Button>
         )}
       </div>
+      {retirementReview && (
+        <MediaRetirementReview
+          key={`${scope.client.scope}:${receipt.request_id}`}
+          scope={scope}
+          requestId={receipt.request_id}
+          view={retirementReview}
+          onClose={() => setRetirementReview(null)}
+          onUpdated={(view) =>
+            scope.queryClient.setQueryData(retirementKey, view)
+          }
+        />
+      )}
     </article>
   );
 }

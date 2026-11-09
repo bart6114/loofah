@@ -27,6 +27,7 @@ pub async fn remote_media_export_source<R: tauri::Runtime>(
     tokio::spawn(async move {
         let _pending = pending;
         let submission = original(&receipts, &authority, &request_id).await?;
+        ensure_not_retiring(&submission)?;
         let status = verify_status(&submission, authority.status(&request_id).await?)?;
         let submission = receipts
             .observe_admission(
@@ -62,8 +63,10 @@ pub async fn remote_media_export_source<R: tauri::Runtime>(
         .map_err(worker_error)?;
         let guard = authority.guard_source_export(&submission).await?;
         // Only the completed private copy enters this short registry/profile/login fence.
-        tokio::task::spawn_blocking(move || {
-            let _owners = (authority, receipts, _pending);
+        let receipt_store = receipts.clone();
+        let exported_submission = submission.clone();
+        let published = tokio::task::spawn_blocking(move || {
+            let _owners = (authority, receipts);
             let registry = registry.lock().unwrap();
             let connected = registry
                 .get(&connection_id)
@@ -91,7 +94,11 @@ pub async fn remote_media_export_source<R: tauri::Runtime>(
             })
         })
         .await
-        .map_err(worker_error)?
+        .map_err(worker_error)??;
+        if let Err(error) = receipt_store.observe_source_export(&exported_submission).await {
+            tracing::warn!(%error, "Source exported; verified retirement observation could not be saved");
+        }
+        Ok(published)
     })
     .await
     .map_err(worker_error)?

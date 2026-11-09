@@ -6,10 +6,15 @@ use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 mod authority;
 mod download;
+mod retirement;
+const MEDIA_REQUEST_TIMEOUT: Duration = Duration::from_secs(35);
+const MEDIA_RETIREMENT_TIMEOUT: Duration = Duration::from_secs(300);
 mod submissions;
 mod upload;
 pub use authority::{MediaAuthority, MediaScope, MediaSourceExportGuard};
-pub use submissions::{MediaSubmission, MediaSubmissions};
+pub use submissions::{
+    MediaRetirementReceipt, MediaSourceExportObservation, MediaSubmission, MediaSubmissions,
+};
 const SNAPSHOT_LIMIT: usize = 16 * 1024 * 1024;
 impl RemoteClient {
     pub fn media_source_export_capability(&self, cancel: &CancellationToken) -> Result<()> {
@@ -199,6 +204,7 @@ impl MediaAuthority {
     }
     pub async fn declare(&self, submission: &MediaSubmission) -> Result<MediaAdmission> {
         self.validate_submission(submission)?;
+        ensure_active_submission(submission)?;
         let declaration = &submission.declaration;
         let admission: MediaAdmission = self
             .json(
@@ -230,6 +236,7 @@ impl MediaAuthority {
     /// Explicitly revisits the original journal, redeclaring only the same saved input after NotFound.
     pub async fn recover(&self, submission: &MediaSubmission) -> Result<MediaRequestStatus> {
         self.validate_submission(submission)?;
+        ensure_active_submission(submission)?;
         let value = match self
             .control(&submission.declaration.request_id, "recover")
             .await
@@ -294,6 +301,25 @@ impl MediaAuthority {
         request: &str,
         limit: usize,
     ) -> Result<T> {
+        self.json_with_budget(
+            method,
+            segments,
+            body,
+            request,
+            limit,
+            MEDIA_REQUEST_TIMEOUT,
+        )
+        .await
+    }
+    async fn json_with_budget<T: DeserializeOwned + Send, B: Serialize + Sync>(
+        &self,
+        method: Method,
+        segments: &[&str],
+        body: Option<&B>,
+        request: &str,
+        limit: usize,
+        budget: Duration,
+    ) -> Result<T> {
         let _window_work = self.client.begin_window_work()?;
         let mutation = method != Method::GET;
         let prepared = async {
@@ -308,7 +334,7 @@ impl MediaAuthority {
                 .bearer_auth(&guard.access)
                 .header("x-loofah-api-major", API_MAJOR.to_string())
                 .header("x-request-id", request)
-                .timeout(Duration::from_secs(35));
+                .timeout(budget);
             if let Some(body) = body {
                 req = req.json(body);
             }
@@ -410,4 +436,14 @@ fn uuid(value: &str) -> Result<()> {
 
 fn valid_revision(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && value.bytes().all(|byte| byte.is_ascii_graphic())
+}
+
+fn ensure_active_submission(submission: &MediaSubmission) -> Result<()> {
+    if submission.retirement.is_some() {
+        return Err(failure(
+            ErrorCode::Conflict,
+            "Original media retirement was requested; review its saved cleanup decision",
+        ));
+    }
+    Ok(())
 }

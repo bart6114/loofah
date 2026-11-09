@@ -22,6 +22,8 @@ const status = (phase = "running") => ({
 let connection: {
   info: { capabilities: { features: string[] } };
   exportMediaSource: ReturnType<typeof vi.fn>;
+  mediaRetirementStatus: ReturnType<typeof vi.fn>;
+  retireMedia: ReturnType<typeof vi.fn>;
   mediaSubmissions: ReturnType<typeof vi.fn>;
   mediaRequest: ReturnType<typeof vi.fn>;
   request: ReturnType<typeof vi.fn>;
@@ -48,6 +50,8 @@ beforeEach(() => {
         ],
       },
     },
+    mediaRetirementStatus: vi.fn(),
+    retireMedia: vi.fn(),
     exportMediaSource: vi.fn(async () => ({
       path: "/downloads/Loofah/Original.wav",
     })),
@@ -256,5 +260,35 @@ it("resumes source only through an explicit original-request operation", async (
     prepared.source,
     undefined,
   );
+  expect(connection.submitMedia).not.toHaveBeenCalled();
+});
+
+it("gates media retirement separately and forwards the exact reviewed decision", async () => {
+  expect(api().retirementStatus).toBeUndefined();
+  expect(api().retire).toBeUndefined();
+  connection.info.capabilities.features.push("media_retirement");
+  const input = {
+    retirement_id: "cleanup-original",
+    expected_revision: "admission",
+    expected_declaration_sha256: "b".repeat(64),
+    expected_source: { sha256: "a".repeat(64), size_bytes: 123 },
+    disposition: "discard" as const,
+  };
+  const options = { signal: new AbortController().signal };
+  await api().retirementStatus!("original", options);
+  expect(connection.mediaRetirementStatus).toHaveBeenCalledWith(
+    "company",
+    "original",
+    options,
+  );
+  expect(connection.retireMedia).not.toHaveBeenCalled();
+  await api().retire!("original", input, options);
+  expect(connection.retireMedia).toHaveBeenCalledWith(
+    "company",
+    "original",
+    input,
+    options,
+  );
+  expect(connection.recoverMedia).not.toHaveBeenCalled();
   expect(connection.submitMedia).not.toHaveBeenCalled();
 });

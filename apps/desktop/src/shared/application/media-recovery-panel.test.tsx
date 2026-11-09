@@ -25,12 +25,15 @@ vi.mock("./device-attachment-source", async (original) => ({
 
 import { ApplicationRequestError } from "./errors";
 import { MediaRecoveryPanel } from "./media-recovery-panel";
+import type { MediaRetirementRequest } from "./protocol.gen";
 import type {
   MediaStatus,
   VaultClient,
   VaultClientEvent,
 } from "./vault-client";
 import { VaultScope } from "./vault-scope";
+
+import type { MediaRetirementView } from "~/types/tauri.gen";
 
 const scopes: VaultScope[] = [];
 beforeEach(() => vi.resetAllMocks());
@@ -47,7 +50,18 @@ const missing = () =>
     current_revision: null,
     mutation_outcome: null,
   });
-async function fixture({ state = "missing", canEdit = true, count = 1 } = {}) {
+async function fixture({
+  state = "missing",
+  canEdit = true,
+  count = 1,
+  retirement: initialRetirement,
+}: {
+  state?: string;
+  canEdit?: boolean;
+  count?: number;
+  retirement?: MediaRetirementView;
+} = {}) {
+  let retirement = initialRetirement;
   let emit!: (event: VaultClientEvent) => void;
   const job: MediaStatus = {
     request_id: "original-request",
@@ -62,6 +76,7 @@ async function fixture({ state = "missing", canEdit = true, count = 1 } = {}) {
     request_id: i ? `request-${i}` : "original-request",
     filename: i ? `recording-${i}.wav` : "Original.wav",
     session_id: null,
+    cleanup: retirement?.pending ? ("pending" as const) : undefined,
   }));
   const prepared = {
     input: {
@@ -73,6 +88,30 @@ async function fixture({ state = "missing", canEdit = true, count = 1 } = {}) {
     close: vi.fn(async () => {}),
   };
   const media = {
+    retirementStatus: retirement
+      ? vi.fn(async (_requestId: string, _options?: unknown) => retirement!)
+      : undefined,
+    retire: retirement
+      ? vi.fn(
+          async (
+            _id: string,
+            input: MediaRetirementRequest,
+          ): Promise<MediaRetirementView> => {
+            retirement = {
+              ...retirement!,
+              pending: input,
+              status: {
+                ...retirement!.status,
+                state: "retired",
+                retirement: input,
+                allowed_dispositions: [],
+                quota_released: true,
+              },
+            };
+            return retirement;
+          },
+        )
+      : undefined,
     exportSource: vi.fn(async (_requestId: string, _options?: unknown) => ({
       path: "/downloads/Loofah/Original.wav",
     })),
@@ -348,4 +387,216 @@ it("shows uncertain status errors for explicit original-request recovery without
     ),
   );
   expect(f.media.importAudio).not.toHaveBeenCalled();
+});
+
+function retirementView(): MediaRetirementView {
+  return {
+    status: {
+      request_id: "original-request",
+      revision: "6b6769c3-cc92-4383-b7be-d3472457b746",
+      declaration_sha256: "b".repeat(64),
+      source: { sha256: "a".repeat(64), size_bytes: 128000 },
+      state: "eligible",
+      retirement: null,
+      reason: null,
+      quota_released: false,
+      allowed_dispositions: ["exported", "discard"],
+    },
+    pending: null,
+    verified_export: false,
+  };
+}
+
+it("reviews explicit source loss before retirement and never treats an unchecked export as proof", async () => {
+  const f = await fixture({ state: "succeeded", retirement: retirementView() });
+  await f.expand();
+  expect(f.media.retirementStatus).not.toHaveBeenCalled();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Review retained files" }),
+  );
+  expect(f.media.retire).not.toHaveBeenCalled();
+  expect(
+    await screen.findByRole("option", {
+      name: "I have kept the verified exported copy",
+    }),
+  ).toHaveProperty("disabled", true);
+  fireEvent.change(
+    await screen.findByRole("combobox", { name: "Original source" }),
+    { target: { value: "discard" } },
+  );
+  expect(
+    screen.getByRole("button", { name: "Remove retained upload" }),
+  ).toHaveProperty("disabled", true);
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove retained upload" }),
+  );
+  await waitFor(() => expect(f.media.retire).toHaveBeenCalledTimes(1));
+  expect(f.media.retire!.mock.calls[0][0]).toBe("original-request");
+  expect(f.media.retire!.mock.calls[0][1]).toMatchObject({
+    expected_revision: retirementView().status.revision,
+    expected_declaration_sha256: "b".repeat(64),
+    expected_source: retirementView().status.source,
+    disposition: "discard",
+  });
+  await screen.findByText(
+    "Retained upload retired; request quota released. Canonical content and results remain available.",
+  );
+  expect(
+    screen.queryByRole("button", { name: "Save original file" }),
+  ).toBeNull();
+  expect(f.media.recover).not.toHaveBeenCalled();
+  expect(f.media.resumeSource).not.toHaveBeenCalled();
+});
+
+it("reuses the original reviewed cleanup UUID after an unknown reply without automatic retry", async () => {
+  const f = await fixture({ state: "succeeded", retirement: retirementView() });
+  f.media.retire!.mockRejectedValueOnce(new Error("Cleanup outcome unknown"));
+  await f.expand();
+  expect(f.media.retirementStatus).not.toHaveBeenCalled();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Review retained files" }),
+  );
+  fireEvent.change(
+    await screen.findByRole("combobox", { name: "Original source" }),
+    { target: { value: "discard" } },
+  );
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove retained upload" }),
+  );
+  await screen.findByText("Cleanup outcome unknown");
+  expect(f.media.retire).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByRole("combobox", { name: "Original source" }),
+  ).toHaveProperty("disabled", true);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Resume original cleanup" }),
+  );
+  await waitFor(() => expect(f.media.retire).toHaveBeenCalledTimes(2));
+  expect(f.media.retire!.mock.calls[1][1]).toEqual(
+    f.media.retire!.mock.calls[0][1],
+  );
+  expect(f.media.recover).not.toHaveBeenCalled();
+});
+
+it("loads a saved cleanup decision read-only and fences original-source recovery", async () => {
+  const view = retirementView();
+  view.pending = {
+    retirement_id: "9b6769c3-cc92-4383-b7be-d3472457b746",
+    expected_revision: view.status.revision,
+    expected_declaration_sha256: view.status.declaration_sha256,
+    expected_source: view.status.source,
+    disposition: "discard",
+  };
+  const f = await fixture({ state: "receiving", retirement: view });
+  await f.expand();
+  const review = await screen.findByRole("button", {
+    name: "Review original cleanup",
+  });
+  expect(f.media.retire).not.toHaveBeenCalled();
+  expect(
+    screen.queryByRole("button", {
+      name: "Choose original file to resume upload",
+    }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Save original file" }),
+  ).toBeNull();
+  fireEvent.click(review);
+  fireEvent.click(await screen.findByRole("checkbox"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Resume original cleanup" }),
+  );
+  await waitFor(() => expect(f.media.retire).toHaveBeenCalledTimes(1));
+  expect(f.media.retire!.mock.calls[0][1]).toEqual(view.pending);
+});
+
+it("keeps cleanup unavailable for Readers and after the original workspace disconnects", async () => {
+  const f = await fixture({
+    state: "succeeded",
+    canEdit: false,
+    retirement: retirementView(),
+  });
+  await f.expand();
+  expect(
+    await screen.findByRole("button", { name: "Review retained files" }),
+  ).toHaveProperty("disabled", true);
+  act(() => f.emit({ kind: "connection", state: "reconnecting", error: null }));
+  expect(
+    screen.getByRole("button", { name: "Review retained files" }),
+  ).toHaveProperty("disabled", true);
+  expect(f.media.retire).not.toHaveBeenCalled();
+});
+
+it("queries retirement eligibility only for the reviewed request on a bounded recovery page", async () => {
+  const f = await fixture({
+    state: "succeeded",
+    count: 25,
+    retirement: retirementView(),
+  });
+  await f.expand();
+  const reviews = await screen.findAllByRole("button", {
+    name: "Review retained files",
+  });
+  expect(reviews).toHaveLength(10);
+  expect(f.media.retirementStatus).not.toHaveBeenCalled();
+  fireEvent.click(reviews[0]);
+  await screen.findByRole("combobox", { name: "Original source" });
+  expect(f.media.retirementStatus).toHaveBeenCalledTimes(1);
+  expect(f.media.retirementStatus!.mock.calls[0][0]).toBe("original-request");
+  expect(f.media.retire).not.toHaveBeenCalled();
+});
+
+it("keeps an opened cleanup review inactive across disconnection until an explicit original-scope submit", async () => {
+  const f = await fixture({ state: "succeeded", retirement: retirementView() });
+  await f.expand();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Review retained files" }),
+  );
+  fireEvent.change(
+    await screen.findByRole("combobox", { name: "Original source" }),
+    { target: { value: "discard" } },
+  );
+  fireEvent.click(screen.getByRole("checkbox"));
+  act(() => f.emit({ kind: "connection", state: "reconnecting", error: null }));
+  expect(
+    screen.getByRole("button", { name: "Remove retained upload" }),
+  ).toHaveProperty("disabled", true);
+  expect(f.media.retire).not.toHaveBeenCalled();
+  act(() => f.emit({ kind: "connection", state: "connected", error: null }));
+  expect(f.media.retire).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove retained upload" }),
+  );
+  await waitFor(() => expect(f.media.retire).toHaveBeenCalledTimes(1));
+});
+
+it("reviews request-quota release without claiming uploaded files exist for a no-upload request", async () => {
+  const view = retirementView();
+  view.status.source = null;
+  view.status.allowed_dispositions = ["no_upload"];
+  const f = await fixture({ state: "succeeded", retirement: view });
+  await f.expand();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Review retained files" }),
+  );
+  fireEvent.change(
+    await screen.findByRole("combobox", { name: "Original source" }),
+    { target: { value: "no_upload" } },
+  );
+  expect(
+    screen.queryByRole("option", {
+      name: "Discard the retained original upload",
+    }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Release request quota" }),
+  );
+  await waitFor(() => expect(f.media.retire).toHaveBeenCalledTimes(1));
+  expect(f.media.retire!.mock.calls[0][1]).toMatchObject({
+    disposition: "no_upload",
+    expected_source: null,
+  });
 });
