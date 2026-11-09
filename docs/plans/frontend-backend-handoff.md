@@ -6,6 +6,14 @@ resume GUI acceptance until the user gives the signal. Both idle QA apps were
 stopped. Source review, implementation, headless service checks and hosted CI may
 continue. Production SSO acceptance is separately deferred by the user.
 
+A separate Windows x64 result at `0cbdcbdc9e` exposed a test-witness race: a zero
+strong-reference count was observed before the probe's destructor published its
+counter. Fixture-only correction `dba0051854` now awaits an external probe-drop
+acknowledgement under the same three-second bound. The 22-package all-target
+compile passed; no local audio/desktop test was executed. Original ownership
+assertions remain intact, and both native Windows runtime qualifications remain
+pending for the next source checkpoint. Production ownership code is unchanged.
+
 Latest Local owner correction: `a289a66185`. The documentation-only `0cbdcbdc9e`
 CLI run exposed a latent progress-delivery race: final `ready` could be omitted
 before a successful response. Two deterministic transport cases failed against
@@ -3300,3 +3308,35 @@ preserved. The same explicit disposable global/vault/downloads roots and normal
 TLS trust requirements apply. No desktop app test, capture, inference, install,
 release or activation occurred. Healthy earlier hosted jobs were left running;
 source publication waits for their terminal results.
+
+
+## Native ownership fixture: await the original probe's counter acknowledgement
+
+Normal Windows x64 job129311750380 at `0cbdcbdc9e` failed only
+`dropped_observer_cannot_release_original_owner_while_native_factory_is_blocked`:
+after `retired()` saw `Weak::upgrade()==None`, the exact drop counter was still
+zero instead of one. All blocked-factory count-zero and original-Weak-presence
+checks had passed. Audio-actual reported34/1/3; overall Rust reported2,353/1/47
+across70 cohorts, and installer stages skipped. Raw573,753-byte log SHA-256 is
+`1ae9a1f282854a86db99d32558c1d699a849b8c8dcee37c12056c71d6f05d996`.
+The raw symptom and source show a witness gap: strong-count exhaustion can be
+observed while another worker is still publishing the destructor's counter.
+This result alone is not evidence of premature production owner release.
+
+Test-only correction `dba0051854` (worker `412b2580b9`) replaces the weak-poll
+barrier with an external oneshot sent by the original Probe after incrementing
+its counter. The receiver holds no Probe, health or native owner. The unchanged
+three-second timeout now bounds that actual acknowledgement; the original Weak
+must then be gone. Pre-release count-zero/Weak-present and post-release exact
+count-one checks remain unchanged across all three ownership tests. No blind
+sleep, timeout increase or production completion authority was introduced.
+
+The sole stable 22-package all-target check passed in10.53 seconds, raw SHA-256
+`5fe248da97d8032fd31659fb15af2f8d4a056f7e1af45adb293d6f3a5e6bc4a3`.
+This is compile-only evidence. No audio/desktop test binary was executed locally;
+fresh hosted x64 and ARM64 results are required. The module is `cfg(test)` only,
+so production ownership code and the model pipeline are unchanged. The verified,
+unlaunched `a289a66185` QA bundle keeps its exact source/build scope and remains
+suitable for later authorized Local QA; no new production bundle was needed for
+a fixture-only change. Mac and ARM checks from the earlier checkpoint continued
+without cancellation while this correction was prepared.
