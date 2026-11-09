@@ -760,77 +760,107 @@ async fn executable_restart_recovers_known_legacy_operation_and_refuses_future_o
         )
         .await;
         assert_eq!(inventory(&root.join("restored")), original);
-        // A killed upgrade process must not consume a receipt merely by reporting global health.
-        Server::start(
-            &root,
-            &root.join("restored"),
-            &root.join("new-cache"),
-            &provider,
-        )
-        .await
-        .crash()
-        .await;
-        assert_eq!(
-            fs::read(root.join("restored").join(&pending)).unwrap(),
-            intent.to_string().as_bytes()
-        );
-        let restored = Server::start(
-            &root,
-            &root.join("restored"),
-            &root.join("new-cache"),
-            &provider,
-        )
-        .await;
-        let (status, documents) = restored
-            .call(
+        let document_path = format!("/api/v1/vaults/{vault}/sessions/{session}/documents");
+        let restored_directory = root
+            .join("restored/vaults")
+            .join(vault)
+            .join("sessions")
+            .join(session);
+        let canonical_before = inventory(&restored_directory);
+        let mut recovered_canonical = None;
+        for attempt in 0..2 {
+            let restored = Server::start(
+                &root,
+                &root.join("restored"),
+                &root.join("new-cache"),
                 &provider,
-                "alice",
-                "GET",
-                &format!("/api/v1/vaults/{vault}/sessions/{session}/documents"),
-                None,
-                None,
             )
             .await;
-        if version == 1 {
-            assert_eq!(status, StatusCode::OK, "{documents}");
-            assert!(documents.to_string().contains("- [x] Call Alice"));
-            assert_eq!(
-                serde_json::from_slice::<Value>(
-                    &fs::read(
-                        root.join("restored/vaults")
-                            .join(vault)
-                            .join("sessions")
-                            .join(session)
-                            .join("tasks.json")
+            // Startup now opens catalog vaults eagerly. Prove the exact recovered
+            // state before crashing, rather than racing its recovery after /health.
+            let (status, documents) = tokio::time::timeout(Duration::from_secs(20), async {
+                loop {
+                    let response = restored
+                        .call(&provider, "alice", "GET", &document_path, None, None)
+                        .await;
+                    if version != 1 || response.0 != StatusCode::SERVICE_UNAVAILABLE {
+                        break response;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("known legacy recovery must finish");
+            if version == 1 {
+                assert_eq!(status, StatusCode::OK, "{documents}");
+                assert!(documents.to_string().contains("- [x] Call Alice"));
+                assert_eq!(
+                    fs::read(restored_directory.join("summary.md")).unwrap(),
+                    b"- [x] Call Alice"
+                );
+                assert_eq!(
+                    serde_json::from_slice::<Value>(
+                        &fs::read(restored_directory.join("tasks.json")).unwrap()
                     )
-                    .unwrap()
-                )
-                .unwrap()["tasks"],
-                serde_json::to_value(&tasks).unwrap()
-            );
-            assert!(!root.join("restored").join(&pending).exists());
-        } else {
-            assert!(
-                !status.is_success(),
-                "future operation must fail vault readiness: {documents}"
-            );
-            assert_eq!(
-                fs::read(root.join("restored").join(&pending)).unwrap(),
-                intent.to_string().as_bytes()
-            );
-            assert_eq!(
-                fs::read(
-                    root.join("restored/vaults")
-                        .join(vault)
-                        .join("sessions")
-                        .join(session)
-                        .join("tasks.json")
-                )
-                .unwrap(),
-                original_tasks
-            );
+                    .unwrap()["tasks"],
+                    serde_json::to_value(&tasks).unwrap()
+                );
+                assert!(!root.join("restored").join(&pending).exists());
+                let canonical = inventory(&restored_directory);
+                let mut unchanged = canonical.clone();
+                let mut original_unchanged = canonical_before.clone();
+                unchanged.remove(Path::new("tasks.json"));
+                original_unchanged.remove(Path::new("tasks.json"));
+                assert_eq!(unchanged, original_unchanged);
+                if let Some(previous) = &recovered_canonical {
+                    assert_eq!(
+                        &canonical, previous,
+                        "restart must not replay or alter the completed projection"
+                    );
+                } else {
+                    recovered_canonical = Some(canonical);
+                }
+            } else {
+                assert_eq!(
+                    status,
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "future operation must fail vault readiness: {documents}"
+                );
+                assert_eq!(
+                    restored
+                        .client
+                        .get(format!("{}/ready", restored.origin))
+                        .send()
+                        .await
+                        .unwrap()
+                        .status(),
+                    StatusCode::SERVICE_UNAVAILABLE
+                );
+                assert_eq!(
+                    fs::read(root.join("restored").join(&pending)).unwrap(),
+                    intent.to_string().as_bytes()
+                );
+                assert_eq!(inventory(&restored_directory), canonical_before);
+            }
+            if attempt == 0 {
+                restored.crash().await;
+            } else {
+                restored.stop().await;
+            }
+            if version == 1 {
+                assert_eq!(
+                    &inventory(&restored_directory),
+                    recovered_canonical.as_ref().unwrap()
+                );
+                assert!(!root.join("restored").join(&pending).exists());
+            } else {
+                assert_eq!(
+                    fs::read(root.join("restored").join(&pending)).unwrap(),
+                    intent.to_string().as_bytes()
+                );
+                assert_eq!(inventory(&restored_directory), canonical_before);
+            }
         }
-        restored.stop().await;
         assert_eq!(inventory(&storage), original);
     }
 }
