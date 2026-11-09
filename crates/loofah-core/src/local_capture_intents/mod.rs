@@ -181,9 +181,11 @@ impl LocalCaptureIntents {
             let _pin = pin;
             let history = history::History::open(&directory, &vault)?;
             let mut active = Vec::new();
+            let mut archived = 0;
             for record in journal::load(&directory, &vault)? {
-                if history::eligible(&record) {
+                if archived < history::ARCHIVE_BATCH && history::eligible(&record) {
                     history.archive(&record)?;
+                    archived += 1;
                 } else {
                     active.push(record);
                 }

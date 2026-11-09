@@ -2592,3 +2592,17 @@ writer-owner pin package remains worker-only pending its CPAL callback correctio
 and review; it is not part of this Root source yet. No stopped-owner proof or
 legacy-unknown recovery authority is enabled. Desktop application testing remains
 paused; production SSO remains deferred.
+
+
+The history migration now limits durable archival to four eligible receipts per
+startup and per new declaration. Startup still validates the entire bounded
+active inventory, and an interrupted original archive move is recovered exactly;
+remaining terminal receipts stay readable in the active inventory. A new request
+can therefore free four slots and consume one, without a background sweep or
+inferred completion. The existing full-legacy-inventory regression records
+validation, actual open and first-declaration timing separately and asserts the
+four-move limit. The 4,097-real-admission regression remains intact, with aggregate
+and maximum declaration timing distinct from completion writes. These timing
+instruments are source-only pending the integration run; the earlier 331-second
+full-cohort duration included thousands of receipt writes and does not by itself
+measure startup latency.

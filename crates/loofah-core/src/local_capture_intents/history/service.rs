@@ -146,6 +146,7 @@ impl LocalCaptureIntents {
             .filter(|(_, entry)| {
                 !entry.running && entry.admission.is_none() && eligible(&entry.record)
             })
+            .take(ARCHIVE_BATCH)
             .map(|(request, entry)| (request.clone(), entry.dispatch.clone()))
             .collect();
         for (request, dispatch) in candidates {

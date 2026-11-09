@@ -4,6 +4,7 @@ use std::{fs, path::Path};
 mod service;
 
 const VERSION: u32 = 1;
+pub(super) const ARCHIVE_BATCH: usize = 4;
 const PROOF: &str = "history-proof.json";
 const PAGE_SIZE: u64 = 256;
 const PAGE_BYTES: u64 = 64 * 1024;

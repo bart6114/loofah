@@ -53,11 +53,23 @@ async fn more_than_4096_real_local_admissions_preserve_uuid_history_without_acti
     let first = declaration();
     let token = service.declare(first.clone()).await.unwrap();
     token.not_started().await.unwrap();
+    let mut declaration_total = std::time::Duration::ZERO;
+    let mut declaration_max = std::time::Duration::ZERO;
+    let mut completion_total = std::time::Duration::ZERO;
     for _ in 0..4096 {
+        let started = std::time::Instant::now();
         let token = service.declare(declaration()).await.unwrap();
+        let elapsed = started.elapsed();
+        declaration_total += elapsed;
+        declaration_max = declaration_max.max(elapsed);
+        let started = std::time::Instant::now();
         token.not_started().await.unwrap();
+        completion_total += started.elapsed();
         assert_eq!(service.state.lock().await.len(), 1);
     }
+    eprintln!(
+        "4096 subsequent real admissions: declaration_total={declaration_total:?}, declaration_max={declaration_max:?}, completion_total={completion_total:?}"
+    );
     assert_eq!(service.history.head().unwrap().total, 4096);
     let historical = service.status(&first.request_id).await.unwrap();
     assert_eq!(historical.declaration, first);
@@ -107,10 +119,11 @@ async fn more_than_4096_real_local_admissions_preserve_uuid_history_without_acti
     reopened.shutdown().await;
 }
 
-#[test]
-fn full_legacy_active_inventory_does_not_count_the_reserved_history_directory() {
+#[tokio::test]
+async fn full_legacy_active_inventory_does_not_count_the_reserved_history_directory() {
     let root = root();
-    let active = root.path().join("local-capture-intents");
+    let context = context(root.path()).await;
+    let active = root.path().join("operations/local-capture-intents");
     let history = History::open(&active, "original-vault").unwrap();
     history.initialize().unwrap();
     for _ in 0..4096 {
@@ -124,11 +137,33 @@ fn full_legacy_active_inventory_does_not_count_the_reserved_history_directory() 
         )
         .unwrap();
     }
+    let started = std::time::Instant::now();
     assert_eq!(
         journal::load(&active, "original-vault").unwrap().len(),
         4096
     );
+    let validation_elapsed = started.elapsed();
     assert_eq!(history.head().unwrap().total, 0);
+    let started = std::time::Instant::now();
+    let service = LocalCaptureIntents::open(context).await.unwrap();
+    let open_elapsed = started.elapsed();
+    assert_eq!(service.state.lock().await.len(), 4096 - ARCHIVE_BATCH);
+    assert_eq!(history.head().unwrap().total, ARCHIVE_BATCH as u64);
+    let remaining = service.state.lock().await.keys().next().unwrap().clone();
+    assert_eq!(
+        service.status(&remaining).await.unwrap().state,
+        LocalCaptureState::NotStarted
+    );
+    let started = std::time::Instant::now();
+    let fresh = service.declare(declaration()).await.unwrap();
+    let first_declaration_elapsed = started.elapsed();
+    assert_eq!(service.state.lock().await.len(), 4097 - 2 * ARCHIVE_BATCH);
+    assert_eq!(history.head().unwrap().total, (2 * ARCHIVE_BATCH) as u64);
+    fresh.not_started().await.unwrap();
+    eprintln!(
+        "full 4096 legacy inventory: validation={validation_elapsed:?}, open_with_{ARCHIVE_BATCH}_archives={open_elapsed:?}, first_declaration_with_{ARCHIVE_BATCH}_archives={first_declaration_elapsed:?}"
+    );
+    service.shutdown().await;
 }
 
 #[tokio::test]
