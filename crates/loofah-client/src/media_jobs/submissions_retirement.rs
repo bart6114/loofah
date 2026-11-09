@@ -34,12 +34,8 @@ impl MediaSubmissions {
             source,
         };
         self.update_observation(submission, move |original| {
-            if original.retirement.is_some() {
-                return Err(failure(
-                    ErrorCode::Conflict,
-                    "Media retirement was already requested",
-                ));
-            }
+            // A completed copy is historical evidence, even if cleanup raced its
+            // publication. Preserve the original cleanup decision and acknowledgement.
             original.source_export = Some(export);
             Ok(())
         })

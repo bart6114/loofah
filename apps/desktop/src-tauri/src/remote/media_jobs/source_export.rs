@@ -27,7 +27,6 @@ pub async fn remote_media_export_source<R: tauri::Runtime>(
     tokio::spawn(async move {
         let _pending = pending;
         let submission = original(&receipts, &authority, &request_id).await?;
-        ensure_not_retiring(&submission)?;
         let status = verify_status(&submission, authority.status(&request_id).await?)?;
         let submission = receipts
             .observe_admission(
