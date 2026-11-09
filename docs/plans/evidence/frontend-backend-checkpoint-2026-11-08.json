@@ -11469,6 +11469,2052 @@
         "Tiny Qwen semantic quality remains failed/unqualified; no new model quality pass",
         "All activation gates remain off; no merge,release,versionbump or uservaultchanges"
       ]
+    },
+    "hosted_f96f84_terminal_backend_macos_cli_speech_and_windows_fixture_2026_11_09": {
+      "recorded_at": "2026-11-09T13:28:30.898914+00:00",
+      "source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+      "hosted_terminal_backend_and_desktop": {
+        "sha256": "1cb084e48a6854b2d9bf4f1ed7be3eba64d6378424ca60117c65d86a5df519dc",
+        "report": {
+          "source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+          "merge": "a1357483949a487077852c7b6df5c1d5a31afab8",
+          "jobs": [
+            {
+              "job_id": 129163901853,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129163901853.log",
+              "bytes": 157446,
+              "sha256": "31ec9eb7558f24725ed69335f23425619955d3ab14b23be4c2bdb7df8446a314",
+              "selected_evidence": [
+                {
+                  "line": 302,
+                  "text": "2026-11-09T12:37:15.6815563Z  Test Files  31 passed (31)"
+                },
+                {
+                  "line": 303,
+                  "text": "2026-11-09T12:37:15.6816858Z       Tests  303 passed (303)"
+                },
+                {
+                  "line": 1190,
+                  "text": "2026-11-09T12:40:49.7870002Z     at collectTests (file:///home/runner/work/loofah/loofah/node_modules/.pnpm/@vitest+runner@4.1.4/node_modules/@vitest/runner/dist/chunk-artifact.js:2433:3)"
+                },
+                {
+                  "line": 1228,
+                  "text": "2026-11-09T12:41:08.6303056Z  Test Files  298 passed (298)"
+                },
+                {
+                  "line": 1229,
+                  "text": "2026-11-09T12:41:08.6325273Z       Tests  2660 passed (2660)"
+                }
+              ]
+            },
+            {
+              "job_id": 129163901974,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129163901974.log",
+              "bytes": 305737,
+              "sha256": "635283667c9798a9e0bbc10754bf593d7f9747c08fafad04bcebc25d6a0883de",
+              "selected_evidence": [
+                {
+                  "line": 676,
+                  "text": "2026-11-09T12:39:06.4722081Z test result: ok. 53 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 1.42s"
+                },
+                {
+                  "line": 895,
+                  "text": "2026-11-09T12:40:08.2528184Z test result: ok. 210 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 61.78s"
+                },
+                {
+                  "line": 912,
+                  "text": "2026-11-09T12:40:08.3343602Z test capture_append::audio::tests::buffered_pcm_output_preserves_exact_wav_bytes_with_bounded_write_calls ... ok"
+                },
+                {
+                  "line": 913,
+                  "text": "2026-11-09T12:40:08.3356151Z test capture_append::audio::tests::buffered_pcm_output_propagates_underlying_write_and_final_flush_errors ... ok"
+                },
+                {
+                  "line": 920,
+                  "text": "2026-11-09T12:40:08.3490482Z test capture_append::audio::tests::concatenation_reads_immutable_inputs_and_syncs_only_its_owned_output ... ok"
+                },
+                {
+                  "line": 941,
+                  "text": "2026-11-09T12:40:10.2927278Z test capture_processing::tests::append::busy_engine_preflight_reuses_retained_suffix_without_admitting_inference ... ok"
+                },
+                {
+                  "line": 942,
+                  "text": "2026-11-09T12:40:11.3233846Z test capture_processing::tests::append::suffix_only_inference_preserves_original_unknown_fields_and_summarizes_exact_merged_commit ... ok"
+                },
+                {
+                  "line": 1189,
+                  "text": "2026-11-09T12:40:20.8977234Z test local_capture_intents::history::service_tests::full_legacy_active_inventory_does_not_count_the_reserved_history_directory ... ok"
+                },
+                {
+                  "line": 1493,
+                  "text": "2026-11-09T12:40:51.1349848Z test local_capture_intents::history::service_tests::more_than_4096_real_local_admissions_preserve_uuid_history_without_active_growth ... ok"
+                },
+                {
+                  "line": 1495,
+                  "text": "2026-11-09T12:40:51.1350547Z test result: ok. 590 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 42.87s"
+                },
+                {
+                  "line": 1539,
+                  "text": "2026-11-09T12:40:51.1823912Z test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1545,
+                  "text": "2026-11-09T12:40:51.1832820Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1707,
+                  "text": "2026-11-09T12:41:23.4904684Z test result: ok. 156 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.30s"
+                },
+                {
+                  "line": 1713,
+                  "text": "2026-11-09T12:41:23.5102439Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1725,
+                  "text": "2026-11-09T12:41:23.5446306Z test result: ok. 2 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+                },
+                {
+                  "line": 1732,
+                  "text": "2026-11-09T12:41:23.5760943Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+                },
+                {
+                  "line": 1744,
+                  "text": "2026-11-09T12:41:24.4241655Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s"
+                },
+                {
+                  "line": 1782,
+                  "text": "2026-11-09T12:41:24.7550987Z test result: ok. 31 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.33s"
+                },
+                {
+                  "line": 1817,
+                  "text": "2026-11-09T12:41:24.7682007Z test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1828,
+                  "text": "2026-11-09T12:41:24.7709385Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2488,
+                  "text": "2026-11-09T12:41:32.3373592Z test result: ok. 631 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 7.56s"
+                },
+                {
+                  "line": 2494,
+                  "text": "2026-11-09T12:41:32.4347379Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2500,
+                  "text": "2026-11-09T12:41:32.7920748Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2507,
+                  "text": "2026-11-09T12:41:33.3978722Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2512,
+                  "text": "2026-11-09T12:41:34.0449143Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2518,
+                  "text": "2026-11-09T12:41:34.1961204Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2524,
+                  "text": "2026-11-09T12:41:34.2655604Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2530,
+                  "text": "2026-11-09T12:41:34.3172110Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2536,
+                  "text": "2026-11-09T12:41:34.6589460Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2557,
+                  "text": "2026-11-09T12:42:20.2420157Z loofah-server 0.45.7"
+                }
+              ]
+            },
+            {
+              "job_id": 129163902131,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129163902131.log",
+              "bytes": 123292,
+              "sha256": "a6893b67095856d317e58e5107990a915d4810fe39fa528813ce89c967bbf970",
+              "selected_evidence": [
+                {
+                  "line": 1513,
+                  "text": "2026-11-09T12:45:58.2178286Z loofah-server 0.45.7"
+                },
+                {
+                  "line": 1552,
+                  "text": "2026-11-09T12:46:00.4241268Z Valid configuration"
+                }
+              ]
+            },
+            {
+              "job_id": 129163901448,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129163901448.log",
+              "bytes": 218358,
+              "sha256": "b67034a2ffac7e584d240f235835137fe77d192db23f422e97de27719ab49703",
+              "selected_evidence": [
+                {
+                  "line": 56,
+                  "text": "2026-11-09T12:36:19.9994719Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 57,
+                  "text": "2026-11-09T12:36:19.9997571Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 220,
+                  "text": "2026-11-09T12:36:28.7336435Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 221,
+                  "text": "2026-11-09T12:36:28.7337445Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 336,
+                  "text": "2026-11-09T12:36:39.2315848Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 337,
+                  "text": "2026-11-09T12:36:39.2316836Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 375,
+                  "text": "2026-11-09T12:36:39.2454317Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 376,
+                  "text": "2026-11-09T12:36:39.2455326Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 405,
+                  "text": "2026-11-09T12:36:41.6152644Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 406,
+                  "text": "2026-11-09T12:36:41.6153645Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 425,
+                  "text": "2026-11-09T12:36:41.6217699Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 426,
+                  "text": "2026-11-09T12:36:41.6218674Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 450,
+                  "text": "2026-11-09T12:36:41.6386036Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 451,
+                  "text": "2026-11-09T12:36:41.6387063Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 484,
+                  "text": "2026-11-09T12:36:41.6837822Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 485,
+                  "text": "2026-11-09T12:36:41.6838739Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 521,
+                  "text": "2026-11-09T12:36:41.6916385Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 522,
+                  "text": "2026-11-09T12:36:41.6917275Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 542,
+                  "text": "2026-11-09T12:36:41.7010932Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 543,
+                  "text": "2026-11-09T12:36:41.7011819Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 565,
+                  "text": "2026-11-09T12:36:41.7099299Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 566,
+                  "text": "2026-11-09T12:36:41.7100185Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 607,
+                  "text": "2026-11-09T12:36:41.7205171Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 608,
+                  "text": "2026-11-09T12:36:41.7206161Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 638,
+                  "text": "2026-11-09T12:36:52.5944011Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 639,
+                  "text": "2026-11-09T12:36:52.5944902Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 668,
+                  "text": "2026-11-09T12:36:52.6172244Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 669,
+                  "text": "2026-11-09T12:36:52.6173145Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 692,
+                  "text": "2026-11-09T12:36:52.6515645Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 693,
+                  "text": "2026-11-09T12:36:52.6516512Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 715,
+                  "text": "2026-11-09T12:36:52.6599732Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 716,
+                  "text": "2026-11-09T12:36:52.6600608Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 746,
+                  "text": "2026-11-09T12:36:52.6690536Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 747,
+                  "text": "2026-11-09T12:36:52.6691423Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 773,
+                  "text": "2026-11-09T12:36:52.7030570Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 774,
+                  "text": "2026-11-09T12:36:52.7031483Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 797,
+                  "text": "2026-11-09T12:36:52.7237320Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 798,
+                  "text": "2026-11-09T12:36:52.7238204Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 840,
+                  "text": "2026-11-09T12:36:52.7485856Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 841,
+                  "text": "2026-11-09T12:36:52.7486854Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 888,
+                  "text": "2026-11-09T12:36:52.8378469Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 889,
+                  "text": "2026-11-09T12:36:52.8379348Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1080,
+                  "text": "2026-11-09T12:37:11.4886785Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1081,
+                  "text": "2026-11-09T12:37:11.4887707Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1117,
+                  "text": "2026-11-09T12:37:13.3934487Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1118,
+                  "text": "2026-11-09T12:37:13.3935422Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1155,
+                  "text": "2026-11-09T12:37:21.5857000Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1156,
+                  "text": "2026-11-09T12:37:21.5857917Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1207,
+                  "text": "2026-11-09T12:37:22.3029926Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1208,
+                  "text": "2026-11-09T12:37:22.3030852Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1236,
+                  "text": "2026-11-09T12:37:23.4227050Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1237,
+                  "text": "2026-11-09T12:37:23.4228060Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1271,
+                  "text": "2026-11-09T12:37:25.2990649Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1272,
+                  "text": "2026-11-09T12:37:25.2991684Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1395,
+                  "text": "2026-11-09T12:39:06.0929662Z test result: ok. 72 passed; 0 failed; 9 ignored; 0 measured; 0 filtered out; finished in 1.83s"
+                },
+                {
+                  "line": 1409,
+                  "text": "2026-11-09T12:39:06.1169966Z   test \"$(grep -c '^test result: ok\\. 1 passed; 0 failed; 0 ignored; 0 measured;' \"$kernel_log\")\" = 1"
+                },
+                {
+                  "line": 1417,
+                  "text": "2026-11-09T12:39:06.1186324Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1418,
+                  "text": "2026-11-09T12:39:06.1187245Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1524,
+                  "text": "2026-11-09T12:39:11.9940644Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 4.70s"
+                },
+                {
+                  "line": 1532,
+                  "text": "2026-11-09T12:39:13.0397960Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 0.46s"
+                },
+                {
+                  "line": 1540,
+                  "text": "2026-11-09T12:39:16.2638051Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 2.63s"
+                },
+                {
+                  "line": 1554,
+                  "text": "2026-11-09T12:39:16.2940713Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1555,
+                  "text": "2026-11-09T12:39:16.2941625Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1662,
+                  "text": "2026-11-09T12:39:58.3220717Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 80 filtered out; finished in 40.87s"
+                },
+                {
+                  "line": 1673,
+                  "text": "2026-11-09T12:39:58.3469116Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1674,
+                  "text": "2026-11-09T12:39:58.3470020Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1729,
+                  "text": "2026-11-09T12:40:26.1253106Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.61s"
+                },
+                {
+                  "line": 1746,
+                  "text": "2026-11-09T12:40:26.1514968Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1747,
+                  "text": "2026-11-09T12:40:26.1515892Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1796,
+                  "text": "2026-11-09T12:47:58.5238419Z {\"case\": \"tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source\", \"binary_sha256\": \"af3eadafa51de775c5862001a2cf9f3dbaa98325f1433267f8a50dfe083be9ea\", \"fresh\": false}"
+                },
+                {
+                  "line": 1812,
+                  "text": "2026-11-09T12:47:58.5386280Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1813,
+                  "text": "2026-11-09T12:47:58.5387218Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 1841,
+                  "text": "2026-11-09T12:47:58.5476524Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 183 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1848,
+                  "text": "2026-11-09T12:47:58.5518825Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 186 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1878,
+                  "text": "2026-11-09T12:47:58.5586193Z test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 176 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1886,
+                  "text": "2026-11-09T12:47:58.5640622Z test transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join ... ignored, requires explicitly provisioned LOOFAH_ONNX_MODELS; real dual-channel CPU streaming and actual cancellation drain"
+                },
+                {
+                  "line": 1889,
+                  "text": "2026-11-09T12:47:58.5643419Z test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 182 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1898,
+                  "text": "2026-11-09T12:47:58.7026249Z test tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication ... ignored, requires explicit LOOFAH_ONNX_MODELS directory; real portable CPU batch and diarization"
+                },
+                {
+                  "line": 1899,
+                  "text": "2026-11-09T12:47:58.7028760Z test tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive ... ignored, requires provisioned LOOFAH_ONNX_MODELS; real reserved CPU overlap on the configured service"
+                },
+                {
+                  "line": 1901,
+                  "text": "2026-11-09T12:47:58.7030737Z test result: ok. 3 passed; 0 failed; 4 ignored; 0 measured; 181 filtered out; finished in 0.13s"
+                },
+                {
+                  "line": 1910,
+                  "text": "2026-11-09T12:47:58.7129388Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 184 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1937,
+                  "text": "2026-11-09T12:47:58.8163241Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 1938,
+                  "text": "2026-11-09T12:47:58.8164295Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 2173,
+                  "text": "2026-11-09T12:54:23.2172756Z loofah-server 0.45.7"
+                },
+                {
+                  "line": 2188,
+                  "text": "2026-11-09T12:54:24.3335124Z   tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication \\"
+                },
+                {
+                  "line": 2189,
+                  "text": "2026-11-09T12:54:24.3335834Z   transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join \\"
+                },
+                {
+                  "line": 2218,
+                  "text": "2026-11-09T12:54:24.3361887Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 2219,
+                  "text": "2026-11-09T12:54:24.3363005Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                },
+                {
+                  "line": 2240,
+                  "text": "2026-11-09T12:54:29.4104651Z test tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source ... ok"
+                },
+                {
+                  "line": 2242,
+                  "text": "2026-11-09T12:54:29.4105775Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 4.96s"
+                },
+                {
+                  "line": 2244,
+                  "text": "2026-11-09T12:54:29.4797300Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 4.96s"
+                },
+                {
+                  "line": 2247,
+                  "text": "2026-11-09T12:54:48.5617853Z test tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication ... ok"
+                },
+                {
+                  "line": 2249,
+                  "text": "2026-11-09T12:54:48.5618932Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 18.97s"
+                },
+                {
+                  "line": 2251,
+                  "text": "2026-11-09T12:54:48.6328460Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 18.97s"
+                },
+                {
+                  "line": 2254,
+                  "text": "2026-11-09T12:55:43.4781484Z test transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join ... ok"
+                },
+                {
+                  "line": 2256,
+                  "text": "2026-11-09T12:55:43.4782574Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 54.74s"
+                },
+                {
+                  "line": 2258,
+                  "text": "2026-11-09T12:55:43.5394567Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 54.74s"
+                },
+                {
+                  "line": 2261,
+                  "text": "2026-11-09T12:56:17.3580719Z reserved CPU acceptance: total=2 reserved_live=1 batch_frames=5120000 source_sha256=938170e91687b18f8f9c4c289fd579770163ca2df9485b591d2c15578ddd926d first_caption_ms=11824 concurrent_http_ms=10 actual_drain_ms=16558"
+                },
+                {
+                  "line": 2262,
+                  "text": "2026-11-09T12:56:17.5184241Z test tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive ... ok"
+                },
+                {
+                  "line": 2264,
+                  "text": "2026-11-09T12:56:17.5185100Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 33.87s"
+                },
+                {
+                  "line": 2266,
+                  "text": "2026-11-09T12:56:17.5887366Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 33.87s"
+                },
+                {
+                  "line": 2289,
+                  "text": "2026-11-09T12:56:18.7909806Z   CPU_SERVICE_CASE: tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source"
+                },
+                {
+                  "line": 2290,
+                  "text": "2026-11-09T12:56:18.7910723Z   CPU_RESERVED_CASE: tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive"
+                }
+              ]
+            },
+            {
+              "job_id": 129163901309,
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129163901309.log",
+              "bytes": 626752,
+              "sha256": "6876fb428b5b88cc3eb1ed99ffbffb0c4f1cb219568f5a4e162275789eab3f2f",
+              "selected_evidence": [
+                {
+                  "line": 724,
+                  "text": "2026-11-09T12:37:52.6882040Z SpeechCore verified cache hit"
+                },
+                {
+                  "line": 1426,
+                  "text": "2026-11-09T12:57:09.2053440Z test result: ok. 196 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 9.58s"
+                },
+                {
+                  "line": 1432,
+                  "text": "2026-11-09T12:57:09.2966820Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1438,
+                  "text": "2026-11-09T12:57:11.3965620Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1710,
+                  "text": "2026-11-09T13:08:08.0989520Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1733,
+                  "text": "2026-11-09T13:08:08.5577200Z test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s"
+                },
+                {
+                  "line": 1761,
+                  "text": "2026-11-09T13:08:08.5797790Z test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 1770,
+                  "text": "2026-11-09T13:08:08.5930180Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1780,
+                  "text": "2026-11-09T13:08:09.1652130Z test capture::stream::ownership_tests::dropped_observer_cannot_release_original_owner_while_native_factory_is_blocked ... ok"
+                },
+                {
+                  "line": 1781,
+                  "text": "2026-11-09T13:08:09.1655360Z test capture::stream::ownership_tests::original_owner_retires_after_actual_native_drain_even_if_control_survives ... ok"
+                },
+                {
+                  "line": 1784,
+                  "text": "2026-11-09T13:08:09.1668580Z test capture::stream::ownership_tests::native_panic_releases_owner_only_after_the_actual_worker_unwinds ... ok"
+                },
+                {
+                  "line": 1796,
+                  "text": "2026-11-09T13:08:09.3042500Z test mic::ownership_tests::backend_callback_holders_keep_original_owner_after_outer_stream_thread_drops ... ok"
+                },
+                {
+                  "line": 1805,
+                  "text": "2026-11-09T13:08:09.3081190Z test speaker::teardown::tests::each_native_failure_or_panic_retains_context_owner_and_remaining_handles_without_retry ... ok"
+                },
+                {
+                  "line": 1807,
+                  "text": "2026-11-09T13:08:09.3083830Z test speaker::teardown::tests::successful_checked_teardown_closes_every_original_handle_once_before_releasing_context ... ok"
+                },
+                {
+                  "line": 1808,
+                  "text": "2026-11-09T13:08:09.3084950Z test speaker::teardown::tests::unknown_registration_and_startup_unwind_never_free_a_live_callback_context ... ok"
+                },
+                {
+                  "line": 1814,
+                  "text": "2026-11-09T13:08:10.1694990Z test result: ok. 35 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 1.02s"
+                },
+                {
+                  "line": 1837,
+                  "text": "2026-11-09T13:08:12.5210640Z test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.29s"
+                },
+                {
+                  "line": 1843,
+                  "text": "2026-11-09T13:08:12.5398560Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1851,
+                  "text": "2026-11-09T13:08:12.5521570Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1857,
+                  "text": "2026-11-09T13:08:12.5665520Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1880,
+                  "text": "2026-11-09T13:08:22.5555150Z test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.97s"
+                },
+                {
+                  "line": 1886,
+                  "text": "2026-11-09T13:08:22.5680110Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 1903,
+                  "text": "2026-11-09T13:08:22.6404050Z test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s"
+                },
+                {
+                  "line": 1910,
+                  "text": "2026-11-09T13:08:23.3626910Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.71s"
+                },
+                {
+                  "line": 1931,
+                  "text": "2026-11-09T13:08:26.9043030Z test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.52s"
+                },
+                {
+                  "line": 1943,
+                  "text": "2026-11-09T13:08:27.2283990Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s"
+                },
+                {
+                  "line": 2006,
+                  "text": "2026-11-09T13:08:29.5604210Z test result: ok. 53 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 2.31s"
+                },
+                {
+                  "line": 2012,
+                  "text": "2026-11-09T13:08:29.5782070Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2018,
+                  "text": "2026-11-09T13:08:29.5911970Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2024,
+                  "text": "2026-11-09T13:08:29.6063510Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2030,
+                  "text": "2026-11-09T13:08:29.6175910Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2046,
+                  "text": "2026-11-09T13:08:29.8298760Z test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s"
+                },
+                {
+                  "line": 2054,
+                  "text": "2026-11-09T13:08:29.8604450Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+                },
+                {
+                  "line": 2067,
+                  "text": "2026-11-09T13:08:29.9546540Z test result: ok. 3 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+                },
+                {
+                  "line": 2073,
+                  "text": "2026-11-09T13:08:29.9684470Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2176,
+                  "text": "2026-11-09T13:08:40.8081290Z test result: ok. 97 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.82s"
+                },
+                {
+                  "line": 2186,
+                  "text": "2026-11-09T13:08:40.8394380Z test result: ok. 1 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 2192,
+                  "text": "2026-11-09T13:08:40.8503060Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2198,
+                  "text": "2026-11-09T13:08:40.8645420Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2214,
+                  "text": "2026-11-09T13:08:40.8830550Z test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2314,
+                  "text": "2026-11-09T13:08:43.5350910Z test result: ok. 94 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.44s"
+                },
+                {
+                  "line": 2381,
+                  "text": "2026-11-09T13:08:43.7456860Z test result: ok. 60 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.08s"
+                },
+                {
+                  "line": 2390,
+                  "text": "2026-11-09T13:08:43.8018210Z test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2398,
+                  "text": "2026-11-09T13:08:43.8274940Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2409,
+                  "text": "2026-11-09T13:08:43.8510780Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2547,
+                  "text": "2026-11-09T13:08:46.3962090Z test result: ok. 96 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.50s"
+                },
+                {
+                  "line": 2555,
+                  "text": "2026-11-09T13:08:46.4171510Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 2562,
+                  "text": "2026-11-09T13:08:47.2669440Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.83s"
+                },
+                {
+                  "line": 2571,
+                  "text": "2026-11-09T13:08:47.3783480Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s"
+                },
+                {
+                  "line": 2588,
+                  "text": "2026-11-09T13:08:48.4613800Z test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.07s"
+                },
+                {
+                  "line": 2602,
+                  "text": "2026-11-09T13:08:49.5755860Z test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.07s"
+                },
+                {
+                  "line": 2614,
+                  "text": "2026-11-09T13:08:51.1510630Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.57s"
+                },
+                {
+                  "line": 2624,
+                  "text": "2026-11-09T13:08:51.8795940Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s"
+                },
+                {
+                  "line": 2842,
+                  "text": "2026-11-09T13:10:06.9521260Z test result: ok. 210 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 75.04s"
+                },
+                {
+                  "line": 2860,
+                  "text": "2026-11-09T13:10:07.4260000Z test capture_append::audio::tests::buffered_pcm_output_preserves_exact_wav_bytes_with_bounded_write_calls ... ok"
+                },
+                {
+                  "line": 2861,
+                  "text": "2026-11-09T13:10:07.4269890Z test capture_append::audio::tests::buffered_pcm_output_propagates_underlying_write_and_final_flush_errors ... ok"
+                },
+                {
+                  "line": 2862,
+                  "text": "2026-11-09T13:10:07.4540290Z test capture_append::audio::tests::concatenation_reads_immutable_inputs_and_syncs_only_its_owned_output ... ok"
+                },
+                {
+                  "line": 2887,
+                  "text": "2026-11-09T13:10:10.3637020Z test capture_processing::tests::append::busy_engine_preflight_reuses_retained_suffix_without_admitting_inference ... ok"
+                },
+                {
+                  "line": 2889,
+                  "text": "2026-11-09T13:10:11.3029470Z test capture_processing::tests::append::suffix_only_inference_preserves_original_unknown_fields_and_summarizes_exact_merged_commit ... ok"
+                },
+                {
+                  "line": 3135,
+                  "text": "2026-11-09T13:10:31.0732690Z test local_capture_intents::history::service_tests::full_legacy_active_inventory_does_not_count_the_reserved_history_directory ... ok"
+                },
+                {
+                  "line": 3440,
+                  "text": "2026-11-09T13:11:25.9265910Z test local_capture_intents::history::service_tests::more_than_4096_real_local_admissions_preserve_uuid_history_without_active_growth has been running for over 60 seconds"
+                },
+                {
+                  "line": 3441,
+                  "text": "2026-11-09T13:11:59.5226350Z test local_capture_intents::history::service_tests::more_than_4096_real_local_admissions_preserve_uuid_history_without_active_growth ... ok"
+                },
+                {
+                  "line": 3443,
+                  "text": "2026-11-09T13:11:59.5228090Z test result: ok. 590 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 112.54s"
+                },
+                {
+                  "line": 3454,
+                  "text": "2026-11-09T13:11:59.5832110Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3479,
+                  "text": "2026-11-09T13:12:04.7739510Z test result: ok. 18 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 5.10s"
+                },
+                {
+                  "line": 3524,
+                  "text": "2026-11-09T13:12:04.8125380Z test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+                },
+                {
+                  "line": 3529,
+                  "text": "2026-11-09T13:12:04.8261530Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3691,
+                  "text": "2026-11-09T13:12:48.2973730Z test result: ok. 156 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 43.44s"
+                },
+                {
+                  "line": 3697,
+                  "text": "2026-11-09T13:12:48.3247750Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3703,
+                  "text": "2026-11-09T13:12:48.3582960Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3710,
+                  "text": "2026-11-09T13:12:48.6586230Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s"
+                },
+                {
+                  "line": 3722,
+                  "text": "2026-11-09T13:12:49.5530420Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.87s"
+                },
+                {
+                  "line": 3728,
+                  "text": "2026-11-09T13:12:49.5654910Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3736,
+                  "text": "2026-11-09T13:12:49.5833130Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 3756,
+                  "text": "2026-11-09T13:12:50.6747140Z test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.08s"
+                },
+                {
+                  "line": 3766,
+                  "text": "2026-11-09T13:12:50.7116060Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3780,
+                  "text": "2026-11-09T13:12:50.7313030Z test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 3795,
+                  "text": "2026-11-09T13:12:50.7595120Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 3804,
+                  "text": "2026-11-09T13:12:50.7759590Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3828,
+                  "text": "2026-11-09T13:12:50.8360780Z test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+                },
+                {
+                  "line": 3834,
+                  "text": "2026-11-09T13:12:50.8548120Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3845,
+                  "text": "2026-11-09T13:12:50.8656270Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3851,
+                  "text": "2026-11-09T13:12:50.8768650Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3874,
+                  "text": "2026-11-09T13:12:50.8984300Z test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 3891,
+                  "text": "2026-11-09T13:12:50.9152120Z test result: ok. 5 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4233,
+                  "text": "2026-11-09T13:12:51.0195670Z test result: ok. 290 passed; 0 failed; 46 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+                },
+                {
+                  "line": 4246,
+                  "text": "2026-11-09T13:12:51.0470020Z test result: ok. 0 passed; 0 failed; 7 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4268,
+                  "text": "2026-11-09T13:12:51.0744160Z test result: ok. 0 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4276,
+                  "text": "2026-11-09T13:12:51.0884110Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4289,
+                  "text": "2026-11-09T13:12:52.1854020Z test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.08s"
+                },
+                {
+                  "line": 4296,
+                  "text": "2026-11-09T13:12:52.2041320Z test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4334,
+                  "text": "2026-11-09T13:12:52.6727410Z test result: ok. 31 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.45s"
+                },
+                {
+                  "line": 4341,
+                  "text": "2026-11-09T13:12:52.6850990Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4421,
+                  "text": "2026-11-09T13:12:52.7279770Z test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+                },
+                {
+                  "line": 4454,
+                  "text": "2026-11-09T13:12:55.2384840Z test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.50s"
+                },
+                {
+                  "line": 4460,
+                  "text": "2026-11-09T13:12:55.2744970Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4470,
+                  "text": "2026-11-09T13:12:55.3329800Z test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+                },
+                {
+                  "line": 4478,
+                  "text": "2026-11-09T13:12:55.3636880Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4484,
+                  "text": "2026-11-09T13:12:55.3783390Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4492,
+                  "text": "2026-11-09T13:12:55.4123630Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4533,
+                  "text": "2026-11-09T13:12:56.0724910Z test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s"
+                },
+                {
+                  "line": 4539,
+                  "text": "2026-11-09T13:12:56.0970880Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4585,
+                  "text": "2026-11-09T13:12:56.2204830Z test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s"
+                },
+                {
+                  "line": 4609,
+                  "text": "2026-11-09T13:12:56.2632790Z test result: ok. 12 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4617,
+                  "text": "2026-11-09T13:12:56.2973930Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+                },
+                {
+                  "line": 4624,
+                  "text": "2026-11-09T13:12:56.3807750Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+                },
+                {
+                  "line": 4630,
+                  "text": "2026-11-09T13:12:56.3933600Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4702,
+                  "text": "2026-11-09T13:12:56.5421250Z test result: ok. 66 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s"
+                },
+                {
+                  "line": 4731,
+                  "text": "2026-11-09T13:12:56.8403100Z test result: ok. 22 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.26s"
+                },
+                {
+                  "line": 4744,
+                  "text": "2026-11-09T13:12:56.9705190Z test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.09s"
+                },
+                {
+                  "line": 4751,
+                  "text": "2026-11-09T13:12:57.0142880Z test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4758,
+                  "text": "2026-11-09T13:12:57.0626170Z test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4800,
+                  "text": "2026-11-09T13:12:57.1066700Z test result: ok. 31 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4893,
+                  "text": "2026-11-09T13:12:57.1455280Z test result: ok. 86 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4898,
+                  "text": "2026-11-09T13:12:57.1619400Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 4933,
+                  "text": "2026-11-09T13:12:57.1914160Z test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 4944,
+                  "text": "2026-11-09T13:12:57.2178360Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+                },
+                {
+                  "line": 5604,
+                  "text": "2026-11-09T13:13:16.9765230Z test result: ok. 631 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 19.74s"
+                },
+                {
+                  "line": 5614,
+                  "text": "2026-11-09T13:13:17.0239210Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5626,
+                  "text": "2026-11-09T13:13:17.0815610Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+                },
+                {
+                  "line": 5637,
+                  "text": "2026-11-09T13:13:22.1289410Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.03s"
+                },
+                {
+                  "line": 5647,
+                  "text": "2026-11-09T13:13:22.9926830Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.83s"
+                },
+                {
+                  "line": 5656,
+                  "text": "2026-11-09T13:13:23.0566580Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+                },
+                {
+                  "line": 5663,
+                  "text": "2026-11-09T13:13:23.3959090Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5668,
+                  "text": "2026-11-09T13:13:24.0455100Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5674,
+                  "text": "2026-11-09T13:13:24.1479040Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5680,
+                  "text": "2026-11-09T13:13:24.2456120Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5686,
+                  "text": "2026-11-09T13:13:24.7540410Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5692,
+                  "text": "2026-11-09T13:13:24.8939850Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5698,
+                  "text": "2026-11-09T13:13:24.9834670Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5704,
+                  "text": "2026-11-09T13:13:25.0656880Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5710,
+                  "text": "2026-11-09T13:13:25.1793930Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5717,
+                  "text": "2026-11-09T13:13:25.3164110Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5722,
+                  "text": "2026-11-09T13:13:25.4351240Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5728,
+                  "text": "2026-11-09T13:13:25.5425930Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5734,
+                  "text": "2026-11-09T13:13:25.6858100Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5740,
+                  "text": "2026-11-09T13:13:25.7846000Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5746,
+                  "text": "2026-11-09T13:13:26.1397370Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5752,
+                  "text": "2026-11-09T13:13:26.2865070Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5758,
+                  "text": "2026-11-09T13:13:26.5762090Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5764,
+                  "text": "2026-11-09T13:13:26.6771520Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5770,
+                  "text": "2026-11-09T13:13:26.7749500Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5776,
+                  "text": "2026-11-09T13:13:27.4717290Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5782,
+                  "text": "2026-11-09T13:13:27.7452510Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5788,
+                  "text": "2026-11-09T13:13:27.8771520Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5794,
+                  "text": "2026-11-09T13:13:28.1332520Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5800,
+                  "text": "2026-11-09T13:13:28.2303400Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5806,
+                  "text": "2026-11-09T13:13:28.3506830Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5812,
+                  "text": "2026-11-09T13:13:28.4117320Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5818,
+                  "text": "2026-11-09T13:13:28.5113280Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5824,
+                  "text": "2026-11-09T13:13:29.3859690Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5830,
+                  "text": "2026-11-09T13:13:29.8166730Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5836,
+                  "text": "2026-11-09T13:13:29.9821640Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5842,
+                  "text": "2026-11-09T13:13:30.1105900Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5848,
+                  "text": "2026-11-09T13:13:30.7391260Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5854,
+                  "text": "2026-11-09T13:13:31.3918520Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5860,
+                  "text": "2026-11-09T13:13:32.3308700Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5866,
+                  "text": "2026-11-09T13:13:32.5369040Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5872,
+                  "text": "2026-11-09T13:13:32.7335020Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5878,
+                  "text": "2026-11-09T13:13:33.7475550Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5884,
+                  "text": "2026-11-09T13:13:34.2670200Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5891,
+                  "text": "2026-11-09T13:13:34.5635710Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5896,
+                  "text": "2026-11-09T13:13:34.6858670Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5902,
+                  "text": "2026-11-09T13:13:34.7887830Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5908,
+                  "text": "2026-11-09T13:13:34.9186820Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5914,
+                  "text": "2026-11-09T13:13:35.0880600Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5920,
+                  "text": "2026-11-09T13:13:35.2422350Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5926,
+                  "text": "2026-11-09T13:13:35.4996930Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5932,
+                  "text": "2026-11-09T13:13:35.9893730Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5938,
+                  "text": "2026-11-09T13:13:37.0247680Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5944,
+                  "text": "2026-11-09T13:13:37.3211670Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5950,
+                  "text": "2026-11-09T13:13:37.4510070Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5956,
+                  "text": "2026-11-09T13:13:37.8125070Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5962,
+                  "text": "2026-11-09T13:13:38.0091710Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5968,
+                  "text": "2026-11-09T13:13:38.1333220Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5974,
+                  "text": "2026-11-09T13:13:38.2734420Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5981,
+                  "text": "2026-11-09T13:13:38.4258200Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5987,
+                  "text": "2026-11-09T13:13:38.8423900Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5993,
+                  "text": "2026-11-09T13:13:39.0342950Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 5999,
+                  "text": "2026-11-09T13:13:39.2412480Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6005,
+                  "text": "2026-11-09T13:13:39.4213410Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6011,
+                  "text": "2026-11-09T13:13:39.5526940Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6016,
+                  "text": "2026-11-09T13:13:40.0176780Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6022,
+                  "text": "2026-11-09T13:13:40.0823180Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6028,
+                  "text": "2026-11-09T13:13:40.2699160Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6034,
+                  "text": "2026-11-09T13:13:40.3824810Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6040,
+                  "text": "2026-11-09T13:13:40.5454750Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6046,
+                  "text": "2026-11-09T13:13:40.7105900Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6052,
+                  "text": "2026-11-09T13:13:40.7843450Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6058,
+                  "text": "2026-11-09T13:13:40.8991360Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6064,
+                  "text": "2026-11-09T13:13:41.1040860Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6070,
+                  "text": "2026-11-09T13:13:41.2296930Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6076,
+                  "text": "2026-11-09T13:13:41.4002420Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6082,
+                  "text": "2026-11-09T13:13:41.5741600Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6088,
+                  "text": "2026-11-09T13:13:41.7049060Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6094,
+                  "text": "2026-11-09T13:13:42.2439810Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6100,
+                  "text": "2026-11-09T13:13:42.3285710Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                },
+                {
+                  "line": 6106,
+                  "text": "2026-11-09T13:13:42.4072230Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+                }
+              ]
+            }
+          ],
+          "limit": "Hosted backend and desktop-ci attempt1 complete. No local desktop execution or CI control mutation. Configured ignored model cases counted only at named actual executions; inventory/ignored listings are not execution.",
+          "runs": [
+            {
+              "id": 42618386267,
+              "head_sha": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "status": "completed",
+              "conclusion": "success",
+              "run_attempt": 1,
+              "created_at": "2026-11-09T12:36:13Z",
+              "updated_at": "2026-11-09T12:56:23Z"
+            },
+            {
+              "id": 42618386249,
+              "head_sha": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "status": "completed",
+              "conclusion": "success",
+              "run_attempt": 1,
+              "created_at": "2026-11-09T12:36:13Z",
+              "updated_at": "2026-11-09T13:13:48Z"
+            }
+          ],
+          "merge_parents": [
+            "a6a8f001d9165881e59fd0fa29df944da26b8801",
+            "f96f84c7dc916a04bd21a42ffc00be732af2a575"
+          ]
+        }
+      },
+      "hosted_terminal_cli": {
+        "sha256": "940b31db816f8bb720c99d65fe8cba91bd5f05016c8b6905311488d5f9e2267e",
+        "report": {
+          "head_sha": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+          "checkout_merge": "a1357483949a487077852c7b6df5c1d5a31afab8",
+          "parents": [
+            "a6a8f001d9165881e59fd0fa29df944da26b8801",
+            "f96f84c7dc916a04bd21a42ffc00be732af2a575"
+          ],
+          "run_id": 42618386239,
+          "job_id": 129163901368,
+          "conclusion": "success",
+          "observed_at": "2026-11-09T12:48:53.074475+00:00",
+          "totals": {
+            "passed": 274,
+            "failed": 0,
+            "ignored": 2,
+            "measured": 0,
+            "filtered": 0
+          },
+          "cohorts": [
+            {
+              "passed": 10,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running unittests src/lib.rs (target/debug/deps/export_core-b0cb5caea578cfeb)"
+            },
+            {
+              "passed": 2,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running tests/text_parity.rs (target/debug/deps/text_parity-b69a0fe35bbc6cf7)"
+            },
+            {
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Doc-tests export_core"
+            },
+            {
+              "passed": 31,
+              "failed": 0,
+              "ignored": 1,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running unittests src/lib.rs (target/debug/deps/search_cache-983680c24f29e2ca)"
+            },
+            {
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Doc-tests search_cache"
+            },
+            {
+              "passed": 18,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running unittests src/lib.rs (target/debug/deps/agent_access-1cf8a7c775461084)"
+            },
+            {
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Doc-tests agent_access"
+            },
+            {
+              "passed": 17,
+              "failed": 0,
+              "ignored": 1,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running unittests src/lib.rs (target/debug/deps/loofah_local_owner-ee4151edb7ebb4c8)"
+            },
+            {
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Doc-tests loofah_local_owner"
+            },
+            {
+              "passed": 96,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running unittests src/lib.rs (target/debug/deps/loof_cli-06605d1290b189e7)"
+            },
+            {
+              "passed": 2,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running unittests src/main.rs (target/debug/deps/loof-63670e966d202b8b)"
+            },
+            {
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running tests/audio_import.rs (target/debug/deps/audio_import-39ee87b650199798)"
+            },
+            {
+              "passed": 2,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running tests/profiles.rs (target/debug/deps/profiles-ab75800a7c588661)"
+            },
+            {
+              "passed": 12,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running tests/search_cache.rs (target/debug/deps/search_cache-8f9c222ffb821d07)"
+            },
+            {
+              "passed": 7,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running tests/session_delete.rs (target/debug/deps/session_delete-129df94cd0e9abec)"
+            },
+            {
+              "passed": 6,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running tests/session_export.rs (target/debug/deps/session_export-0e73d586986e8e7d)"
+            },
+            {
+              "passed": 4,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running tests/session_rename.rs (target/debug/deps/session_rename-6282f6d3a65bd4c2)"
+            },
+            {
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Doc-tests loof_cli"
+            },
+            {
+              "passed": 66,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Running unittests src/lib.rs (target/debug/deps/tiptap-50e0984f6111f1d2)"
+            },
+            {
+              "passed": 0,
+              "failed": 0,
+              "ignored": 0,
+              "measured": 0,
+              "filtered": 0,
+              "target": "Doc-tests tiptap"
+            }
+          ],
+          "ignored_cases": [
+            "test cache::tests::large_vault_with_concurrent_recording_writes ... ignored, production performance workload",
+            "test tests::owner_child ... ignored, child process fixture"
+          ],
+          "checks": [
+            "six Cargo test package commands",
+            "strict selected-package all-target Clippy -D warnings",
+            "release CLI build",
+            "help/version/meetings/MCP/missing-vault doctor/invalid-argument smoke",
+            "packaged skill checks",
+            "docs build"
+          ],
+          "raw_log": {
+            "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/job-129163901368.raw.log",
+            "sha256": "a12358312b93113e9826fc8e93084b673aa7880d9a4bf7a7c9625f58ae00f082",
+            "bytes": 193238
+          },
+          "scope": "Hosted Linux CLI workflow only; not Desktop or server-wide qualification. No workflow mutation or local execution."
+        }
+      },
+      "hosted_terminal_general_and_frontend": {
+        "sha256": "8e84b6533121e99d943217568fc59345486f8ba3fbf7f93c855732c0132c3d99",
+        "report": {
+          "observed_at": "2026-11-09T12:42:34.150980+00:00",
+          "head_sha": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+          "checkout_merge": "a1357483949a487077852c7b6df5c1d5a31afab8",
+          "parents": [
+            "a6a8f001d9165881e59fd0fa29df944da26b8801",
+            "f96f84c7dc916a04bd21a42ffc00be732af2a575"
+          ],
+          "terminal": {
+            "ci": {
+              "run": 42618386293,
+              "conclusion": "success",
+              "jobs": [
+                "lint",
+                "fmt"
+              ],
+              "offline_workflow_helper_tests": 44
+            },
+            "zizmor": {
+              "run": 42618386269,
+              "conclusion": "success",
+              "high_severity_findings": 0,
+              "ignored": 36,
+              "suppressed": 67
+            },
+            "frontend_job": {
+              "run": 42618386249,
+              "job": 129163901853,
+              "conclusion": "success",
+              "editor": {
+                "tests": 303,
+                "files": 31
+              },
+              "desktop": {
+                "tests": 2660,
+                "files": 298
+              },
+              "checks": [
+                "UI build",
+                "editor typecheck",
+                "desktop typecheck",
+                "Lingui clean extraction/strict compilation/catalog diff"
+              ]
+            }
+          },
+          "pending": [
+            "desktop Rust job (parent owns qualification)"
+          ],
+          "raw_logs": [
+            {
+              "job_id": 129163901267,
+              "file": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/job-129163901267.raw.log",
+              "bytes": 17686,
+              "sha256": "9e2e97911357ae33f73188dad5118112d413ba813e4d65c80e97b7fc391339ca",
+              "checkout_merge_seen": true
+            },
+            {
+              "job_id": 129163901646,
+              "file": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/job-129163901646.raw.log",
+              "bytes": 86880,
+              "sha256": "eecb9dd07884006f1675ff87c168a32508a081173c18f8125f3a0368209a0206",
+              "checkout_merge_seen": true
+            },
+            {
+              "job_id": 129163901215,
+              "file": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/job-129163901215.raw.log",
+              "bytes": 20145,
+              "sha256": "6c10f34bc0b36d0f6f795fe8eabcd2c03a520eab53014befd86faf4311d77a08",
+              "checkout_merge_seen": true
+            },
+            {
+              "job_id": 129163901853,
+              "file": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/job-129163901853.raw.log",
+              "bytes": 157446,
+              "sha256": "31ec9eb7558f24725ed69335f23425619955d3ab14b23be4c2bdb7df8446a314",
+              "checkout_merge_seen": true
+            }
+          ],
+          "actions_performed": "Read-only GitHub monitoring and local evidence writes; no retries, cancellations, dispatches, builds or app launches.",
+          "cli_terminal_receipt": "cli-terminal.json"
+        }
+      },
+      "hosted_terminal_windows_speech_both_architectures": {
+        "sha256": "668c340df607d2045566965122f1bcfa3d52d4cf8ccf2fa00a9aa12e1683fc9c",
+        "report": {
+          "at": "2026-11-09 13:07:04 UTC",
+          "head": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+          "run_id": 42618500736,
+          "attempt": 1,
+          "conclusion": "success",
+          "jobs": [
+            {
+              "id": 129164294451,
+              "name": "speech-models (windows-11-arm)",
+              "status": "completed",
+              "conclusion": "success",
+              "active": [],
+              "failed_steps": [],
+              "run_id": 42618500736,
+              "event": "workflow_dispatch",
+              "attempt": 1,
+              "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129164294451.log",
+              "bytes": 87144,
+              "sha256": "b9c3812fa8d90e308918abda5c7d4d814700fdfc245ca4106baf6084fd26bb3b",
+              "rust_cohorts": 7,
+              "rust_passed": 8,
+              "rust_failed": 0,
+              "rust_ignored": 0,
+              "expected_checkout": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "expected_checkout_present": true
+            },
+            {
+              "id": 129164294637,
+              "name": "speech-models (windows-2025)",
+              "status": "completed",
+              "conclusion": "success",
+              "active": [],
+              "failed_steps": [],
+              "run_id": 42618500736,
+              "event": "workflow_dispatch",
+              "attempt": 1,
+              "log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-f96f84-audit/129164294637.log",
+              "bytes": 84353,
+              "sha256": "bc540fbc30bd0d8d831b03a7335ed4813a0a731a2929dbb15e2a374c4c96f875",
+              "rust_cohorts": 7,
+              "rust_passed": 8,
+              "rust_failed": 0,
+              "rust_ignored": 0,
+              "expected_checkout": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "expected_checkout_present": true
+            }
+          ],
+          "scope": "Actual hosted native x64 and ARM64 CPU/model qualification. No workstation apps or model inference. One previously authorized dispatch; no retries or cancellations."
+        }
+      },
+      "windows_x64_failure": {
+        "sha256": "0f24fa2e02145315c2b9caa8d45266879586529e707e3e27f3a0774eb4d5d637",
+        "report": {
+          "head": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+          "merge": "a1357483949a487077852c7b6df5c1d5a31afab8",
+          "run_id": 42618386270,
+          "job_id": 129163901342,
+          "conclusion": "failure",
+          "log_sha256": "99a3d8f30b69c4a0c7af1a7967fcdfe8c2b7ff2f0801a4687baa7b57f1ec853d",
+          "log_bytes": 567442,
+          "tests_failed": [
+            "local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen",
+            "local_capture_resolution_refuses_unknown_or_live_ownership_and_changed_session_generation"
+          ],
+          "failure": "Both fixture_files snapshots fail at tests.rs:1466 on std::fs::read with Windows OS33 (locked region).",
+          "read_only_source_diagnosis": "The whole-fixture snapshot includes the active exclusively locked vault/.loofah-vault.lock. This is the likely blocked path; the original panic did not print its path. No production resolution failure was reached in either fixture.",
+          "proposal": "Exclude only exact root-relative vault/.loofah-vault.lock from byte-content snapshots while retaining its identity/existence check and all canonical, unknown-file, attachment and private receipt preservation assertions. Do not ignore arbitrary I/O failures.",
+          "installer_qualification": "Not executed because Rust test step failed; prior ARM uninstall cause remains unproven.",
+          "mutations": "None; no retry/cancel/push/source edit."
+        }
+      },
+      "local_fixture_correction": {
+        "commit": "df585977eae0ed874d1e0ec2f70fcaef472df004",
+        "request": {
+          "sha256": "040b82b96bcd4a55197c68cf76b20b39b726f57ab1cefb9de829f4b154345b9d",
+          "report": {
+            "source": "df585977eae0ed874d1e0ec2f70fcaef472df004",
+            "command": [
+              "nice",
+              "-n",
+              "5",
+              "cargo",
+              "test",
+              "--locked",
+              "-p",
+              "desktop",
+              "-p",
+              "loof-cli",
+              "-p",
+              "loofah-local-owner",
+              "-p",
+              "loofah-local-media",
+              "-p",
+              "loofah-client",
+              "-p",
+              "loofah-core",
+              "-p",
+              "loofah-protocol",
+              "-p",
+              "loofah-server",
+              "-p",
+              "capture-store",
+              "-p",
+              "vault-read",
+              "-p",
+              "vault-write",
+              "-p",
+              "search-cache",
+              "-p",
+              "listener-core",
+              "-p",
+              "listener2-core",
+              "-p",
+              "transcribe-whisper-local",
+              "-p",
+              "tauri-plugin-transcription",
+              "-p",
+              "storage",
+              "-p",
+              "export-core",
+              "-p",
+              "fs-sync-core",
+              "-p",
+              "tauri-plugin-fs-sync",
+              "-p",
+              "tauri-plugin-windows",
+              "--features",
+              "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+              "--lib",
+              "--no-fail-fast",
+              "-p",
+              "audio-actual",
+              "--",
+              "local_capture_intents::tests::local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen",
+              "local_capture_intents::tests::local_capture_resolution_refuses_unknown_or_live_ownership_and_changed_session_generation"
+            ],
+            "scope": "Two Core fixture cases; Windows runtime lock semantics still require freshWindowsCI. Othermatches0 orNOTEXECUTED, no desktop/audio tests."
+          }
+        },
+        "result": {
+          "sha256": "0eb806ad3aa45a86a5f992632949037a3b7f8c5adaf81672950742c54e09d2d0",
+          "report": {
+            "source": "df585977eae0ed874d1e0ec2f70fcaef472df004",
+            "exit": 0,
+            "seconds": 24.745488166809082,
+            "sha256": "27d26c5b8cc46f14d28d410299fc8fed1a858b70cbaacb5940acce91777e0b00"
+          }
+        },
+        "actual_test_result": "2 passed; 0 failed; 0 ignored; 590 filtered out",
+        "scope": "Exactly two corrected Core fixtures on macOS; other selected libraries matched zero. Does not establish Windows lock semantics or installer/uninstall qualification."
+      },
+      "remaining": "Normal Windows ARM CI still live at recording; source-only fixture correction needs fresh Windows jobs. No healthy job cancelled/retried. Local desktop tests remain paused, company SSO deferred and capabilities unchanged."
+    },
+    "packaged_deployment_and_shaped_websocket_pre_hosted_qualification_2026_11_09": {
+      "source": "23b5766ecf24aff7c06a8c06fd15e005fabfed57",
+      "source_commits": {
+        "websocket": "acb6f3bcdf",
+        "deployment": "23b5766ecf"
+      },
+      "all_target_compile": {
+        "request": {
+          "sha256": "bd8a4c18a9344d3d145e4ee4e28504c1992f627150b50171d210c2a831bd7964",
+          "report": {
+            "source": "23b5766ecf24aff7c06a8c06fd15e005fabfed57",
+            "command": [
+              "nice",
+              "-n",
+              "5",
+              "cargo",
+              "check",
+              "--locked",
+              "-p",
+              "desktop",
+              "-p",
+              "loof-cli",
+              "-p",
+              "loofah-local-owner",
+              "-p",
+              "loofah-local-media",
+              "-p",
+              "loofah-client",
+              "-p",
+              "loofah-core",
+              "-p",
+              "loofah-protocol",
+              "-p",
+              "loofah-server",
+              "-p",
+              "capture-store",
+              "-p",
+              "vault-read",
+              "-p",
+              "vault-write",
+              "-p",
+              "search-cache",
+              "-p",
+              "listener-core",
+              "-p",
+              "listener2-core",
+              "-p",
+              "transcribe-whisper-local",
+              "-p",
+              "tauri-plugin-transcription",
+              "-p",
+              "storage",
+              "-p",
+              "export-core",
+              "-p",
+              "fs-sync-core",
+              "-p",
+              "tauri-plugin-fs-sync",
+              "-p",
+              "tauri-plugin-windows",
+              "-p",
+              "audio-actual",
+              "--features",
+              "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+              "--all-targets"
+            ],
+            "scope": "22-package stable Native graph; compile only, no desktop runtime"
+          }
+        },
+        "result": {
+          "sha256": "f1607ffd2979da89fc0c7d92560f9b3ea5fea33daa9ecb99707907ea9dbe1fc4",
+          "report": {
+            "source": "23b5766ecf24aff7c06a8c06fd15e005fabfed57",
+            "exit": 0,
+            "seconds": 8.325889125000685,
+            "sha256": "d7d3ed92c8da4ee5be53b034bdf0ee7240000ac740d05c8255644ab2021fe61e"
+          }
+        }
+      },
+      "ordinary_proxy_tests": {
+        "request": {
+          "sha256": "12c1ad2c90c96794d20c8647b6c91c9982b8180861381e0c9a36ffbb5b257890",
+          "report": {
+            "source": "23b5766ecf24aff7c06a8c06fd15e005fabfed57",
+            "command": [
+              "nice",
+              "-n",
+              "5",
+              "cargo",
+              "test",
+              "--locked",
+              "-p",
+              "desktop",
+              "-p",
+              "loof-cli",
+              "-p",
+              "loofah-local-owner",
+              "-p",
+              "loofah-local-media",
+              "-p",
+              "loofah-client",
+              "-p",
+              "loofah-core",
+              "-p",
+              "loofah-protocol",
+              "-p",
+              "loofah-server",
+              "-p",
+              "capture-store",
+              "-p",
+              "vault-read",
+              "-p",
+              "vault-write",
+              "-p",
+              "search-cache",
+              "-p",
+              "listener-core",
+              "-p",
+              "listener2-core",
+              "-p",
+              "transcribe-whisper-local",
+              "-p",
+              "tauri-plugin-transcription",
+              "-p",
+              "storage",
+              "-p",
+              "export-core",
+              "-p",
+              "fs-sync-core",
+              "-p",
+              "tauri-plugin-fs-sync",
+              "-p",
+              "tauri-plugin-windows",
+              "-p",
+              "audio-actual",
+              "--features",
+              "loofah-client/dev-fixtures,loofah-server/cpu-transcription",
+              "--test",
+              "inference",
+              "delayed_proxy::",
+              "--",
+              "--nocapture",
+              "--test-threads=1"
+            ],
+            "runner": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/deployment-network-acceptance/inference-only-runner.sh",
+            "scope": "Exactly two no-model TCP proxy cases; no desktop/audio execution, no inference model"
+          }
+        },
+        "result": {
+          "sha256": "9859d2a5a614d5eb35e2e4b478c0292efc97607894ff85407c5c039fa54e086b",
+          "report": {
+            "source": "23b5766ecf24aff7c06a8c06fd15e005fabfed57",
+            "exit": 0,
+            "seconds": 5.328017583000474,
+            "sha256": "91809791b312c0d510a6e91acd61ae3c073f81553bbf498a4fcb686fecdd6383"
+          }
+        },
+        "passed": 2,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 2
+      },
+      "python_helpers": {
+        "passed": 51,
+        "failed": 0,
+        "sha256": "c94dcd340fc7add64682e7f50676d623e507713a5ff3ba857e9ff49ec06125cf"
+      },
+      "workflow": {
+        "file": ".github/workflows/backend_ci.yaml",
+        "actionlint_exit": 0,
+        "actionlint_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "pending": "Actual packaged Ubuntu systemd/Caddy installation and real CPU WebSocket50/150/500 profiles require fresh hosted execution. These local checks compile the driver and test only the no-model proxy/coordination helpers. No app, microphone, model inference or local VM started.",
+      "activation": "No production capability, feature, deadline, model or transport behavior changed."
     }
   },
   "local_work_focused": [

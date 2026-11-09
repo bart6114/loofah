@@ -2822,3 +2822,46 @@ No production deadline, live pipeline, model policy or desktop transport changes
 This checkpoint is source-only: formatting is checked; configured CPU execution,
 profile evidence and the ordinary no-model tests remain pending the coordinated
 build lane. Desktop app testing remains paused.
+
+
+## Packaged deployment and network acceptance integration
+
+The default-image container CI job now compiles the ignored portable SDK driver
+`packaged_caddy_append_and_restart` and runs its coordinator on disposable Ubuntu.
+The executable is extracted unchanged from the image; the documented systemd unit
+keeps every hardening directive, with explicit unique path/user substitutions.
+Actual Caddy terminates verified fixture TLS and forwards normal API/SSE traffic.
+Only discovery receives an additive fixture `capture_append` capability; the
+packaged server's direct discovery stays unadvertised. The driver verifies every
+stereo PCM frame and canonical SHA, original request/admission replay over fresh
+HTTP, original note preservation and SSE before/after real systemctl stop/start.
+No model, user vault, OS trust change or company SSO is involved. CI preserves
+owned logs, substitutions, image/executable hashes and state on either outcome.
+The server binary is tested under Ubuntu systemd; this is not a claim of the full
+Debian container data path or a production identity deployment.
+
+At integrated source `23b5766ecf`, the stable 22-package all-target check passed
+(exit0, 8.33 seconds). Exactly two no-model delayed-proxy cases passed (2/0/0,
+two model cases filtered), and all 51 offline workflow helpers passed. The
+changed backend workflow passes actionlint. The workflow now requires exactly
+one printed completion for each real WebSocket 50/150/500 ms profile, separately
+from the outer test result. Configured real-model and installed deployment
+execution remain pending fresh CI; source review and helper tests do not prove
+those runtime outcomes. Local desktop app tests remain user-paused.
+
+
+Hosted `f96f84c7dc` qualification is now terminal green for backend-ci, desktop-ci,
+CLI, formatting/lint and configured high-severity workflow security. The merge
+checkout is `a1357483949a487077852c7b6df5c1d5a31afab8`, with the recorded main and
+PR parents. Desktop frontend passed 2,660 cases/298 files and editor 303/31;
+macOS Core passed 590/0/2 ignored, including the prior append failures, and the
+seven named owner/callback/checked-teardown cases actually executed successfully.
+Those hosted fixtures do not establish physical device behavior. Linux packaged
+CPU cases passed with networking disabled; reserved live/batch admission and
+actual drain also passed. CLI passed 274 cases with two explicit ignores.
+Separately dispatched Windows speech passed 8/0/0 across seven cohorts on each
+architecture at the direct PR checkout. Normal x64 failed only the two lease-file
+snapshot fixtures described above, so its installer/uninstall steps did not run.
+Normal ARM is still running its original test step at this checkpoint. Full raw
+log hashes and named execution evidence are copied into the existing portable
+record; no local desktop test was resumed or production capability activated.

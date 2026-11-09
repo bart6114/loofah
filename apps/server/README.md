@@ -268,6 +268,17 @@ The example systemd unit still enforces `TimeoutStopSec=60`: a permanent storage
 failure can reach that external forced-stop limit. Allow more time when needed
 and check service errors before treating a backup as cleanly stopped.
 
+The `backend-ci` container job also runs a disposable Ubuntu deployment acceptance
+using the executable extracted from the default image and the documented systemd
+and Caddy templates. It checks private non-root storage, verified TLS, typed SDK
+SSE, exact stereo append/replay and clean stop/start. Its synthetic loopback issuer
+and committed test certificate require no company credentials or trust-store
+changes. A discovery-only fixture advertises `capture_append` for this test;
+production discovery remains unchanged. The `packaged-deployment-acceptance`
+artifact preserves configuration substitutions, executable hashes, logs and
+disposable storage on success or failure. This does not qualify production SSO,
+physical capture or inference.
+
 ## Adopt a Local vault into a stopped server
 
 Adoption is an offline copy into a **new, absent complete server storage root**.

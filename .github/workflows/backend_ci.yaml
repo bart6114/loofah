@@ -125,7 +125,12 @@ jobs:
           cargo test --locked --release -p transcribe-whisper-local --lib "$typed_live_case" -- --exact --ignored --nocapture 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/typed-live-cpu.log"
       - run: |
           set -euo pipefail
+          cargo test --locked --release -p transcribe-whisper-local --test inference delayed_proxy:: -- --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log"
+          grep -F 'test result: ok. 2 passed; 0 failed; 0 ignored' "$RUNNER_TEMP/loofah-cpu-stt/websocket-proxy.log"
           cargo test --locked --release -p transcribe-whisper-local --test inference -- --ignored --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/http-live-cpu.log"
+          for websocket_rtt in 50 150 500; do
+            test "$(grep -c "^websocket shaped profile: rtt_ms=$websocket_rtt " "$RUNNER_TEMP/loofah-cpu-stt/http-live-cpu.log")" = 1
+          done
       - id: cpu_artifact
         run: |
           set -euo pipefail
@@ -213,6 +218,7 @@ jobs:
 
   container:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -220,3 +226,70 @@ jobs:
       - run: docker build --platform linux/amd64 --file apps/server/Dockerfile --tag loofah-server:test .
       - run: docker run --rm --platform linux/amd64 loofah-server:test --version
       - run: docker run --rm --env LOOFAH_DOMAIN=loofah.company.example --volume "$PWD/apps/server/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: linux-x86_64
+          shared-key: deployment-acceptance
+      - id: deployment_driver
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/loofah-deployment"
+          cargo test --locked -p loofah-server --test deployment --no-run --message-format=json > "$RUNNER_TEMP/loofah-deployment/build.jsonl"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          messages = Path(os.environ["RUNNER_TEMP"]) / "loofah-deployment/build.jsonl"
+          artifacts = [value for line in messages.read_text().splitlines()
+                       if (value := json.loads(line)).get("reason") == "compiler-artifact"
+                       and value["target"]["name"] == "deployment" and value.get("executable")]
+          assert len(artifacts) == 1, "expected exactly one compiled deployment driver"
+          executable = Path(artifacts[0]["executable"]).resolve(strict=True)
+          assert executable.is_file() and os.access(executable, os.X_OK)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"executable={executable}\n")
+          PY
+      - env:
+          DEPLOYMENT_DRIVER: ${{ steps.deployment_driver.outputs.executable }}
+        run: |
+          set -euo pipefail
+          sudo python3 .github/scripts/backend_deployment_acceptance.py \
+            --source-root "$PWD" --driver "$DEPLOYMENT_DRIVER" \
+            --server-image loofah-server:test --caddy-image caddy:2.10 \
+            2>&1 | tee "$RUNNER_TEMP/loofah-deployment/console.log"
+      - if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          output = Path(os.environ["RUNNER_TEMP"]) / "loofah-deployment"
+          console = output / "console.log"
+          if console.is_file():
+              roots = re.findall(r"^LOOFAH_DEPLOYMENT_EVIDENCE=(/opt/loofah-deployment-[a-f0-9]{12})$",
+                                 console.read_text(), re.MULTILINE)
+              assert len(roots) == 1, "expected exactly one owned deployment evidence root"
+              root = Path(roots[0])
+              assert root.is_dir() and not root.is_symlink()
+              owned = [root]
+              for parent in (Path("/var/lib"), Path("/var/cache")):
+                  path = parent / root.name
+                  if path.exists():
+                      assert path.is_dir() and not path.is_symlink()
+                      owned.append(path)
+              subprocess.run(["sudo", "tar", "-czf", str(output / "evidence.tar.gz"),
+                              "-C", "/", *[str(path.relative_to("/")) for path in owned]], check=True)
+              subprocess.run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}",
+                              str(output / "evidence.tar.gz")], check=True)
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-deployment-acceptance
+          path: ${{ runner.temp }}/loofah-deployment/
+          if-no-files-found: ignore
+          retention-days: 7
