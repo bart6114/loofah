@@ -1,5 +1,3 @@
-use std::future::Future;
-
 use hypr_loofah_protocol::{ProcessingTitleResult, ProcessingTitleStatus};
 
 use super::{title_stage::TitleStage, *};

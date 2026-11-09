@@ -2432,3 +2432,33 @@ The source audit rules out the usual NSIS temporary-copy parent-exit explanation
 The fixture now explicitly kills, joins and disposes only its original process objects; timeout and cleanup errors preserve the original failure. Nine deterministic fake-process cases cover success, already-exited state, nonzero exit, timeout, wait failure, failed termination, disposal failure and ordering. Both native Windows matrix jobs run these cases and a separate bounded read-only diagnostics fixture before the real installer smoke test. The latter compiles the actual Restart Manager interop and verifies that all 70 synthetic file contents remain unchanged while the report stops at 64 entries. On an uninstall failure, the first immediate removal assertion still fails; bounded diagnostics record only installed names/attributes and Restart Manager PID/start-time/type/status observations. They perform no deletion, shutdown, restart, command-line collection or assertion retry. The unmanaged-file, managed-CLI, PATH and startup assertions remain intact. No product NSIS hook changed, and this cleanup is not claimed as the root-cause fix.
 
 PowerShell is unavailable on this workstation, so these new PowerShell cases remain hosted-unqualified until the next Windows matrix. The local `run-tests` workflow group covers helper/security checks but intentionally excludes the native Windows installer lane; its scope is unchanged. Local desktop testing remains paused by the user, and this source work did not launch any installer or app, run model inference, dispatch a retry, or cancel a hosted job.
+
+
+## Cancellation and reviewed resolution: integrated source, execution pending
+
+The child summary/title admission fences (`479d22b2ca`), actual retained transcript
+recovery commit fence (`751cd911f2`) and deterministic direct cancellation waiter
+regressions are integrated. Durable user cancellation remains distinct from
+service interruption; already-admitted writes complete, and actual provider/source
+drain is awaited. The real title stream now retains only complete validated output
+after cancellation and EOF; the parent gate still refuses new canonical application.
+These corrections include eight child-race cases, normal/recovery transcript
+barriers and a five-scenario actual title-stream matrix. They are not yet executed.
+
+Core reviewed resolution (`d8cb59a55b`) adds a revision-bound immutable decision
+and Closed state only for confirmed-drained conflicts. Exact replay survives later
+content edits; changed resolution input refuses. It preserves current content,
+original audio, retained output and journals. Native/client adapters are integrated;
+UI and generated contracts remain pending. Unknown producer review is still denied;
+active/history separation remains a separate implementation stage.
+
+The first frozen `34e407fe9` stable-21 exporter compilation failed with ENOSPC
+before the exporter or any selected library test ran. Its exit101 and raw log are
+preserved. With no compiler running, only five superseded loose split-debug object
+groups with absent corresponding executables were removed: 13,312 paths,
+20,372,744,232 apparent bytes, 17,384,620,032 reclaimable allocated bytes. Current21
+hash groups, all libraries/dependencies, models, binaries and evidence were retained.
+The external manifest records every path and filename-list SHA. This is targeted
+cache maintenance, not test qualification. The integrated workflow-helper suite
+passed 44 tests. Desktop app testing stays paused, production SSO stays deferred,
+and all activation gates remain off.

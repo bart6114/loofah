@@ -1,6 +1,6 @@
 use crate::{application::context, local_capture::LocalCaptureState};
 use hypr_loofah_core::local_capture_intents::{
-    LocalCaptureControlSnapshot, LocalCaptureIntents, LocalCaptureStatus,
+    LocalCaptureControlSnapshot, LocalCaptureIntents, LocalCaptureResolution, LocalCaptureStatus,
 };
 use hypr_loofah_protocol::{ApplicationError, ErrorCode};
 use std::sync::Arc;
@@ -96,6 +96,18 @@ pub async fn application_cancel_recording_processing<R: tauri::Runtime>(
     let service = service(&app)?;
     validate_request(&request_id)?;
     service.cancel(request_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_resolve_recording_processing<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    request_id: String,
+    resolution: LocalCaptureResolution,
+) -> Result<LocalCaptureControlSnapshot, ApplicationError> {
+    let service = service(&app)?;
+    validate_request(&request_id)?;
+    service.resolve(request_id, resolution).await
 }
 
 fn validate_request(value: &str) -> Result<(), ApplicationError> {

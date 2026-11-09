@@ -10,6 +10,7 @@ const native = vi.hoisted(() => ({
     applicationRecordingProcessingList: vi.fn(),
     applicationRecordingProcessingControls: vi.fn(),
     applicationCancelRecordingProcessing: vi.fn(),
+    applicationResolveRecordingProcessing: vi.fn(),
     applicationLocalMediaSource: vi.fn(),
     applicationLocalMediaImportAudio: vi.fn(),
     applicationLocalMediaTranscribe: vi.fn(),
@@ -2005,6 +2006,61 @@ it("recording processing cancellation preserves predispatch and unknown-outcome 
     native.commands.applicationCancelRecordingProcessing,
   ).toHaveBeenCalledExactlyOnceWith(request);
 });
+it("reviewed recording resolution preserves its immutable decision and dispatch fences", async () => {
+  native.commands.applicationRecordingProcessingAvailable.mockResolvedValue(
+    true,
+  );
+  const client = await connectLocalVault();
+  const request = crypto.randomUUID();
+  const resolution = {
+    resolution_id: crypto.randomUUID(),
+    expected_revision: "b".repeat(64),
+    decision: "keep_current_content" as const,
+  };
+  const before = new AbortController();
+  before.abort();
+  await expect(
+    client.recordingProcessing!.resolve(request, resolution, {
+      signal: before.signal,
+    }),
+  ).rejects.toBeDefined();
+  expect(
+    native.commands.applicationResolveRecordingProcessing,
+  ).not.toHaveBeenCalled();
+  const after = new AbortController();
+  native.commands.applicationResolveRecordingProcessing.mockImplementationOnce(
+    async () => {
+      after.abort();
+      return { status: "ok", data: null };
+    },
+  );
+  await expect(
+    client.recordingProcessing!.resolve(request, resolution, {
+      signal: after.signal,
+    }),
+  ).rejects.toMatchObject({
+    detail: {
+      code: "cancelled",
+      retryable: false,
+      mutation_outcome: "unknown",
+      request_id: resolution.resolution_id,
+    },
+  });
+  const receipt = { resolution, revision: "c".repeat(64), actions: [] };
+  native.commands.applicationResolveRecordingProcessing.mockResolvedValue({
+    status: "ok",
+    data: receipt,
+  });
+  expect(
+    await client.recordingProcessing!.resolve(request, resolution),
+  ).toEqual(receipt);
+  expect(
+    native.commands.applicationResolveRecordingProcessing.mock.calls,
+  ).toEqual([
+    [request, resolution],
+    [request, resolution],
+  ]);
+});
 it("Remote clients never expose or probe Local recording parents even if a server advertises the local feature", () => {
   const remote = connectRemoteVault(
     {
@@ -2017,6 +2073,9 @@ it("Remote clients never expose or probe Local recording parents even if a serve
     vault,
   );
   expect(remote.recordingProcessing).toBeUndefined();
+  expect(
+    native.commands.applicationResolveRecordingProcessing,
+  ).not.toHaveBeenCalled();
   expect(
     native.commands.applicationRecordingProcessingAvailable,
   ).not.toHaveBeenCalled();
