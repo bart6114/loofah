@@ -2,6 +2,8 @@ use std::time::{Duration, Instant};
 
 #[path = "support/delayed_proxy.rs"]
 mod delayed_proxy;
+#[path = "support/native_observation.rs"]
+mod native_observation;
 
 use delayed_proxy::{DelayedProxy, delay_budget};
 
@@ -16,10 +18,6 @@ use tower::ServiceExt;
 use transcribe_whisper_local::TranscribeService;
 
 fn router() -> axum::Router {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("transcribe_whisper_local=debug,whisper_local=debug,model_manager=debug")
-        .with_test_writer()
-        .try_init();
     TranscribeService::builder()
         .model_path(
             std::env::var("LOOFAH_WHISPER_MODEL")
@@ -33,6 +31,8 @@ fn router() -> axum::Router {
 #[tokio::test]
 #[ignore = "requires LOOFAH_WHISPER_MODEL"]
 async fn real_batch_sse_has_progress_words_and_one_result() {
+    let _model_guard = native_observation::MODEL_TEST_LOCK.lock().await;
+    let _native = native_observation::install();
     tokio::time::timeout(Duration::from_secs(240), async {
         let response = router()
             .oneshot(
@@ -171,16 +171,69 @@ async fn finalize(socket: &mut Socket) -> String {
     receive_close(socket, 1).await
 }
 
-async fn shaped_websocket_profile(upstream: std::net::SocketAddr, rtt_ms: u64) {
+async fn bounded_probe<T>(
+    name: &str,
+    rtt_ms: u64,
+    allowance: Duration,
+    connections: usize,
+    work: impl std::future::Future<Output = T>,
+) -> T {
+    let budget = allowance + delay_budget(Duration::from_millis(rtt_ms), connections);
+    let started = Instant::now();
+    let result = tokio::time::timeout(budget, work)
+        .await
+        .unwrap_or_else(|_| panic!("WebSocket {name} stalled at {rtt_ms} ms RTT"));
+    println!(
+        "websocket shaped probe: rtt_ms={rtt_ms} name={name} elapsed_ms={} budget_ms={}",
+        started.elapsed().as_millis(),
+        budget.as_millis(),
+    );
+    result
+}
+
+fn connection_proof(rtt_ms: u64, proof: delayed_proxy::Connection) {
+    let index = proof.index;
+    assert!(proof.upstream.peer_closed && proof.downstream.peer_closed);
+    assert!(proof.upstream.bytes > 0 && proof.downstream.bytes > 0);
+    if !matches!(index, 2 | 4) {
+        assert_eq!(proof.upstream.completed_write_bytes, proof.upstream.bytes);
+    }
+    if index != 4 {
+        assert_eq!(
+            proof.downstream.completed_write_bytes,
+            proof.downstream.bytes
+        );
+    }
+    if index != 0 {
+        // The service joins its CPU worker before emitting this real Close frame.
+        // Even a dropped client must leave that frame in the owned proxy capture.
+        proof.require_server_close();
+    }
+    println!(
+        "websocket shaped connection: rtt_ms={rtt_ms} index={index} upload_bytes={} upload_slabs={} completed_upload_bytes={} download_bytes={} download_slabs={} completed_download_bytes={} client_closed=true server_eof=true server_close={}",
+        proof.upstream.bytes,
+        proof.upstream.slabs,
+        proof.upstream.completed_write_bytes,
+        proof.downstream.bytes,
+        proof.downstream.slabs,
+        proof.downstream.completed_write_bytes,
+        index != 0,
+    );
+}
+
+async fn shaped_websocket_profile(
+    upstream: std::net::SocketAddr,
+    rtt_ms: u64,
+    native: &native_observation::NativeEvents,
+) {
     let rtt = Duration::from_millis(rtt_ms);
     let connections = if rtt_ms == 50 { 6 } else { 4 };
     let mut proxy = DelayedProxy::start(upstream, rtt, connections).await;
-    // Each direction has a fixed slab-count bound, so queued transport delay is
-    // finite. The original model allowance and production deadlines stay unchanged.
-    let budget = Duration::from_secs(240) + delay_budget(rtt, connections);
+    let model_allowance = Duration::from_secs(240);
+    let drain_allowance = Duration::from_secs(15);
     let started = Instant::now();
-    tokio::time::timeout(budget, async {
-        let health_started = Instant::now();
+    let health_elapsed = bounded_probe("health", rtt_ms, drain_allowance, 1, async {
+        let began = Instant::now();
         let health = reqwest::Client::new()
             .get(format!("http://{}/health", proxy.address))
             .header("connection", "close")
@@ -189,97 +242,106 @@ async fn shaped_websocket_profile(upstream: std::net::SocketAddr, rtt_ms: u64) {
             .unwrap();
         assert_eq!(health.status(), StatusCode::OK);
         assert_eq!(health.text().await.unwrap(), "ok");
-        let health_elapsed = health_started.elapsed();
-        assert!(health_elapsed >= rtt);
-        let url = format!(
-            "ws://{}/v1/listen?language=en&channels=1&sample_rate=16000&encoding=linear16",
-            proxy.address
-        );
-        let handshake_started = Instant::now();
-        let (mut socket, _) = connect_async(&url).await.unwrap();
-        let handshake_elapsed = handshake_started.elapsed();
-        send_speech(&mut socket).await;
-        let finalize_started = Instant::now();
-        let text = finalize(&mut socket).await;
-        let finalize_elapsed = finalize_started.elapsed();
-        drop(socket);
-        assert!(text.to_lowercase().contains("hello"), "{text}");
-
-        let (mut cancelled, _) = connect_async(&url).await.unwrap();
-        send_speech(&mut cancelled).await;
-        observe_speech(&mut cancelled).await;
-        let cancellation_started = Instant::now();
-        tokio::time::timeout(Duration::from_secs(15) + delay_budget(rtt, 2), async {
-            let (mut replacement, _) = connect_async(&url).await.unwrap();
-            // The real service cancels the previous connection, awaits its CPU
-            // completion, then emits Close. Proxy EOF alone is not that proof.
-            receive_close(&mut cancelled, 0).await;
-            finalize(&mut replacement).await;
-        })
-        .await
-        .expect("cancelled connection blocked its replacement");
-        let cancellation_elapsed = cancellation_started.elapsed();
-        drop(cancelled);
-
-        let mut abrupt_elapsed = None;
-        if rtt_ms == 50 {
-            let (mut disconnected, _) = connect_async(&url).await.unwrap();
-            send_speech(&mut disconnected).await;
-            observe_speech(&mut disconnected).await;
-            let dropped = Instant::now();
-            drop(disconnected);
-            tokio::time::timeout(Duration::from_secs(15) + delay_budget(rtt, 2), async {
-                let (mut replacement, _) = connect_async(&url).await.unwrap();
-                finalize(&mut replacement).await;
-            })
-            .await
-            .expect("abrupt disconnect blocked its replacement");
-            abrupt_elapsed = Some(dropped.elapsed().as_millis());
-        }
-        for index in 0..connections {
-            let proof = proxy.connection(index).await;
-            assert!(proof.upstream.peer_closed && proof.downstream.peer_closed);
-            assert!(proof.upstream.bytes > 0 && proof.downstream.bytes > 0);
-            if !matches!(index, 2 | 4) {
-                assert_eq!(proof.upstream.completed_write_bytes, proof.upstream.bytes);
-            }
-            if index != 4 {
-                assert_eq!(proof.downstream.completed_write_bytes, proof.downstream.bytes);
-            }
-            println!(
-                "websocket shaped connection: rtt_ms={rtt_ms} index={index} upload_bytes={} upload_slabs={} completed_upload_bytes={} download_bytes={} download_slabs={} completed_download_bytes={} client_closed=true server_eof=true",
-                proof.upstream.bytes,
-                proof.upstream.slabs,
-                proof.upstream.completed_write_bytes,
-                proof.downstream.bytes,
-                proof.downstream.slabs,
-                proof.downstream.completed_write_bytes,
-            );
-        }
-        proxy.finish().await;
-        println!(
-            "websocket shaped profile: rtt_ms={rtt_ms} health_ms={} handshake_ms={} finalize_ms={} replacement_cancel_drain_ms={} abrupt_reconnect_ms={abrupt_elapsed:?} total_ms={} connections={connections} slab_bytes={} fixture_budget_ms={}",
-            health_elapsed.as_millis(),
-            handshake_elapsed.as_millis(),
-            finalize_elapsed.as_millis(),
-            cancellation_elapsed.as_millis(),
-            started.elapsed().as_millis(),
-            delayed_proxy::SLAB_BYTES,
-            budget.as_millis(),
-        );
+        let elapsed = began.elapsed();
+        assert!(elapsed >= rtt);
+        connection_proof(rtt_ms, proxy.connection(0).await);
+        elapsed
     })
-    .await
-    .unwrap_or_else(|_| panic!("live transcription stalled at {rtt_ms} ms RTT"));
+    .await;
+    let url = format!(
+        "ws://{}/v1/listen?language=en&channels=1&sample_rate=16000&encoding=linear16",
+        proxy.address
+    );
+    let (handshake_elapsed, finalize_elapsed) =
+        bounded_probe("finalization", rtt_ms, model_allowance, 1, async {
+            let handshake_started = Instant::now();
+            let (mut socket, _) = connect_async(&url).await.unwrap();
+            let handshake_elapsed = handshake_started.elapsed();
+            send_speech(&mut socket).await;
+            let finalize_started = Instant::now();
+            let text = finalize(&mut socket).await;
+            let finalize_elapsed = finalize_started.elapsed();
+            drop(socket);
+            assert!(text.to_lowercase().contains("hello"), "{text}");
+            connection_proof(rtt_ms, proxy.connection(1).await);
+            (handshake_elapsed, finalize_elapsed)
+        })
+        .await;
+
+    let mut cancelled = bounded_probe("replacement-setup", rtt_ms, model_allowance, 1, async {
+        let (mut socket, _) = connect_async(&url).await.unwrap();
+        send_speech(&mut socket).await;
+        observe_speech(&mut socket).await;
+        socket
+    })
+    .await;
+    let cancellation_started = Instant::now();
+    bounded_probe("replacement-drain", rtt_ms, drain_allowance, 2, async {
+        let (mut replacement, _) = connect_async(&url).await.unwrap();
+        receive_close(&mut cancelled, 0).await;
+        drop(cancelled);
+        finalize(&mut replacement).await;
+        drop(replacement);
+        connection_proof(rtt_ms, proxy.connection(2).await);
+        connection_proof(rtt_ms, proxy.connection(3).await);
+    })
+    .await;
+    let cancellation_elapsed = cancellation_started.elapsed();
+
+    let mut abrupt_elapsed = None;
+    if rtt_ms == 50 {
+        let disconnected = bounded_probe("abrupt-setup", rtt_ms, model_allowance, 1, async {
+            let before = native.snapshot();
+            let (mut socket, _) = connect_async(&url).await.unwrap();
+            send_speech(&mut socket).await;
+            native.started_after(before.0).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let at_drop = native.snapshot();
+            assert!(at_drop.0 > before.0);
+            assert_eq!(at_drop.1, before.1, "native call completed before early drop");
+            println!(
+                "websocket abrupt witness: rtt_ms={rtt_ms} started_before={} completed_before={} started_at_drop={} completed_at_drop={} post_start_wait_ms=100 witness=pre_call_trace_not_inside_kernel",
+                before.0, before.1, at_drop.0, at_drop.1,
+            );
+            socket
+        })
+        .await;
+        let dropped = Instant::now();
+        bounded_probe("abrupt-drain", rtt_ms, drain_allowance, 2, async {
+            drop(disconnected);
+            let (mut replacement, _) = connect_async(&url).await.unwrap();
+            finalize(&mut replacement).await;
+            drop(replacement);
+            connection_proof(rtt_ms, proxy.connection(4).await);
+            connection_proof(rtt_ms, proxy.connection(5).await);
+        })
+        .await;
+        abrupt_elapsed = Some(dropped.elapsed().as_millis());
+    }
+    bounded_probe("proxy-join", rtt_ms, drain_allowance, 0, proxy.finish()).await;
+    println!(
+        "websocket shaped profile: rtt_ms={rtt_ms} health_ms={} handshake_ms={} finalize_ms={} replacement_cancel_drain_ms={} abrupt_reconnect_ms={abrupt_elapsed:?} total_ms={} connections={connections} slab_bytes={} model_probe_allowance_ms={} cancel_probe_allowance_ms={}",
+        health_elapsed.as_millis(),
+        handshake_elapsed.as_millis(),
+        finalize_elapsed.as_millis(),
+        cancellation_elapsed.as_millis(),
+        started.elapsed().as_millis(),
+        delayed_proxy::SLAB_BYTES,
+        model_allowance.as_millis(),
+        drain_allowance.as_millis(),
+    );
 }
 
 #[tokio::test]
 #[ignore = "requires LOOFAH_WHISPER_MODEL; real CPU WebSocket at 50/150/500 ms RTT"]
 async fn real_websocket_finalizes_and_recovers_from_cancellation() {
+    let _model_guard = native_observation::MODEL_TEST_LOCK.lock().await;
+    let native = native_observation::install();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, router()).await.unwrap() });
     for rtt_ms in [50, 150, 500] {
-        shaped_websocket_profile(address, rtt_ms).await;
+        shaped_websocket_profile(address, rtt_ms, &native).await;
     }
     server.abort();
     let _ = server.await;

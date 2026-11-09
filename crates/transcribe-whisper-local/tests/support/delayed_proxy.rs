@@ -9,6 +9,7 @@ use tokio::{
 
 pub const SLAB_BYTES: usize = 16 * 1024;
 const MAX_SLABS_PER_DIRECTION: usize = 64;
+const MAX_DOWNSTREAM_PROOF_BYTES: usize = 64 * 1024;
 
 pub fn delay_budget(rtt: Duration, connections: usize) -> Duration {
     rtt / 2 * (MAX_SLABS_PER_DIRECTION * 2 * connections) as u32
@@ -20,6 +21,7 @@ pub struct Direction {
     pub slabs: usize,
     pub completed_write_bytes: usize,
     pub peer_closed: bool,
+    server_bytes: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -27,6 +29,51 @@ pub struct Connection {
     pub index: usize,
     pub upstream: Direction,
     pub downstream: Direction,
+}
+
+impl Connection {
+    pub fn require_server_close(&self) {
+        assert!(self.downstream.peer_closed);
+        assert!(server_close(&self.downstream.server_bytes).unwrap());
+    }
+}
+
+fn server_close(bytes: &[u8]) -> io::Result<bool> {
+    use tokio_tungstenite::tungstenite::protocol::frame::{
+        FrameSocket,
+        coding::{Control, OpCode},
+    };
+    if !bytes.starts_with(b"HTTP/1.1 101 ") {
+        return Err(io::Error::other("missing original WebSocket upgrade"));
+    }
+    let body = bytes
+        .windows(4)
+        .position(|value| value == b"\r\n\r\n")
+        .filter(|offset| *offset < SLAB_BYTES)
+        .ok_or_else(|| io::Error::other("missing bounded upgrade header"))?
+        + 4;
+    let mut frames = FrameSocket::new(std::io::Cursor::new(&bytes[body..]));
+    let mut closed = false;
+    let mut consumed = 0;
+    while let Some(frame) = frames
+        .read(Some(MAX_DOWNSTREAM_PROOF_BYTES))
+        .map_err(io::Error::other)?
+    {
+        consumed += frame.len();
+        if frame.header().mask.is_some() || closed {
+            return Err(io::Error::other("invalid server frame after upgrade/close"));
+        }
+        if frame.header().opcode == OpCode::Control(Control::Close) {
+            if !frame.header().is_final || frame.payload().len() > 125 {
+                return Err(io::Error::other("invalid server Close frame"));
+            }
+            closed = true;
+        }
+    }
+    if consumed != bytes.len() - body {
+        return Err(io::Error::other("incomplete server frame before EOF"));
+    }
+    Ok(closed)
 }
 
 pub struct DelayedProxy {
@@ -127,6 +174,14 @@ async fn forward(
         }
         proof.bytes += count;
         proof.slabs += 1;
+        if source_is_server {
+            if proof.server_bytes.len() + count > MAX_DOWNSTREAM_PROOF_BYTES {
+                return Err(io::Error::other(
+                    "server-frame proof exceeds fixed byte limit",
+                ));
+            }
+            proof.server_bytes.extend_from_slice(&slab[..count]);
+        }
         if proof.slabs > MAX_SLABS_PER_DIRECTION {
             return Err(io::Error::other("proxy exceeded its bounded slab budget"));
         }
@@ -206,4 +261,27 @@ async fn delayed_proxy_drains_original_source_after_destination_disconnect() {
     })
     .await
     .expect("proxy abandoned original source after downstream disconnect");
+}
+
+#[test]
+fn close_proof_decodes_real_frames_and_rejects_eof_or_payload_lookalikes() {
+    use tokio_tungstenite::tungstenite::protocol::frame::{
+        Frame,
+        coding::{Data, OpCode},
+    };
+    let mut bytes = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n".to_vec();
+    assert!(!server_close(&bytes).unwrap());
+    Frame::message(vec![0x88, 0x00], OpCode::Data(Data::Binary), true)
+        .format(&mut bytes)
+        .unwrap();
+    assert!(!server_close(&bytes).unwrap());
+    let mut truncated = bytes.clone();
+    truncated.push(0x88);
+    assert!(!server_close(&truncated).unwrap_or(false));
+    Frame::close(None).format(&mut bytes).unwrap();
+    assert!(server_close(&bytes).unwrap());
+    Frame::message(vec![1], OpCode::Data(Data::Binary), true)
+        .format(&mut bytes)
+        .unwrap();
+    assert!(server_close(&bytes).is_err());
 }

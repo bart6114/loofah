@@ -2957,3 +2957,43 @@ This correction and handoff update are source-only at this checkpoint. No local
 Cargo, Docker, application, inference or CI retry was run. Other healthy hosted
 jobs continue unchanged; desktop testing remains user-paused and production
 SSO remains deferred.
+
+## Source correction: WebSocket semantic-probe budgets and early-drop evidence
+
+Hosted Windows ARM speech job `129198657378` on `6e56a7d603` failed the new
+50 ms profile's shared 259.2-second fixture deadline. It did not hit the
+15-second cancellation deadline. Finalization completed after two native calls
+of 64.460 and 65.760 seconds; the separate replacement setup then awaited another
+64.492-second first result. The added abrupt-disconnect setup started a fourth
+native call, and the shared profile stopwatch expired 61.736 seconds into it.
+The prior `f96f84` ARM run had comparable 65.312/66.680-second finalization calls
+and passed: its abrupt probe dropped early instead of waiting for another full
+result. Both raw logs and the failed evidence remain preserved. This is a fixture
+workload-accounting correction, not evidence of a production timeout fix.
+
+Each fixed semantic setup/finalization probe now has the original 240-second
+model allowance plus its finite queued transport delay. Once cancellation or
+client drop begins, its original 15-second allowance plus the two-connection
+transport delay includes both connections' actual proxy retirement. Health and
+the final proxy join have explicit short bounds. Budgets do not renew per native
+call, and there is no enlarged shared profile deadline. The fixed probe/profile
+counts remain bounded; all 50/150/500 ms profiles and replacement-after-real-speech
+checks remain mandatory.
+
+The 50 ms abrupt case restores early drop: it sends the same ten-second source,
+awaits a newly observed exact `transcribe_started` trace, waits 100 ms and requires
+no normal `transcribe_completed` event before dropping the socket. Both real
+model tests serialize under the same test-only lock. The observer is a pre-call
+trace witness, not proof of execution inside the native kernel. It never blocks
+the native thread or retains model/audio payloads. The proxy retains at most
+64 KiB of original downstream bytes and uses the existing Tungstenite frame
+decoder to require a real server Close frame before EOF, including after abrupt
+disconnect. That Close follows the service's awaited worker completion; EOF or
+proxy abort alone remains insufficient evidence. A new no-model regression
+rejects EOF, truncated frames and Close-like bytes inside a data payload.
+
+The existing profile stdout remains one completed row per RTT, with additional
+per-probe elapsed/budget rows and an explicit early-drop witness row. Source
+formatting is checked; no configured rerun, local inference or desktop test was
+performed for this correction. Root's coordinated compiler and later actual
+platform runs must qualify it before any acceptance claim changes.
