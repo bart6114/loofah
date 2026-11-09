@@ -352,14 +352,14 @@ impl MediaDispatcher {
         } else {
             self.retirement_eligibility(&record).await?;
             let root = self.root.clone();
-            let request = request.clone();
+            let source_request = request.clone();
             let descriptor = source(&record);
             let disposition = input.disposition;
             let context = self.context.clone();
             let (present, files) = tokio::task::spawn_blocking(move || {
                 let _context = context;
                 source_inventory(
-                    &root.join(format!("{request}.source")),
+                    &root.join(format!("{source_request}.source")),
                     descriptor.as_ref(),
                     disposition,
                 )
