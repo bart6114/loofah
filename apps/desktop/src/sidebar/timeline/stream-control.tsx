@@ -12,6 +12,8 @@ export function TimelineStreamControl({ streamKey }: { streamKey: string }) {
   );
   const total = stream.pages[0]?.total_count;
   const next = stream.pages[stream.pages.length - 1]?.next_cursor;
+  if (!stream.pending && !stream.error && !next && !loaded && !total)
+    return null;
   return (
     <div
       className="text-muted-foreground flex h-9 items-center justify-center gap-2 px-3 text-[11px]"

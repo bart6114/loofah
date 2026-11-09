@@ -245,6 +245,7 @@ it("keeps a 20,000-note vault bounded, advertises counts, pages on intent and se
   );
   const view = await mount(f);
   await screen.findByText("200 of 20000 loaded");
+  expect(screen.queryByText("0 of 0 loaded")).toBeNull();
   expect(f.client.timelineHeaders).toHaveBeenCalledTimes(2);
   expect(screen.getAllByTestId(/^note-note-/)).toHaveLength(200);
   fireEvent.click(screen.getByTestId("note-note-0"));
