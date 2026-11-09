@@ -18258,6 +18258,2286 @@
         "actions": "Read-only collection only. No retries, cancellations, new dispatches, pushes, local Cargo or app execution."
       },
       "scope": "Both normal architectures have exactly the positive fixture OS33 failure; x64 speech passed8/0/0 and ARM speech failed4/1/0 before any shaped profile completion. Corrected fixtures/probes are separately integrated and locally compiled/pure-tested, not runtime-qualified by these old-source outcomes. All requested jobs terminal; no cancellation/retry."
+    },
+    "packaged_systemd_caddy_exact_tls_append_restart_qualified_5bb711_2026_11_09": {
+      "source": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+      "qualification": {
+        "sha256": "1c768f602f6c8a82267fb104a923c0bfb910b0967e8cbdf5718f66680d8c179c",
+        "report": {
+          "schema": 1,
+          "recorded_at": "2026-11-09T15:23:24.301928+00:00",
+          "run_id": 42641212714,
+          "job_id": 129242497425,
+          "conclusion": "success",
+          "head": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+          "merge": "5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+          "parents": [
+            "a6a8f001d9165881e59fd0fa29df944da26b8801",
+            "5bb711156246565fac8ddd81b96955fa4bf45c00"
+          ],
+          "job_raw_log_sha256": "5f6322d9ee89131e3ed2739479d86ad76a96337553a9093a2b3df7e8337adff8",
+          "artifact": {
+            "id": 13685693431,
+            "name": "packaged-deployment-acceptance",
+            "zip_sha256": "50e5db3dbe096ad071d8da757aa79a9c76fa3eb72d6e54d700418039215c1ba8",
+            "tar_sha256": "02e6e502383f17654046fd73b42cfa7361ebb10baa74ff57176a8cf4667814de",
+            "acceptance_sha256": "df5eda0da132a96e4d99ee67df93cb1708fd7cd6ea5b484902336954f024bd54"
+          },
+          "images": {
+            "caddy": {
+              "configured_user": "",
+              "id": "sha256:aac61abc4024c323602ccb9ee38bd68b147601f518626b2a055e06944e01c510",
+              "reference": "caddy:2.10"
+            },
+            "loofah-server": {
+              "configured_user": "10001:10001",
+              "id": "sha256:63f6546fb881ccaec5b0d6931d59b3913f61acad1c22115f2b2e99b803d89897",
+              "reference": "loofah-server:test"
+            }
+          },
+          "artifacts": {
+            "caddy": {
+              "bytes": 44376248,
+              "sha256": "4ef1f68c70219536b2711fd16547a79841a2dec2d6b4e56b1e3e5e9da76028e6"
+            },
+            "deployment-test": {
+              "bytes": 84520152,
+              "sha256": "4efff39822cc3912bd48dabbf205e0710f178c1c50d533a94f3ea3c690489cf6"
+            },
+            "loofah-server": {
+              "bytes": 74594928,
+              "sha256": "30171c0514990ec9dcd53bb5e5d26979000c9d73ed2095dbc6e40bdad0e15968"
+            }
+          },
+          "driver": {
+            "admission": {
+              "baseline": {
+                "format": {
+                  "channels": [
+                    "microphone",
+                    "system_audio"
+                  ],
+                  "encoding": "pcm_f32_le",
+                  "sample_rate": 16000
+                },
+                "frames": 16001,
+                "normalized_bytes": 128076,
+                "normalized_sha256": "4993eb434776fd3fba624234e6a694a02308663789ff5431acc9cbba5a32601a",
+                "recording_selection": "audio.wav",
+                "recording_sha256": "4993eb434776fd3fba624234e6a694a02308663789ff5431acc9cbba5a32601a",
+                "transcript_present": false,
+                "transcript_revision": "844b72bf93a247164dbc273d15ef7cf15261f856004a5e78cd19865eb82af554"
+              },
+              "request": {
+                "admission_id": "ef040be1-d704-486c-aa70-f2767f5ad5cb",
+                "capture_id": "bebca2ca-ed70-452e-9570-59241e6d0174",
+                "processing": null,
+                "request_id": "23d65faa-1b5e-463d-94f2-cef2ee7cf3b5",
+                "scope": {
+                  "member_id": "253164a9-1afc-4eca-bc3f-7a867862278f",
+                  "server": "https://127.0.0.1:58815/",
+                  "vault_id": "da229e28-b1fa-4f90-8fa6-9e24e9ce8efd"
+                },
+                "session_id": "1e502c2c-cf1f-428e-a7ef-04662bce8454"
+              }
+            },
+            "canonical_sha256": "a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63",
+            "channels": 2,
+            "frames": 16431,
+            "inference_configured": false,
+            "original_http_replay": true,
+            "original_sha256": "4993eb434776fd3fba624234e6a694a02308663789ff5431acc9cbba5a32601a",
+            "passed": true,
+            "pcm_sha256": "9c3d584366813e5cc75c388b132ddf1e6104c10c6f9d272269dc2f8d3d636c5d",
+            "physical_capture": false,
+            "production_sso": false,
+            "publication": {
+              "canonical_audio_bytes": 131516,
+              "canonical_audio_sha256": "a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63",
+              "session_id": "1e502c2c-cf1f-428e-a7ef-04662bce8454",
+              "source": {
+                "capture_fingerprint": "470e011e115ab140e2e93beb8d2a5c102115f32aa9c53343c8caff0313ece959",
+                "chain_digest": "cf6122e0588fa7d7909679925545e983631ebc9935f8cef8b0f1cb95eb3832a1",
+                "chunk_count": 2,
+                "frames": 430,
+                "pcm_bytes": 3440,
+                "source_sha256": "a4287f6575399642a5fdfcd3b6ceffea81560ad4bfac80fb881cd16806c73826"
+              }
+            },
+            "request": {
+              "admission_id": "ef040be1-d704-486c-aa70-f2767f5ad5cb",
+              "capture_id": "bebca2ca-ed70-452e-9570-59241e6d0174",
+              "processing": null,
+              "request_id": "23d65faa-1b5e-463d-94f2-cef2ee7cf3b5",
+              "scope": {
+                "member_id": "253164a9-1afc-4eca-bc3f-7a867862278f",
+                "server": "https://127.0.0.1:58815/",
+                "vault_id": "da229e28-b1fa-4f90-8fa6-9e24e9ce8efd"
+              },
+              "session_id": "1e502c2c-cf1f-428e-a7ef-04662bce8454"
+            },
+            "sample_rate": 16000,
+            "scope": {
+              "member_id": "253164a9-1afc-4eca-bc3f-7a867862278f",
+              "server": "https://127.0.0.1:58815/",
+              "vault_id": "da229e28-b1fa-4f90-8fa6-9e24e9ce8efd"
+            },
+            "sse_before_and_after_restart": true
+          },
+          "actual_test": {
+            "name": "packaged_caddy_append_and_restart",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0,
+            "seconds": 6.03
+          },
+          "acceptance": {
+            "passed": true,
+            "source_commit": "5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+            "source_dirty": [],
+            "actual_process_uids": [
+              "999",
+              "999",
+              "999",
+              "999"
+            ],
+            "service_uid": 999,
+            "persistent_roots": [
+              {
+                "mode": "0o700",
+                "path": "/var/lib/loofah-deployment-d8f2b7f53fd5",
+                "uid": 999
+              },
+              {
+                "mode": "0o700",
+                "path": "/var/cache/loofah-deployment-d8f2b7f53fd5",
+                "uid": 999
+              }
+            ],
+            "initial_service": {
+              "ActiveState": "active",
+              "ExecMainCode": "0",
+              "ExecMainStatus": "0",
+              "Group": "loofahqad8f2b7f53fd5",
+              "MainPID": "37142",
+              "Result": "success",
+              "SubState": "running",
+              "User": "loofahqad8f2b7f53fd5"
+            },
+            "restarted_service": {
+              "ActiveState": "active",
+              "ExecMainCode": "0",
+              "ExecMainStatus": "0",
+              "Group": "loofahqad8f2b7f53fd5",
+              "MainPID": "37179",
+              "Result": "success",
+              "SubState": "running",
+              "User": "loofahqad8f2b7f53fd5"
+            },
+            "initial_listeners": {
+              "configured_endpoint": "127.0.0.1:50063",
+              "listeners": [
+                {
+                  "address": "127.0.0.1",
+                  "family": "tcp",
+                  "inode": 45035,
+                  "port": 50063,
+                  "raw": "   0: 0100007F:C38F 00000000:0000 0A 00000000:00000000 00:00000000 00000000   999        0 45035 1 ffff8baa9ccda600 100 0 0 10 0                     "
+                }
+              ],
+              "pid": 37142,
+              "process_start_ticks": 83064,
+              "scope": "owned listening sockets at readiness; unrelated namespace rows omitted",
+              "socket_fds_after": {
+                "1": 45028,
+                "10": 45034,
+                "11": 45035,
+                "2": 45028,
+                "6": 45032,
+                "7": 45033,
+                "8": 45032
+              },
+              "socket_fds_before": {
+                "1": 45028,
+                "10": 45034,
+                "11": 45035,
+                "2": 45028,
+                "6": 45032,
+                "7": 45033,
+                "8": 45032
+              },
+              "table_sha256": {
+                "tcp": "d02b697ac65a30732d61389874154360f7a916a539bc89677d836b9ac8c4c847",
+                "tcp6": "8adbfcaffa29c13093e6c230f5114a3359a4ca74ee6920a848948feeaa1d4208"
+              }
+            },
+            "restarted_listeners": {
+              "configured_endpoint": "127.0.0.1:50063",
+              "listeners": [
+                {
+                  "address": "127.0.0.1",
+                  "family": "tcp",
+                  "inode": 47508,
+                  "port": 50063,
+                  "raw": "   0: 0100007F:C38F 00000000:0000 0A 00000000:00000000 00:00000000 00000000   999        0 47508 1 ffff8bab18d38980 100 0 0 10 0                     "
+                }
+              ],
+              "pid": 37179,
+              "process_start_ticks": 83412,
+              "scope": "owned listening sockets at readiness; unrelated namespace rows omitted",
+              "socket_fds_after": {
+                "1": 47501,
+                "10": 47507,
+                "11": 47508,
+                "19": 47509,
+                "2": 47501,
+                "6": 47505,
+                "7": 47506,
+                "8": 47505
+              },
+              "socket_fds_before": {
+                "1": 47501,
+                "10": 47507,
+                "11": 47508,
+                "19": 47509,
+                "2": 47501,
+                "6": 47505,
+                "7": 47506,
+                "8": 47505
+              },
+              "table_sha256": {
+                "tcp": "55afd572d1370861fc0a48192da0ed2d2fed1d3b4fc134ddfd998bac1ba6e325",
+                "tcp6": "e3eb2944f348a6a5a2b70c68626371d306ce8d505d50c9d2ead4a8b8a86c7864"
+              }
+            },
+            "first_sigterm": {
+              "ActiveState": "inactive",
+              "ExecMainCode": "0",
+              "ExecMainStatus": "0",
+              "Group": "loofahqad8f2b7f53fd5",
+              "MainPID": "0",
+              "Result": "success",
+              "SubState": "dead",
+              "User": "loofahqad8f2b7f53fd5"
+            },
+            "final_sigterm": {
+              "ActiveState": "inactive",
+              "ExecMainCode": "0",
+              "ExecMainStatus": "0",
+              "Group": "loofahqad8f2b7f53fd5",
+              "MainPID": "0",
+              "Result": "success",
+              "SubState": "dead",
+              "User": "loofahqad8f2b7f53fd5"
+            },
+            "caddy_exit": 0,
+            "systemd_substitutions": [
+              [
+                "User=loofah",
+                "User=loofahqad8f2b7f53fd5"
+              ],
+              [
+                "Group=loofah",
+                "Group=loofahqad8f2b7f53fd5"
+              ],
+              [
+                "EnvironmentFile=-/etc/loofah/server.env",
+                "EnvironmentFile=-/opt/loofah-deployment-d8f2b7f53fd5/server.env"
+              ],
+              [
+                "ExecStart=/usr/local/bin/loofah-server --config /etc/loofah/server.json",
+                "ExecStart=/opt/loofah-deployment-d8f2b7f53fd5/bin/loofah-server --config /opt/loofah-deployment-d8f2b7f53fd5/server.json"
+              ],
+              [
+                "StateDirectory=loofah",
+                "StateDirectory=loofah-deployment-d8f2b7f53fd5"
+              ],
+              [
+                "CacheDirectory=loofah",
+                "CacheDirectory=loofah-deployment-d8f2b7f53fd5"
+              ],
+              [
+                "ReadWritePaths=/var/lib/loofah /var/cache/loofah",
+                "ReadWritePaths=/var/lib/loofah-deployment-d8f2b7f53fd5 /var/cache/loofah-deployment-d8f2b7f53fd5"
+              ]
+            ],
+            "caddy_substitutions": [
+              [
+                "{$LOOFAH_DOMAIN}",
+                "https://127.0.0.1:58815"
+              ],
+              [
+                "127.0.0.1:8027",
+                "127.0.0.1:50063"
+              ],
+              [
+                "    reverse_proxy",
+                "    tls /opt/loofah-deployment-d8f2b7f53fd5/tls/localhost.pem /opt/loofah-deployment-d8f2b7f53fd5/tls/localhost.key\n    handle /api/v1/capabilities {\n        reverse_proxy 127.0.0.1:46477\n    }\n    handle {\n    reverse_proxy"
+              ]
+            ],
+            "caddy_fixture_additions": [
+              "admin off",
+              "auto_https disable_redirects",
+              "explicit committed test certificate (no trust installation)",
+              "exact capabilities-only overlay; all other paths use documented streaming proxy"
+            ],
+            "overlay": {
+              "fixture_sha256": "b84c808fa7a682713eae408e20963a0a0fa250513e9124c4c24c56bb89348524",
+              "only_added_feature": "capture_append",
+              "original_sha256": "0b5892d90f15754d4f30ab91ddd43ff5c96caef3d1682f85aba644ba25e6078b"
+            },
+            "started_at": 1794237573.7525609,
+            "finished_at": 1794237588.9843736
+          },
+          "independent_verification": {
+            "source_head": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+            "merge": "5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+            "artifact_id": 13685693431,
+            "independent_archived_pcm_check": {
+              "frames": 16431,
+              "channels": 2,
+              "sample_rate": 16000,
+              "all_pcm_bytes_match": true,
+              "canonical_sha256": "a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63",
+              "pcm_sha256": "9c3d584366813e5cc75c388b132ddf1e6104c10c6f9d272269dc2f8d3d636c5d"
+            },
+            "original_fresh_http_admission_receipts_identical": true,
+            "private_listeners_before_and_after": true,
+            "nonroot_private_storage": true,
+            "both_sigterm_stops_clean": true,
+            "capability_fixture_adds_only_capture_append": true,
+            "driver_log_result": "1 passed; 0 failed; 0 ignored; 6.03s",
+            "scope_limits": [
+              "Default-image extracted executable under Ubuntu systemd and actual Caddy TLS; not full Debian-container persistent-data execution.",
+              "Generated raw-only audio, no inference/models or physical capture.",
+              "Synthetic loopback issuer and committed test CA, no production/browser SSO or OS trust installation.",
+              "Production capture_append advertisement remains disabled."
+            ],
+            "verification_note": "Initial external decoder expected classic WAVE format3; archived Hound output uses valid extensible format65534 with exact IEEE_FLOAT GUID. Corrected independent parser validates GUID and every PCM byte; artifact unchanged."
+          },
+          "storage_inventory": {
+            "before_entries": 44,
+            "after_entries": 48,
+            "cache_entries": 23,
+            "all_after_private_uid999": true,
+            "canonical_audio_sha_identical_across_restart": true
+          },
+          "evidence_hashes": {
+            "caddy.log": "16fa48f33905ed5a8a64bf66073b0113d1ce24395e560d3d67dd0da07a96caf3",
+            "driver.log": "f6f52646a90ad74996929653eb85cb167885372000db8de7a8f429d673baf4fe",
+            "server-journal.log": "0989cea8a98d3de5fc8b11745297f08d9e070dcb9cf5c84db1738e9087b4083d"
+          },
+          "prior_failed_attempt_preserved": "../ci-6e56a7-audit/container-failure-diagnosis.json",
+          "source_or_workflow_mutations": false
+        }
+      },
+      "independent_verification": {
+        "sha256": "396fed6e858bfe658cbdcc8eff6da65a2f02c8fda29c3fd72294a21e29a65df4",
+        "report": {
+          "source_head": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+          "merge": "5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+          "artifact_id": 13685693431,
+          "independent_archived_pcm_check": {
+            "frames": 16431,
+            "channels": 2,
+            "sample_rate": 16000,
+            "all_pcm_bytes_match": true,
+            "canonical_sha256": "a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63",
+            "pcm_sha256": "9c3d584366813e5cc75c388b132ddf1e6104c10c6f9d272269dc2f8d3d636c5d"
+          },
+          "original_fresh_http_admission_receipts_identical": true,
+          "private_listeners_before_and_after": true,
+          "nonroot_private_storage": true,
+          "both_sigterm_stops_clean": true,
+          "capability_fixture_adds_only_capture_append": true,
+          "driver_log_result": "1 passed; 0 failed; 0 ignored; 6.03s",
+          "scope_limits": [
+            "Default-image extracted executable under Ubuntu systemd and actual Caddy TLS; not full Debian-container persistent-data execution.",
+            "Generated raw-only audio, no inference/models or physical capture.",
+            "Synthetic loopback issuer and committed test CA, no production/browser SSO or OS trust installation.",
+            "Production capture_append advertisement remains disabled."
+          ],
+          "verification_note": "Initial external decoder expected classic WAVE format3; archived Hound output uses valid extensible format65534 with exact IEEE_FLOAT GUID. Corrected independent parser validates GUID and every PCM byte; artifact unchanged."
+        }
+      },
+      "headless": {
+        "sha256": "c526387f628c15d89e263b85a3434858797fa8dadc71ea069dafd17e63ee69f3",
+        "report": {
+          "head": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+          "merge": "5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+          "job_id": 129242497592,
+          "conclusion": "success",
+          "raw_log_sha256": "aa769d1c8a5cf1f58e34c999b33def9f06d43eca94ac430d21212df75719841e",
+          "result_cohorts": 23,
+          "passed": 1751,
+          "failed": 0,
+          "ignored": 20,
+          "scope": "Headless selected eight-package library/integration/doc cohorts; ignored deployment runtime is not qualification; container acceptance separate.",
+          "raw_results": [
+            [
+              53,
+              0,
+              4
+            ],
+            [
+              210,
+              0,
+              3
+            ],
+            [
+              590,
+              0,
+              2
+            ],
+            [
+              38,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              156,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              2,
+              0,
+              4
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              5,
+              0,
+              0
+            ],
+            [
+              31,
+              0,
+              1
+            ],
+            [
+              29,
+              0,
+              0
+            ],
+            [
+              5,
+              0,
+              0
+            ],
+            [
+              631,
+              0,
+              5
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        }
+      },
+      "scope": "Clean extracted default-image executable under documented hardened Ubuntu systemd plus actual Caddy TLS/SSE, exact raw-only stereo append, restart, original UUID/admission/publication replay and clean stop. Synthetic identity/test CA only; not full Debian-container persistent data, production/browser SSO, inference or physical capture. Production capabilities unchanged. Earlier6e56 failure retained unchanged."
+    },
+    "qualified_shaped_original_worker_and_remaining_requirements_5bb711_2026_11_09": {
+      "source": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+      "linux_cpu": {
+        "sha256": "83a4059e1c3563995a25ff9c66eadddab70784b09237c360802aa20f4885a62c",
+        "report": {
+          "source": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+          "merge": "5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+          "job": 129242496846,
+          "conclusion": "success",
+          "raw": {
+            "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-5bb711-audit/129242496846.log",
+            "bytes": 242115,
+            "sha256": "72b1cf6103da5ddb706be0f366e723064fd2b05c7f9aa09f8249fbc33a0d3b50"
+          },
+          "ordinary_cases": [
+            "2026-11-09T15:10:20.4288188Z test delayed_proxy::close_proof_decodes_real_frames_and_rejects_eof_or_payload_lookalikes ... ok",
+            "2026-11-09T15:10:20.4311012Z test delayed_proxy::delayed_proxy_drains_original_source_after_destination_disconnect ... ok",
+            "2026-11-09T15:10:20.5365932Z test delayed_proxy::delayed_proxy_preserves_bytes_and_half_close_in_both_directions ... ok",
+            "2026-11-09T15:10:20.5367584Z test native_observation::tests::live_observer_ignores_malformed_unknown_and_wrong_target_identities ... ok",
+            "2026-11-09T15:10:20.5369230Z test native_observation::tests::live_observer_inventory_never_evicts_original_identity_or_accepts_reuse ... ",
+            "2026-11-09T15:10:20.5378039Z test native_observation::tests::live_observer_requires_confirmed_original_worker_completion ... ok",
+            "2026-11-09T15:10:20.5378726Z test native_observation::tests::native_observer_counters_never_wrap ... ok",
+            "2026-11-09T15:10:20.5379365Z test native_observation::tests::native_observer_counts_only_exact_native_messages ... ok",
+            "2026-11-09T15:10:20.5380152Z test native_observation::tests::native_observer_waits_for_new_start_and_notifies_all_registered_waiters ... ok"
+          ],
+          "counts": [
+            "2026-11-09T15:10:20.5382727Z test result: ok. 9 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+            "2026-11-09T15:10:57.5490396Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 36.45s"
+          ],
+          "outer_model_cases": 2,
+          "websocket_outer_cases": 1,
+          "executed_rtt_profiles": 3,
+          "profiles": [
+            "2026-11-09T15:10:32.2212802Z websocket shaped profile: rtt_ms=50 health_ms=58 handshake_ms=102 finalize_ms=5194 replacement_cancel_drain_ms=178 abrupt_reconnect_ms=Some(238) total_ms=8661 connections=6 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000",
+            "2026-11-09T15:10:40.7665599Z websocket shaped profile: rtt_ms=150 health_ms=157 handshake_ms=195 finalize_ms=4657 replacement_cancel_drain_ms=436 abrupt_reconnect_ms=None total_ms=8545 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000",
+            "2026-11-09T15:10:57.5373312Z websocket shaped profile: rtt_ms=500 health_ms=507 handshake_ms=550 finalize_ms=7988 replacement_cancel_drain_ms=1303 abrupt_reconnect_ms=None total_ms=16770 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+          ],
+          "probes": [
+            "2026-11-09T15:10:23.6178970Z websocket shaped probe: rtt_ms=50 name=health elapsed_ms=58 budget_ms=18200",
+            "2026-11-09T15:10:28.9150221Z websocket shaped probe: rtt_ms=50 name=finalization elapsed_ms=5297 budget_ms=243200",
+            "2026-11-09T15:10:31.1588949Z websocket shaped probe: rtt_ms=50 name=replacement-setup elapsed_ms=2244 budget_ms=243200",
+            "2026-11-09T15:10:31.3377712Z websocket shaped probe: rtt_ms=50 name=replacement-drain elapsed_ms=178 budget_ms=21400",
+            "2026-11-09T15:10:31.9878057Z websocket shaped probe: rtt_ms=50 name=abrupt-setup elapsed_ms=644 budget_ms=243200",
+            "2026-11-09T15:10:32.2210754Z websocket shaped probe: rtt_ms=50 name=abrupt-drain elapsed_ms=238 budget_ms=21400",
+            "2026-11-09T15:10:32.2211418Z websocket shaped probe: rtt_ms=50 name=proxy-join elapsed_ms=0 budget_ms=15000",
+            "2026-11-09T15:10:32.3786403Z websocket shaped probe: rtt_ms=150 name=health elapsed_ms=157 budget_ms=24600",
+            "2026-11-09T15:10:37.2326619Z websocket shaped probe: rtt_ms=150 name=finalization elapsed_ms=4853 budget_ms=249600",
+            "2026-11-09T15:10:40.3290998Z websocket shaped probe: rtt_ms=150 name=replacement-setup elapsed_ms=3096 budget_ms=249600",
+            "2026-11-09T15:10:40.7663669Z websocket shaped probe: rtt_ms=150 name=replacement-drain elapsed_ms=436 budget_ms=34200",
+            "2026-11-09T15:10:40.7664325Z websocket shaped probe: rtt_ms=150 name=proxy-join elapsed_ms=0 budget_ms=15000",
+            "2026-11-09T15:10:41.2736333Z websocket shaped probe: rtt_ms=500 name=health elapsed_ms=507 budget_ms=47000",
+            "2026-11-09T15:10:49.8130538Z websocket shaped probe: rtt_ms=500 name=finalization elapsed_ms=8539 budget_ms=272000",
+            "2026-11-09T15:10:56.2326779Z websocket shaped probe: rtt_ms=500 name=replacement-setup elapsed_ms=6419 budget_ms=272000",
+            "2026-11-09T15:10:57.5370428Z websocket shaped probe: rtt_ms=500 name=replacement-drain elapsed_ms=1303 budget_ms=79000",
+            "2026-11-09T15:10:57.5371420Z websocket shaped probe: rtt_ms=500 name=proxy-join elapsed_ms=0 budget_ms=15000"
+          ],
+          "connections": [
+            "2026-11-09T15:10:23.6176891Z websocket shaped connection: rtt_ms=50 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None",
+            "2026-11-09T15:10:28.9148668Z websocket shaped connection: rtt_ms=50 index=1 upload_bytes=320333 upload_slabs=23 completed_upload_bytes=320333 download_bytes=2801 download_slabs=4 completed_download_bytes=2801 client_closed=true server_eof=true server_close=Some(true)",
+            "2026-11-09T15:10:31.3373871Z websocket shaped connection: rtt_ms=50 index=2 upload_bytes=320308 upload_slabs=23 completed_upload_bytes=320308 download_bytes=872 download_slabs=3 completed_download_bytes=872 client_closed=true server_eof=true server_close=Some(true)",
+            "2026-11-09T15:10:31.3376101Z websocket shaped connection: rtt_ms=50 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)",
+            "2026-11-09T15:10:32.2204707Z websocket shaped connection: rtt_ms=50 index=4 upload_bytes=320302 upload_slabs=22 completed_upload_bytes=320302 download_bytes=166 download_slabs=1 completed_download_bytes=166 client_closed=true server_eof=true server_close=Some(false)",
+            "2026-11-09T15:10:32.2209328Z websocket shaped connection: rtt_ms=50 index=5 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)",
+            "2026-11-09T15:10:32.3785025Z websocket shaped connection: rtt_ms=150 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None",
+            "2026-11-09T15:10:37.2325092Z websocket shaped connection: rtt_ms=150 index=1 upload_bytes=320333 upload_slabs=23 completed_upload_bytes=320333 download_bytes=2801 download_slabs=4 completed_download_bytes=2801 client_closed=true server_eof=true server_close=Some(true)",
+            "2026-11-09T15:10:40.7660203Z websocket shaped connection: rtt_ms=150 index=2 upload_bytes=320308 upload_slabs=23 completed_upload_bytes=320308 download_bytes=872 download_slabs=3 completed_download_bytes=872 client_closed=true server_eof=true server_close=Some(true)",
+            "2026-11-09T15:10:40.7662418Z websocket shaped connection: rtt_ms=150 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)",
+            "2026-11-09T15:10:41.2735145Z websocket shaped connection: rtt_ms=500 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None",
+            "2026-11-09T15:10:49.8128934Z websocket shaped connection: rtt_ms=500 index=1 upload_bytes=320333 upload_slabs=23 completed_upload_bytes=320333 download_bytes=2801 download_slabs=4 completed_download_bytes=2801 client_closed=true server_eof=true server_close=Some(true)",
+            "2026-11-09T15:10:57.5364640Z websocket shaped connection: rtt_ms=500 index=2 upload_bytes=320308 upload_slabs=23 completed_upload_bytes=320308 download_bytes=872 download_slabs=3 completed_download_bytes=872 client_closed=true server_eof=true server_close=Some(true)",
+            "2026-11-09T15:10:57.5368499Z websocket shaped connection: rtt_ms=500 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+          ],
+          "early_witness": [
+            "2026-11-09T15:10:31.9848960Z websocket abrupt witness: rtt_ms=50 started_before=4 completed_before=4 started_at_drop=5 completed_at_drop=4 post_start_wait_ms=100 witness=pre_call_trace_not_inside_kernel"
+          ],
+          "original_worker": [
+            "2026-11-09T15:10:31.3640915Z \u001b[2m2026-11-09T15:10:31.363749Z\u001b[0m \u001b[34mDEBUG\u001b[0m \u001b[2mtranscribe_whisper_local::service::streaming\u001b[0m\u001b[2m:\u001b[0m whisper_live_worker_started \u001b[3mrequest_id\u001b[0m\u001b[2m=\u001b[0m30ceae13-9713-4577-a69b-ae17512a8096",
+            "2026-11-09T15:10:32.1133112Z \u001b[2m2026-11-09T15:10:32.113000Z\u001b[0m \u001b[34mDEBUG\u001b[0m \u001b[2mtranscribe_whisper_local::service::streaming\u001b[0m\u001b[2m:\u001b[0m whisper_live_worker_completion \u001b[3mrequest_id\u001b[0m\u001b[2m=\u001b[0m30ceae13-9713-4577-a69b-ae17512a8096 \u001b[3mconfirmed\u001b[0m\u001b[2m=\u001b[0mtrue",
+            "2026-11-09T15:10:32.2202842Z websocket abrupt worker drain: rtt_ms=50 request_id=30ceae13-9713-4577-a69b-ae17512a8096 confirmed=true"
+          ],
+          "four_packaged_cases": [
+            "2026-11-09T15:23:37.9170174Z test tests::transcription_host::real_configured_cpu_service_publishes_canonical_dual_channel_transcript_and_preserves_source ... ok",
+            "2026-11-09T15:23:59.5897397Z test tests::transcription_host::media_jobs::real_configured_onnx_media_preserves_shared_checked_publication ... ok",
+            "2026-11-09T15:24:52.6700696Z test transcription_onnx::tests::real_onnx_live_cpu_preserves_channels_and_source_through_join ... ok",
+            "2026-11-09T15:25:23.1439570Z test tests::transcription_host::reserved_cpu::real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http_stays_responsive ... ok"
+          ],
+          "reserved": [
+            "2026-11-09T15:25:22.7602665Z reserved CPU acceptance: total=2 reserved_live=1 batch_frames=5120000 source_sha256=938170e91687b18f8f9c4c289fd579770163ca2df9485b591d2c15578ddd926d first_caption_ms=9679 concurrent_http_ms=9 actual_drain_ms=14893"
+          ],
+          "limits": "Native start witness is pre-call, not proof inside kernel; abrupt Close optional, exact original worker ack+EOF required; cooperative Close required. Production deadlines unchanged."
+        }
+      },
+      "x64_speech": {
+        "sha256": "8b8e3ed8b692f9376527ab2a829b93af4f8b02d7f7e3a3f2f658036c395fab42",
+        "report": {
+          "head": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+          "job": 129242839654,
+          "run": 42641309021,
+          "attempt": 1,
+          "conclusion": "success",
+          "rust_cohorts": 7,
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "outer_case": "real_websocket_finalizes_and_recovers_from_cancellation",
+          "profiles_are_not_additional_rust_tests": true,
+          "witness_scope": "An unfinished attempt observed via pre-call trace, not inside-kernel execution proof. Original request identity must subsequently report confirmed worker completion. Abrupt EOF does not require a WebSocket Close frame.",
+          "log_bytes": 107798,
+          "log_sha256": "0846f7895196c9f2d80cfa8b66ddca192fe73d01c1370e0e702da3aca8b5d381",
+          "profiles": [
+            {
+              "line": 864,
+              "raw": "2026-11-09T15:17:59.6887840Z websocket shaped profile: rtt_ms=50 health_ms=63 handshake_ms=110 finalize_ms=27527 replacement_cancel_drain_ms=252 abrupt_reconnect_ms=Some(425) total_ms=43104 connections=6 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+            },
+            {
+              "line": 902,
+              "raw": "2026-11-09T15:18:43.6652879Z websocket shaped profile: rtt_ms=150 health_ms=154 handshake_ms=219 finalize_ms=27614 replacement_cancel_drain_ms=460 abrupt_reconnect_ms=None total_ms=43975 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+            },
+            {
+              "line": 940,
+              "raw": "2026-11-09T15:19:35.5128253Z websocket shaped profile: rtt_ms=500 health_ms=523 handshake_ms=557 finalize_ms=30535 replacement_cancel_drain_ms=1342 abrupt_reconnect_ms=None total_ms=51846 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+            }
+          ],
+          "probes": [
+            {
+              "line": 809,
+              "raw": "2026-11-09T15:17:16.6479672Z websocket shaped probe: rtt_ms=50 name=health elapsed_ms=63 budget_ms=18200"
+            },
+            {
+              "line": 827,
+              "raw": "2026-11-09T15:17:44.5688483Z websocket shaped probe: rtt_ms=50 name=finalization elapsed_ms=27920 budget_ms=243200"
+            },
+            {
+              "line": 835,
+              "raw": "2026-11-09T15:17:58.3253768Z websocket shaped probe: rtt_ms=50 name=replacement-setup elapsed_ms=13756 budget_ms=243200"
+            },
+            {
+              "line": 845,
+              "raw": "2026-11-09T15:17:58.5777522Z websocket shaped probe: rtt_ms=50 name=replacement-drain elapsed_ms=252 budget_ms=21400"
+            },
+            {
+              "line": 851,
+              "raw": "2026-11-09T15:17:59.2963411Z websocket shaped probe: rtt_ms=50 name=abrupt-setup elapsed_ms=685 budget_ms=243200"
+            },
+            {
+              "line": 862,
+              "raw": "2026-11-09T15:17:59.6886699Z websocket shaped probe: rtt_ms=50 name=abrupt-drain elapsed_ms=425 budget_ms=21400"
+            },
+            {
+              "line": 863,
+              "raw": "2026-11-09T15:17:59.6887198Z websocket shaped probe: rtt_ms=50 name=proxy-join elapsed_ms=0 budget_ms=15000"
+            },
+            {
+              "line": 866,
+              "raw": "2026-11-09T15:17:59.8431912Z websocket shaped probe: rtt_ms=150 name=health elapsed_ms=154 budget_ms=24600"
+            },
+            {
+              "line": 882,
+              "raw": "2026-11-09T15:18:28.3803186Z websocket shaped probe: rtt_ms=150 name=finalization elapsed_ms=28536 budget_ms=249600"
+            },
+            {
+              "line": 890,
+              "raw": "2026-11-09T15:18:43.2048040Z websocket shaped probe: rtt_ms=150 name=replacement-setup elapsed_ms=14824 budget_ms=249600"
+            },
+            {
+              "line": 900,
+              "raw": "2026-11-09T15:18:43.6651496Z websocket shaped probe: rtt_ms=150 name=replacement-drain elapsed_ms=460 budget_ms=34200"
+            },
+            {
+              "line": 901,
+              "raw": "2026-11-09T15:18:43.6652002Z websocket shaped probe: rtt_ms=150 name=proxy-join elapsed_ms=0 budget_ms=15000"
+            },
+            {
+              "line": 904,
+              "raw": "2026-11-09T15:18:44.1894940Z websocket shaped probe: rtt_ms=500 name=health elapsed_ms=524 budget_ms=47000"
+            },
+            {
+              "line": 920,
+              "raw": "2026-11-09T15:19:16.0498257Z websocket shaped probe: rtt_ms=500 name=finalization elapsed_ms=31859 budget_ms=272000"
+            },
+            {
+              "line": 928,
+              "raw": "2026-11-09T15:19:34.1702819Z websocket shaped probe: rtt_ms=500 name=replacement-setup elapsed_ms=18120 budget_ms=272000"
+            },
+            {
+              "line": 938,
+              "raw": "2026-11-09T15:19:35.5126209Z websocket shaped probe: rtt_ms=500 name=replacement-drain elapsed_ms=1342 budget_ms=79000"
+            },
+            {
+              "line": 939,
+              "raw": "2026-11-09T15:19:35.5127585Z websocket shaped probe: rtt_ms=500 name=proxy-join elapsed_ms=0 budget_ms=15000"
+            }
+          ],
+          "abrupt_witness": [
+            {
+              "line": 850,
+              "raw": "2026-11-09T15:17:59.2765109Z websocket abrupt witness: rtt_ms=50 started_before=4 completed_before=4 started_at_drop=5 completed_at_drop=4 post_start_wait_ms=100 witness=pre_call_trace_not_inside_kernel"
+            }
+          ],
+          "original_worker_drain": [
+            {
+              "line": 859,
+              "raw": "2026-11-09T15:17:59.6608978Z websocket abrupt worker drain: rtt_ms=50 request_id=4438fee7-532c-4dd0-9a19-7338ed817eb0 confirmed=true"
+            }
+          ],
+          "connections": [
+            {
+              "line": 808,
+              "raw": "2026-11-09T15:17:16.6478542Z websocket shaped connection: rtt_ms=50 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None"
+            },
+            {
+              "line": 826,
+              "raw": "2026-11-09T15:17:44.5687813Z websocket shaped connection: rtt_ms=50 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 843,
+              "raw": "2026-11-09T15:17:58.5775144Z websocket shaped connection: rtt_ms=50 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 844,
+              "raw": "2026-11-09T15:17:58.5776599Z websocket shaped connection: rtt_ms=50 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=3 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 860,
+              "raw": "2026-11-09T15:17:59.6884127Z websocket shaped connection: rtt_ms=50 index=4 upload_bytes=320302 upload_slabs=21 completed_upload_bytes=320302 download_bytes=168 download_slabs=2 completed_download_bytes=168 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 861,
+              "raw": "2026-11-09T15:17:59.6885788Z websocket shaped connection: rtt_ms=50 index=5 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 865,
+              "raw": "2026-11-09T15:17:59.8431230Z websocket shaped connection: rtt_ms=150 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None"
+            },
+            {
+              "line": 881,
+              "raw": "2026-11-09T15:18:28.3802296Z websocket shaped connection: rtt_ms=150 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 898,
+              "raw": "2026-11-09T15:18:43.6648779Z websocket shaped connection: rtt_ms=150 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 899,
+              "raw": "2026-11-09T15:18:43.6650193Z websocket shaped connection: rtt_ms=150 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 903,
+              "raw": "2026-11-09T15:18:44.1894306Z websocket shaped connection: rtt_ms=500 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None"
+            },
+            {
+              "line": 919,
+              "raw": "2026-11-09T15:19:16.0497434Z websocket shaped connection: rtt_ms=500 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 936,
+              "raw": "2026-11-09T15:19:35.5122775Z websocket shaped connection: rtt_ms=500 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true server_close=Some(true)"
+            },
+            {
+              "line": 937,
+              "raw": "2026-11-09T15:19:35.5125575Z websocket shaped connection: rtt_ms=500 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+            }
+          ]
+        }
+      },
+      "bounded_remaining_requirements_audit": {
+        "sha256": "a129fbf6e8b0d18ea279470448cd53a520e12bc7a933cef948548fc86611fffa",
+        "report": {
+          "schema": 1,
+          "observed_utc": "2026-11-09T15:30:27.608056+00:00",
+          "source": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+          "merge": "5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+          "prior_matrix": "../ci-f96f84-audit/remaining-acceptance-matrix.json",
+          "normative_scope": "Numbered target sections1–5, rollout phases and required validation; distribution capture invariants and acceptance bullets. Appended historical checkpoints are evidence, not backlog.",
+          "audit_type": "Bounded source/evidence review only; no build/test/runtime/inference/CI mutation",
+          "constraints": [
+            "Desktop tests and physical/UI app activity remain user-paused",
+            "Production SSO acceptance expressly deferred",
+            "No capability activation, source edits, builds, new inference, workflow dispatch/retry/push",
+            "Only these external audit files written"
+          ],
+          "conclusion": "No additional mandatory headless acceptance scenario beyond the currently running hosted platform jobs was identified. The three prior concrete headless gaps are now qualified. This does not complete the overall implementation/release goal.",
+          "requirements": [
+            {
+              "id": "P1-P2",
+              "requirement": "Shared application seam and transport-independent frontend; default offline/login-free Local.",
+              "current_source_and_evidence": "VaultContext/Local owner, scoped VaultClient/bootstrap and independent Remote windows are integrated. e3d19aa all-target22 compile passed; four full libraries1499/0/13 and frontend2660/298 passed. Fresh f96 hosted frontend2660+editor303, both typechecks/locales passed.",
+              "remaining_gate": "Final platform and real-app qualification; Local checked lifecycle/output/transcript switches remain false until qualified. No missing shared backend package identified.",
+              "classification": "implemented; activation and paused desktop acceptance",
+              "references": [
+                "frontend-backend-separation.md §§1–2 and phase1–2",
+                "apps/desktop/src/shared/application/vault-client.ts",
+                "apps/desktop/src/main.tsx",
+                "apps/desktop/src-tauri/src/local_owner.rs",
+                "records.local_capture_controls_history_buffered_append_and_native_owner_qualification_2026_11_09",
+                "frontend-general-status.json"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "P3",
+              "requirement": "Authenticated Remote slice, private provisioning, two clients, stale-save conflict, reconnect and no Local fallback.",
+              "current_source_and_evidence": "OIDC/PKCE/catalog/SDK/SSE and main Remote startup exist. Recorded Native A/B role/window/editing checks,2263 Reader/menu fixes and6e→080 older-client reconnect preserve exact scope. Current server/Core/SDK fixtures cover API-major rejection and authorization.",
+              "remaining_gate": "Actual company HTTPS IdP/configuration is explicitly deferred. Latest desktop artifact end-to-end requalification is paused; synthetic service-only checks remain permitted.",
+              "classification": "deferred SSO; paused desktop; headless compatibility possible",
+              "references": [
+                "frontend-backend-separation.md phase3 and isolation requirements",
+                "apps/server/src/tests/compatibility.rs",
+                "crates/loofah-client/src/tests",
+                "records.native_independent_clients_2026_11_09",
+                "records.remote_guarded_restart_080_2026_11_09"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "P4",
+              "requirement": "Content parity, ownership, imports/exports including PDF/images, CLI/MCP.",
+              "current_source_and_evidence": "Checked content/media/export/source-export, Local owner bridge, Remote profiles and read-only MCP exist. b755 optimized Local PDF rendering and owned CLI/MCP passed; fresh f96 CLI274/0/2, strict Clippy/release/smoke/docs passed.",
+              "remaining_gate": "Postactivation complete Local/Remote GUI matrix remains paused. No source-only CLI/provider content gap demonstrated by bounded audit.",
+              "classification": "implemented; paused UI/platform acceptance",
+              "references": [
+                "frontend-backend-separation.md phase4",
+                "apps/desktop/src-tauri/src/application_export.rs",
+                "apps/desktop/src/shared/application/media-recovery-panel.tsx",
+                "records.optimized_local_gui_b755769_2026_11_09",
+                "cli-terminal.json"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "P5",
+              "requirement": "Rust-owned automatic processing; cancellation/restart/conflict behavior without frontend callback.",
+              "current_source_and_evidence": "Native declares immutable request before producer; Rust persists transcript, repairs, publishes then summarizes. StageA durable cancellation and admission fences, StageB exact reviewed resolution, StageC active/history are integrated; full Core 590/0/2 now passes, including former append failures.",
+              "remaining_gate": "New controls/history actual desktop behavior and final physical callback/teardown acceptance await user resume. Current headless Core590 passes; hosted platform jobs own Native execution. No missing Rust-owned orchestration contract identified.",
+              "classification": "implemented; hosted plus paused Native runtime acceptance",
+              "references": [
+                "frontend-backend-separation.md phase5",
+                "crates/loofah-core/src/local_capture_intents",
+                "apps/desktop/src-tauri/src/local_capture",
+                "apps/desktop/src/shared/application/vault-recording-processing.tsx",
+                "apps/desktop/src/shared/application/vault-recording-history.tsx",
+                "records.local_capture_controls_history_buffered_append_and_native_owner_qualification_2026_11_09"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "RECOVERY",
+              "requirement": "Uncertain outcome preservation, explicit safe recovery, original request identity, no unknown inference replay.",
+              "current_source_and_evidence": "Review with no unsafe action is intentional. Recover is offered only for a progressing safe step; confirmed-drained Conflict can close with immutable reviewed decision. Historical UUIDs remain readable; archive moves retain raw/result files. Generic restart copy does not promise unavailable recovery.",
+              "remaining_gate": "No normative requirement to invent unknown-producer completion authority, quarantine wizard or automatic replay. Manual Local folder recovery and remote saved-audio export remain distinct from automated processing recovery.",
+              "classification": "satisfied source contract; no new feature required",
+              "references": [
+                "frontend-backend-separation.md errors/restart/recording sections",
+                "frontend-backend-continuation-prompt.md preservation invariants",
+                "crates/loofah-core/src/local_capture_intents/controls.rs",
+                "crates/loofah-core/src/local_capture_intents/journal.rs",
+                "crates/loofah-core/src/local_capture_intents/resolution.rs",
+                "apps/desktop/src/session/components/outer-header/overflow/misc.tsx"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "P6-LONG",
+              "requirement": "At least two-hour capture with repeated outages,600-second outage, app/server restart, retry; exact channels/hash/repair/dedup/cleanup.",
+              "current_source_and_evidence": "Corrected paced source 573 + 5be/31ad passed7200.914s,7200chunks/115200000frames, all PCM and24speech windows, 50 ms maximum lateness, exact faults, one repair, verified retirement, RSS under786432KiB. Earlier failures preserved.",
+              "remaining_gate": "Frozen generated Linux ARM64 evidence is not latest head or physical microphone proof. No automatic repeat of another2h inference loop merely because docs/Local code changed; map relevant production changes first. Final physical long/live acceptance remains paused.",
+              "classification": "historically qualified exact artifact; paused physical gate",
+              "references": [
+                "frontend-backend-separation.md recording validation",
+                "apps/server/tests/capture_soak.rs",
+                "records.corrected_paced_capture_2026_11_09"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "CAPTURE-APPEND",
+              "requirement": "Defined existing-recording append/resume; exact original format/baseline/replay and postrepair summary.",
+              "current_source_and_evidence": "Actual packaged_caddy_append_and_restart passes1/0/0 on merge5ae9. SDK uses canonical client.address(), exact original prepare/begin/chunks/seal/publication and fresh HTTP original-UUID/admission replay after systemd restart. Independently checked all16,431 stereo16k frames and canonical SHA from archived file. Three rejection/route cases also pass in current headless cohort.",
+              "remaining_gate": "No additional raw-only TLS append acceptance missing. Production capability remains absent. Native existing-recording append UI and physical/platform activation are paused.",
+              "classification": "Qualified current headless transport; Native activation remains gated",
+              "references": [
+                "container-terminal.json",
+                "deployment-independent-verification.json",
+                "headless-terminal.json",
+                "apps/server/tests/deployment.rs:278",
+                "apps/server/src/tests/capture_append.rs"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Updated from current source/artifacts"
+            },
+            {
+              "id": "CLEANUP",
+              "requirement": "Verify canonical original artifact before raw capture deletion; explicit media retention decision preserves results.",
+              "current_source_and_evidence": "Capture retention uses original identity and independently verified canonical bytes plus owned drains. Media retirement source is integrated; actual94 TLS Exported/sameUUID replay/restart and stopped backup/restore passed without inference; original historical files unchanged.",
+              "remaining_gate": "media_retirement capability and real Native review/export/cleanup UI remain gated/paused. Do not repeat94 headless scenario as if missing; current artifact upgrade/replay may reuse copied synthetic tombstone with no inference, if transport/private-format source changed.",
+              "classification": "historically qualified; paused UI; optional scoped headless refresh",
+              "references": [
+                "frontend-backend-separation.md recording step6 and storage requirements",
+                "crates/loofah-client/src/capture_retirement.rs",
+                "crates/loofah-core/src/local_cli/remote/retirement.rs",
+                "records.media_retirement_real_http_and_restart_2026_11_09",
+                "records.completed_media_retirement_stopped_restore_2026_11_09"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "STORAGE",
+              "requirement": "Canonical and unknown/dot files, legacy memo, symlink/path safety, concurrent edits, disk-full and compound partial recovery.",
+              "current_source_and_evidence": "Shared Store/Core tests and maintenance fixtures cover these; latest four complete libraries include631 Store / 590 Core / 182 server / 96 CLI passes. Interrupted large-copy backup/restore and reviewed history crash/index tests have recorded proof.",
+              "remaining_gate": "Current headless shared Store/Core cases pass; remaining hosted Windows outcomes are pending. Prior backup/partial-failure/adoption records remain scoped evidence, not a new broad rerun requirement.",
+              "classification": "current tests plus hosted gates",
+              "references": [
+                "frontend-backend-separation.md required validation Storage/conflicts",
+                "crates/vault-write/src",
+                "crates/loofah-core/src/local_capture_intents/history.rs",
+                "apps/server/tests/fixtures/maintenance_acceptance.rs",
+                "frontend-backend-handoff.md bounded history compatibility section"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "CONTRACT",
+              "requirement": "Matching IPC/HTTPS semantics; generated types, versions, typed errors, cancellation after commit and lost responses.",
+              "current_source_and_evidence": "Current SDK210/Core590/protocol38/server156 selected library cases pass, including older API1 wire fixture and future-major refusal before mutation; generated export/dependency checks passed. Existing actual older6e client/newer080 server reconnect/read/edit receipt is historical accepted pair.",
+              "remaining_gate": "No requirement to run every released version against every server. Final UI activation/regression remains paused, with exact supported compatibility pairs documented.",
+              "classification": "Current headless contract checks passed; final platform/UI gates separate",
+              "references": [
+                "headless-terminal.json",
+                "apps/server/src/tests/compatibility.rs",
+                "apps/server/tests/fixtures/api1-minimal-note.json",
+                "docs/plans/frontend-backend-handoff.md:1526"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Updated from current source/artifacts"
+            },
+            {
+              "id": "NET",
+              "requirement": "Real HTTPS/SSE/WebSocket through proxy at50/150/500ms, jitter/bandwidth, drops/expiry/restarts/replay overflow.",
+              "current_source_and_evidence": "Current LinuxCPU job129242496846 passes nine pure proxy/observer cases and both configured model cases. One real WS test explicitly exercises50/150/500ms. Actual50ms abrupt drop witnesses a started/uncompleted attempt, then requires exact original-ID confirmed worker acknowledgement plus EOF; cooperative connections require decoded Close. HTTPS/SSE and jitter/bandwidth/outage proof remain separately recorded.",
+              "remaining_gate": "No further proxy transport implementation/acceptance gap identified. Await currently running Windows ARM speech/native jobs rather than launching competing inference. Do not claim pre-call start trace proves execution inside a kernel.",
+              "classification": "Qualified current shaped real WebSocket; historical HTTPS/soak scopes preserved",
+              "references": [
+                "websocket-cpu-terminal.json",
+                "speech-x64-shaped-profiles.json",
+                "crates/transcribe-whisper-local/tests/inference.rs",
+                "crates/transcribe-whisper-local/tests/support/delayed_proxy.rs",
+                "crates/transcribe-whisper-local/tests/support/native_observation.rs"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Updated from current source/artifacts"
+            },
+            {
+              "id": "PERF",
+              "requirement": "Production macOS realistic vaults with recording/search/upload/AI; interaction latency and memory against baseline.",
+              "current_source_and_evidence": "b7555001sessions/2501transcripts, search during5.799s GPU summary and scoped frame/input windows; corrected soak RSS/pacing overlap retained. AA0shortphysical note editing/feedback captured.",
+              "remaining_gate": "Complete simultaneous recording+search+upload+AI production matrix and comparable baseline are not established; query latency instrumentation bypass and nonpooled window statistics are explicit limits. User pause prevents desktop execution now.",
+              "classification": "paused desktop acceptance; not satisfied by headless tests",
+              "references": [
+                "frontend-backend-separation.md required validation Responsiveness",
+                "records.optimized_local_gui_b755769_2026_11_09",
+                "records.local_short_physical_capture_and_user_pause_2026_11_09"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "PHYSICAL",
+              "requirement": "Preserve macOS and Windows device capture, Local offline use, shutdown/finalization.",
+              "current_source_and_evidence": "AA0actual98.892s capture/resume→194.184s with system fixture, canonical audio/transcript/save; no oldword-ID preservation claim. New CPAL callback pins and checked macOS teardown are source+compile qualified locally, with exact hosted tests selected.",
+              "remaining_gate": "Controlled mic speech, live/long physical recording and current Native teardown behavior remain unqualified and paused. Windows actual architecture CI does not substitute for physical input acceptance.",
+              "classification": "paused desktop/physical; hosted unit/compiler gate",
+              "references": [
+                "frontend-backend-separation.md Local lifecycle and Platforms",
+                "crates/audio-actual/src/speaker/macos/resources.rs",
+                "crates/audio-actual/src/speaker/teardown.rs",
+                "crates/listener-core/src/actors/source/stream.rs",
+                "records.local_short_physical_capture_and_user_pause_2026_11_09"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "LINUX",
+              "requirement": "Headless Linux x64 server image, real CPU Whisper/ONNX live/batch/diarization and bounded priority/concurrency.",
+              "current_source_and_evidence": "Headless1751/0/20 across23 result cohorts, packaged deployment1/0/0, current configured Whisper/ONNX media/live/reservedCPU cases passed. ReservedCPU first caption9679ms, concurrentHTTP9ms, actualdrain14893ms. Exact artifacts/logs are separate scopes.",
+              "remaining_gate": "No additional Linux model run is required by this audit. Do not sum independent cohorts into an invented full-suite count.",
+              "classification": "Current Linux headless/container/CPU passed",
+              "references": [
+                "headless-terminal.json",
+                "container-terminal.json",
+                "websocket-cpu-terminal.json"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Updated from current source/artifacts"
+            },
+            {
+              "id": "WINDOWS",
+              "requirement": "Native Windows11 x64/ARM64 tests/install/runtime and separate speech-model lanes.",
+              "current_source_and_evidence": "At saved snapshot15:27:43UTC, both normal native architecture jobs and ARM speech remain active; x64 speech succeeded. These are current5bb jobs with exact names selected; no terminal result inferred for active jobs.",
+              "remaining_gate": "Finish current jobs and diagnose actual failures if any. Physical input acceptance remains separate and paused.",
+              "classification": "Current platform gate still owned by active CI",
+              "references": [
+                "snapshot-latest.json",
+                "speech-x64-shaped-profiles.json",
+                ".github/workflows/windows_ci.yaml"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Updated from current source/artifacts"
+            },
+            {
+              "id": "DEPLOY",
+              "requirement": "Clean standalone service installation with persistent roots, private app port, reverse proxy/SSE, readiness and bounded graceful shutdown.",
+              "current_source_and_evidence": "Current artifact13685693431 verifies documented hardening with explicit QA substitutions; UID999, storage/cache0700, exactly one owned127.0.0.1:50063 listener before/after newPID, real Caddy TLS and SSE, both service SIGTERM stops and Caddy0. Production discovery remains unadvertised for append; fixture adds only capability.",
+              "remaining_gate": "No further clean-install headless scenario identified. Scope is default-image extracted executable under Ubuntu systemd, not every possible distribution/container topology; such a full-container matrix is not an added requirement. Company domain/SSO remains deferred.",
+              "classification": "Qualified current clean packaged systemd/Caddy acceptance",
+              "references": [
+                "container-terminal.json",
+                "deployment-artifact-manifest.json",
+                ".github/scripts/backend_deployment_acceptance.py",
+                "apps/server/deploy/loofah-server.service",
+                "apps/server/deploy/Caddyfile"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Updated from current source/artifacts"
+            },
+            {
+              "id": "BACKUP",
+              "requirement": "Quiesced whole-service backup, separate secrets, empty restore, futureformat refusal, interrupted upgrade and rollback.",
+              "current_source_and_evidence": "Actualold/new Linux ARM64 executables preserved14files/pending capture/media/interruptedjob+roles/private credentials; forced768MiB copy interruption preserved all originaldata; immutable94retiredtombstone restored52payloadfiles from53originalincluding service.lock exclusion. AdoptionCLI13unit+5actualcases recorded.",
+              "remaining_gate": "Historical controlled cross-version/forced interruption and94 completed-retirement restoration remain qualified at their exact artifacts. Current headless five maintenance cases pass. No mandatory full version matrix or repeated identical restore identified; Local history rollback remains whole pre-history restore.",
+              "classification": "historical real-process qualification; scoped current upgrade optional",
+              "references": [
+                "frontend-backend-separation.md Storage/backups/upgrades",
+                "apps/server/src/maintenance",
+                "apps/server/tests/maintenance.rs",
+                "frontend-backend-handoff.md Controlled operator acceptance and Localadoption sections",
+                "records.completed_media_retirement_stopped_restore_2026_11_09"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Prior scoped finding preserved; f96→5bb contains no production change in this area. Current headless source/tests corroborate relevant shared contracts; historical physical/runtime artifacts are not relabeled current-head."
+            },
+            {
+              "id": "PROVIDER",
+              "requirement": "Preserve provider prompt/result/title/tag/template/image behavior and honest result quality.",
+              "current_source_and_evidence": "Current shared tests preserve provider/title/template/image preparation and checked application. Historical Qwen464-word output contradicted source; empty-fence guard and functional save do not establish model factual accuracy. No new source evidence attributes that model-quality failure to this refactor.",
+              "remaining_gate": "Do not claim semantic summary acceptance. A separately designed representative provider evaluation could clarify quality, but no automatic paid replay or additional inference is required by this bounded audit. Product quality remains explicitly limited.",
+              "classification": "Implemented shared parity with honest observed model-quality limitation",
+              "references": [
+                "docs/plans/frontend-backend-handoff.md:1526",
+                "records.remote_guarded_summary_quality_limited_080_2026_11_09",
+                "records.generated_existing_title_parity_shared_libraries_2026_11_09"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Updated from current source/artifacts"
+            },
+            {
+              "id": "ROLLOUT",
+              "requirement": "Reviewed phases, one integrationowner, isolatedworkers/stablecache, actualgeneratedcontracts, experimentaluntilallgates.",
+              "current_source_and_evidence": "Local connectLocalVault still defaults sessionLifecycleAvailable/documentDeletionAvailable/transcriptEditorAvailable=false. Server routes advertise neither capture_append nor media_retirement. Headless proof does not activate features.",
+              "remaining_gate": "After user resumes desktop acceptance, review each flag and perform relevant postactivation GUI/platform regressions. No merge/release authorized. Reconcile stale top-level pending deployment/adoption prose in existing plan/handoff during the next documentation checkpoint, without rewriting historical records.",
+              "classification": "Implemented source remains experimental; guarded activation and user-dependent gates open",
+              "references": [
+                "apps/desktop/src/shared/application/vault-client.ts:640",
+                "apps/server/src/routes.rs:199",
+                "docs/plans/frontend-backend-separation.md:357"
+              ],
+              "prior_matrix_source": "f96f84c7dc916a04bd21a42ffc00be732af2a575",
+              "reconciliation": "Updated from current source/artifacts"
+            }
+          ],
+          "safe_work_now": [
+            "Collect terminal current-head native/speech CI evidence and investigate concrete failures without blind retry.",
+            "Reconcile existing plan/handoff current-status prose with closed deployment/append/WS gaps while retaining historical artifact limits.",
+            "Prepare the remaining paused desktop/physical/responsiveness and explicit capability-activation checklist from current contracts; do not execute it before user signal."
+          ],
+          "required_but_not_now": [
+            "Resumed real desktop fresh/upgrade/offline and complete Local/Remote content/controls regressions.",
+            "Controlled microphone speech, current Native live/long physical capture and resource-finalization acceptance.",
+            "Production macOS realistic-vault interaction/memory comparison while recording/search/upload/AI compete.",
+            "Reviewed activation and postactivation checks for three Local flags, capture_append and media_retirement.",
+            "Production company HTTPS/SSO acceptance, explicitly deferred."
+          ],
+          "not_new_requirements": [
+            "Full Debian-container persistent-storage topology matrix in addition to qualified default-image executable/systemd deployment",
+            "All historical released client/server pair matrix",
+            "Invented unknown-producer completion/quarantine authority",
+            "Another two-hour inference loop solely for unrelated test/docs changes",
+            "Repeating unchanged94 retirement/backup scenario as if no proof existed",
+            "Treating Qwen functional publication as semantic quality success"
+          ],
+          "source_delta_from_prior_matrix": {
+            "production_change": "Only two DEBUG lifecycle observations around the same existing live-worker start/completion await in streaming.rs; no new worker ownership/cancellation behavior. Other delta files are test/harness/workflow/documentation.",
+            "current_executable_scope": "Historical soak/backup/physical binaries retain their own exact qualification; source-delta review does not claim whole-head executable equivalence."
+          },
+          "source_sha256_at_5bb": {
+            "docs/plans/frontend-backend-separation.md": "d6fdc0c95b2160e181645b2d7d9c2e2784b15d2bf316eff3fadfb5d6d4aaa8c9",
+            "docs/plans/frontend-backend-distribution.md": "89d6495fba8799fc54226dc9a47f9e75b1c279f9be36de8d0abd60a14bf40d5e",
+            "docs/plans/frontend-backend-handoff.md": "4059a8bad00a5a9727a8679d6798f516ef50d8064ea8ca63219a0e292768009f",
+            "apps/desktop/src/shared/application/vault-client.ts": "42abfa78d00d96907a97f9b57f00ab741118828b1c68e5ae12fb86bd3722ebd2",
+            "apps/server/src/routes.rs": "82610008633681eeb6681c0b560916a4d3bd968c70fd35cb53530a2f418b18a6",
+            "apps/server/tests/deployment.rs": "7c535bdf761d2ed5e01f84548e59308b35788e125d9fba24b68e0c0a016614cb",
+            "crates/transcribe-whisper-local/src/service/streaming.rs": "a23fe4e6071bc9bac75400be75701997607339003d66a46116d9c7890e0fc131"
+          },
+          "evidence_sha256_at_audit": {
+            "headless-terminal.json": "c526387f628c15d89e263b85a3434858797fa8dadc71ea069dafd17e63ee69f3",
+            "container-terminal.json": "1c768f602f6c8a82267fb104a923c0bfb910b0967e8cbdf5718f66680d8c179c",
+            "deployment-independent-verification.json": "396fed6e858bfe658cbdcc8eff6da65a2f02c8fda29c3fd72294a21e29a65df4",
+            "websocket-cpu-terminal.json": "83a4059e1c3563995a25ff9c66eadddab70784b09237c360802aa20f4885a62c",
+            "snapshot-latest.json": "c0945e9e131f4931a990ec79ed08b00a62a92ec8648a34a8293eff55f35210a6"
+          },
+          "unknowns": [
+            "Pending current Windows native/ARM speech results may expose concrete defects; audit does not predict them.",
+            "Paused physical and production responsiveness matrix has not been completed.",
+            "Production IdP/domain/operator endpoints remain deferred inputs."
+          ]
+        }
+      },
+      "scope": "Nine ordinary proxy/observer cases, two configured outer model tests, three RTT profiles inside one WS test, original-ID confirmed acknowledgement plus original EOF, cooperative decoded Close and all four packaged CPU cases are separate evidence. Linux abrupt server_close=Some(false) is accepted only with exact original worker acknowledgement. Not a physical device, OS-thread join, production SSO or activation pass. Other platform results pending at this checkpoint."
+    },
+    "qualified_both_windows_shaped_speech_and_macos_5bb711_2026_11_09": {
+      "source": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+      "both_windows_speech": [
+        {
+          "sha256": "8b8e3ed8b692f9376527ab2a829b93af4f8b02d7f7e3a3f2f658036c395fab42",
+          "report": {
+            "head": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+            "job": 129242839654,
+            "run": 42641309021,
+            "attempt": 1,
+            "conclusion": "success",
+            "rust_cohorts": 7,
+            "passed": 8,
+            "failed": 0,
+            "ignored": 0,
+            "outer_case": "real_websocket_finalizes_and_recovers_from_cancellation",
+            "profiles_are_not_additional_rust_tests": true,
+            "witness_scope": "An unfinished attempt observed via pre-call trace, not inside-kernel execution proof. Original request identity must subsequently report confirmed worker completion. Abrupt EOF does not require a WebSocket Close frame.",
+            "log_bytes": 107798,
+            "log_sha256": "0846f7895196c9f2d80cfa8b66ddca192fe73d01c1370e0e702da3aca8b5d381",
+            "profiles": [
+              {
+                "line": 864,
+                "raw": "2026-11-09T15:17:59.6887840Z websocket shaped profile: rtt_ms=50 health_ms=63 handshake_ms=110 finalize_ms=27527 replacement_cancel_drain_ms=252 abrupt_reconnect_ms=Some(425) total_ms=43104 connections=6 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+              },
+              {
+                "line": 902,
+                "raw": "2026-11-09T15:18:43.6652879Z websocket shaped profile: rtt_ms=150 health_ms=154 handshake_ms=219 finalize_ms=27614 replacement_cancel_drain_ms=460 abrupt_reconnect_ms=None total_ms=43975 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+              },
+              {
+                "line": 940,
+                "raw": "2026-11-09T15:19:35.5128253Z websocket shaped profile: rtt_ms=500 health_ms=523 handshake_ms=557 finalize_ms=30535 replacement_cancel_drain_ms=1342 abrupt_reconnect_ms=None total_ms=51846 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+              }
+            ],
+            "probes": [
+              {
+                "line": 809,
+                "raw": "2026-11-09T15:17:16.6479672Z websocket shaped probe: rtt_ms=50 name=health elapsed_ms=63 budget_ms=18200"
+              },
+              {
+                "line": 827,
+                "raw": "2026-11-09T15:17:44.5688483Z websocket shaped probe: rtt_ms=50 name=finalization elapsed_ms=27920 budget_ms=243200"
+              },
+              {
+                "line": 835,
+                "raw": "2026-11-09T15:17:58.3253768Z websocket shaped probe: rtt_ms=50 name=replacement-setup elapsed_ms=13756 budget_ms=243200"
+              },
+              {
+                "line": 845,
+                "raw": "2026-11-09T15:17:58.5777522Z websocket shaped probe: rtt_ms=50 name=replacement-drain elapsed_ms=252 budget_ms=21400"
+              },
+              {
+                "line": 851,
+                "raw": "2026-11-09T15:17:59.2963411Z websocket shaped probe: rtt_ms=50 name=abrupt-setup elapsed_ms=685 budget_ms=243200"
+              },
+              {
+                "line": 862,
+                "raw": "2026-11-09T15:17:59.6886699Z websocket shaped probe: rtt_ms=50 name=abrupt-drain elapsed_ms=425 budget_ms=21400"
+              },
+              {
+                "line": 863,
+                "raw": "2026-11-09T15:17:59.6887198Z websocket shaped probe: rtt_ms=50 name=proxy-join elapsed_ms=0 budget_ms=15000"
+              },
+              {
+                "line": 866,
+                "raw": "2026-11-09T15:17:59.8431912Z websocket shaped probe: rtt_ms=150 name=health elapsed_ms=154 budget_ms=24600"
+              },
+              {
+                "line": 882,
+                "raw": "2026-11-09T15:18:28.3803186Z websocket shaped probe: rtt_ms=150 name=finalization elapsed_ms=28536 budget_ms=249600"
+              },
+              {
+                "line": 890,
+                "raw": "2026-11-09T15:18:43.2048040Z websocket shaped probe: rtt_ms=150 name=replacement-setup elapsed_ms=14824 budget_ms=249600"
+              },
+              {
+                "line": 900,
+                "raw": "2026-11-09T15:18:43.6651496Z websocket shaped probe: rtt_ms=150 name=replacement-drain elapsed_ms=460 budget_ms=34200"
+              },
+              {
+                "line": 901,
+                "raw": "2026-11-09T15:18:43.6652002Z websocket shaped probe: rtt_ms=150 name=proxy-join elapsed_ms=0 budget_ms=15000"
+              },
+              {
+                "line": 904,
+                "raw": "2026-11-09T15:18:44.1894940Z websocket shaped probe: rtt_ms=500 name=health elapsed_ms=524 budget_ms=47000"
+              },
+              {
+                "line": 920,
+                "raw": "2026-11-09T15:19:16.0498257Z websocket shaped probe: rtt_ms=500 name=finalization elapsed_ms=31859 budget_ms=272000"
+              },
+              {
+                "line": 928,
+                "raw": "2026-11-09T15:19:34.1702819Z websocket shaped probe: rtt_ms=500 name=replacement-setup elapsed_ms=18120 budget_ms=272000"
+              },
+              {
+                "line": 938,
+                "raw": "2026-11-09T15:19:35.5126209Z websocket shaped probe: rtt_ms=500 name=replacement-drain elapsed_ms=1342 budget_ms=79000"
+              },
+              {
+                "line": 939,
+                "raw": "2026-11-09T15:19:35.5127585Z websocket shaped probe: rtt_ms=500 name=proxy-join elapsed_ms=0 budget_ms=15000"
+              }
+            ],
+            "abrupt_witness": [
+              {
+                "line": 850,
+                "raw": "2026-11-09T15:17:59.2765109Z websocket abrupt witness: rtt_ms=50 started_before=4 completed_before=4 started_at_drop=5 completed_at_drop=4 post_start_wait_ms=100 witness=pre_call_trace_not_inside_kernel"
+              }
+            ],
+            "original_worker_drain": [
+              {
+                "line": 859,
+                "raw": "2026-11-09T15:17:59.6608978Z websocket abrupt worker drain: rtt_ms=50 request_id=4438fee7-532c-4dd0-9a19-7338ed817eb0 confirmed=true"
+              }
+            ],
+            "connections": [
+              {
+                "line": 808,
+                "raw": "2026-11-09T15:17:16.6478542Z websocket shaped connection: rtt_ms=50 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None"
+              },
+              {
+                "line": 826,
+                "raw": "2026-11-09T15:17:44.5687813Z websocket shaped connection: rtt_ms=50 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 843,
+                "raw": "2026-11-09T15:17:58.5775144Z websocket shaped connection: rtt_ms=50 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 844,
+                "raw": "2026-11-09T15:17:58.5776599Z websocket shaped connection: rtt_ms=50 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=3 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 860,
+                "raw": "2026-11-09T15:17:59.6884127Z websocket shaped connection: rtt_ms=50 index=4 upload_bytes=320302 upload_slabs=21 completed_upload_bytes=320302 download_bytes=168 download_slabs=2 completed_download_bytes=168 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 861,
+                "raw": "2026-11-09T15:17:59.6885788Z websocket shaped connection: rtt_ms=50 index=5 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 865,
+                "raw": "2026-11-09T15:17:59.8431230Z websocket shaped connection: rtt_ms=150 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None"
+              },
+              {
+                "line": 881,
+                "raw": "2026-11-09T15:18:28.3802296Z websocket shaped connection: rtt_ms=150 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 898,
+                "raw": "2026-11-09T15:18:43.6648779Z websocket shaped connection: rtt_ms=150 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 899,
+                "raw": "2026-11-09T15:18:43.6650193Z websocket shaped connection: rtt_ms=150 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 903,
+                "raw": "2026-11-09T15:18:44.1894306Z websocket shaped connection: rtt_ms=500 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None"
+              },
+              {
+                "line": 919,
+                "raw": "2026-11-09T15:19:16.0497434Z websocket shaped connection: rtt_ms=500 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 936,
+                "raw": "2026-11-09T15:19:35.5122775Z websocket shaped connection: rtt_ms=500 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 937,
+                "raw": "2026-11-09T15:19:35.5125575Z websocket shaped connection: rtt_ms=500 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=2 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+              }
+            ]
+          }
+        },
+        {
+          "sha256": "93df4a5ac2e3e6bcb716ecfd2d7ead95cdc055eda2df21e3bd59d3c460dcca3e",
+          "report": {
+            "head": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+            "job": 129242839121,
+            "run": 42641309021,
+            "attempt": 1,
+            "conclusion": "success",
+            "rust_cohorts": 7,
+            "passed": 8,
+            "failed": 0,
+            "ignored": 0,
+            "outer_case": "real_websocket_finalizes_and_recovers_from_cancellation",
+            "profiles_are_not_additional_rust_tests": true,
+            "witness_scope": "An unfinished attempt observed via pre-call trace, not inside-kernel execution proof. Original request identity subsequently reports confirmed worker completion. Abrupt EOF does not require a WebSocket Close frame.",
+            "log_bytes": 112967,
+            "log_sha256": "763866ba9f723039738946cff9ce3a2c3104a4ae11fa3477dc7d1b81c64e288c",
+            "profiles": [
+              {
+                "line": 900,
+                "raw": "2026-11-09T15:33:10.7547591Z websocket shaped profile: rtt_ms=50 health_ms=73 handshake_ms=159 finalize_ms=130853 replacement_cancel_drain_ms=412 abrupt_reconnect_ms=Some(422) total_ms=197963 connections=6 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+              },
+              {
+                "line": 942,
+                "raw": "2026-11-09T15:36:30.0035809Z websocket shaped profile: rtt_ms=150 health_ms=159 handshake_ms=238 finalize_ms=131723 replacement_cancel_drain_ms=686 abrupt_reconnect_ms=None total_ms=199248 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+              },
+              {
+                "line": 984,
+                "raw": "2026-11-09T15:39:57.3361898Z websocket shaped profile: rtt_ms=500 health_ms=524 handshake_ms=601 finalize_ms=134083 replacement_cancel_drain_ms=1793 abrupt_reconnect_ms=None total_ms=207332 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000"
+              }
+            ],
+            "probes": [
+              {
+                "line": 841,
+                "raw": "2026-11-09T15:29:52.8647782Z websocket shaped probe: rtt_ms=50 name=health elapsed_ms=73 budget_ms=18200"
+              },
+              {
+                "line": 859,
+                "raw": "2026-11-09T15:32:03.9812828Z websocket shaped probe: rtt_ms=50 name=finalization elapsed_ms=131116 budget_ms=243200"
+              },
+              {
+                "line": 869,
+                "raw": "2026-11-09T15:33:09.1670627Z websocket shaped probe: rtt_ms=50 name=replacement-setup elapsed_ms=65185 budget_ms=243200"
+              },
+              {
+                "line": 881,
+                "raw": "2026-11-09T15:33:09.5797511Z websocket shaped probe: rtt_ms=50 name=replacement-drain elapsed_ms=412 budget_ms=21400"
+              },
+              {
+                "line": 887,
+                "raw": "2026-11-09T15:33:10.3399274Z websocket shaped probe: rtt_ms=50 name=abrupt-setup elapsed_ms=752 budget_ms=243200"
+              },
+              {
+                "line": 898,
+                "raw": "2026-11-09T15:33:10.7546055Z websocket shaped probe: rtt_ms=50 name=abrupt-drain elapsed_ms=422 budget_ms=21400"
+              },
+              {
+                "line": 899,
+                "raw": "2026-11-09T15:33:10.7546550Z websocket shaped probe: rtt_ms=50 name=proxy-join elapsed_ms=0 budget_ms=15000"
+              },
+              {
+                "line": 902,
+                "raw": "2026-11-09T15:33:10.9140317Z websocket shaped probe: rtt_ms=150 name=health elapsed_ms=159 budget_ms=24600"
+              },
+              {
+                "line": 918,
+                "raw": "2026-11-09T15:35:23.1166269Z websocket shaped probe: rtt_ms=150 name=finalization elapsed_ms=132202 budget_ms=249600"
+              },
+              {
+                "line": 928,
+                "raw": "2026-11-09T15:36:29.3166245Z websocket shaped probe: rtt_ms=150 name=replacement-setup elapsed_ms=66200 budget_ms=249600"
+              },
+              {
+                "line": 940,
+                "raw": "2026-11-09T15:36:30.0034237Z websocket shaped probe: rtt_ms=150 name=replacement-drain elapsed_ms=686 budget_ms=34200"
+              },
+              {
+                "line": 941,
+                "raw": "2026-11-09T15:36:30.0034771Z websocket shaped probe: rtt_ms=150 name=proxy-join elapsed_ms=0 budget_ms=15000"
+              },
+              {
+                "line": 944,
+                "raw": "2026-11-09T15:36:30.5286678Z websocket shaped probe: rtt_ms=500 name=health elapsed_ms=524 budget_ms=47000"
+              },
+              {
+                "line": 960,
+                "raw": "2026-11-09T15:38:45.9787386Z websocket shaped probe: rtt_ms=500 name=finalization elapsed_ms=135450 budget_ms=272000"
+              },
+              {
+                "line": 970,
+                "raw": "2026-11-09T15:39:55.5427195Z websocket shaped probe: rtt_ms=500 name=replacement-setup elapsed_ms=69563 budget_ms=272000"
+              },
+              {
+                "line": 982,
+                "raw": "2026-11-09T15:39:57.3360331Z websocket shaped probe: rtt_ms=500 name=replacement-drain elapsed_ms=1793 budget_ms=79000"
+              },
+              {
+                "line": 983,
+                "raw": "2026-11-09T15:39:57.3360863Z websocket shaped probe: rtt_ms=500 name=proxy-join elapsed_ms=0 budget_ms=15000"
+              }
+            ],
+            "abrupt_witness": [
+              {
+                "line": 886,
+                "raw": "2026-11-09T15:33:10.3377033Z websocket abrupt witness: rtt_ms=50 started_before=4 completed_before=4 started_at_drop=5 completed_at_drop=4 post_start_wait_ms=100 witness=pre_call_trace_not_inside_kernel"
+              }
+            ],
+            "original_worker_drain": [
+              {
+                "line": 895,
+                "raw": "2026-11-09T15:33:10.7269864Z websocket abrupt worker drain: rtt_ms=50 request_id=0d005f5f-9030-47e3-9935-e2f0eb4c4ee7 confirmed=true"
+              }
+            ],
+            "connections": [
+              {
+                "line": 840,
+                "raw": "2026-11-09T15:29:52.8646748Z websocket shaped connection: rtt_ms=50 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None"
+              },
+              {
+                "line": 858,
+                "raw": "2026-11-09T15:32:03.9811637Z websocket shaped connection: rtt_ms=50 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 879,
+                "raw": "2026-11-09T15:33:09.5794789Z websocket shaped connection: rtt_ms=50 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 880,
+                "raw": "2026-11-09T15:33:09.5796472Z websocket shaped connection: rtt_ms=50 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=3 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 896,
+                "raw": "2026-11-09T15:33:10.7543499Z websocket shaped connection: rtt_ms=50 index=4 upload_bytes=320302 upload_slabs=21 completed_upload_bytes=320302 download_bytes=168 download_slabs=2 completed_download_bytes=168 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 897,
+                "raw": "2026-11-09T15:33:10.7545055Z websocket shaped connection: rtt_ms=50 index=5 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=3 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 901,
+                "raw": "2026-11-09T15:33:10.9139286Z websocket shaped connection: rtt_ms=150 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None"
+              },
+              {
+                "line": 917,
+                "raw": "2026-11-09T15:35:23.1165116Z websocket shaped connection: rtt_ms=150 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 938,
+                "raw": "2026-11-09T15:36:30.0031655Z websocket shaped connection: rtt_ms=150 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 939,
+                "raw": "2026-11-09T15:36:30.0033224Z websocket shaped connection: rtt_ms=150 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=3 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 943,
+                "raw": "2026-11-09T15:36:30.5285653Z websocket shaped connection: rtt_ms=500 index=0 upload_bytes=79 upload_slabs=1 completed_upload_bytes=79 download_bytes=137 download_slabs=1 completed_download_bytes=137 client_closed=true server_eof=true server_close=None"
+              },
+              {
+                "line": 959,
+                "raw": "2026-11-09T15:38:45.9786276Z websocket shaped connection: rtt_ms=500 index=1 upload_bytes=320333 upload_slabs=22 completed_upload_bytes=320333 download_bytes=2821 download_slabs=4 completed_download_bytes=2821 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 980,
+                "raw": "2026-11-09T15:39:57.3357652Z websocket shaped connection: rtt_ms=500 index=2 upload_bytes=320308 upload_slabs=22 completed_upload_bytes=320308 download_bytes=882 download_slabs=3 completed_download_bytes=882 client_closed=true server_eof=true server_close=Some(true)"
+              },
+              {
+                "line": 981,
+                "raw": "2026-11-09T15:39:57.3359312Z websocket shaped connection: rtt_ms=500 index=3 upload_bytes=253 upload_slabs=3 completed_upload_bytes=253 download_bytes=308 download_slabs=3 completed_download_bytes=308 client_closed=true server_eof=true server_close=Some(true)"
+              }
+            ]
+          }
+        }
+      ],
+      "assigned_macos_frontend_cli_linux_general_terminal": {
+        "sha256": "978e9a8a03ac956344889b7134347f087e145ddd665aa1260c44ffcb65cad84c",
+        "report": {
+          "recorded_at": "2026-11-09T15:40:29.796730+00:00",
+          "source": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+          "checkout_merge": "5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+          "merge_parents": [
+            "a6a8f001d9165881e59fd0fa29df944da26b8801",
+            "5bb711156246565fac8ddd81b96955fa4bf45c00"
+          ],
+          "assigned_jobs": [
+            {
+              "job_id": 129242496846,
+              "name": "linux-cpu-stt",
+              "conclusion": "success",
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-5bb711-audit/129242496846.log",
+              "bytes": 242115,
+              "sha256": "72b1cf6103da5ddb706be0f366e723064fd2b05c7f9aa09f8249fbc33a0d3b50",
+              "selected_executions": [
+                "2026-11-09T15:09:59.2678791Z \u001b[36;1m  test \"$(grep -c \"^websocket shaped profile: rtt_ms=$websocket_rtt \" \"$RUNNER_TEMP/loofah-cpu-stt/http-live-cpu.log\")\" = 1\u001b[0m",
+                "2026-11-09T15:10:31.9848960Z websocket abrupt witness: rtt_ms=50 started_before=4 completed_before=4 started_at_drop=5 completed_at_drop=4 post_start_wait_ms=100 witness=pre_call_trace_not_inside_kernel",
+                "2026-11-09T15:10:32.2202842Z websocket abrupt worker drain: rtt_ms=50 request_id=30ceae13-9713-4577-a69b-ae17512a8096 confirmed=true",
+                "2026-11-09T15:10:32.2212802Z websocket shaped profile: rtt_ms=50 health_ms=58 handshake_ms=102 finalize_ms=5194 replacement_cancel_drain_ms=178 abrupt_reconnect_ms=Some(238) total_ms=8661 connections=6 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000",
+                "2026-11-09T15:10:40.7665599Z websocket shaped profile: rtt_ms=150 health_ms=157 handshake_ms=195 finalize_ms=4657 replacement_cancel_drain_ms=436 abrupt_reconnect_ms=None total_ms=8545 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000",
+                "2026-11-09T15:10:57.5373312Z websocket shaped profile: rtt_ms=500 health_ms=507 handshake_ms=550 finalize_ms=7988 replacement_cancel_drain_ms=1303 abrupt_reconnect_ms=None total_ms=16770 connections=4 slab_bytes=16384 model_probe_allowance_ms=240000 cancel_probe_allowance_ms=15000",
+                "2026-11-09T15:25:22.7602665Z reserved CPU acceptance: total=2 reserved_live=1 batch_frames=5120000 source_sha256=938170e91687b18f8f9c4c289fd579770163ca2df9485b591d2c15578ddd926d first_caption_ms=9679 concurrent_http_ms=9 actual_drain_ms=14893"
+              ]
+            },
+            {
+              "job_id": 129242497332,
+              "name": "macos-rust",
+              "conclusion": "success",
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-5bb711-audit/129242497332.log",
+              "bytes": 627380,
+              "sha256": "9cb3c2c7892f2eed32b100ae0fc1935cfbe6db73500e4e7081328831e9b95c27",
+              "selected_executions": [
+                "2026-11-09T15:07:44.7846930Z SpeechCore verified cache hit",
+                "2026-11-09T15:33:29.8809270Z test capture::stream::ownership_tests::dropped_observer_cannot_release_original_owner_while_native_factory_is_blocked ... ok",
+                "2026-11-09T15:33:29.8811620Z test capture::stream::ownership_tests::original_owner_retires_after_actual_native_drain_even_if_control_survives ... ok",
+                "2026-11-09T15:33:29.8823960Z test capture::stream::ownership_tests::native_panic_releases_owner_only_after_the_actual_worker_unwinds ... ok",
+                "2026-11-09T15:33:30.0176500Z test mic::ownership_tests::backend_callback_holders_keep_original_owner_after_outer_stream_thread_drops ... ok",
+                "2026-11-09T15:33:30.0206630Z test speaker::teardown::tests::each_native_failure_or_panic_retains_context_owner_and_remaining_handles_without_retry ... ok",
+                "2026-11-09T15:33:30.0208500Z test speaker::teardown::tests::partial_startup_preserves_first_error_and_cleans_only_acquired_resources ... ok",
+                "2026-11-09T15:33:30.0212450Z test speaker::teardown::tests::successful_checked_teardown_closes_every_original_handle_once_before_releasing_context ... ok",
+                "2026-11-09T15:33:30.0213600Z test speaker::teardown::tests::unknown_registration_and_startup_unwind_never_free_a_live_callback_context ... ok",
+                "2026-11-09T15:37:23.9485630Z test result: ok. 590 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 117.99s"
+              ]
+            },
+            {
+              "job_id": 129242496899,
+              "name": "frontend",
+              "conclusion": "success",
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-5bb711-audit/129242496899.log",
+              "bytes": 155393,
+              "sha256": "ff3f74592aa7fdf6ef0db72e704288be1b215179d86511728b1bf4899d7c3fae",
+              "selected_executions": [
+                "2026-11-09T15:07:02.6170177Z \u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m31 passed\u001b[39m\u001b[22m\u001b[90m (31)\u001b[39m",
+                "2026-11-09T15:07:02.6170779Z \u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m303 passed\u001b[39m\u001b[22m\u001b[90m (303)\u001b[39m",
+                "2026-11-09T15:10:07.3413985Z \u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m298 passed\u001b[39m\u001b[22m\u001b[90m (298)\u001b[39m",
+                "2026-11-09T15:10:07.3424038Z \u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m2660 passed\u001b[39m\u001b[22m\u001b[90m (2660)\u001b[39m"
+              ]
+            },
+            {
+              "job_id": 129242496483,
+              "name": "cli-ci",
+              "conclusion": "success",
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-5bb711-audit/129242496483.log",
+              "bytes": 188621,
+              "sha256": "6a6ea3b02522f9da8fe71f79a5ccee6b89d38f47ee2855670e8917c10702713f",
+              "selected_executions": [
+                "2026-11-09T15:08:37.8438857Z test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+                "2026-11-09T15:08:37.8531365Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+                "2026-11-09T15:08:37.9386432Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+                "2026-11-09T15:08:44.3550097Z test result: ok. 31 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.70s",
+                "2026-11-09T15:08:44.4533640Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+                "2026-11-09T15:08:51.8606434Z test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s",
+                "2026-11-09T15:08:51.9681795Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+                "2026-11-09T15:09:11.6879226Z test result: ok. 17 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 5.59s",
+                "2026-11-09T15:09:11.7748519Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+                "2026-11-09T15:11:08.9148714Z test result: ok. 96 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.11s",
+                "2026-11-09T15:11:08.9424361Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+                "2026-11-09T15:11:09.5783452Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s",
+                "2026-11-09T15:11:09.6368364Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+                "2026-11-09T15:11:10.2328307Z test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s",
+                "2026-11-09T15:11:13.1179668Z test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.88s",
+                "2026-11-09T15:11:13.4635215Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s",
+                "2026-11-09T15:11:14.0162465Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s",
+                "2026-11-09T15:11:14.6166920Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+                "2026-11-09T15:11:16.3922595Z test result: ok. 66 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
+                "2026-11-09T15:11:16.4274643Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+                "2026-11-09T15:15:36.3252003Z \u001b[1m\u001b[92m    Finished\u001b[0m `release` profile [optimized] target(s) in 3m 55s"
+              ]
+            },
+            {
+              "job_id": 129242498004,
+              "name": "lint",
+              "conclusion": "success",
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-5bb711-audit/129242498004.log",
+              "bytes": 17771,
+              "sha256": "5420a131b7122e229a5f4acffd513e2f20ce6077c22b0b0bd15ae4f4f459c9c4",
+              "selected_executions": [
+                "2026-11-09T15:06:40.1892769Z Found 114 warnings and 0 errors."
+              ]
+            },
+            {
+              "job_id": 129242498511,
+              "name": "fmt",
+              "conclusion": "success",
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-5bb711-audit/129242498511.log",
+              "bytes": 89281,
+              "sha256": "72bbf30a3633aea642df23e27905efa87fc1daa0e035fc4039dade8b78dadf26",
+              "selected_executions": [
+                "2026-11-09T15:06:40.2940341Z Ran 54 tests in 1.093s"
+              ]
+            },
+            {
+              "job_id": 129242495809,
+              "name": "zizmor",
+              "conclusion": "success",
+              "raw_log": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-5bb711-audit/129242495809.log",
+              "bytes": 18595,
+              "sha256": "27318811fb2b69b15259eff3c2e1147872b07c045f89a17e9a9ed549bce785d5",
+              "selected_executions": [
+                "2026-11-09T15:06:29.2801520Z \u001b[32mNo findings to report. Good job!\u001b[39m (\u001b[1m\u001b[93m37\u001b[39m ignored, \u001b[93m67\u001b[39m suppressed\u001b[0m)"
+              ]
+            }
+          ],
+          "websocket_detail": "websocket-cpu-terminal.json",
+          "scope": "Read-only CI monitoring; backend headless/container owned by device_processing, Windows/speech lanes owned elsewhere. These seven assigned jobs are terminal success; this receipt does not claim whole PR completion or desktop UX acceptance. No reruns/cancels/dispatches/source/build/model/app actions."
+        }
+      },
+      "scope": "Both configured native speech architectures passed8/0/0 across7 cohorts each. One WS outer case executes3RTT profiles; these are not extra Rust test counts. ARM finalization130.853/131.723/134.083s stayed below the original240s per-probe ceiling; cancellation/drain retains15s plus bounded transport. Exact original-ID acknowledgement/EOF and unfinished pre-call attempt witness are preserved, without inside-kernel or OS-thread/device-cleanup claims. Normal Windows installer/uninstall workflow still running. No local desktop/model execution, activation, merge or release."
+    },
+    "qualified_native_windows_x64_5bb711_2026_11_09": {
+      "source": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+      "receipt_sha256": "9c2715e82f7758b7fb4aa0efc8364757c5aa7ad2a7fecfac42d3421ac20952e7",
+      "report": {
+        "schema": 1,
+        "head": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+        "merge": {
+          "head": "5bb711156246565fac8ddd81b96955fa4bf45c00",
+          "merge": "5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+          "parents": [
+            "a6a8f001d9165881e59fd0fa29df944da26b8801",
+            "5bb711156246565fac8ddd81b96955fa4bf45c00"
+          ],
+          "at": "2026-11-09 15:09:59 UTC"
+        },
+        "run": 42641212668,
+        "job": 129242497053,
+        "attempt": 1,
+        "conclusion": "success",
+        "overall_rust": {
+          "cohorts": 70,
+          "passed": 2354,
+          "failed": 0,
+          "ignored": 47
+        },
+        "cargo_only": {
+          "cohorts": 68,
+          "passed": 2346,
+          "failed": 0,
+          "ignored": 47
+        },
+        "standalone": {
+          "git_helpers": 4,
+          "release_policy": 4
+        },
+        "required_windows_named_tests": [
+          {
+            "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+            "name": "successful_checked_teardown_closes_every_original_handle_once_before_releasing_context",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+            "name": "each_native_failure_or_panic_retains_context_owner_and_remaining_handles_without_retry",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+            "name": "partial_startup_preserves_first_error_and_cleans_only_acquired_resources",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/audio-actual/src/speaker/teardown/tests.rs",
+            "name": "unknown_registration_and_startup_unwind_never_free_a_live_callback_context",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/audio-actual/src/capture/stream/ownership_tests.rs",
+            "name": "original_owner_retires_after_actual_native_drain_even_if_control_survives",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/audio-actual/src/capture/stream/ownership_tests.rs",
+            "name": "dropped_observer_cannot_release_original_owner_while_native_factory_is_blocked",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/audio-actual/src/capture/stream/ownership_tests.rs",
+            "name": "native_panic_releases_owner_only_after_the_actual_worker_unwinds",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+            "name": "archive_interruptions_recover_exact_receipt_bytes_and_index_once",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+            "name": "opening_history_does_not_read_archived_bodies_and_point_reads_validate_them",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+            "name": "legacy_and_ambiguous_work_never_acquire_invented_drain_proofs",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+            "name": "conflicting_archive_destinations_and_missing_move_inputs_are_never_overwritten",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+            "name": "history_pagination_is_snapshot_bound_and_does_not_adopt_later_archives",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+            "name": "archived_point_reads_reject_valid_json_mutation_and_changed_sequence_locator",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+            "name": "empty_history_reads_do_not_migrate_legacy_private_layout",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/tests.rs",
+            "name": "maximum_private_directory_recovers_after_adding_its_separate_locator",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+            "name": "more_than_4096_real_local_admissions_preserve_uuid_history_without_active_growth",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+            "name": "full_legacy_active_inventory_does_not_count_the_reserved_history_directory",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+            "name": "archive_waits_for_original_record_reader_and_preserves_abandoned_io_ownership",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+            "name": "shutdown_waits_for_abandoned_archive_io_and_closes_new_history_admission",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+            "name": "shutdown_waits_for_abandoned_history_reader_actual_end",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/history/service_tests.rs",
+            "name": "archived_review_resolution_replays_original_decision_without_current_session_reads",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+            "name": "standalone_local_cli_cannot_bypass_original_unknown_review_or_rewrite_its_receipt",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+            "name": "standalone_local_cli_allows_confirmed_drained_terminal_receipt_without_loading_service",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+            "name": "malformed_future_and_unexpected_local_inventory_fail_closed_without_writes",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+            "name": "known_history_layout_is_checked_without_recursively_scanning_or_initializing_it",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+            "name": "stored_conflict_requires_actual_drain_evidence_instead_of_a_terminal_enum",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/idle/tests.rs",
+            "name": "initialized_service_keeps_legacy_terminal_readable_but_cannot_invent_its_drain",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "original_native_physical_and_persistence_barriers_both_precede_source_binding",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "process_restart_requires_review_and_never_reconstructs_unconfirmed_producer_completion",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "declaration_binds_authoritative_append_state_and_original_summary_revision",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "changed_canonical_source_retains_output_and_explicit_recovery_never_repeats_inference",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "eligibility_counts_unicode_characters_and_requires_five_canonical_words",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "summary_keeps_original_lifecycle_admission_until_actual_cancelled_generation_drains",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "changed_transcript_during_summary_keeps_the_target_unchanged",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "confirmed_batch_capture_publishes_retained_output_once_under_original_owner",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "lost_parent_summary_completion_replays_original_child_without_new_generation_or_write",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "busy_model_preflight_copies_no_audio_and_explicit_retry_dispatches_only_once",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_cancel_waits_for_native_source_drain_retains_late_result_and_survives_restart",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_cancel_waits_for_actual_summary_child_and_preserves_saved_content",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_cancel_winning_final_inference_admission_never_calls_native_engine",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_cancel_winning_dispatch_fence_never_polls_preparation_or_summary_submission",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_controls_never_offer_unknown_producer_or_conflict_recovery",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_private_schema_preserves_legacy_without_inventing_cancel_or_drain_proof",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_controls_do_not_offer_recovery_for_a_terminal_cancelled_summary_child",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_cancel_after_preparation_prevents_transcript_commit_and_summary",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_cancel_after_admitted_commit_preserves_publication_and_waits_for_receipt",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_cancel_before_retained_publication_commit_preserves_original_content",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_cancel_after_retained_publication_commit_waits_for_original_receipt",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_reviewed_conflict_resolution_preserves_content_and_replays_after_reopen",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/local_capture_intents/tests.rs",
+            "name": "local_capture_resolution_refuses_unknown_or_live_ownership_and_changed_session_generation",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/audio-actual/src/mic.rs",
+            "name": "backend_callback_holders_keep_original_owner_after_outer_stream_thread_drops",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/audio-actual/src/capture/stream.rs",
+            "name": "speaker_setup_preserves_uncertain_cleanup_through_error_wrappers",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/audio-actual/src/capture/stream.rs",
+            "name": "unconfirmed_native_stop_never_produces_a_successful_control_receipt",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/listener-core/src/actors/source/stream.rs",
+            "name": "uncertain_native_startup_cleanup_never_reports_physical_resources_stopped",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/listener-core/src/actors/recorder/disk.rs",
+            "name": "original_owner_survives_wav_mp3_finalization_and_all_disk_file_drops",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/capture_append/audio.rs",
+            "name": "buffered_pcm_output_preserves_exact_wav_bytes_with_bounded_write_calls",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/loofah-core/src/capture_append/audio.rs",
+            "name": "buffered_pcm_output_propagates_underlying_write_and_final_flush_errors",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "file": "crates/listener-core/src/actors/source/stream.rs",
+            "name": "native_startup_owns_original_runtime_even_after_source_future_unwinds",
+            "windows_expected": true,
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "name": "delayed_proxy_preserves_bytes_and_half_close_in_both_directions",
+            "windows_expected": true,
+            "source": "crates/transcribe-whisper-local/tests/support/delayed_proxy.rs",
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "name": "delayed_proxy_drains_original_source_after_destination_disconnect",
+            "windows_expected": true,
+            "source": "crates/transcribe-whisper-local/tests/support/delayed_proxy.rs",
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "name": "close_proof_decodes_real_frames_and_rejects_eof_or_payload_lookalikes",
+            "windows_expected": true,
+            "source": "crates/transcribe-whisper-local/tests/support/delayed_proxy.rs",
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "name": "native_observer_counts_only_exact_native_messages",
+            "windows_expected": true,
+            "source": "crates/transcribe-whisper-local/tests/support/native_observation.rs",
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "name": "native_observer_waits_for_new_start_and_notifies_all_registered_waiters",
+            "windows_expected": true,
+            "source": "crates/transcribe-whisper-local/tests/support/native_observation.rs",
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "name": "native_observer_counters_never_wrap",
+            "windows_expected": true,
+            "source": "crates/transcribe-whisper-local/tests/support/native_observation.rs",
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "name": "live_observer_requires_confirmed_original_worker_completion",
+            "windows_expected": true,
+            "source": "crates/transcribe-whisper-local/tests/support/native_observation.rs",
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "name": "live_observer_ignores_malformed_unknown_and_wrong_target_identities",
+            "windows_expected": true,
+            "source": "crates/transcribe-whisper-local/tests/support/native_observation.rs",
+            "outcomes": [
+              "ok"
+            ]
+          },
+          {
+            "name": "live_observer_inventory_never_evicts_original_identity_or_accepts_reuse",
+            "windows_expected": true,
+            "source": "crates/transcribe-whisper-local/tests/support/native_observation.rs",
+            "outcomes": [
+              "ok"
+            ]
+          }
+        ],
+        "installer_steps": [
+          {
+            "name": "Test installer process ownership",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 22
+          },
+          {
+            "name": "Test installed app and uninstall",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 23
+          }
+        ],
+        "installer_log_proof": [
+          {
+            "line": 6314,
+            "raw": "2026-11-09T15:57:17.0495391Z Owned installer process tests passed: 9 cases; no installer or application executed."
+          },
+          {
+            "line": 6316,
+            "raw": "2026-11-09T15:57:20.9481676Z Installer failure diagnostics test passed: bounded read-only inventory; no installer or application executed."
+          },
+          {
+            "line": 6345,
+            "raw": "2026-11-09T15:57:57.2829919Z Installer, app startup, installed CLI/MCP, and uninstall smoke tests passed."
+          }
+        ],
+        "installer_diagnostic_scope": "Warnings and the failure-evidence message immediately before the real install step belong to deliberate fake-process/failure-diagnostic fixtures. Actual installer, app startup, installed CLI/MCP and strict uninstall smoke test subsequently passed.",
+        "artifacts": [
+          {
+            "id": 13689097784,
+            "name": "loofah-windows-x86_64-pc-windows-msvc-5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7",
+            "size_in_bytes": 372102216,
+            "url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13689097784",
+            "archive_download_url": "https://api.github.com/repos/bart6114/loofah/actions/artifacts/13689097784/zip",
+            "expired": false,
+            "created_at": "2026-11-09T15:58:08Z",
+            "expires_at": "2026-11-23T15:57:58Z",
+            "updated_at": "2026-11-09T15:58:08Z",
+            "digest": "sha256:402965cd5d80f772cbee2279bee2425967d3689c4ef65a271afc3b1dd6724e95",
+            "workflow_run": {
+              "id": 42641212668,
+              "repository_id": 1309166815,
+              "head_repository_id": 1309166815,
+              "head_branch": "refactor/frontend-backend-separation",
+              "head_sha": "5bb711156246565fac8ddd81b96955fa4bf45c00"
+            }
+          }
+        ],
+        "log": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/logs/ci-5bb711-audit/129242497053.log",
+          "bytes": 670511,
+          "sha256": "3440cf92c37f97600e703ea787474441cacbd9a258258d72aa97da6f89f18548",
+          "connector_utf8_equals_saved_bytes": true,
+          "utf8_bom": true,
+          "crlf_count": 6467
+        },
+        "scope": "x64 only. ARM native remains active; the earlier ARM uninstall failure remains unqualified until actual ARM installer/uninstall execution. No retry, cancellation, local build or app execution."
+      },
+      "remaining": "Normal Windows ARM64 job129242496431 remains live in Cargo tests. This x64 result does not qualify ARM installer/uninstall, physical capture, paused desktop acceptance, held feature activation, production responsiveness or deferred company SSO."
     }
   },
   "local_work_focused": [

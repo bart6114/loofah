@@ -6,6 +6,20 @@ resume GUI acceptance until the user gives the signal. Both idle QA apps were
 stopped. Source review, implementation, headless service checks and hosted CI may
 continue. Production SSO acceptance is separately deferred by the user.
 
+Current integration checkpoint: published `5bb7111562`, with PR merge checkout
+`5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7`. Linux headless, packaged
+systemd/Caddy TLS/SSE append/restart/replay, configured CPU model/network checks,
+frontend, CLI, formatting and security have passed at their exact job scopes.
+Both Windows speech jobs and the final macOS workspace passed. Native x64 passed
+2,354 Rust cases (47 explicit ignored) and the actual installer, startup, installed
+CLI/MCP and uninstall checks. Normal ARM native tests and installer/uninstall
+results are still being collected. Local allowed
+checks at `eeaaf4c315` passed the stable 22-package compile, nine ordinary
+transport/observer fixtures and two Core resolution fixtures. No local desktop,
+audio-device or model test ran for that checkpoint. See the later qualification
+sections and portable record for hashes, failures and exclusions; this is not a
+whole-goal completion claim.
+
 The optimized stable 21-package graph built successfully from clean frozen
 `94c0cf6b9005701c09942b36bfe5ec6cf8b1c560` in 481.44 seconds. The isolated
 `io.loofah.remote-qa-a` bundle, CLI and server have verified manifests and
@@ -28,7 +42,7 @@ frontend passed 2,660 tests/298 files, plus typechecking, locales and production
 frontend bundling. New hosted/platform qualification and desktop acceptance remain
 separate gates; these local results do not resume desktop application tests.
 
-Current hosted acceptance at published `fada28348314b9d6607830c30fed58c586114cce`:
+Earlier hosted acceptance at published `fada28348314b9d6607830c30fed58c586114cce`:
 all seven workflows are terminal. Six succeeded. Linux backend passed 1,691 tests,
 macOS passed 3,262 with 124 explicit ignores, and the CLI passed 274. Frontend
 passed 2,636 desktop tests and 303 editor tests. The macOS SpeechCore prewarm
@@ -3078,3 +3092,96 @@ deadline, so its later profiles and ONNX/speaker steps did not execute. The fina
 receipt, exact checkout parents and raw byte/hash fidelity are copied into the
 existing portable record. Healthy runs finished without cancellation or retry;
 corrected source will receive a fresh CI checkpoint.
+
+
+## Qualified packaged service and real TLS append/restart
+
+At published `5bb7111562`, container job `129242497425` finished successfully on
+merge `5ae9d01fabed9faf6e6a8ee41db74fa7d0cab4a7`, with the exact recorded main
+and PR parents. The actual `packaged_caddy_append_and_restart` driver passed
+1/0/0 in 6.03 seconds. The default-image executable ran under the unchanged
+systemd hardening with recorded unique path/user substitutions. Actual UID999,
+private storage/cache0700 and exactly one PID-owned IPv4 loopback listener were
+verified before and after restart. Both SIGTERM stops finished cleanly; Caddy
+exited zero. Verified TLS, authenticated SDK calls, SSE before/reconnecting/after,
+and fresh HTTP original-request/admission/publication replay all passed.
+
+Independent artifact decoding verified every byte of 16,431 stereo16kHz float
+PCM frames, including the valid extensible-float WAV header. Canonical SHA-256
+`a2eed5c6fef8f2e0d46957a24f9c30324554f0f45b72dea3392db5e804baba63`
+was identical before and after restart. The original and reopened SDK admission
+receipts were byte-identical; notes/title were preserved. Artifact13685693431 ZIP
+SHA-256 is `50e5db3dbe096ad071d8da757aa79a9c76fa3eb72d6e54d700418039215c1ba8`;
+acceptance JSON SHA-256 is
+`df5eda0da132a96e4d99ee67df93cb1708fd7cd6ea5b484902336954f024bd54`.
+The portable record includes image/executable hashes, actual service/listener
+proof and independent checks; the previous failed attempt remains untouched.
+
+This qualifies the extracted default-image executable under Ubuntu systemd and
+real Caddy with synthetic loopback identity and fixture CA. It does not qualify
+full Debian-container persistent-data operation, production/company/browser SSO,
+inference or physical capture. Direct production discovery still omits append;
+the bounded fixture adds only that capability. No activation, merge, release,
+trust-store change or local desktop test occurred. Other hosted gates continue.
+
+
+## Remaining desktop acceptance and activation after the user's signal
+
+This is preparation only. Keep desktop tests paused until the explicit signal;
+use disposable QA profiles/vaults and the stable Native build worktree/cache.
+The prior microphone/system-audio authorization does not revoke that pause.
+
+1. Verify fresh and upgraded Local startup, editing, search and configured local
+   inference offline, without account/SSO or a separate installed service. Verify
+   explicit Remote failures never open a Local vault. Preserve user application
+   state and use only task-owned credentials, recordings and storage.
+2. Exercise current cancellation/history/review controls through actual Native
+   IPC: lost response, scope/window switch, restart, stale review revision,
+   retained output, changed canonical content and the bounded history pages.
+   Unknown producers remain Review without invented completion or automatic
+   inference replay. Check the full Local/Remote content, settings, import/export
+   and Reader/owner action matrix on the current artifact.
+3. Run controlled microphone speech and distinct system audio, current live and
+   long physical capture, append/resume and shutdown/finalization. Verify saved
+   raw channels/frames, transcript repair, exact original identity and verified
+   staging cleanup. The frozen generated two-hour run is not a current physical
+   device pass; map its outage/restart cases to the current Native run explicitly.
+4. Measure a production macOS build against a comparable isolated baseline with
+   realistic large vaults while recording, searching, uploading and AI work
+   overlap. Collect end-to-end input/frame/query latency and memory over matched
+   windows; do not bypass the typed client or pool unlike measurement windows.
+5. After the required producer/persistence/platform and UI evidence exists,
+   review each held switch: Local session lifecycle, output deletion and
+   transcript editing; server capture_append and media_retirement. Check original
+   owner/generation, active writers/readers, CAS/replay/conflict and preservation
+   behavior before enabling each. Run the affected postactivation GUI/platform
+   checks; a green helper test alone does not authorize activation.
+
+Production company HTTPS/SSO remains deferred without a supplied deployment.
+The observed tiny-Qwen factual/conciseness failure remains a model-quality
+limitation; successful storage/provider-shape checks do not establish accuracy.
+Keep the PR draft and do not merge, release, bump versions or touch a user vault.
+
+
+Both configured Windows speech jobs at direct `5bb7111562` are now terminal
+success: eight cases across seven cohorts per architecture. ARM actually ran
+all 50/150/500 ms profiles, with finalization times of 130.853/131.723/134.083 seconds;
+each stayed within its original 240-second semantic-probe ceiling. Its early
+disconnect had starts 4→5 while completed remained 4, then confirmed the exact
+original request acknowledgement and EOF. That is an unfinished pre-call attempt
+witness and worker acknowledgement, not an inside-kernel or OS-thread/device
+cleanup claim. Each triggered cancellation/drain still has 15 seconds plus its
+fixed transport bound. All raw hashes/profile/probe/connection rows are copied
+into the portable record. The original failing ARM attempt remains preserved.
+macOS, frontend, CLI, Linux CPU, formatting and security also finished successfully
+at their exact scopes. Normal Windows x64 also finished successfully: 2,354 Rust
+cases across 70 cohorts, zero failures and 47 explicit ignored; all 67 named
+required regressions passed. Actual installer, app startup, installed CLI/MCP and
+strict uninstall checks passed. Artifact13689097784 has API SHA-256
+`402965cd5d80f772cbee2279bee2425967d3689c4ef65a271afc3b1dd6724e95`;
+raw log SHA-256 is
+`3440cf92c37f97600e703ea787474441cacbd9a258258d72aa97da6f89f18548`.
+Fake-process failure-diagnostic fixture output preceding installation is distinct
+from the successful actual smoke step. Normal ARM job129242496431 remains in
+Cargo tests; its installer/uninstall gate and the earlier ARM failure remain
+unqualified until that actual execution completes. No healthy CI was cancelled.
