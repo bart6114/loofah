@@ -1837,6 +1837,400 @@
           }
         ]
       }
+    },
+    "remote_guarded_restart_080_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/server-refresh-080764fe20/restart-provenance.json",
+      "sha256": "c6b55f8a3dcbde14d93902d837218c0d2cddcfc7e638f37ab1ed15ef3a153890",
+      "record": {
+        "source": "080764fe205bc41a8422e8ebbe56b6ee20067958",
+        "binary": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-guard/bin/loofah-server-080764fe20",
+        "sha256": "f34df7191ab77357f5e3c50e7e8c94b168bf4d46e7cdb54e7893623c9de505ef",
+        "binary_bytes": 98133664,
+        "cargo_result": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-guard/cargo-result.json",
+        "cargo_result_sha256": "e31c64462a29ee3c491da9ec18fbce5179729edebd63b3ecda9e6ff2f4688ce9",
+        "config_sha256": "7c0c3317866b531e03dc2a2a3fe8c717e8059027e7bfd028cb2ac3e2d7791898",
+        "config_unchanged": true,
+        "prepared_utc": "2026-11-09T03:48:20.493098+00:00",
+        "old_lab_pid": 69566,
+        "old_server_pid": 69573,
+        "previous_evidence": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/server-refresh-080764fe20",
+        "inference_requested": false,
+        "historical_hashes_before": {
+          "server-storage/vaults/23cce89f-430a-44a3-8291-5f06bae918f4/sessions/b31c7bcc-bd2c-432d-8328-da7122dd4006/summary.md": "51ce7e023b8ca2a9e70d2bcc7fef6ef824d595e76c1c26ea0e0d0cc4abf1b18c",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/314322d1b9c25c5b59f83671973410bb03f1c7dfe4fdcdf32369befd9f2bef7a.json": "b73df10f3042b32e73ce353c26833adc6a6c8fb2a04d48a48b731131ed9dcbd3",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/results/c3443410-5af3-4b93-a997-1438f8d4986e.json": "2b3893378044712a083267e519bc724521dd529ed577021d98e4a763e783cf82",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/previews/c3443410-5af3-4b93-a997-1438f8d4986e.json": "0983fac4ca439095fb1d39844975870ab33deb653a3f90f6e44f2ad4f6b53491",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/titles/c3443410-5af3-4b93-a997-1438f8d4986e.json": "07ccf5d3a998dd4656363d2f284a77c3ebd6626164b58ae4ea1e9acbd7195cb8"
+        },
+        "jobs_before": [
+          {
+            "id": "c3443410-5af3-4b93-a997-1438f8d4986e",
+            "session_id": "b31c7bcc-bd2c-432d-8328-da7122dd4006",
+            "target": {
+              "kind": "summary"
+            },
+            "state": "succeeded",
+            "phase": null,
+            "failure": null,
+            "created_at": "2026-11-09T03:25:23.681Z",
+            "updated_at": "2026-11-09T03:25:27.825Z"
+          }
+        ],
+        "job_count_before": 1,
+        "client_during_restart": {
+          "reported_by": "parent",
+          "source": "6e7656d1b2",
+          "binary_sha256_prefix": "c0d427",
+          "pid": 16076,
+          "profile": "a-metadata-fresh",
+          "state": "Original existing artifact reopened authenticated without browser login or OS grant; left connected to observe SSE/reconnect",
+          "inference_or_new_note_before_restart": false
+        },
+        "stop_requested_utc": "2026-11-09T03:48:39.891265+00:00",
+        "stop_signal": "SIGTERM to verified lab parent; existing normal handler joins services and terminates/waits for its server child",
+        "old_parent_and_child_drained_utc": "2026-11-09T03:48:40.678643+00:00",
+        "client_offline_observation": {
+          "reported_at_utc": "2026-11-09T03:49:14.336093+00:00",
+          "observer": "parent actual CUA",
+          "banner": "Reconnecting\u2026 Loaded notes remain available.",
+          "sidebar_new_note_enabled": false,
+          "existing_note_readonly": true,
+          "tag_date_existing_record_enabled": false,
+          "loaded_text_retained": true,
+          "local_fallback": false,
+          "global_pending_raw_capture_available": true,
+          "capture_clicked_or_permissions_changed": false
+        },
+        "ready_verified_utc": "2026-11-09T03:50:19.022645+00:00",
+        "verified_tls": true,
+        "checks": {
+          "issuer": {
+            "status": 200,
+            "body": {
+              "healthy": true,
+              "synthetic": true,
+              "authorizations": 0,
+              "code_exchanges": 0,
+              "refresh_rotations": 0,
+              "rejections": 0
+            }
+          },
+          "ready": {
+            "status": 204,
+            "body": null
+          },
+          "capabilities": {
+            "status": 200,
+            "body": {
+              "api_major": 1,
+              "application_version": "0.45.7",
+              "features": [
+                "capture_ingestion",
+                "capture_publication",
+                "capture_retirement",
+                "capture_pending_publication",
+                "notes",
+                "session_initial_metadata",
+                "media_jobs",
+                "media_source_export",
+                "media_initial_metadata",
+                "session_summaries",
+                "timeline_read",
+                "transcription_policy",
+                "transcript_overview",
+                "transcript_editor",
+                "tag_editing",
+                "session_cleanup",
+                "session_lifecycle",
+                "note_editor_read",
+                "note_editor_write",
+                "document_editor_read",
+                "document_editor_write",
+                "document_delete",
+                "audio_metadata_read",
+                "recording_leases",
+                "recording_waveforms",
+                "audio_playback",
+                "recording_delete",
+                "attachment_leases",
+                "attachment_info",
+                "attachment_list",
+                "attachment_metadata",
+                "attachment_remove",
+                "attachment_upload",
+                "artifact_details",
+                "content_read",
+                "document_edit",
+                "metadata_edit",
+                "tasks_edit",
+                "agent_read",
+                "search",
+                "vault_membership",
+                "change_stream",
+                "summary_body_jobs",
+                "processing_previews",
+                "conditional_summary_jobs",
+                "template_output_jobs",
+                "generated_titles",
+                "processing_settings",
+                "provider_credentials"
+              ]
+            }
+          }
+        },
+        "actual_server_provenance": {
+          "binary": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-guard/bin/loofah-server-080764fe20",
+          "sha256": "f34df7191ab77357f5e3c50e7e8c94b168bf4d46e7cdb54e7893623c9de505ef",
+          "fixture_source": "e3005080f2a153a20d9edb85262ed1e37a9874fb",
+          "binary_source": "080764fe205bc41a8422e8ebbe56b6ee20067958"
+        },
+        "historical_hashes_after": {
+          "server-storage/vaults/23cce89f-430a-44a3-8291-5f06bae918f4/sessions/b31c7bcc-bd2c-432d-8328-da7122dd4006/summary.md": "51ce7e023b8ca2a9e70d2bcc7fef6ef824d595e76c1c26ea0e0d0cc4abf1b18c",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/314322d1b9c25c5b59f83671973410bb03f1c7dfe4fdcdf32369befd9f2bef7a.json": "b73df10f3042b32e73ce353c26833adc6a6c8fb2a04d48a48b731131ed9dcbd3",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/results/c3443410-5af3-4b93-a997-1438f8d4986e.json": "2b3893378044712a083267e519bc724521dd529ed577021d98e4a763e783cf82",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/previews/c3443410-5af3-4b93-a997-1438f8d4986e.json": "0983fac4ca439095fb1d39844975870ab33deb653a3f90f6e44f2ad4f6b53491",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/titles/c3443410-5af3-4b93-a997-1438f8d4986e.json": "07ccf5d3a998dd4656363d2f284a77c3ebd6626164b58ae4ea1e9acbd7195cb8"
+        },
+        "historical_files_byte_identical": true,
+        "job_count_after": 1,
+        "jobs_after": [
+          {
+            "id": "c3443410-5af3-4b93-a997-1438f8d4986e",
+            "session_id": "b31c7bcc-bd2c-432d-8328-da7122dd4006",
+            "target": {
+              "kind": "summary"
+            },
+            "state": "succeeded",
+            "phase": null,
+            "failure": null,
+            "created_at": "2026-11-09T03:25:23.681Z",
+            "updated_at": "2026-11-09T03:25:27.825Z"
+          }
+        ],
+        "new_lab_pid": 24666,
+        "new_server_pid": 24668,
+        "tool_session_id": 76685,
+        "new_job_or_inference_dispatch": false,
+        "startup_attempts": [
+          {
+            "result": "Proxy TIME_WAIT refused before child spawn",
+            "log": "lab-serve-attempt1-timewait.log"
+          },
+          {
+            "result": "Verified TLS ready204 after normal socket expiry",
+            "log": "lab-serve.log"
+          }
+        ],
+        "post_restart_manual_gui_job": {
+          "evidence": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/server-refresh-080764fe20/summary-functional-quality-limited-20261109T035117.json",
+          "sha256": "14ce08f00c1e43a621cf73483ab07466df0a05c0c7619ebe0e8e7a193fc41b58",
+          "job_id": "5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c",
+          "functional_pass": true,
+          "semantic_accuracy_pass": false,
+          "new_jobs": 1,
+          "total_jobs": 2,
+          "historical_files_byte_identical": true
+        }
+      }
+    },
+    "remote_guarded_summary_quality_limited_080_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/server-refresh-080764fe20/summary-functional-quality-limited-20261109T035117.json",
+      "sha256": "14ce08f00c1e43a621cf73483ab07466df0a05c0c7619ebe0e8e7a193fc41b58",
+      "record": {
+        "observed_utc": "2026-11-09T03:52:34.132203+00:00",
+        "investigation": "Read-only after one parent-authorized explicit GUI job; no replay/additional inference",
+        "client_source": "6e7656d1b2",
+        "client_profile": "a-metadata-fresh",
+        "server_provenance": {
+          "binary": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-guard/bin/loofah-server-080764fe20",
+          "sha256": "f34df7191ab77357f5e3c50e7e8c94b168bf4d46e7cdb54e7893623c9de505ef",
+          "fixture_source": "e3005080f2a153a20d9edb85262ed1e37a9874fb",
+          "binary_source": "080764fe205bc41a8422e8ebbe56b6ee20067958"
+        },
+        "vault_id": "23cce89f-430a-44a3-8291-5f06bae918f4",
+        "session_id": "0e0675fa-d003-4f49-b06e-db628bcf1eb2",
+        "job_id": "5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c",
+        "request_id": "e2668e4a-04e5-42bc-8db5-9f430a695108",
+        "canonical_summary": {
+          "bytes": 3125,
+          "utf8": "# QA Remote Release Planning Meeting Summary\n\n## Meeting Recap\nThe QA Remote release planning session began on 9 November. The team reviewed the current release planning and discussed the progress until then. Major decisions and actions were as follows:\n\n- **Alice** (current user) is responsible for the backup verification process, ensuring the device retains recordings until Friday. Before this, she will restore a disposable vault.\n  \n- **Bob** (current user) is in charge of Windows x64 and ARM64 regression checks to ensure compatibility across different platforms.\n  \n- **Pre-Meeting Notes**:\n  - The preview remains experimental and must not be used on local devices.\n  - Local use should remain offline and login-free.\n  - A company sign-in is only required for an explicitly selected remote server.\n  - Release is blocked until physical microphone and system audio capture tests, as well as production SSO validation on staging, are completed.\n\n- **Meeting Notes**:\n  - The team agreed on the core requirements for the release post-9 November.\n  - Bob has completed the regression checks and will be reporting the results.\n  - Alice must report the restore results on Friday.\n  - All previously documented notes and job receipts should remain unchanged.\n\n- **Next Steps**:\n  - Bob publishes the regression results.\n  - Alice reports on the restore result.\n  - The overall process must be kept aligned with the pre-meeting instructions.\n\n## Key Decisions and Actions\n- **Backup Verification**: Alice must restore the disposable vault before Friday and retains recordings until then. This ensures that the device can support continued operations even with network instability.\n\n- **Raw Recording Handling**: The preview remains experimental and is not to be used under any circumstances. Remote usage must be offline and login-free, adhering to company sign-in requirements before remote access can be granted.\n\n- **Production Validation**: Release is blocked until physical microphone and system microphone tests, as well as production SSO validation on the staging environment, are completed. This ensures that the final release meets all necessary quality standards.\n\n- **Post-Live Testing**: Bob's regression checks will follow and are critical for compatibility and functionality testing before releasing to production. These checks help ensure that the release operates correctly across all environments and platforms.\n\n- **Communication**: All details must be documented and followed up on from Pre-Meeting Notes and Meeting Notes. The team must adhere to the protocol outlined by Alice for the backup and preview steps, which Bob will take care of.\n\n- **Action Items**: None at this point.\n\n## Recap Summary\nThe QA Remote team reaffirmed their commitment to the release planning process, ensuring that the previews and recordings remain isolated from testing environments until the necessary validation processes are completed. The meeting participants emphasized the importance of meticulous documentation and adherence to existing instructions to ensure the smooth and successful deployment of the release.",
+          "sha256": "76d296ae78759c0bc00a8eeba67e071ad61223795a32d625418f1f074ff21594",
+          "word_count": 464
+        },
+        "synthetic_note": {
+          "utf8": "# QA Remote guarded summary\n\nRelease planning, 9 November. Alice owns backup verification and will restore a disposable vault before Friday. Bob owns the Windows x64 and ARM64 regression checks. The team agreed that raw recordings must remain on the device during network outages and optional AI failures. Nobody should delete retained audio until the server verifies its canonical copy.\n\nThe preview stays experimental. Local use must remain offline and login-free. Company sign-in applies only to an explicitly selected remote server. The release is blocked until physical microphone and system-audio capture are tested and production SSO is validated on staging.\n\nNext steps: Alice reports the restore result on Friday. Bob publishes the regression results. Keep all existing notes and job receipts unchanged. Marker saffron-guarded-remote-080.\n\n",
+          "word_count": 124,
+          "sha256": "4af156192354079b7888f6d16ba37cc9eaf071e595feb7990e8decbd97702e78"
+        },
+        "receipts": {
+          "job": {
+            "schema_version": 2,
+            "vault_id": "23cce89f-430a-44a3-8291-5f06bae918f4",
+            "namespace": "811faa6c-e807-4426-b18d-756c3320f207",
+            "request_id": "e2668e4a-04e5-42bc-8db5-9f430a695108",
+            "request": {
+              "session_id": "0e0675fa-d003-4f49-b06e-db628bcf1eb2",
+              "target": {
+                "kind": "summary"
+              },
+              "expected_revision": "7672433212048d40ed72f7552a627d7dcfd68631a2351cb30b99d3322a57b895",
+              "title_policy": "generate_if_empty"
+            },
+            "snapshot": {
+              "id": "5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c",
+              "session_id": "0e0675fa-d003-4f49-b06e-db628bcf1eb2",
+              "target": {
+                "kind": "summary"
+              },
+              "state": "succeeded",
+              "phase": null,
+              "failure": null,
+              "created_at": "2026-11-09T03:51:17.910Z",
+              "updated_at": "2026-11-09T03:51:33.134Z"
+            },
+            "body_applied": {
+              "revision": "86bf76e82bcd625e89b9b663fd7d28bf5c8ad619f8dee571a202e3fa9ca18dc9"
+            }
+          },
+          "result": {
+            "schema_version": 1,
+            "vault_id": "23cce89f-430a-44a3-8291-5f06bae918f4",
+            "job_id": "5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c",
+            "request": {
+              "session_id": "0e0675fa-d003-4f49-b06e-db628bcf1eb2",
+              "target": {
+                "kind": "summary"
+              },
+              "expected_revision": "7672433212048d40ed72f7552a627d7dcfd68631a2351cb30b99d3322a57b895",
+              "title_policy": "generate_if_empty"
+            },
+            "output": {
+              "markdown": "# QA Remote Release Planning Meeting Summary\n\n## Meeting Recap\nThe QA Remote release planning session began on 9 November. The team reviewed the current release planning and discussed the progress until then. Major decisions and actions were as follows:\n\n- **Alice** (current user) is responsible for the backup verification process, ensuring the device retains recordings until Friday. Before this, she will restore a disposable vault.\n  \n- **Bob** (current user) is in charge of Windows x64 and ARM64 regression checks to ensure compatibility across different platforms.\n  \n- **Pre-Meeting Notes**:\n  - The preview remains experimental and must not be used on local devices.\n  - Local use should remain offline and login-free.\n  - A company sign-in is only required for an explicitly selected remote server.\n  - Release is blocked until physical microphone and system audio capture tests, as well as production SSO validation on staging, are completed.\n\n- **Meeting Notes**:\n  - The team agreed on the core requirements for the release post-9 November.\n  - Bob has completed the regression checks and will be reporting the results.\n  - Alice must report the restore results on Friday.\n  - All previously documented notes and job receipts should remain unchanged.\n\n- **Next Steps**:\n  - Bob publishes the regression results.\n  - Alice reports on the restore result.\n  - The overall process must be kept aligned with the pre-meeting instructions.\n\n## Key Decisions and Actions\n- **Backup Verification**: Alice must restore the disposable vault before Friday and retains recordings until then. This ensures that the device can support continued operations even with network instability.\n\n- **Raw Recording Handling**: The preview remains experimental and is not to be used under any circumstances. Remote usage must be offline and login-free, adhering to company sign-in requirements before remote access can be granted.\n\n- **Production Validation**: Release is blocked until physical microphone and system microphone tests, as well as production SSO validation on the staging environment, are completed. This ensures that the final release meets all necessary quality standards.\n\n- **Post-Live Testing**: Bob's regression checks will follow and are critical for compatibility and functionality testing before releasing to production. These checks help ensure that the release operates correctly across all environments and platforms.\n\n- **Communication**: All details must be documented and followed up on from Pre-Meeting Notes and Meeting Notes. The team must adhere to the protocol outlined by Alice for the backup and preview steps, which Bob will take care of.\n\n- **Action Items**: None at this point.\n\n## Recap Summary\nThe QA Remote team reaffirmed their commitment to the release planning process, ensuring that the previews and recordings remain isolated from testing environments until the necessary validation processes are completed. The meeting participants emphasized the importance of meticulous documentation and adherence to existing instructions to ensure the smooth and successful deployment of the release."
+            }
+          },
+          "title": {
+            "schema_version": 1,
+            "vault_id": "23cce89f-430a-44a3-8291-5f06bae918f4",
+            "job_id": "5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c",
+            "request": {
+              "session_id": "0e0675fa-d003-4f49-b06e-db628bcf1eb2",
+              "target": {
+                "kind": "summary"
+              },
+              "expected_revision": "7672433212048d40ed72f7552a627d7dcfd68631a2351cb30b99d3322a57b895",
+              "title_policy": "generate_if_empty"
+            },
+            "body_revision": "86bf76e82bcd625e89b9b663fd7d28bf5c8ad619f8dee571a202e3fa9ca18dc9",
+            "stage": {
+              "kind": "finished",
+              "status": "already_named"
+            }
+          },
+          "preview": {
+            "schema_version": 1,
+            "vault_id": "23cce89f-430a-44a3-8291-5f06bae918f4",
+            "namespace": "811faa6c-e807-4426-b18d-756c3320f207",
+            "request_id": "e2668e4a-04e5-42bc-8db5-9f430a695108",
+            "job_id": "5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c",
+            "request": {
+              "session_id": "0e0675fa-d003-4f49-b06e-db628bcf1eb2",
+              "target": {
+                "kind": "summary"
+              },
+              "expected_revision": "7672433212048d40ed72f7552a627d7dcfd68631a2351cb30b99d3322a57b895",
+              "title_policy": "generate_if_empty"
+            },
+            "preview": {
+              "cursor": "5f2d8223-279e-4adb-b25b-21eb4563de65:25",
+              "markdown": "# QA Remote Release Planning Meeting Summary\n\n## Meeting Recap\nThe QA Remote release planning session began on 9 November. The team reviewed the current release planning and discussed the progress until then. Major decisions and actions were as follows:\n\n- **Alice** (current user) is responsible for the backup verification process, ensuring the device retains recordings until Friday. Before this, she will restore a disposable vault.\n  \n- **Bob** (current user) is in charge of Windows x64 and ARM64 regression checks to ensure compatibility across different platforms.\n  \n- **Pre-Meeting Notes**:\n  - The preview remains experimental and must not be used on local devices.\n  - Local use should remain offline and login-free.\n  - A company sign-in is only required for an explicitly selected remote server.\n  - Release is blocked until physical microphone and system audio capture tests, as well as production SSO validation on staging, are completed.\n\n- **Meeting Notes**:\n  - The team agreed on the core requirements for the release post-9 November.\n  - Bob has completed the regression checks and will be reporting the results.\n  - Alice must report the restore results on Friday.\n  - All previously documented notes and job receipts should remain unchanged.\n\n- **Next Steps**:\n  - Bob publishes the regression results.\n  - Alice reports on the restore result.\n  - The overall process must be kept aligned with the pre-meeting instructions.\n\n## Key Decisions and Actions\n- **Backup Verification**: Alice must restore the disposable vault before Friday and retains recordings until then. This ensures that the device can support continued operations even with network instability.\n\n- **Raw Recording Handling**: The preview remains experimental and is not to be used under any circumstances. Remote usage must be offline and login-free, adhering to company sign-in requirements before remote access can be granted.\n\n- **Production Validation**: Release is blocked until physical microphone and system microphone tests, as well as production SSO validation on the staging environment, are completed. This ensures that the final release meets all necessary quality standards.\n\n- **Post-Live Testing**: Bob's regression checks will follow and are critical for compatibility and functionality testing before releasing to production. These checks help ensure that the release operates correctly across all environments and platforms.\n\n- **Communication**: All details must be documented and followed up on from Pre-Meeting Notes and Meeting Notes. The team must adhere to the protocol outlined by Alice for the backup and preview steps, which Bob will take care of.\n\n- **Action Items**: None at this point.\n\n## Recap Summary\nThe QA Remote team reaffirmed their commitment to the release planning process, ensuring that the previews and recordings remain isolated from testing environments until the necessary validation processes are completed. The meeting participants emphasized the importance of meticulous documentation and adherence to existing instructions to ensure the smooth and successful deployment of the release.",
+              "truncated": false
+            }
+          }
+        },
+        "receipt_file_sha256": {
+          "job": "fb0711c9f9848dff3204227e5f4a85bbcea4b61672e49f6a5c8dfb2c0c56125e",
+          "result": "e66dc875b3e3557311c7452bdd9fb82d48948cc8736f317e8980588c1f3ede46",
+          "title": "3af448e1b9e39165675115676cfe811e3a746f7b82e95cf8c785bd3a9caded51",
+          "preview": "9f9cebe2496b2507ffb6c2bd1b2a4f08b7f68a089d88bf79bb4fad5f0bfb485f"
+        },
+        "retained_result_matches_canonical_exactly": true,
+        "historical_job_and_canonical_byte_identical": true,
+        "historical_hashes_after": {
+          "server-storage/vaults/23cce89f-430a-44a3-8291-5f06bae918f4/sessions/b31c7bcc-bd2c-432d-8328-da7122dd4006/summary.md": "51ce7e023b8ca2a9e70d2bcc7fef6ef824d595e76c1c26ea0e0d0cc4abf1b18c",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/314322d1b9c25c5b59f83671973410bb03f1c7dfe4fdcdf32369befd9f2bef7a.json": "b73df10f3042b32e73ce353c26833adc6a6c8fb2a04d48a48b731131ed9dcbd3",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/results/c3443410-5af3-4b93-a997-1438f8d4986e.json": "2b3893378044712a083267e519bc724521dd529ed577021d98e4a763e783cf82",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/previews/c3443410-5af3-4b93-a997-1438f8d4986e.json": "0983fac4ca439095fb1d39844975870ab33deb653a3f90f6e44f2ad4f6b53491",
+          "server-storage/runtime/23cce89f-430a-44a3-8291-5f06bae918f4/creates/jobs/titles/c3443410-5af3-4b93-a997-1438f8d4986e.json": "07ccf5d3a998dd4656363d2f284a77c3ebd6626164b58ae4ea1e9acbd7195cb8"
+        },
+        "total_jobs_after": 2,
+        "new_jobs": 1,
+        "ollama": {
+          "model": "qwen2.5:1.5b",
+          "http_completion_posts": 2,
+          "http_log_lines": [
+            "[GIN] 2026/11/09 - 04:51:20 | 200 |  3.021881708s |       127.0.0.1 | POST     \"/v1/chat/completions\"",
+            "[GIN] 2026/11/09 - 04:51:33 | 200 | 12.072893209s |       127.0.0.1 | POST     \"/v1/chat/completions\""
+          ],
+          "first_attempt_cancel_observed": true,
+          "second_attempt_output_tokens_reported": 577,
+          "second_attempt_truncated_reported": false,
+          "excerpt": "srv  get_availabl: prompt cache update took 0.01 ms\nslot launch_slot_: id  0 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> ?top-p -> ?min-p -> ?xtc -> ?temp-ext -> dist \nslot launch_slot_: id  0 | task -1 | sampler params: \n\trepeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000\n\tdry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64\n\ttop_k = 40, top_p = 1.000, min_p = 0.000, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 1.000\n\tmirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900\nslot launch_slot_: id  0 | task 0 | processing task, is_child = 0\nslot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 8192, n_keep = 4, task.n_tokens = 1262\nslot   operator(): id  0 | task 0 | cached n_tokens = 0, memory_seq_rm [0, end)\nslot   operator(): id  0 | task 0 | cached n_tokens = 1024, memory_seq_rm [1024, end)\nslot init_sampler: id  0 | task 0 | init sampler, took 0.11 ms, tokens: text = 1262, total = 1262\n[GIN] 2026/11/09 - 04:51:20 | 200 |  3.021881708s |       127.0.0.1 | POST     \"/v1/chat/completions\"\nsrv  server_strea: conv_id= (empty=1)\nslot get_availabl: id  0 | task 0 |  - skipping, is_processing = 1\nsrv          stop: cancel task, id_task = 0\nslot      release: id  0 | task 0 | stop processing: n_tokens = 1266, truncated = 0\nslot get_availabl: id  0 | task -1 |  - checking sim = 0.981 (1256/1280) > 0.100\nslot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 0.981 (> 0.100 thold), f_keep = 0.992\nslot launch_slot_: id  0 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> ?top-p -> ?min-p -> ?xtc -> ?temp-ext -> dist \nslot launch_slot_: id  0 | task -1 | sampler params: \n\trepeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000\n\tdry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64\n\ttop_k = 40, top_p = 1.000, min_p = 0.000, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 1.000\n\tmirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900\nslot launch_slot_: id  0 | task 6 | processing task, is_child = 0\nslot   operator(): id  0 | task 6 | new prompt, n_ctx_slot = 8192, n_keep = 4, task.n_tokens = 1280\nslot   operator(): id  0 | task 6 | cached n_tokens = 1256, memory_seq_rm [1256, end)\nslot init_sampler: id  0 | task 6 | init sampler, took 0.10 ms, tokens: text = 1280, total = 1280\nslot print_timing: id  0 | task 6 | n_gen =    145, tg =  47.75 t/s, tg_3s =  48.08 t/s\nslot print_timing: id  0 | task 6 | n_gen =    292, tg =  48.22 t/s, tg_3s =  48.69 t/s\nslot print_timing: id  0 | task 6 | n_gen =    436, tg =  48.06 t/s, tg_3s =  47.76 t/s\nslot print_timing: id  0 | task 6 | prompt eval time =      62.55 ms /    24 tokens (    2.61 ms per token,   383.70 tokens per second)\nslot print_timing: id  0 | task 6 |        eval time =   11969.15 ms /   577 tokens (   20.78 ms per token,    48.12 tokens per second)\nslot print_timing: id  0 | task 6 |       total time =   12031.70 ms /   601 tokens\nslot print_timing: id  0 | task 6 |    graphs reused =        577\nslot      release: id  0 | task 6 | stop processing: n_tokens = 1856, truncated = 0\nsrv  update_slots: all slots are idle\n[GIN] 2026/11/09 - 04:51:33 | 200 | 12.072893209s |       127.0.0.1 | POST     \"/v1/chat/completions\"\n",
+          "excerpt_sha256": "99fe0d172cf24d92558d24dd1e338100fd7e12830b9cbf6365815661b581c536",
+          "timestamp_timezone": "Europe/Brussels UTC+01:00; 04:51 local is03:51 UTC"
+        },
+        "qualification": {
+          "functional_generation_retention_canonical_apply": "PASS",
+          "renderer_and_saved_status": "PASS per actual parent CUA",
+          "semantic_accuracy": "NOT PASSED; factual contradictions/fabrications observed",
+          "conciseness": "NOT PASSED; output much longer than source",
+          "intermediate_gui_preview": "NOT OBSERVED; initial No confirmed text dialog unmounted when final result appeared",
+          "server_retained_preview": "Artifact preserved; qualifies server retained preview only",
+          "model_limitations": [
+            "Output falsely says Bob has completed regression checks.",
+            "Raw recording retention is conflated with the Friday restore deadline.",
+            "Output incorrectly assigns offline/login-free requirements to Remote usage.",
+            "Action Items None contradicts the explicit Alice/Bob actions.",
+            "Both participants are incorrectly labelled current user."
+          ],
+          "further_inference": "None; no repeat requested to obtain a more favorable result"
+        }
+      }
+    },
+    "native_guarded_artifacts_080_2026_11_09": {
+      "original_path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-guard/verification.json",
+      "sha256": "dc4417822a5eccb9209630f7e6f28123ac20bfdf77066f2479bf68015fbe199d",
+      "record": {
+        "source": {
+          "commit": "080764fe205bc41a8422e8ebbe56b6ee20067958",
+          "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cargo_lock_sha256": "78061132247937bfcbde48d51cb21dade13f2cc0467a6cebe1f0e3ae94cc952c"
+        },
+        "binary": {
+          "bytes": 248077600,
+          "sha256": "07ae9c825c8c644b12171f049df6f0a8067040a57aefb84ab2cfc0db0cd86f78"
+        },
+        "manifest_sha256": "e1b145b8b6cd7100a946c0252e383a615d8ac61de6de233a234331a1e90fd25c",
+        "server": {
+          "path": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-guard/bin/loofah-server-080764fe20",
+          "bytes": 98133664,
+          "sha256": "f34df7191ab77357f5e3c50e7e8c94b168bf4d46e7cdb54e7893623c9de505ef",
+          "copied_from": "/Users/bartsmeets/Library/Caches/loofah-separation/target/target-root/release/loofah-server",
+          "cargo_receipt": "/Users/bartsmeets/Library/Caches/loofah-separation/qa/remote-browser-lab/native-two-client/a-guard/cargo-result.json",
+          "cargo_receipt_sha256": "e31c64462a29ee3c491da9ec18fbce5179729edebd63b3ecda9e6ff2f4688ce9"
+        },
+        "compiled_desktop_sha_matches_source": true,
+        "preserved_artifacts": {
+          "native-two-client/a": true,
+          "native-two-client/b": true,
+          "local-performance": true,
+          "local-performance-refresh": true,
+          "native-two-client/a-refresh": true,
+          "native-two-client/a-metadata": true
+        },
+        "cargo_elapsed_seconds": 378.87744092941284,
+        "app_launched": false,
+        "server_restarted": false
+      }
     }
   },
   "local_work_focused": [

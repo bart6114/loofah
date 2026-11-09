@@ -1419,9 +1419,9 @@ global processing, creation and import controls were disabled; Reader File → N
 Note was refused and the original two notes remained. Synthetic browser PKCE and
 verified loopback HTTPS were used, without OS trust or user credential changes.
 This is not production HTTPS SSO or physical capture acceptance. One explicit
-Remote summary reported saved but contained only an opening HTML fence; semantic
-summary acceptance remains open; the later narrow empty-fence publication guard
-requires its own verification. The
+Remote summary reported saved but contained only an opening HTML fence;
+semantic summary acceptance remains open; the later narrow empty-fence publication
+guard has focused and actual functional verification below. The
 About panel opened without Local vault statistics; its cached build-commit label
 was subsequently corrected and qualified by the `6e7656d1b2` artifact. The Reader/menu
 receipt remains embedded under `native_remote_reader_menu_2263_2026_11_09`.
@@ -1458,5 +1458,43 @@ correcting it to the five actual names verified the already successful log witho
 rerunning or altering the tests. The portable record
 `native_generated_empty_fence_080_2026_11_09` preserves that distinction and the
 source/log hashes. These focused results are separate from the earlier full-suite
-2,429-pass total. A guarded server's fresh Remote job still needs actual runtime
-acceptance; this checkpoint does not claim semantic Remote summary success.
+2,429-pass total. The subsequent guarded-server runtime check below qualified
+functional publication, with model accuracy and conciseness explicitly failing.
+
+
+## Guarded Remote reconnect and functional summary, 2026-11-09
+
+The older `6e7656d1b2` client reopened its persisted authenticated profile without
+browser login or an OS grant. During the server's ordinary stopped/drained restart,
+the actual GUI showed “Reconnecting… Loaded notes remain available.” Loaded text
+remained available and read-only, mutations were disabled, and no Local fallback
+occurred. It automatically reconnected to the verified HTTPS server built at
+`080764fe20` (binary SHA-256
+`f34df7191ab77357f5e3c50e7e8c94b168bf4d46e7cdb54e7893623c9de505ef`).
+The original seven-byte summary, its one job, result, preview and title receipts
+remained byte-identical. Restart dispatched no new job or inference. This proves
+the recorded older-client/newer-server combination with the synthetic issuer; it
+is not production SSO qualification.
+
+One newly requested GUI job, `5ea0cf2b-6e7a-475c-9ed4-4500716d6e9c`, completed in
+15.224 seconds. Its retained result exactly matched the 3,125-byte canonical
+summary (SHA-256 `76d296ae78759c0bc00a8eeba67e071ad61223795a32d625418f1f074ff21594`),
+and the renderer reported saved. Exactly two jobs then existed: the unchanged
+historical job and this fresh job. Two bounded serial Ollama completion POSTs
+were observed; the first attempt was cancelled and the second produced retained
+content. Title processing finished `already_named`. No historical replay or
+further inference was requested to improve the result.
+
+Functional generation, retention and canonical apply passed. Model accuracy and
+conciseness did not: the output grew to 464 words from a 124-word note, invented
+completed regression work, conflated raw retention with a Friday restore deadline,
+misapplied offline/login-free requirements to Remote use, and contradicted explicit
+action items. The exact synthetic input and contradictory output remain in the
+portable receipt. An intermediate GUI preview was not observed; the retained
+server preview alone is qualified. This is not semantic summary acceptance.
+
+Portable records `remote_guarded_restart_080_2026_11_09`,
+`remote_guarded_summary_quality_limited_080_2026_11_09` and
+`native_guarded_artifacts_080_2026_11_09` preserve original receipts and hashes.
+Final current-head CI, physical capture/OS permission confirmation and production
+HTTPS SSO remain open. Local activation gates remain default off.

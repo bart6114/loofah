@@ -26,8 +26,13 @@ private processing previews and independent Remote note windows are implemented
 and Native-qualified. Frozen two-client browser/editing/window/role checks passed;
 the refreshed `2263b47eb7` artifact also qualified the patched Reader controls and
 native File → New Note routing. Physical capture and production HTTPS SSO remain
-unqualified; the observed Remote summary containing only an opening HTML fence
-awaits semantic verification after the narrow publication correction.
+unqualified. The older `6e7656d1b2` client passed persisted-login restart, read-only
+offline display without Local fallback, and automatic reconnect to guarded server
+`080764fe20`, preserving historical jobs and canonical bytes. A fresh explicit
+summary passed functional retention/publication, but model accuracy and conciseness
+failed (464 words from a 124-word note, with factual contradictions). The original
+empty-fence result and the later quality-limited output are preserved; neither is
+semantic summary acceptance, and intermediate GUI preview was not observed.
 
 Current validation includes Native, TLS/HTTP, frontend, configured local models,
 packaged Linux CPU, stopped-service upgrade and forced backup/restore interruption
