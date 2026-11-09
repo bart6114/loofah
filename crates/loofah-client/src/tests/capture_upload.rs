@@ -1052,6 +1052,72 @@ async fn retirement_source(
     (spool, profile, request)
 }
 #[tokio::test]
+async fn cleanup_commit_releases_profile_while_concurrent_refresh_waits_for_credentials() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let server = Server::new(&root).await;
+    let (fixture, client) = fixture(&server, None).await;
+    let (spool, profile, request) = retirement_source(&root, &client).await;
+    let generation = profile.generation().await.unwrap();
+    let original = generation.profile().clone();
+    let proof = client
+        .verify_capture_retirement(
+            profile.clone(),
+            profile.generation().await.unwrap(),
+            request.clone(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let retirement_posts = server.retirements.load(Ordering::SeqCst);
+    let admission = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap();
+    let gate = profile.guard_generation(&generation).await.unwrap();
+    let commit = proof.retire_device(admission, RetirementHost);
+    tokio::pin!(commit);
+    assert!(futures_util::poll!(&mut commit).is_pending());
+    let access = client.access_token().await.unwrap();
+    client.expire_access(&access).await;
+    let saves = fixture.credentials.saves.load(Ordering::SeqCst);
+    let credentials = fixture.credentials.values.lock().await;
+    let refresh = tokio::spawn({
+        let client = client.clone();
+        async move { client.access_token().await }
+    });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while fixture.credentials.saves.load(Ordering::SeqCst) == saves {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(client.tokens.try_lock().is_err());
+    drop(gate);
+    assert!(futures_util::poll!(&mut commit).is_pending());
+    let update = async {
+        tokio::time::timeout(Duration::from_secs(2), profile.save(original))
+            .await
+            .unwrap()
+            .unwrap();
+        drop(credentials);
+        tokio::time::timeout(Duration::from_secs(2), refresh)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    };
+    let (commit, ()) = tokio::join!(tokio::time::timeout(Duration::from_secs(5), commit), update);
+    assert_eq!(commit.unwrap().unwrap_err().code, ErrorCode::Conflict);
+    assert_eq!(fixture.state.refreshes.load(Ordering::SeqCst), 1);
+    assert_eq!(server.retirements.load(Ordering::SeqCst), retirement_posts);
+    let writer = spool.resume(request.identity).await.unwrap();
+    assert!(writer.snapshot().await.unwrap().retirement.is_none());
+    assert!(!writer.read_chunk(0).await.unwrap().bytes.is_empty());
+}
+
+#[tokio::test]
 async fn cleanup_proof_independently_reads_fresh_bytes_and_retains_lease_until_device_commit() {
     let root = tempfile::tempdir().unwrap();
     let root = root.path().canonicalize().unwrap();

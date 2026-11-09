@@ -90,8 +90,12 @@ impl CaptureAppendAuthority {
 
     /// Hold only across the producer dispatch itself, never across the producer's acknowledgement.
     pub async fn guard_dispatch(&self) -> Result<CaptureAppendDispatchGuard> {
-        let profile = self.profile.guard_generation(&self.generation).await?;
-        let tokens = self.client.tokens.clone().lock_owned().await;
+        let (profile, tokens) = crate::authenticated_scope::original_commit_guards(
+            &self.profile,
+            &self.generation,
+            &self.client.tokens,
+        )
+        .await?;
         if tokens.generation != self.auth_generation || !tokens.current_for_commit() {
             return Err(changed());
         }

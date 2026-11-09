@@ -101,8 +101,12 @@ impl RemoteClient {
                 // stops this waiter without claiming the server's owned work drained.
                 Duration::from_secs(300),
                 async {
-                    let selected = profile.guard_generation(&generation).await?;
-                    let tokens = self.tokens.clone().lock_owned().await;
+                    let (selected, tokens) = crate::authenticated_scope::original_commit_guards(
+                        &profile,
+                        &generation,
+                        &self.tokens,
+                    )
+                    .await?;
                     if tokens.generation != auth_generation || !tokens.current_for_commit() {
                         return Err(changed());
                     }
@@ -208,8 +212,12 @@ impl VerifiedCaptureRetirement {
                 "Canonical verification expired; verify the original request again",
             ));
         }
-        let profile = self.profile.guard_generation(&self.generation).await?;
-        let tokens = self.client.tokens.clone().lock_owned().await;
+        let (profile, tokens) = crate::authenticated_scope::original_commit_guards(
+            &self.profile,
+            &self.generation,
+            &self.client.tokens,
+        )
+        .await?;
         if tokens.generation != self.auth_generation || !tokens.current_for_commit() {
             return Err(changed());
         }
