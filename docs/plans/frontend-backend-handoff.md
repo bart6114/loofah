@@ -2333,3 +2333,15 @@ Existing crash fixtures distinguish generated from published bytes. Formatting
 and source review are complete; execution and integrated checks remain pending.
 Desktop app testing stays paused, all activation gates remain off, and observed
 model-quality failures remain unchanged.
+
+The first shared-library run at `6350b6d1b` executed only Core and vault-write
+while compiling the stable 21-package graph. The 19 other library binaries,
+including desktop, were explicitly not executed and have no qualification from
+this run. Vault-write passed **631/0/5**. Core reported **536 passed / 4 failed /
+2 ignored**; all ten new regression functions passed. Each failure compared the
+new stamped canonical heading against the previous raw-body expectation. The
+four test-only corrections are integrated in `fdc53e9018`; retained model-result
+assertions remain unchanged. The initial exit101/log is preserved, and its queued
+all-target check did not run. The next qualification also includes server and
+CLI libraries to check their canonical-publication expectations, with desktop
+test execution still excluded.
