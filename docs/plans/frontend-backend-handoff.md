@@ -1087,3 +1087,5 @@ network changes. It uses immutable server source 573 and a separately hashed
 harness overlay 5be/31ad; current Native production behavior is unchanged except
 the subsequently qualified preview capability declaration. Monitor/evidence
 paths remain under the local task cache. No long-run pass is claimed yet.
+
+Local startup no longer enumerates unrelated speech-model caches or downloads a missing diarizer when a vault opens. Explicit user speech-model downloads still request the optional diarizer on completion; existing downloaded diarization remains available, and a missing diarizer does not block transcription. This shared initialization rule applies to both macOS and Windows.
