@@ -13,8 +13,15 @@ import {
   noteCreationAvailable,
   type NoteCreationIntent,
 } from "~/shared/application/note-creation";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 import { useVaultHost } from "~/shared/application/vault-provider";
 import { useTabs, useTabsStore } from "~/store/zustand/tabs";
+
+export function useNoteCreationAvailable() {
+  const owner = useVaultReadScope();
+  const store = useTabsStore();
+  return owner.current() && noteCreationAvailable(owner.scope, store);
+}
 
 export function useNewNote({
   behavior = "new",

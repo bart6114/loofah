@@ -10,7 +10,11 @@ import { useLegacyDesktopAccess } from "./use-legacy-activity";
 import { useDeviceStartActions } from "~/shared/application/device-recording-controls";
 import { mediaControlsAvailable } from "~/shared/application/use-vault-read-scope";
 import { StandardContentWrapper } from "~/shared/main";
-import { useNewNote, useNewNoteAndListen } from "~/shared/useNewNote";
+import {
+  useNewNote,
+  useNewNoteAndListen,
+  useNoteCreationAvailable,
+} from "~/shared/useNewNote";
 import { useAudioImport } from "~/store/zustand/audio-import";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 
@@ -37,6 +41,7 @@ function EmptyView() {
       legacy.scope.getSnapshot().state === "connected");
   const canImport = mediaControlsAvailable(legacy.scope);
   const newNote = useNewNote({ behavior: "current" });
+  const canCreateNote = useNoteCreationAvailable();
   const newNoteAndListen = useNewNoteAndListen({ behavior: "current" });
   const openCurrent = useTabs((state) => state.openCurrent);
   const setAudioImportDialogOpen = useAudioImport(
@@ -62,6 +67,7 @@ function EmptyView() {
           label={<Trans>New Note</Trans>}
           shortcut={[platform() === "windows" ? "Ctrl" : "⌘", "N"]}
           onClick={newNote}
+          disabled={!canCreateNote}
         />
         <ActionItem
           label={<Trans>Start Recording</Trans>}

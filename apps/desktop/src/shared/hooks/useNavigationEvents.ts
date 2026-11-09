@@ -1,8 +1,8 @@
 import { useNavigate } from "@tanstack/react-router";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 
-import { events as windowsEvents } from "@hypr/plugin-windows";
+import { events as windowsEvents, type Navigate } from "@hypr/plugin-windows";
 
 import { createAsyncListenerScope } from "../async-listener-scope";
 import { useNewNote, useNewNoteAndListen } from "../useNewNote";
@@ -12,6 +12,18 @@ import { isTabInputSupported, useTabs } from "~/store/zustand/tabs";
 
 export const useNavigationEvents = () => {
   const navigate = useNavigate();
+  const fallback = useCallback(
+    (path: string, search: Navigate["search"]) => {
+      void navigate({ to: path, search: search ?? undefined });
+    },
+    [navigate],
+  );
+  useCapturedNavigationEvents(fallback);
+};
+
+export function useCapturedNavigationEvents(
+  navigate?: (path: string, search: Navigate["search"]) => void,
+) {
   const openNew = useTabs((state) => state.openNew);
   const openNewNote = useNewNote({ behavior: "new" });
   const recordNew = useNewNoteAndListen();
@@ -41,11 +53,13 @@ export const useNavigationEvents = () => {
             } else if (payload.path === "/app/settings") {
               const tab = (payload.search?.tab as string) ?? "app";
               openNew({ type: "settings", state: { tab } });
+            } else if (navigate) {
+              navigate(payload.path, payload.search);
+            } else if (payload.path === "/app") {
+              openNew({ type: "empty" });
             } else {
-              void navigate({
-                to: payload.path,
-                search: payload.search ?? undefined,
-              });
+              const match = payload.path.match(/^\/app\/session\/([^/]+)$/);
+              if (match) openNew({ type: "sessions", id: match[1] });
             }
           }),
         ),
@@ -78,4 +92,4 @@ export const useNavigationEvents = () => {
       scope.dispose();
     };
   }, [navigate, openNew, openNewNote, recordNew]);
-};
+}

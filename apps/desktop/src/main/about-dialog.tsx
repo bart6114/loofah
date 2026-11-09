@@ -19,7 +19,9 @@ import { StorageSection } from "./about-storage";
 import { useAboutDialog } from "~/store/zustand/about-dialog";
 import { commands, type VaultStats } from "~/types/tauri.gen";
 
-export function AboutDialog() {
+export function AboutDialog({
+  deviceOnly = false,
+}: { deviceOnly?: boolean } = {}) {
   const open = useAboutDialog((state) => state.open);
   const setOpen = useAboutDialog((state) => state.setOpen);
 
@@ -29,13 +31,13 @@ export function AboutDialog() {
         <DialogTitle className="sr-only">
           <Trans>About Loofah</Trans>
         </DialogTitle>
-        {open && <AboutContent />}
+        {open && <AboutContent deviceOnly={deviceOnly} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function AboutContent() {
+function AboutContent({ deviceOnly }: { deviceOnly: boolean }) {
   const { t } = useLingui();
   const [tab, setTab] = useState("overview");
   const tabId = useId();
@@ -58,6 +60,7 @@ function AboutContent() {
 
   const stats = useQuery({
     queryKey: ["about", "vault-stats"],
+    enabled: !deviceOnly,
     queryFn: async () => {
       const result = await commands.vaultStats();
       if (result.status === "error") {
@@ -107,74 +110,80 @@ function AboutContent() {
         )}
       </div>
 
-      <div
-        role="tablist"
-        aria-label={t`About Loofah`}
-        className="bg-muted mx-6 mb-4 flex shrink-0 gap-1 rounded-lg p-1"
-      >
-        {(["overview", "storage", "debug"] as const).map((value) => (
-          <button
-            key={value}
-            role="tab"
-            id={`${tabId}-${value}-tab`}
-            aria-controls={`${tabId}-${value}-panel`}
-            aria-selected={tab === value}
-            tabIndex={tab === value ? 0 : -1}
-            className={cn([
-              "focus-visible:ring-ring flex-1 rounded-md px-3 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:outline-none",
-              tab === value
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-accent",
-            ])}
-            onClick={() => setTab(value)}
-            onKeyDown={(event) => {
-              if (
-                !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
-              )
-                return;
-              event.preventDefault();
-              const tabs = ["overview", "storage", "debug"];
-              const index = tabs.indexOf(value);
-              const next =
-                tabs[
-                  event.key === "Home"
-                    ? 0
-                    : event.key === "End"
-                      ? tabs.length - 1
-                      : (index +
-                          (event.key === "ArrowRight" ? 1 : -1) +
-                          tabs.length) %
-                        tabs.length
-                ];
-              setTab(next);
-              document.getElementById(`${tabId}-${next}-tab`)?.focus();
-            }}
+      {!deviceOnly && (
+        <>
+          <div
+            role="tablist"
+            aria-label={t`About Loofah`}
+            className="bg-muted mx-6 mb-4 flex shrink-0 gap-1 rounded-lg p-1"
           >
-            {value === "overview" ? (
-              <Trans>Overview</Trans>
-            ) : value === "storage" ? (
-              <Trans>Storage</Trans>
-            ) : (
-              <Trans>Diagnostics</Trans>
-            )}
-          </button>
-        ))}
-      </div>
-      <div key={tab} className="min-h-0 overflow-y-auto">
-        <div
-          role="tabpanel"
-          id={`${tabId}-${tab}-panel`}
-          aria-labelledby={`${tabId}-${tab}-tab`}
-        >
-          {tab === "overview" ? (
-            <VaultSection stats={stats.data} loading={stats.isPending} />
-          ) : tab === "storage" ? (
-            <StorageSection />
-          ) : (
-            <DebugSection device={info.data} deviceError={info.isError} />
-          )}
-        </div>
-      </div>
+            {(["overview", "storage", "debug"] as const).map((value) => (
+              <button
+                key={value}
+                role="tab"
+                id={`${tabId}-${value}-tab`}
+                aria-controls={`${tabId}-${value}-panel`}
+                aria-selected={tab === value}
+                tabIndex={tab === value ? 0 : -1}
+                className={cn([
+                  "focus-visible:ring-ring flex-1 rounded-md px-3 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:outline-none",
+                  tab === value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-accent",
+                ])}
+                onClick={() => setTab(value)}
+                onKeyDown={(event) => {
+                  if (
+                    !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                      event.key,
+                    )
+                  )
+                    return;
+                  event.preventDefault();
+                  const tabs = ["overview", "storage", "debug"];
+                  const index = tabs.indexOf(value);
+                  const next =
+                    tabs[
+                      event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? tabs.length - 1
+                          : (index +
+                              (event.key === "ArrowRight" ? 1 : -1) +
+                              tabs.length) %
+                            tabs.length
+                    ];
+                  setTab(next);
+                  document.getElementById(`${tabId}-${next}-tab`)?.focus();
+                }}
+              >
+                {value === "overview" ? (
+                  <Trans>Overview</Trans>
+                ) : value === "storage" ? (
+                  <Trans>Storage</Trans>
+                ) : (
+                  <Trans>Diagnostics</Trans>
+                )}
+              </button>
+            ))}
+          </div>
+          <div key={tab} className="min-h-0 overflow-y-auto">
+            <div
+              role="tabpanel"
+              id={`${tabId}-${tab}-panel`}
+              aria-labelledby={`${tabId}-${tab}-tab`}
+            >
+              {tab === "overview" ? (
+                <VaultSection stats={stats.data} loading={stats.isPending} />
+              ) : tab === "storage" ? (
+                <StorageSection />
+              ) : (
+                <DebugSection device={info.data} deviceError={info.isError} />
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -23,6 +23,8 @@ vi.mock("~/shared/main", () => ({
 }));
 
 vi.mock("~/shared/useNewNote", () => ({
+  useNoteCreationAvailable: () =>
+    access.canEdit && access.state === "connected",
   useNewNote: () => vi.fn(),
   useNewNoteAndListen: () => access.record,
 }));

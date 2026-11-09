@@ -54,7 +54,7 @@ import {
 } from "~/shared/main/layout-widths";
 import { useOpenNoteDialog } from "~/shared/open-note-dialog";
 import { SidebarBrand } from "~/shared/theme/logo";
-import { useNewNote } from "~/shared/useNewNote";
+import { useNewNote, useNoteCreationAvailable } from "~/shared/useNewNote";
 import { useSidebarUpcomingMeetingStatus } from "~/sidebar/timeline/upcoming-meeting";
 import {
   hasCustomSidebarTab,
@@ -171,6 +171,7 @@ export function ClassicMainBody() {
   const currentSessionId =
     currentTab?.type === "sessions" ? currentTab.id : undefined;
   const createNewNote = useNewNote();
+  const canCreateNote = useNoteCreationAvailable();
   const openNewTab = useTabs((state) => state.openNew);
   const handleOpenSettings = useCallback(() => {
     openNewTab({ type: "settings" });
@@ -491,6 +492,7 @@ export function ClassicMainBody() {
             showNoteActionIcons={false}
             showDevtoolsPanelButton={showDevtoolsPanelButton}
             devtoolsPanelOpen={devtoolsPanelOpen}
+            canCreateNote={canCreateNote}
             onNewNote={createNewNote}
             onSearch={handleOpenNoteDialog}
             onOpenDevtools={handleOpenDevtoolsPanel}
@@ -508,6 +510,7 @@ export function ClassicMainBody() {
             label="New note"
             kbd={platform() === "windows" ? "Ctrl+N" : "⌘N"}
             onClick={createNewNote}
+            disabled={!canCreateNote}
           />
           <SidebarActionRow
             icon={<SearchIcon className="size-3.5" />}
@@ -546,6 +549,7 @@ export function ClassicMainBody() {
               sidebarExpanded={false}
               showDevtoolsPanelButton={showDevtoolsPanelButton}
               devtoolsPanelOpen={devtoolsPanelOpen}
+              canCreateNote={canCreateNote}
               onNewNote={createNewNote}
               onSearch={handleOpenNoteDialog}
               onOpenDevtools={handleOpenDevtoolsPanel}
@@ -899,12 +903,14 @@ function SidebarActionRow({
   label,
   kbd,
   mutedLabel = false,
+  disabled = false,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   kbd?: string;
   mutedLabel?: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -912,10 +918,12 @@ function SidebarActionRow({
       type="button"
       data-tauri-drag-region="false"
       onClick={onClick}
+      disabled={disabled}
       className={cn([
         "flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-left text-sm",
         "sidebar-action",
         "hover:bg-sidebar-accent active:bg-sidebar-accent transition-none",
+        "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent",
         "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-hidden",
         mutedLabel
           ? "sidebar-search text-muted-foreground"
@@ -940,6 +948,7 @@ const SidebarTimelineChromeWithUpcomingMeeting = memo(
     currentSessionId,
     devtoolsPanelOpen,
     onNewNote,
+    canCreateNote,
     onOpenDevtools,
     onOpenSettings,
     onSearch,
@@ -952,6 +961,7 @@ const SidebarTimelineChromeWithUpcomingMeeting = memo(
     currentSessionId?: string;
     devtoolsPanelOpen: boolean;
     onNewNote: () => void;
+    canCreateNote: boolean;
     onOpenDevtools: () => void;
     onOpenSettings: () => void;
     onSearch: () => void;
@@ -972,6 +982,7 @@ const SidebarTimelineChromeWithUpcomingMeeting = memo(
         devtoolsPanelOpen={devtoolsPanelOpen}
         hasUpcomingMeeting={hasUpcomingMeeting}
         onNewNote={onNewNote}
+        canCreateNote={canCreateNote}
         onOpenDevtools={onOpenDevtools}
         onOpenSettings={onOpenSettings}
         onSearch={onSearch}
@@ -989,6 +1000,7 @@ function SidebarTimelineChrome({
   devtoolsPanelOpen,
   hasUpcomingMeeting,
   onNewNote,
+  canCreateNote,
   onOpenDevtools,
   onOpenSettings,
   onSearch,
@@ -1001,6 +1013,7 @@ function SidebarTimelineChrome({
   devtoolsPanelOpen: boolean;
   hasUpcomingMeeting: boolean;
   onNewNote: () => void;
+  canCreateNote: boolean;
   onOpenDevtools: () => void;
   onOpenSettings: () => void;
   onSearch: () => void;
@@ -1044,6 +1057,7 @@ function SidebarTimelineChrome({
                 <LeftSurfaceChromeButton
                   ariaLabel="New note"
                   onClick={onNewNote}
+                  disabled={!canCreateNote}
                 >
                   <SquarePenIcon size={15} />
                 </LeftSurfaceChromeButton>

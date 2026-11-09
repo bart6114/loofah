@@ -147,6 +147,7 @@ vi.mock("~/shared/open-note-dialog", () => ({
 }));
 
 vi.mock("~/shared/useNewNote", () => ({
+  useNoteCreationAvailable: () => true,
   useNewNote: () => mocks.createNewNote,
 }));
 

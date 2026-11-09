@@ -1,6 +1,7 @@
 import { Trans } from "@lingui/react/macro";
 import { useMemo, type ReactNode } from "react";
 
+import { AboutDialog } from "./about-dialog";
 import type { MainCaptureActivity } from "./host-context";
 import { CapturedMainLayout } from "./layout";
 import { useCapturedMainLifecycle } from "./lifecycle";
@@ -14,6 +15,7 @@ import {
   useVaultHost,
 } from "~/shared/application/vault-provider";
 import type { VaultScope } from "~/shared/application/vault-scope";
+import { useCapturedNavigationEvents } from "~/shared/hooks/useNavigationEvents";
 import { UndoDeleteToast } from "~/sidebar/toast/undo-delete-toast";
 import { createAITaskStore } from "~/store/zustand/ai-task";
 import { createListenerStore } from "~/store/zustand/listener";
@@ -134,10 +136,12 @@ function WorkspaceContent({ auxiliary }: { auxiliary?: ReactNode }) {
 
 function WorkspaceShell({ auxiliary }: { auxiliary?: ReactNode }) {
   useCapturedMainLifecycle();
+  useCapturedNavigationEvents();
   return (
     <>
       <CapturedMainShellFrame auxiliary={auxiliary} />
       <UndoDeleteToast />
+      <AboutDialog deviceOnly />
     </>
   );
 }

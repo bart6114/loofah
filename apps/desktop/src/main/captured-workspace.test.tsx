@@ -18,6 +18,24 @@ const native = vi.hoisted(() => ({
   calls: [] as string[],
   secret: vi.fn(async () => ({ status: "ok", data: null })),
   local: vi.fn(),
+  navigate: null as
+    | ((event: {
+        payload: { path: string; search?: Record<string, string> };
+      }) => void)
+    | null,
+  openTab: null as
+    | ((event: { payload: { tab: { type: string; id?: string } } }) => void)
+    | null,
+  deviceInfo: vi.fn(async () => ({
+    status: "ok",
+    data: {
+      platform: "macos",
+      arch: "arm64",
+      osVersion: "test",
+      appVersion: "1.2.3",
+      buildHash: "fixture",
+    },
+  })),
   settings: vi.fn(async () => ({
     status: "ok",
     data: {
@@ -53,6 +71,36 @@ vi.mock("~/types/tauri.gen", async (original) => {
         return call();
       },
     }),
+  };
+});
+vi.mock("@tauri-apps/api/webviewWindow", () => ({
+  getCurrentWebviewWindow: () => ({ label: "main" }),
+}));
+vi.mock("@tauri-apps/api/app", () => ({
+  getIdentifier: async () => "com.loofah.test",
+}));
+vi.mock("@hypr/plugin-misc", () => ({
+  commands: { getDeviceInfo: native.deviceInfo },
+}));
+vi.mock("@hypr/plugin-windows", async (original) => {
+  const actual = await original<typeof import("@hypr/plugin-windows")>();
+  return {
+    ...actual,
+    events: {
+      ...actual.events,
+      navigate: () => ({
+        listen: async (callback: typeof native.navigate) => {
+          native.navigate = callback;
+          return () => {};
+        },
+      }),
+      openTab: () => ({
+        listen: async (callback: typeof native.openTab) => {
+          native.openTab = callback;
+          return () => {};
+        },
+      }),
+    },
   };
 });
 vi.mock("@hypr/plugin-store2", () => ({
@@ -146,6 +194,7 @@ import type {
 } from "~/shared/application/vault-client";
 import { VaultScope } from "~/shared/application/vault-scope";
 import { resetConfigStoreForTests } from "~/shared/config/store";
+import { useAboutDialog } from "~/store/zustand/about-dialog";
 import { useTabs, useTabsStore } from "~/store/zustand/tabs";
 import { deviceFixture } from "~/store/zustand/tabs/scoped-test-utils";
 
@@ -154,6 +203,7 @@ const caches: QueryClient[] = [];
 beforeEach(() => {
   vi.clearAllMocks();
   native.calls.length = 0;
+  useAboutDialog.setState({ open: false });
   resetConfigStoreForTests();
   vi.stubGlobal(
     "ResizeObserver",
@@ -208,6 +258,7 @@ function fixture(
     canEdit: true,
     attachmentPresentation: scopedAttachmentPresentation,
     features: [
+      "notes",
       "content_read",
       "timeline_read",
       "session_summaries",
@@ -225,6 +276,10 @@ function fixture(
       callback({ kind: "connection", state: "connected", error: null });
       return () => {};
     }),
+    createSession: vi.fn(async () => ({
+      meta: metadata("created").meta,
+      note: note("created").note,
+    })),
     readMetadata: vi.fn(async (sessionId: string) => metadata(sessionId)),
     readNoteEditor: vi.fn(async (sessionId: string) => note(sessionId)),
     documents: vi.fn(async () => []),
@@ -499,4 +554,53 @@ it("opens existing device App settings but hides the whole private workspace on 
   expect(screen.getByRole("alert").textContent).toBe("Vault unavailable");
   act(() => view.emit({ kind: "connection", state: "connected", error: null }));
   expect(screen.queryByTestId("main-app-shell")).toBeNull();
+});
+
+it("handles Native File New Note and OpenTab in the current Remote main without router or Local fallback", async () => {
+  const view = await mount("remote:native-navigation");
+  await screen.findByTestId("main-app-shell");
+  await waitFor(() => expect(native.navigate).toBeTypeOf("function"));
+  const original = native.navigate!;
+  act(() => original({ payload: { path: "/app/new" } }));
+  await waitFor(() => expect(view.client.createSession).toHaveBeenCalledOnce());
+  await screen.findByText("Private body remote:native-navigation created");
+  act(() =>
+    native.openTab!({ payload: { tab: { type: "sessions", id: "one" } } }),
+  );
+  await screen.findByText("Private body remote:native-navigation one");
+  act(() => original({ payload: { path: "/app/onboarding" } }));
+  expect(native.local).not.toHaveBeenCalled();
+  expect(
+    native.calls.filter(
+      (name) => !name.startsWith("draftCache") && name !== "showDevtool",
+    ),
+  ).toEqual([]);
+  view.unmount();
+  act(() => original({ payload: { path: "/app/new" } }));
+  expect(view.client.createSession).toHaveBeenCalledOnce();
+});
+it("shows device About from Native navigation without reading Local vault or models", async () => {
+  await mount("remote:about");
+  await screen.findByTestId("main-app-shell");
+  act(() => native.navigate!({ payload: { path: "/app/about" } }));
+  await screen.findByRole("dialog");
+  await waitFor(() => expect(native.deviceInfo).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("tab", { name: "Storage" })).toBeNull();
+  expect(screen.queryByRole("tab", { name: "Diagnostics" })).toBeNull();
+  expect(native.calls).not.toContain("vaultStats");
+  expect(native.calls.some((name) => name.startsWith("model:"))).toBe(false);
+});
+it("disables main New Note actions for Reader and rejects Native menu writes", async () => {
+  const view = await mount("remote:reader");
+  view.client.canEdit = false;
+  act(() => view.emit({ kind: "connection", state: "connected", error: null }));
+  const buttons = await screen.findAllByRole("button", { name: /New note/i });
+  await waitFor(() =>
+    expect(
+      buttons.every((button) => (button as HTMLButtonElement).disabled),
+    ).toBe(true),
+  );
+  act(() => native.navigate!({ payload: { path: "/app/new" } }));
+  expect(view.client.createSession).not.toHaveBeenCalled();
+  expect(native.local).not.toHaveBeenCalled();
 });

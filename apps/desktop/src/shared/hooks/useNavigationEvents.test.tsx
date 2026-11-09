@@ -36,7 +36,10 @@ vi.mock("@hypr/plugin-windows", () => ({
     }),
   },
 }));
-import { useNavigationEvents } from "./useNavigationEvents";
+import {
+  useNavigationEvents,
+  useCapturedNavigationEvents,
+} from "./useNavigationEvents";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -75,5 +78,20 @@ it("keeps explicit recording links distinct from ordinary new-note links", async
   expect(fake.record).toHaveBeenCalledOnce();
   expect(fake.note).not.toHaveBeenCalled();
   act(() => fake.link!({ payload: { path: "/app/new" } }));
+  expect(fake.note).toHaveBeenCalledOnce();
+});
+
+it("keeps captured Native routes inside scoped tabs without a router fallback", async () => {
+  const view = renderHook(() => useCapturedNavigationEvents());
+  await act(async () => {});
+  const original = fake.link!;
+  act(() => original({ payload: { path: "/app/new" } }));
+  expect(fake.note).toHaveBeenCalledOnce();
+  act(() => original({ payload: { path: "/app/session/original" } }));
+  expect(fake.open).toHaveBeenCalledWith({ type: "sessions", id: "original" });
+  act(() => original({ payload: { path: "/app/onboarding" } }));
+  expect(fake.navigate).not.toHaveBeenCalled();
+  view.unmount();
+  act(() => original({ payload: { path: "/app/new" } }));
   expect(fake.note).toHaveBeenCalledOnce();
 });
