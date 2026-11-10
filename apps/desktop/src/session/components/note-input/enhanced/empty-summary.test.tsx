@@ -97,7 +97,7 @@ describe("EmptySummary", () => {
   it("opens the shared prompt editor without generating", () => {
     mount();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit summary prompt" }),
+      screen.getByRole("button", { name: "Edit global summary prompt" }),
     );
     expect(mocks.openPrompt).toHaveBeenCalledOnce();
     expect(mocks.enhance).not.toHaveBeenCalled();

@@ -618,8 +618,8 @@ msgstr "Edit date"
 
 #: src/session/components/note-input/enhanced/empty-summary.tsx
 #: src/session/components/note-input/header.tsx
-msgid "Edit summary prompt"
-msgstr "Edit summary prompt"
+msgid "Edit global summary prompt"
+msgstr "Edit global summary prompt"
 
 #. placeholder {0}: permissionName.toLowerCase()
 #: src/onboarding/permissions.tsx

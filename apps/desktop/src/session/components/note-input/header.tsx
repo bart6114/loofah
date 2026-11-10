@@ -424,7 +424,7 @@ function HeaderViewEnhancedActive({
 
     items.push({
       id: "edit-summary-prompt",
-      text: t`Edit summary prompt`,
+      text: t`Edit global summary prompt`,
       action: openSummaryPrompt,
     });
 

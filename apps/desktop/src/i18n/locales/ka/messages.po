@@ -618,7 +618,7 @@ msgstr ""
 
 #: src/session/components/note-input/enhanced/empty-summary.tsx
 #: src/session/components/note-input/header.tsx
-msgid "Edit summary prompt"
+msgid "Edit global summary prompt"
 msgstr ""
 
 #. placeholder {0}: permissionName.toLowerCase()

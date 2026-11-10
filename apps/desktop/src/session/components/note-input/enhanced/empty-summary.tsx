@@ -84,7 +84,7 @@ export function EmptySummary({
             : "Generate summary"}
       </Button>
       <Button variant="ghost" onClick={openSummaryPrompt}>
-        <Trans>Edit summary prompt</Trans>
+        <Trans>Edit global summary prompt</Trans>
       </Button>
       {generate.error && (
         <p role="alert" className="text-destructive text-sm">
