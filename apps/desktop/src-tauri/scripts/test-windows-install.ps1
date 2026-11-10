@@ -1,8 +1,10 @@
+param([ValidateSet('staging', 'stable')][string]$Flavor = 'staging')
 $ErrorActionPreference = 'Stop'
 $tauri = Split-Path $PSScriptRoot -Parent
-$config = Get-Content (Join-Path $tauri 'tauri.conf.staging.json') -Raw | ConvertFrom-Json
-$installers = @(Get-ChildItem (Join-Path $tauri 'target/release/bundle/nsis/*-setup.exe'))
-if ($installers.Count -ne 1) { throw 'Expected one preview installer' }
+$config = Get-Content (Join-Path $tauri "tauri.conf.$Flavor.json") -Raw | ConvertFrom-Json
+$targetDir = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $tauri 'target' }
+$installers = @(Get-ChildItem (Join-Path $targetDir 'release/bundle/nsis/*-setup.exe'))
+if ($installers.Count -ne 1) { throw "Expected one $Flavor installer" }
 $install = Join-Path $env:RUNNER_TEMP 'Loofah Install Test'
 
 function Run-Installer($file, $arguments) {
@@ -47,12 +49,13 @@ Set-Content $sentinel 'preserve unknown files'
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 if (-not (Test-Path $runKey)) { New-Item -Path $runKey -Force | Out-Null }
 New-ItemProperty -Path $runKey -Name $config.productName -Value "`"$executable`" --background" -PropertyType String -Force | Out-Null
-$cliBin = Join-Path $env:LOCALAPPDATA 'Loofah/cli/loof-staging/bin'
+$managedName = if ($Flavor -eq 'staging') { 'loof-staging.exe' } else { 'loof.exe' }
+$cliBin = Join-Path $env:LOCALAPPDATA "Loofah/cli/$($managedName.Replace('.exe', ''))/bin"
 New-Item -ItemType Directory -Path $cliBin -Force | Out-Null
-$managedCli = Join-Path $cliBin 'loof-staging.exe'
+$managedCli = Join-Path $cliBin $managedName
 Copy-Item (Join-Path $install 'loof.exe') $managedCli
 $hash = (Get-FileHash $managedCli -Algorithm SHA256).Hash.ToLowerInvariant()
-@{ files = @{ 'loof-staging.exe' = $hash } } | ConvertTo-Json | Set-Content (Join-Path $cliBin '.loofah-cli.json') -Encoding utf8NoBOM
+@{ files = @{ $managedName = $hash } } | ConvertTo-Json | Set-Content (Join-Path $cliBin '.loofah-cli.json') -Encoding utf8NoBOM
 $originalPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 [Environment]::SetEnvironmentVariable('Path', "$originalPath;$cliBin", 'User')
 $uninstaller = Join-Path $env:RUNNER_TEMP 'loofah-uninstall-test.exe'

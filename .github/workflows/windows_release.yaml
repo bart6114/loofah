@@ -96,6 +96,7 @@ jobs:
       run:
         shell: pwsh
     env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}\target
       RELEASE_TAG: ${{ inputs.tag }}
       WINDOWS_SIGNING_MODE: ${{ inputs.signing-mode }}
       AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
@@ -141,6 +142,9 @@ jobs:
       - uses: ./.github/actions/rust_install
         with:
           platform: windows
+          shared-key: windows-native-v1
+          workspaces: . -> target
+          cache-workspace-crates: "true"
       - run: |
           rustc --test apps/desktop/src-tauri/windows_release_policy.rs -o "$env:RUNNER_TEMP/windows-release-policy.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -174,6 +178,8 @@ jobs:
           RELEASE_TARGET: ${{ matrix.target }}
           RELEASE_REPOSITORY: ${{ github.repository }}
         run: node apps/desktop/src-tauri/scripts/package-windows-release.mjs
+      - name: Test stable installer and uninstall
+        run: ./apps/desktop/src-tauri/scripts/test-windows-install.ps1 -Flavor stable
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows-${{ matrix.target }}

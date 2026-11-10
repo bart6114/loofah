@@ -82,6 +82,8 @@ jobs:
         with:
           target: ${{ matrix.triple }}
       - uses: ./.release-ci/.github/actions/rust_install
+        with:
+          shared-key: cli-release-v1
       - run: cargo build --locked --release -p loof-cli --timings
       - uses: actions/upload-artifact@v4
         if: always()

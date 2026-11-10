@@ -79,8 +79,44 @@ jobs:
             echo 'release_windows=false' >> "$GITHUB_OUTPUT"
           fi
 
-  changelog:
+  validate:
     needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require successful source validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          subject="$(git log -1 --format=%s)"
+          if [[ "$subject" =~ ^chore\(release\):\ v[0-9]+\.[0-9]+\.[0-9]+\ \[skip\ ci\]$ ]]; then
+            changed="$(git diff-tree --no-commit-id --name-only -r HEAD | sort)"
+            expected="$(printf '%s\n' apps/desktop/package.json package.json | sort)"
+            test "$changed" = "$expected" || { echo 'Release commit has unexpected changes'; exit 1; }
+            source_sha="$(git rev-parse HEAD^)"
+          fi
+          for workflow in ci.yaml desktop_ci.yaml cli_ci.yaml windows_ci.yaml; do
+            result="$(gh api -X GET "repos/$GH_REPO/actions/workflows/$workflow/runs" \
+              -f head_sha="$source_sha" -f event=push -f per_page=20 \
+              --jq '.workflow_runs | sort_by(.run_number) | last | .conclusion // empty')"
+            if [ "$result" != success ]; then
+              echo "::error::$workflow for $source_sha must succeed; current result: ${result:-missing or pending}"
+              exit 1
+            fi
+          done
+
+  changelog:
+    needs: [resolve, validate]
     permissions:
       contents: write
       # changelog.yaml dispatches docs-deploy to publish the manual notes.
@@ -90,7 +126,7 @@ jobs:
       tag: ${{ needs.resolve.outputs.tag }}
 
   macos:
-    needs: [resolve, changelog]
+    needs: [resolve, validate, changelog]
     if: needs.resolve.outputs.build_macos == 'true'
     runs-on: macos-26
     permissions:
@@ -238,7 +274,7 @@ jobs:
           retention-days: 14
 
   windows:
-    needs: [resolve, changelog]
+    needs: [resolve, validate, changelog]
     if: needs.resolve.outputs.release_windows == 'true'
     permissions:
       contents: write
@@ -344,7 +380,7 @@ jobs:
             --clobber
 
   cli:
-    needs: [resolve, changelog]
+    needs: [resolve, validate, changelog]
     permissions:
       contents: write
     uses: ./.github/workflows/cli_release.yaml

@@ -22,22 +22,6 @@ on:
         description: Benchmark separate target directories and dependency-only caching
         type: boolean
         default: false
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/desktop_build.yaml
-      - .github/actions/**
-      - .github/scripts/**
-      - apps/cli/**
-      - .cargo/**
-      - rust-toolchain.toml
-      - apps/desktop/**
-      - packages/**
-      - plugins/**
-      - crates/**
-      - Cargo.toml
-      - Cargo.lock
 
 permissions:
   contents: read

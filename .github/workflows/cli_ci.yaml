@@ -5,47 +5,7 @@ on:
   push:
     branches:
       - main
-    paths:
-      - .github/workflows/cli_ci.yaml
-      - .github/workflows/cli_release.yaml
-      - .github/actions/cli_native_setup/**
-      - .github/actions/rust_install/**
-      - .cargo/**
-      - .agents/skills/**
-      - apps/cli/**
-      - crates/agent-access/**
-      - crates/search-cache/**
-      - crates/export-core/**
-      - crates/cli-docs/**
-      - crates/tiptap/**
-      - docs/**
-      - skills/**
-      - Cargo.lock
-      - Cargo.toml
-      - clippy.toml
-      - rust-toolchain.toml
-      - rustfmt.toml
   pull_request:
-    paths:
-      - .github/workflows/cli_ci.yaml
-      - .github/workflows/cli_release.yaml
-      - .github/actions/cli_native_setup/**
-      - .github/actions/rust_install/**
-      - .cargo/**
-      - .agents/skills/**
-      - apps/cli/**
-      - crates/agent-access/**
-      - crates/search-cache/**
-      - crates/export-core/**
-      - crates/cli-docs/**
-      - crates/tiptap/**
-      - docs/**
-      - skills/**
-      - Cargo.lock
-      - Cargo.toml
-      - clippy.toml
-      - rust-toolchain.toml
-      - rustfmt.toml
 
 permissions:
   contents: read
@@ -55,7 +15,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      cli: ${{ steps.select.outputs.cli }}
+      docs: ${{ steps.select.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        run: python3 .github/scripts/ci_scope.py
+
   cli-ci:
+    needs: scope
+    if: needs.scope.outputs.cli == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +46,8 @@ jobs:
         with:
           target: x86_64-unknown-linux-gnu
       - uses: ./.github/actions/rust_install
+        with:
+          shared-key: cli-release-v1
       - run: |
           cargo test --locked -p export-core
           cargo test --locked -p search-cache
@@ -104,6 +81,20 @@ jobs:
             exit 1
           fi
           grep -q '"code": "invalid_arguments"' <<<"$invalid_output"
+  docs:
+    needs: scope
+    if: needs.scope.outputs.docs == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - run: |
           test -s skills/loofah/SKILL.md
           test "$(sed -n '1p' skills/loofah/SKILL.md)" = "---"

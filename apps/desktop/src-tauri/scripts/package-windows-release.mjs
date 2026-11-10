@@ -24,7 +24,10 @@ if (!architecture || process.env.RELEASE_TAG !== `v${version}`)
   throw new Error("Release version or architecture mismatch");
 const output = path.join(root, "artifacts/windows-release");
 mkdirSync(output, { recursive: true });
-const bundle = path.join(tauri, "target/release/bundle/nsis");
+const bundle = path.join(
+  process.env.CARGO_TARGET_DIR || path.join(tauri, "target"),
+  "release/bundle/nsis",
+);
 const installers = readdirSync(bundle).filter((name) =>
   name.endsWith("-setup.exe"),
 );
