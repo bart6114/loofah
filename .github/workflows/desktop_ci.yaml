@@ -5,27 +5,7 @@ on:
   push:
     branches:
       - main
-    paths:
-      - .github/workflows/desktop_ci.yaml
-      - .github/actions/**
-      - apps/cli/**
-      - apps/desktop/**
-      - packages/**
-      - plugins/**
-      - crates/**
-      - Cargo.toml
-      - Cargo.lock
   pull_request:
-    paths:
-      - .github/workflows/desktop_ci.yaml
-      - .github/actions/**
-      - apps/cli/**
-      - apps/desktop/**
-      - packages/**
-      - plugins/**
-      - crates/**
-      - Cargo.toml
-      - Cargo.lock
 
 permissions:
   contents: read
@@ -35,8 +15,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.select.outputs.frontend }}
+      desktop_rust: ${{ steps.select.outputs.desktop_rust }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        run: python3 .github/scripts/ci_scope.py
+
   frontend:
-    if: ${{ !startsWith(github.head_ref || '', 'blog/') }}
+    needs: scope
+    if: ${{ !startsWith(github.head_ref || '', 'blog/') && needs.scope.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +43,8 @@ jobs:
       - run: pnpm -F desktop i18n:check
 
   rust:
-    if: ${{ !startsWith(github.head_ref || '', 'blog/') }}
+    needs: scope
+    if: ${{ !startsWith(github.head_ref || '', 'blog/') && needs.scope.outputs.desktop_rust == 'true' }}
     runs-on: macos-latest
     defaults:
       run:

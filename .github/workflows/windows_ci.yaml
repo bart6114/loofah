@@ -23,8 +23,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      windows: ${{ steps.select.outputs.windows }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        run: python3 .github/scripts/ci_scope.py
+
   native:
-    if: github.event_name != 'workflow_dispatch' || !inputs.speech-models
+    needs: scope
+    if: (github.event_name != 'workflow_dispatch' || !inputs.speech-models) && needs.scope.outputs.windows == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +50,8 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}\target
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,6 +70,9 @@ jobs:
       - uses: ./.github/actions/rust_install
         with:
           platform: windows
+          shared-key: windows-native-v1
+          workspaces: . -> target
+          cache-workspace-crates: "true"
       - run: |
           rustc --test apps/desktop/src-tauri/windows_release_policy.rs -o "$env:RUNNER_TEMP/windows-release-policy.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -91,7 +109,7 @@ jobs:
       - name: Check CLI
         run: |
           New-Item -ItemType Directory -Force artifacts/cli | Out-Null
-          Copy-Item apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe artifacts/
+          Copy-Item target/release/bundle/nsis/*-setup.exe artifacts/
           Copy-Item target/release/loof.exe artifacts/cli/loof-staging.exe
           Copy-Item apps/desktop/src-tauri/resources/windows-runtime/*.dll artifacts/cli/
           & artifacts/cli/loof-staging.exe --version
@@ -127,6 +145,8 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}\target
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,6 +156,9 @@ jobs:
       - uses: ./.github/actions/rust_install
         with:
           platform: windows
+          shared-key: windows-native-v1
+          workspaces: . -> target
+          cache-workspace-crates: "true"
       - run: ./.github/scripts/test_windows_whisper.ps1
       - name: Run real live and batch transcription
         run: cargo test --locked -p transcribe-onnx --test inference -- --ignored --nocapture
