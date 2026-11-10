@@ -6,12 +6,14 @@ cd "$(dirname "$0")/.."   # plugins/tray
 
 MARK=../../apps/desktop/src-tauri/icons/src/loofah-mark-1024.png
 CANVAS=160
+# The source has a nearly transparent fringe that makes a normal trim shrink the visible mark.
+MARK_CROP=$(magick "$MARK" -alpha extract -threshold 1% -format '%@' info:)
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 
 render_mark() { # $1 size, $2 output, $3 optional x offset, $4 optional y offset
   local size=$1 out=$2 x=${3:-0} y=${4:-0}
-  magick "$MARK" -trim +repage \
+  magick "$MARK" -crop "$MARK_CROP" +repage \
     -channel RGB -fill white -colorize 100 +channel \
     -resize "${size}x${size}" \
     -background none -gravity center -extent "${CANVAS}x${CANVAS}" \
@@ -28,14 +30,14 @@ add_badge() { # $1 base, $2 output, $3 badge cutout drawing
     -compose DstOut -composite -compose Over "$out"
 }
 
-render_mark 148 icons/tray_default.png
+render_mark 150 icons/tray_default.png
 
 # A subtle size pulse remains legible at macOS menu-bar scale while preserving
 # the complete mark in every frame.
-render_mark 128 icons/tray_recording_0.png
-render_mark 138 icons/tray_recording_1.png
-render_mark 148 icons/tray_recording_2.png
-render_mark 138 icons/tray_recording_3.png
+render_mark 130 icons/tray_recording_0.png
+render_mark 140 icons/tray_recording_1.png
+render_mark 150 icons/tray_recording_2.png
+render_mark 140 icons/tray_recording_3.png
 
 render_mark 126 "$T/badge-base.png" -13 -13
 add_badge "$T/badge-base.png" icons/tray_degraded.png \

@@ -6,8 +6,9 @@ use std::sync::{
 use tauri::async_runtime::JoinHandle;
 use tauri::{
     AppHandle, Result,
+    image::Image,
     menu::{Menu, MenuItemKind, PredefinedMenuItem, Submenu},
-    tray::TrayIconBuilder,
+    tray::{TrayIcon, TrayIconBuilder},
 };
 
 use crate::tray_icon::{RECORDING_FRAMES, TrayIconState, recording_frame};
@@ -215,7 +216,7 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
                         if let Some(tray) = app.tray_by_id(TRAY_ID)
                             && let Ok(image) = recording_frame(frame)
                         {
-                            let _ = tray.set_icon(Some(image));
+                            let _ = set_tray_icon(&tray, image);
                         }
                         frame = (frame + 1) % RECORDING_FRAMES.len();
                     }
@@ -236,7 +237,7 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
             TrayIconState::Default
         };
 
-        tray.set_icon(Some(state.to_image()?))?;
+        set_tray_icon(&tray, state.to_image()?)?;
 
         Ok(())
     }
@@ -245,6 +246,14 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
         START_DISABLED.store(disabled, Ordering::SeqCst);
         Self::rebuild_menu(self.manager.app_handle())
     }
+}
+
+fn set_tray_icon(tray: &TrayIcon<tauri::Wry>, image: Image<'_>) -> Result<()> {
+    tray.set_icon(Some(image))?;
+    // Replacing an icon clears the template flag in tray-icon on macOS.
+    #[cfg(target_os = "macos")]
+    tray.set_icon_as_template(true)?;
+    Ok(())
 }
 
 pub trait TrayPluginExt<R: tauri::Runtime> {
