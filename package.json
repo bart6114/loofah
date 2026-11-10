@@ -1,6 +1,6 @@
 {
   "name": "loofah",
-  "version": "0.45.7",
+  "version": "0.45.8",
   "private": true,
   "scripts": {
     "fmt:check": "dprint check",
