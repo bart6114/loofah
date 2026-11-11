@@ -62,12 +62,8 @@ const check = spawnSync(path.join(cli, "loof.exe"), ["--version"], {
 if (check.error || check.status !== 0 || !check.stdout.includes(version))
   throw new Error("Bundled CLI failed version smoke test");
 const archive = `loof-${version}-${target}.zip`;
-const powershell = path.join(
-  process.env.SystemRoot || "C:\\Windows",
-  "System32/WindowsPowerShell/v1.0/powershell.exe",
-);
 const zip = spawnSync(
-  powershell,
+  "pwsh",
   [
     "-NoLogo",
     "-NoProfile",

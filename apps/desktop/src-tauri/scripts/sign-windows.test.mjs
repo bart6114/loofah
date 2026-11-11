@@ -1,8 +1,28 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
 
 import { signingArguments } from "./sign-windows.mjs";
+
+test(
+  "PowerShell 7 can inspect Authenticode signatures on this Windows runner",
+  { skip: process.platform !== "win32" },
+  () => {
+    const check = spawnSync(
+      "pwsh",
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "$ErrorActionPreference = 'Stop'; $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $PSHOME 'pwsh.exe'); if ($null -eq $signature) { throw 'Signature inspection returned nothing' }",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(check.status, 0, check.stderr || check.error?.message);
+  },
+);
 
 test("stable signing fails closed without a provisioned signer", () => {
   assert.throws(() => signingArguments({}, "app.exe"), /THUMBPRINT/);
