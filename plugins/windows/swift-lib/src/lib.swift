@@ -7,7 +7,7 @@ public func _dictationShortcutConfigure(shortcut: SRString) -> Bool {
 }
 
 @_cdecl("_dictation_capture_target")
-public func _dictationCaptureTarget() -> Bool {
+public func _dictationCaptureTarget() -> Int {
   DictationInput.shared.captureTarget()
 }
 

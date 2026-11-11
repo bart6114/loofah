@@ -842,6 +842,7 @@ async function showFloatingMeetingWindow(
     amplitude: routeState.amplitude,
     title: routeState.title,
     status: routeState.status,
+    showStatusText: false,
     colorScheme: routeState.colorScheme,
     opacity: routeState.opacity,
     liveCaptionOpacity: routeState.liveCaptionOpacity,

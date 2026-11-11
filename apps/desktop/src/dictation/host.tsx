@@ -37,39 +37,31 @@ export function DictationHost() {
   useEffect(() => {
     const start = () => {
       if (recording.current || processing.current || starting.current) return;
-      starting.current = (async () => {
-        if (navigator.platform.includes("Mac")) {
-          const accessibility =
-            await permissionsCommands.checkPermission("accessibility");
-          if (
-            accessibility.status !== "ok" ||
-            accessibility.data !== "authorized"
-          ) {
-            const appName = await getName();
-            await permissionsCommands.requestPermission("accessibility");
-            await permissionsCommands.openPermission("accessibility");
-            sonnerToast.warning(
-              `Allow ${appName} in Privacy & Security → Accessibility, then try dictation again.`,
-              {
-                id: "dictation-accessibility",
-                duration: Infinity,
-                action: {
-                  label: "Open Settings",
-                  onClick: () => {
-                    void permissionsCommands.openPermission("accessibility");
-                  },
-                },
-              },
-            );
+      starting.current = invoke("dictation_start")
+        .then(() => {
+          sonnerToast.dismiss("dictation-accessibility");
+          recording.current = true;
+        })
+        .catch(async (error) => {
+          if (String(error) !== "accessibility_permission_required") {
+            sonnerToast.error(`Could not start dictation: ${error}`);
             return;
           }
-          sonnerToast.dismiss("dictation-accessibility");
-        }
-        await invoke("dictation_start");
-        recording.current = true;
-      })()
-        .catch((error) => {
-          sonnerToast.error(`Could not start dictation: ${error}`);
+          const appName = await getName().catch(() => "Loofah");
+          void permissionsCommands.openPermission("accessibility");
+          sonnerToast.warning(
+            `Allow ${appName} in Privacy & Security → Accessibility, then try dictation again.`,
+            {
+              id: "dictation-accessibility",
+              duration: Infinity,
+              action: {
+                label: "Open Settings",
+                onClick: () => {
+                  void permissionsCommands.openPermission("accessibility");
+                },
+              },
+            },
+          );
         })
         .finally(() => {
           starting.current = null;
@@ -111,10 +103,15 @@ export function DictationHost() {
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
     let shown = false;
+    let lastPhase: string | null = null;
     const listener = listen<DictationStatus>(
       "dictation-status",
       ({ payload }) => {
         if (disposed) return;
+        if (payload.phase !== lastPhase) {
+          console.info("[dictation] status", payload.phase, payload.message);
+          lastPhase = payload.phase;
+        }
         if (hideTimer) clearTimeout(hideTimer);
         if (payload.phase === "done") {
           hideTimer = setTimeout(() => {
@@ -129,15 +126,18 @@ export function DictationHost() {
             payload.message ??
             (payload.phase === "recording"
               ? "Dictating"
-              : payload.phase === "inserting"
-                ? "Inserting"
-                : "Transcribing"),
+              : payload.phase === "starting"
+                ? "Starting dictation"
+                : payload.phase === "inserting"
+                  ? "Inserting"
+                  : "Transcribing"),
           status:
             payload.phase === "error"
               ? ("error" as const)
               : payload.phase === "recording"
                 ? ("recording" as const)
                 : ("processing" as const),
+          showStatusText: true,
           colorScheme: matchMedia("(prefers-color-scheme: dark)").matches
             ? ("dark" as const)
             : ("light" as const),
@@ -150,12 +150,32 @@ export function DictationHost() {
           liveCaptionToggleVisible: false,
           transcriptBubbles: [],
         };
-        if (shown) void windowsCommands.floatingBarUpdate(state);
-        else {
+        if (shown) {
+          void windowsCommands
+            .floatingBarUpdate(state)
+            .then((result) => {
+              if (result.status === "error") {
+                console.error("Could not update dictation bar:", result.error);
+              }
+            })
+            .catch((error) => {
+              console.error("Could not update dictation bar:", error);
+            });
+        } else {
           shown = true;
           void windowsCommands
-            .floatingBarShow()
-            .then(() => windowsCommands.floatingBarUpdate(state));
+            .floatingBarUpdate(state)
+            .then((result) => {
+              if (result.status === "error") throw new Error(result.error);
+              return windowsCommands.floatingBarShow();
+            })
+            .then((result) => {
+              if (result.status === "error") throw new Error(result.error);
+            })
+            .catch((error) => {
+              shown = false;
+              console.error("Could not show dictation bar:", error);
+            });
         }
         if (payload.phase === "error") {
           hideTimer = setTimeout(() => {

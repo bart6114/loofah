@@ -38,6 +38,7 @@ pub struct FloatingBarState {
     pub amplitude: f64,
     pub title: String,
     pub status: FloatingBarStatus,
+    pub show_status_text: bool,
     pub color_scheme: FloatingBarColorScheme,
     pub opacity: f64,
     pub live_caption_opacity: f64,

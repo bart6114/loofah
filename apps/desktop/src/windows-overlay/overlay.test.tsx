@@ -43,6 +43,7 @@ const recording: FloatingBarState = {
   amplitude: 0.4,
   title: "Project meeting",
   status: "recording",
+  showStatusText: false,
   colorScheme: "dark",
   opacity: 0.9,
   liveCaptionOpacity: 0.9,

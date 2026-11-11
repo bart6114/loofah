@@ -10,10 +10,10 @@ pub fn set_app_handle(app: tauri::AppHandle) {
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use swift_rs::{Bool, SRString, swift};
+    use swift_rs::{Bool, Int, SRString, swift};
 
     swift!(fn _dictation_shortcut_configure(shortcut: &SRString) -> Bool);
-    swift!(fn _dictation_capture_target() -> Bool);
+    swift!(fn _dictation_capture_target() -> Int);
     swift!(fn _dictation_insert(text: &SRString) -> Bool);
 
     pub fn configure(shortcut: &str) -> Result<(), String> {
@@ -26,13 +26,10 @@ mod platform {
     }
 
     pub fn capture_target() -> Result<(), String> {
-        if unsafe { _dictation_capture_target() } {
-            Ok(())
-        } else {
-            Err(
-                "Focus an editable text field before dictating, and allow Accessibility access."
-                    .into(),
-            )
+        match unsafe { _dictation_capture_target() } {
+            0 => Ok(()),
+            1 => Err("accessibility_permission_required".into()),
+            _ => Err("Focus an editable text field before dictating.".into()),
         }
     }
 

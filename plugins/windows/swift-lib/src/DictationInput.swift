@@ -100,18 +100,25 @@ final class DictationInput {
     return Unmanaged.passUnretained(event)
   }
 
-  func captureTarget() -> Bool {
+  func captureTarget() -> Int {
     if Thread.isMainThread { return captureTargetOnMain() }
     return DispatchQueue.main.sync { self.captureTargetOnMain() }
   }
 
-  private func captureTargetOnMain() -> Bool {
+  private func captureTargetOnMain() -> Int {
+    guard AXIsProcessTrusted() else {
+      let options =
+        [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+      AXIsProcessTrustedWithOptions(options)
+      target = nil
+      return 1
+    }
     guard let current = focusedElement(), editable(current) else {
       target = nil
-      return false
+      return 2
     }
     target = current
-    return true
+    return 0
   }
 
   func insert(_ text: String) -> Bool {
@@ -171,10 +178,7 @@ final class DictationInput {
       role != "AXSecureTextField",
       ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role)
     else { return false }
-    var settable: DarwinBoolean = false
-    return AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
-      == .success
-      && settable.boolValue
+    return true
   }
 
   private static func keyCode(for key: String) -> CGKeyCode? {

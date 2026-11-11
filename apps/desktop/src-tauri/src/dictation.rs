@@ -44,7 +44,7 @@ pub struct DictationState {
 
 struct Capture {
     stop: tokio::sync::oneshot::Sender<()>,
-    task: tokio::task::JoinHandle<Result<(tempfile::TempDir, std::path::PathBuf), String>>,
+    task: tokio::task::JoinHandle<Result<(tempfile::TempDir, std::path::PathBuf, usize), String>>,
 }
 
 #[derive(Clone, Serialize, specta::Type, tauri_specta::Event)]
@@ -84,6 +84,8 @@ pub async fn dictation_start(app: tauri::AppHandle) -> Result<(), String> {
     tauri_plugin_windows::dictation_capture_target()?;
     let audio = app.state::<Arc<dyn AudioProvider>>().inner().clone();
     let (stop, mut stopped) = tokio::sync::oneshot::channel();
+    let (ready, started) = tokio::sync::oneshot::channel();
+    status(&app, "starting", 0.0, None);
     let task_app = app.clone();
     let task = tokio::spawn(async move {
         let dir = tempfile::Builder::new()
@@ -103,30 +105,57 @@ pub async fn dictation_start(app: tauri::AppHandle) -> Result<(), String> {
         let mut stream = audio
             .open_mic_capture(None, SAMPLE_RATE, chunk_size)
             .map_err(|error| error.to_string())?;
-        status(&task_app, "recording", 0.0, None);
+        let mut ready = Some(ready);
+        let mut sample_count = 0;
         let mut last_level = std::time::Instant::now();
         loop {
             tokio::select! {
-                _ = &mut stopped => break,
+                biased;
                 frame = stream.next() => {
                     let frame = frame.ok_or("Microphone stream ended")?
                         .map_err(|error| error.to_string())?;
                     let samples = frame.raw_mic;
+                    if samples.is_empty() {
+                        continue;
+                    }
                     let sum: f64 = samples.iter().map(|sample| f64::from(*sample).powi(2)).sum();
-                    let amplitude = (sum / samples.len().max(1) as f64).sqrt().min(1.0);
+                    let amplitude = (sum / samples.len() as f64).sqrt().min(1.0);
                     for sample in samples.iter() {
                         writer.write_sample(*sample).map_err(|error| error.to_string())?;
                     }
-                    if last_level.elapsed() >= std::time::Duration::from_millis(100) {
+                    sample_count += samples.len();
+                    if let Some(ready) = ready.take() {
+                        status(&task_app, "recording", amplitude, None);
+                        let _ = ready.send(());
+                    } else if last_level.elapsed() >= std::time::Duration::from_millis(100) {
                         status(&task_app, "recording", amplitude, None);
                         last_level = std::time::Instant::now();
                     }
                 }
+                _ = &mut stopped => break,
             }
         }
         writer.finalize().map_err(|error| error.to_string())?;
-        Ok((dir, path))
+        Ok((dir, path, sample_count))
     });
+    match tokio::time::timeout(std::time::Duration::from_secs(5), started).await {
+        Ok(Ok(())) => {}
+        Ok(Err(_)) => {
+            let error = task
+                .await
+                .map_err(|error| error.to_string())?
+                .err()
+                .unwrap_or_else(|| "Microphone stopped before dictation started".to_string());
+            status(&app, "error", 0.0, Some(error.clone()));
+            return Err(error);
+        }
+        Err(_) => {
+            task.abort();
+            let error = "Microphone did not start in time".to_string();
+            status(&app, "error", 0.0, Some(error.clone()));
+            return Err(error);
+        }
+    }
     *capture = Some(Capture { stop, task });
     Ok(())
 }
@@ -163,7 +192,16 @@ async fn stop_inner(app: &tauri::AppHandle) -> Result<(), String> {
         .ok_or("Dictation is not recording")?;
     status(&app, "transcribing", 0.0, None);
     let _ = capture.stop.send(());
-    let (_temp, path) = capture.task.await.map_err(|error| error.to_string())??;
+    let (_temp, path, sample_count) = capture.task.await.map_err(|error| error.to_string())??;
+    if sample_count < SAMPLE_RATE as usize / 4 {
+        status(
+            app,
+            "error",
+            0.0,
+            Some("Hold the shortcut while speaking, then release it.".into()),
+        );
+        return Ok(());
+    }
     let config = app.settings().config();
     let model_name = config
         .current_stt_model

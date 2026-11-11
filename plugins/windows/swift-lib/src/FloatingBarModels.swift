@@ -27,6 +27,7 @@ struct FloatingBarStatePayload: Codable {
   let amplitude: Double
   let title: String
   let status: FloatingBarStatus
+  let showStatusText: Bool
   let colorScheme: FloatingBarColorScheme
   let opacity: Double
   let liveCaptionOpacity: Double
