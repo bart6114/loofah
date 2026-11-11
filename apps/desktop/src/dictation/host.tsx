@@ -1,7 +1,9 @@
+import { getName } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef } from "react";
 
+import { commands as permissionsCommands } from "@hypr/plugin-permissions";
 import { commands as windowsCommands } from "@hypr/plugin-windows";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
@@ -35,10 +37,37 @@ export function DictationHost() {
   useEffect(() => {
     const start = () => {
       if (recording.current || processing.current || starting.current) return;
-      starting.current = invoke("dictation_start")
-        .then(() => {
-          recording.current = true;
-        })
+      starting.current = (async () => {
+        if (navigator.platform.includes("Mac")) {
+          const accessibility =
+            await permissionsCommands.checkPermission("accessibility");
+          if (
+            accessibility.status !== "ok" ||
+            accessibility.data !== "authorized"
+          ) {
+            const appName = await getName();
+            await permissionsCommands.requestPermission("accessibility");
+            await permissionsCommands.openPermission("accessibility");
+            sonnerToast.warning(
+              `Allow ${appName} in Privacy & Security → Accessibility, then try dictation again.`,
+              {
+                id: "dictation-accessibility",
+                duration: Infinity,
+                action: {
+                  label: "Open Settings",
+                  onClick: () => {
+                    void permissionsCommands.openPermission("accessibility");
+                  },
+                },
+              },
+            );
+            return;
+          }
+          sonnerToast.dismiss("dictation-accessibility");
+        }
+        await invoke("dictation_start");
+        recording.current = true;
+      })()
         .catch((error) => {
           sonnerToast.error(`Could not start dictation: ${error}`);
         })
