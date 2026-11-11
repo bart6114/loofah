@@ -113,7 +113,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'A stable vX.Y.Z tag is required' }
@@ -123,7 +122,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $release.isDraft -or $release.isPrerelease) { throw 'An existing stable release is required' }
           if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Updater signing key is required' }
           if ($env:WINDOWS_SIGNING_MODE -eq 'azure') {
-          foreach ($name in @('AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID', 'AZURE_SIGNING_ENDPOINT', 'AZURE_SIGNING_ACCOUNT', 'AZURE_SIGNING_PROFILE', 'LOOFAH_WINDOWS_SIGNER_EKU', 'TAURI_SIGNING_PRIVATE_KEY')) {
+          foreach ($name in @('AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SIGNING_ENDPOINT', 'AZURE_SIGNING_ACCOUNT', 'AZURE_SIGNING_PROFILE', 'LOOFAH_WINDOWS_SIGNER_EKU', 'TAURI_SIGNING_PRIVATE_KEY')) {
             if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Provision $name before building a stable installer" }
           }
           $signer = (Resolve-Path apps/desktop/src-tauri/scripts/sign-windows-azure.ps1).Path
@@ -154,13 +153,9 @@ jobs:
       - run: node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
       - if: inputs.signing-mode == 'azure'
         run: Install-Module -Name ArtifactSigning -RequiredVersion 0.1.20 -Force -Repository PSGallery
-      - uses: azure/login@v2
-        if: inputs.signing-mode == 'azure'
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
