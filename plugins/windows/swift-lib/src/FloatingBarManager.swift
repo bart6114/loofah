@@ -106,6 +106,11 @@ final class FloatingBarManager {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.isApplyingExternalState = true
+      if state.showStatusText && state.status == .recording
+        && (!self.model.showStatusText || self.model.status != .recording)
+      {
+        self.model.traceBuffer.reset()
+      }
       self.model.status = state.status
       self.model.showStatusText = state.showStatusText
       self.model.amplitude = min(max(state.amplitude, 0), 1)

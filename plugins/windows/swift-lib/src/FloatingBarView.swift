@@ -6,7 +6,7 @@ enum FloatingBarLayout {
   static let screenMargin: CGFloat = 8
   static let compactHeight: CGFloat = 38
   static let compactRestWidth: CGFloat = 112
-  static let dictationWidth: CGFloat = 300
+  static let dictationWidth: CGFloat = 240
   static let compactControlSize: CGFloat = 26
   static let compactControlGap: CGFloat = 2
   static let compactContentSpacing: CGFloat = 8
@@ -112,18 +112,25 @@ struct FloatingBarView: View {
 
     // The meeting pill reveals its trace on hover. Dictation keeps its status
     // visible so the user can tell when recording has actually started.
-    return HStack(spacing: FloatingBarLayout.compactContentSpacing) {
+    return HStack(
+      spacing: model.showStatusText ? 12 : FloatingBarLayout.compactContentSpacing
+    ) {
       if model.showStatusText {
         if model.status == .processing {
           ProgressView()
+            .scaleEffect(0.75)
             .frame(width: 20, height: FloatingBarLayout.compactTraceHeight)
         } else if model.status == .error {
           ErrorMark(color: errorAccentColor)
             .frame(width: 20, height: FloatingBarLayout.compactTraceHeight)
         } else {
-          Image(systemName: "mic.fill")
-            .foregroundStyle(accentColor)
-            .frame(width: 20, height: FloatingBarLayout.compactTraceHeight)
+          InkTrace(
+            buffer: model.traceBuffer,
+            amplitude: model.amplitude,
+            inkColor: primaryContentColor,
+            playheadColor: accentColor
+          )
+          .frame(width: 48, height: FloatingBarLayout.compactTraceHeight)
         }
         Text(model.title)
           .font(.system(size: 12, weight: .medium))
@@ -848,6 +855,12 @@ final class InkTraceBuffer {
   private var samples = [Double](repeating: 0, count: InkTraceBuffer.capacity)
   private var head = 0
   private var lastSampleTime: TimeInterval = 0
+
+  func reset() {
+    samples = [Double](repeating: 0, count: Self.capacity)
+    head = 0
+    lastSampleTime = 0
+  }
 
   func push(_ value: Double, at time: TimeInterval) {
     guard time - lastSampleTime >= Self.sampleInterval else { return }
