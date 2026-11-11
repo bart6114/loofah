@@ -1,6 +1,21 @@
 import Foundation
 import SwiftRs
 
+@_cdecl("_dictation_shortcut_configure")
+public func _dictationShortcutConfigure(shortcut: SRString) -> Bool {
+  DictationInput.shared.configure(shortcut.toString())
+}
+
+@_cdecl("_dictation_capture_target")
+public func _dictationCaptureTarget() -> Bool {
+  DictationInput.shared.captureTarget()
+}
+
+@_cdecl("_dictation_insert")
+public func _dictationInsert(text: SRString) -> Bool {
+  DictationInput.shared.insert(text.toString())
+}
+
 @_cdecl("_floating_bar_show")
 public func _floatingBarShow() -> Bool {
   FloatingBarManager.shared.show()

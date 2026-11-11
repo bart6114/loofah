@@ -1,10 +1,12 @@
 mod commands;
+mod dictation;
 mod errors;
 mod events;
 mod ext;
 mod tab;
 mod window;
 
+pub use dictation::{dictation_capture_target, dictation_insert};
 pub use errors::*;
 pub use events::*;
 pub use ext::{Windows, WindowsPluginExt};
@@ -88,6 +90,8 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::FloatingBarStop,
             events::FloatingBarOpenMain,
             events::FloatingBarSettingsChange,
+            events::DictationShortcutDown,
+            events::DictationShortcutUp,
             events::DevtoolsPanelAction,
         ])
         .commands(tauri_specta::collect_commands![
@@ -109,6 +113,7 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::floating_bar_show,
             commands::floating_bar_hide,
             commands::floating_bar_update,
+            commands::dictation_shortcut_configure,
             commands::live_caption_show,
             commands::live_caption_hide,
             commands::live_caption_update,
@@ -125,6 +130,7 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .invoke_handler(specta_builder.invoke_handler())
         .setup(move |app, _api| {
             specta_builder.mount_events(app);
+            crate::dictation::set_app_handle(app.clone());
             #[cfg(target_os = "windows")]
             crate::window::overlay::set_app_handle(app.clone());
 

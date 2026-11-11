@@ -3,6 +3,7 @@ import { useForm } from "@tanstack/react-form";
 import { Loader2Icon } from "lucide-react";
 
 import { AppSettingsView, RecordingSettingsView } from "./app-settings";
+import { DictationSettings } from "./dictation";
 import { NotificationSettingsView } from "./notification";
 import { Permissions } from "./permissions";
 import { StorageSettingsView } from "./storage";
@@ -108,6 +109,7 @@ function GeneralSettingsContent({
             )}
           </form.Field>
           <TimezoneSelector />
+          <DictationSettings storedSettings={storedSettings} />
         </>
       ) : (
         <>

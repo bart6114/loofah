@@ -145,6 +145,14 @@ async floatingBarUpdate(state: FloatingBarState) : Promise<Result<null, string>>
     else return { status: "error", error: e  as any };
 }
 },
+async dictationShortcutConfigure(shortcut: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:windows|dictation_shortcut_configure", { shortcut }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async liveCaptionShow() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:windows|live_caption_show") };
@@ -192,6 +200,8 @@ async devtoolsPanelHide() : Promise<Result<null, string>> {
 
 export const events = __makeEvents__<{
 devtoolsPanelAction: DevtoolsPanelAction,
+dictationShortcutDown: DictationShortcutDown,
+dictationShortcutUp: DictationShortcutUp,
 floatingBarOpenMain: FloatingBarOpenMain,
 floatingBarSettingsChange: FloatingBarSettingsChange,
 floatingBarStop: FloatingBarStop,
@@ -201,6 +211,8 @@ visibilityEvent: VisibilityEvent,
 windowDestroyed: WindowDestroyed
 }>({
 devtoolsPanelAction: "plugin:windows:devtools-panel-action",
+dictationShortcutDown: "plugin:windows:dictation-shortcut-down",
+dictationShortcutUp: "plugin:windows:dictation-shortcut-up",
 floatingBarOpenMain: "plugin:windows:floating-bar-open-main",
 floatingBarSettingsChange: "plugin:windows:floating-bar-settings-change",
 floatingBarStop: "plugin:windows:floating-bar-stop",
@@ -222,13 +234,15 @@ export type ChangelogState = { previous: string | null; current: string }
 export type ContactsSelection = { type: "person"; id: string } | { type: "organization"; id: string }
 export type ContactsState = { selected: ContactsSelection | null }
 export type DevtoolsPanelAction = { action: string }
+export type DictationShortcutDown = Record<string, never>
+export type DictationShortcutUp = Record<string, never>
 export type EditorView = { type: "raw" } | { type: "summary" } | { type: "transcript" } | { type: "enhanced"; id: string } | { type: "attachments" }
 export type ExtensionsState = { selectedExtension: string | null }
 export type FloatingBarColorScheme = "light" | "dark"
 export type FloatingBarOpenMain = Record<string, never>
 export type FloatingBarSettingsChange = { floatingBarOpacity: number | null; liveCaptionOpacity: number | null; liveCaptionWidth: number | null; liveCaptionLineCount: number | null; liveCaptionPosition: LiveCaptionPosition | null; liveCaptionMinimized: boolean | null }
 export type FloatingBarState = { amplitude: number; title: string; status: FloatingBarStatus; colorScheme: FloatingBarColorScheme; opacity: number; liveCaptionOpacity: number; liveCaptionWidth: number; liveCaptionLineCount: number; liveCaptionPosition: LiveCaptionPosition; liveCaptionMinimized: boolean; liveCaptionToggleVisible: boolean; transcriptBubbles: FloatingTranscriptBubble[] }
-export type FloatingBarStatus = "recording" | "error"
+export type FloatingBarStatus = "recording" | "processing" | "error"
 export type FloatingBarStop = Record<string, never>
 export type FloatingTranscriptBubble = { id: string; speakerLabel: string; text: string; isSelf: boolean; isFinal: boolean; startMs: number; endMs: number; overlapsPrevious: boolean; overlapsNext: boolean }
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>

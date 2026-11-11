@@ -112,7 +112,12 @@ struct FloatingBarView: View {
         .opacity(isBarHovered ? 1 : 0)
 
       Group {
-        if model.status == .error {
+        if model.status == .processing {
+          ProgressView()
+            .frame(
+              width: FloatingBarLayout.compactTraceWidth,
+              height: FloatingBarLayout.compactTraceHeight)
+        } else if model.status == .error {
           ErrorMark(color: errorAccentColor)
             .frame(
               width: FloatingBarLayout.compactTraceWidth,
@@ -311,14 +316,16 @@ struct FloatingBarView: View {
 
   private func floatingControls(isExpanded: Bool) -> some View {
     HStack(spacing: FloatingBarLayout.compactControlGap) {
-      FloatingIconButton(
-        systemName: "stop.fill",
-        accessibilityLabel: "Stop recording",
-        color: accentColor,
-        hoverFill: accentColor.opacity(0.16),
-        size: FloatingBarLayout.compactControlSize,
-        action: { performClick(RustBridge.stopListening) }
-      )
+      if model.status == .recording {
+        FloatingIconButton(
+          systemName: "stop.fill",
+          accessibilityLabel: "Stop recording",
+          color: accentColor,
+          hoverFill: accentColor.opacity(0.16),
+          size: FloatingBarLayout.compactControlSize,
+          action: { performClick(RustBridge.stopListening) }
+        )
+      }
 
       if model.liveCaptionToggleVisible {
         FloatingIconButton(

@@ -359,6 +359,7 @@ function FloatingMeetingWindowSync({
 
     windowsEvents.floatingBarStop
       .listen(() => {
+        if (listenerStore.getState().live.status !== "active") return;
         void hideFloatingMeetingPanel();
         listenerStore.getState().stop();
       })
@@ -443,7 +444,7 @@ function FloatingMeetingWindowSync({
       unsubscribeAppliedTheme();
       void unsubscribeMeetingData?.();
       unlisteners.forEach((unlisten) => unlisten());
-      void hideFloatingMeetingPanel();
+      if (shownSessionId !== null) void hideFloatingMeetingPanel();
     };
   });
 
@@ -798,7 +799,7 @@ async function syncFloatingMeetingWindow(
   }
 
   if (!routeState) {
-    await hideFloatingMeetingPanel();
+    if (shownSessionId !== null) await hideFloatingMeetingPanel();
     return null;
   }
 

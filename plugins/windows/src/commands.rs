@@ -440,6 +440,12 @@ pub async fn floating_bar_update(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn dictation_shortcut_configure(shortcut: String) -> Result<(), String> {
+    crate::dictation::configure(&shortcut)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn live_caption_show() -> Result<(), String> {
     crate::window::live_caption::show().map_err(|e| e.to_string())?;
     Ok(())

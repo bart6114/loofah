@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef } from "react";
 
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
@@ -77,6 +78,12 @@ export function useStartListening(sessionId: string) {
   canRunBatchRef.current = canRunBatchTranscription(conn);
 
   const startListening = useCallback(async () => {
+    if (await invoke<boolean>("dictation_is_recording")) {
+      sonnerToast.warning(
+        "Finish dictation before starting a meeting recording.",
+      );
+      return;
+    }
     const activity = beginSummaryActivity(sessionId, "recording");
     let started = false;
     try {

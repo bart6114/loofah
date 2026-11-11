@@ -90,6 +90,33 @@ function PermissionGroup({
   );
 }
 
+function DictationPermissions() {
+  const { t } = useLingui();
+  const inputMonitoring = usePermission("inputMonitoring");
+  const accessibility = usePermission("accessibility");
+
+  return (
+    <PermissionGroup title={<Trans>Dictation</Trans>}>
+      <PermissionRow
+        title={t`Input Monitoring`}
+        description={t`Required for the global hold-to-speak shortcut`}
+        status={inputMonitoring.status}
+        isPending={inputMonitoring.isPending}
+        onRequest={inputMonitoring.request}
+        onOpen={inputMonitoring.open}
+      />
+      <PermissionRow
+        title={t`Accessibility`}
+        description={t`Required to insert dictation into the original text field`}
+        status={accessibility.status}
+        isPending={accessibility.isPending}
+        onRequest={accessibility.request}
+        onOpen={accessibility.open}
+      />
+    </PermissionGroup>
+  );
+}
+
 export function Permissions() {
   const { t } = useLingui();
   const mic = usePermission("microphone");
@@ -115,6 +142,7 @@ export function Permissions() {
           onOpen={systemAudio.open}
         />
       </PermissionGroup>
+      {navigator.platform.includes("Mac") && <DictationPermissions />}
     </div>
   );
 }

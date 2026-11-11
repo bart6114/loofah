@@ -53,7 +53,13 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
       </span>
       <span
         className="level"
-        aria-label={state.status === "error" ? "Recording error" : "Recording"}
+        aria-label={
+          state.status === "error"
+            ? "Recording error"
+            : state.status === "processing"
+              ? "Transcribing"
+              : "Recording"
+        }
       >
         <span
           style={{
@@ -76,14 +82,20 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
           CC
         </button>
       )}
-      <button
-        className="stop"
-        disabled={stop.isPending}
-        onClick={() => stop.mutate()}
-        aria-label="Stop recording"
-      >
-        ■ Stop
-      </button>
+      {state.status === "processing" ? (
+        <span role="status" aria-label="Transcribing">
+          …
+        </span>
+      ) : (
+        <button
+          className="stop"
+          disabled={stop.isPending || state.status === "error"}
+          onClick={() => stop.mutate()}
+          aria-label="Stop recording"
+        >
+          ■ Stop
+        </button>
+      )}
       <button
         aria-label="Recording display settings"
         onClick={() => preferences.mutate()}

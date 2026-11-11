@@ -94,6 +94,14 @@ common_event_derives! {
     pub struct FloatingBarOpenMain {}
 }
 
+common_event_derives! {
+    pub struct DictationShortcutDown {}
+}
+
+common_event_derives! {
+    pub struct DictationShortcutUp {}
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone, specta::Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase")]
 pub struct FloatingBarSettingsChange {

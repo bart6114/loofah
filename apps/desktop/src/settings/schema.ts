@@ -14,6 +14,18 @@ export const SETTING_DEFINITIONS = {
     path: ["general", "floating_bar_enabled"],
     default: true as boolean,
   },
+  dictation_shortcut: {
+    type: "string",
+    path: ["general", "dictation_shortcut"],
+    default: (navigator.platform.includes("Mac")
+      ? "Ctrl+Option+Space"
+      : "Ctrl+Alt+Space") as string,
+  },
+  dictation_trigger_mode: {
+    type: "string",
+    path: ["general", "dictation_trigger_mode"],
+    default: "hold" as string,
+  },
   floating_bar_opacity: {
     type: "number",
     path: ["general", "floating_bar_opacity"],

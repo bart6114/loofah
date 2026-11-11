@@ -2,6 +2,7 @@ mod appearance;
 mod autostart;
 mod chatgpt;
 mod commands;
+mod dictation;
 mod embedded_cli;
 mod ext;
 mod identifier_migration;
@@ -184,9 +185,11 @@ pub async fn main() {
         create_audio_provider(&context.config().identifier);
 
     legacy_db::retire_app_db(&context.config().identifier);
+    dictation::cleanup_stale_audio();
 
     let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default())
         .manage(audio)
+        .manage(dictation::DictationState::default())
         .manage(chatgpt::ChatgptState::default());
 
     // https://docs.crabnebula.dev/plugins/tauri-e2e-tests/#macos-support
@@ -269,7 +272,7 @@ pub async fn main() {
         builder = builder.plugin(plugin);
     }
 
-    let specta_builder = make_specta_builder::<tauri::Wry>();
+    let specta_builder = make_specta_builder();
 
     let root_supervisor_ctx_for_run = root_supervisor_ctx.clone();
 
@@ -521,8 +524,8 @@ fn get_onboarding_flag() -> Option<bool> {
         })
 }
 
-fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
-    tauri_specta::Builder::<R>::new()
+fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             chatgpt::chatgpt_account::<tauri::Wry>,
             chatgpt::chatgpt_login::<tauri::Wry>,
@@ -544,6 +547,9 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::check_embedded_cli::<tauri::Wry>,
             commands::install_embedded_cli::<tauri::Wry>,
             commands::relocate_vault::<tauri::Wry>,
+            dictation::dictation_start,
+            dictation::dictation_stop,
+            dictation::dictation_is_recording,
             startup::get_startup_status::<tauri::Wry>,
             session_store::commands::session_write_meta::<tauri::Wry>,
             session_store::commands::session_update_meta::<tauri::Wry>,
@@ -598,7 +604,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
         ])
         .events(tauri_specta::collect_events![
             session_store::IndexChanged,
-            startup::StartupProgress
+            startup::StartupProgress,
+            dictation::DictationStatus,
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
 }
@@ -660,7 +667,7 @@ mod test {
     fn export_types() {
         const OUTPUT_FILE: &str = "../src/types/tauri.gen.ts";
 
-        make_specta_builder::<tauri::Wry>()
+        make_specta_builder()
             .export(
                 specta_typescript::Typescript::default()
                     .formatter(specta_typescript::formatter::prettier)

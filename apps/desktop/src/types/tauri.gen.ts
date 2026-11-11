@@ -188,6 +188,25 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async dictationStart(): Promise<Result<null, string>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("dictation_start") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async dictationStop(): Promise<Result<null, string>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("dictation_stop") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async dictationIsRecording(): Promise<boolean> {
+    return await TAURI_INVOKE("dictation_is_recording");
+  },
   async getStartupStatus(): Promise<StartupStatus> {
     return await TAURI_INVOKE("get_startup_status");
   },
@@ -913,9 +932,11 @@ export const commands = {
 /** user-defined events **/
 
 export const events = __makeEvents__<{
+  dictationStatus: DictationStatus;
   indexChanged: IndexChanged;
   startupProgress: StartupProgress;
 }>({
+  dictationStatus: "dictation-status",
   indexChanged: "index-changed",
   startupProgress: "startup-progress",
 });
@@ -951,6 +972,11 @@ export type ChatgptModel = {
   displayName: string;
   isDefault: boolean;
   inputModalities?: string[];
+};
+export type DictationStatus = {
+  phase: string;
+  amplitude: number;
+  message: string | null;
 };
 export type EmbeddedCliState =
   | "installed"
