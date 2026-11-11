@@ -103,6 +103,10 @@ msgstr ""
 msgid "Accept suggested tag {name}"
 msgstr ""
 
+#: src/settings/general/permissions.tsx
+msgid "Accessibility"
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Actions"
 msgstr ""
@@ -426,6 +430,10 @@ msgstr ""
 msgid "Copying…"
 msgstr ""
 
+#: src/settings/general/dictation.tsx
+msgid "Could not save dictation settings."
+msgstr ""
+
 #: src/session/components/session-tags.tsx
 msgid "Could not update tags."
 msgstr ""
@@ -541,6 +549,11 @@ msgstr ""
 
 #: src/main/about-dialog.tsx
 msgid "Diagnostics"
+msgstr ""
+
+#: src/settings/general/dictation.tsx
+#: src/settings/general/permissions.tsx
+msgid "Dictation"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -732,6 +745,10 @@ msgstr ""
 msgid "Help Loofah listen to you"
 msgstr ""
 
+#: src/settings/general/dictation.tsx
+msgid "Hold to speak"
+msgstr ""
+
 #: src/main/about-storage.tsx
 msgid "How storage is measured"
 msgstr ""
@@ -789,6 +806,10 @@ msgstr ""
 
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Included automatically with on-device transcription — no setup needed."
+msgstr ""
+
+#: src/settings/general/permissions.tsx
+msgid "Input Monitoring"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
@@ -1174,6 +1195,10 @@ msgstr ""
 msgid "Preparing transcript..."
 msgstr ""
 
+#: src/settings/general/dictation.tsx
+msgid "Press to start, press again to stop"
+msgstr ""
+
 #: src/main/about-debug.tsx
 msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
 msgstr ""
@@ -1305,7 +1330,15 @@ msgid "Request {0} permission"
 msgstr ""
 
 #: src/settings/general/permissions.tsx
+msgid "Required for the global hold-to-speak shortcut"
+msgstr ""
+
+#: src/settings/general/permissions.tsx
 msgid "Required to capture other participants' voices in meetings"
+msgstr ""
+
+#: src/settings/general/permissions.tsx
+msgid "Required to insert dictation into the original text field"
 msgstr ""
 
 #: src/settings/general/permissions.tsx
@@ -1465,6 +1498,10 @@ msgstr ""
 msgid "Share"
 msgstr ""
 
+#: src/settings/general/dictation.tsx
+msgid "Shortcut"
+msgstr ""
+
 #: src/settings/general/notification.tsx
 msgid "Show a reminder when another app uses the microphone. Recording starts only when you accept."
 msgstr ""
@@ -1553,6 +1590,10 @@ msgstr ""
 
 #: src/session/components/note-input/enhanced/enhance-error.tsx
 msgid "Something went wrong while generating the summary."
+msgstr ""
+
+#: src/settings/general/dictation.tsx
+msgid "Speak into a focused text field. Loofah inserts the transcription when you stop."
 msgstr ""
 
 #: src/settings/ai/stt/diarization-status.tsx
@@ -1814,6 +1855,10 @@ msgstr ""
 
 #: src/main/about-storage.tsx
 msgid "Trash (included)"
+msgstr ""
+
+#: src/settings/general/dictation.tsx
+msgid "Trigger"
 msgstr ""
 
 #: src/settings/general/storage/index.tsx

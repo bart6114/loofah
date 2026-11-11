@@ -1,3 +1,4 @@
+import { Trans } from "@lingui/react/macro";
 import { useForm } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
 
@@ -28,15 +29,19 @@ export function DictationSettings({
 
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-medium">Dictation</h3>
+      <h3 className="text-sm font-medium">
+        <Trans>Dictation</Trans>
+      </h3>
       <p className="text-muted-foreground text-xs">
-        Speak into a focused text field. Loofah inserts the transcription when
-        you stop.
+        <Trans>
+          Speak into a focused text field. Loofah inserts the transcription when
+          you stop.
+        </Trans>
       </p>
       <form.Field name="dictation_shortcut">
         {(field) => (
           <label className="flex items-center gap-3 text-sm">
-            Shortcut
+            <Trans>Shortcut</Trans>
             <input
               readOnly
               value={field.state.value}
@@ -65,7 +70,7 @@ export function DictationSettings({
       <form.Field name="dictation_trigger_mode">
         {(field) => (
           <label className="flex items-center gap-3 text-sm">
-            Trigger
+            <Trans>Trigger</Trans>
             <select
               value={field.state.value}
               onChange={(event) => {
@@ -73,9 +78,11 @@ export function DictationSettings({
               }}
               className="rounded border px-2 py-1"
             >
-              <option value="hold">Hold to speak</option>
+              <option value="hold">
+                <Trans>Hold to speak</Trans>
+              </option>
               <option value="toggle">
-                Press to start, press again to stop
+                <Trans>Press to start, press again to stop</Trans>
               </option>
             </select>
           </label>
@@ -83,7 +90,7 @@ export function DictationSettings({
       </form.Field>
       {save.isError && (
         <p role="alert" className="text-destructive text-xs">
-          Could not save dictation settings.
+          <Trans>Could not save dictation settings.</Trans>
         </p>
       )}
     </section>
