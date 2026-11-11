@@ -7,7 +7,7 @@ on:
         required: true
         type: string
       signing-mode:
-        default: unsigned
+        default: azure
         type: string
       publish:
         default: true
@@ -21,8 +21,8 @@ on:
       signing-mode:
         description: Windows publisher signing
         type: choice
-        options: [unsigned, azure]
-        default: unsigned
+        options: [azure, unsigned]
+        default: azure
       publish:
         description: Attach Windows assets and advance the Windows updater feed
         default: false

@@ -15,13 +15,12 @@ Invoke-ArtifactSigning `
     -FileDigest SHA256 `
     -TimestampRfc3161 'http://timestamp.acs.microsoft.com' `
     -TimestampDigest SHA256 `
-    -ExcludeEnvironmentCredential $true `
-    -ExcludeWorkloadIdentityCredential $true `
-    -ExcludeManagedIdentityCredential $true `
-    -ExcludeSharedTokenCacheCredential $true `
-    -ExcludeVisualStudioCredential $true `
-    -ExcludeVisualStudioCodeCredential $true `
-    -ExcludeAzureCliCredential $false `
-    -ExcludeAzurePowerShellCredential $true `
-    -ExcludeAzureDeveloperCliCredential $true `
-    -ExcludeInteractiveBrowserCredential $true
+    -ExcludeEnvironmentCredential `
+    -ExcludeWorkloadIdentityCredential `
+    -ExcludeManagedIdentityCredential `
+    -ExcludeSharedTokenCacheCredential `
+    -ExcludeVisualStudioCredential `
+    -ExcludeVisualStudioCodeCredential `
+    -ExcludeAzurePowerShellCredential `
+    -ExcludeAzureDeveloperCliCredential `
+    -ExcludeInteractiveBrowserCredential

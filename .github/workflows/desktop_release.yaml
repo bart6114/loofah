@@ -6,8 +6,8 @@ on:
       windows-signing-mode:
         description: Windows publisher signing
         type: choice
-        options: [unsigned, azure]
-        default: unsigned
+        options: [azure, unsigned]
+        default: azure
       tag:
         description: Release tag to build desktop installers for (defaults to the latest release)
         required: false
