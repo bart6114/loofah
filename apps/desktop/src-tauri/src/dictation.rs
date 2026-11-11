@@ -16,6 +16,7 @@ use tauri_specta::Event;
 
 const SAMPLE_RATE: u32 = 16_000;
 const TEMP_PREFIX: &str = "loofah-dictation-";
+const TAIL_CAPTURE_GRACE: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub fn cleanup_stale_audio() {
     let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
@@ -62,6 +63,17 @@ fn status(app: &tauri::AppHandle, phase: &str, amplitude: f64, message: Option<S
         message,
     })
     .emit(app);
+}
+
+async fn capture_tail_samples(
+    stream: &mut hypr_audio::CaptureStream,
+    deadline: tokio::time::Instant,
+) -> Result<Vec<f32>, String> {
+    let mut samples = Vec::new();
+    while let Ok(Some(frame)) = tokio::time::timeout_at(deadline, stream.next()).await {
+        samples.extend_from_slice(&frame.map_err(|error| error.to_string())?.raw_mic);
+    }
+    Ok(samples)
 }
 
 #[tauri::command]
@@ -111,6 +123,7 @@ pub async fn dictation_start(app: tauri::AppHandle) -> Result<(), String> {
         loop {
             tokio::select! {
                 biased;
+                _ = &mut stopped => break,
                 frame = stream.next() => {
                     let frame = frame.ok_or("Microphone stream ended")?
                         .map_err(|error| error.to_string())?;
@@ -132,10 +145,26 @@ pub async fn dictation_start(app: tauri::AppHandle) -> Result<(), String> {
                         last_level = std::time::Instant::now();
                     }
                 }
-                _ = &mut stopped => break,
             }
         }
+        // A final word can still be in the microphone buffer when the shortcut is released.
+        let tail_samples = capture_tail_samples(
+            &mut stream,
+            tokio::time::Instant::now() + TAIL_CAPTURE_GRACE,
+        )
+        .await?;
+        for sample in &tail_samples {
+            writer
+                .write_sample(*sample)
+                .map_err(|error| error.to_string())?;
+        }
+        sample_count += tail_samples.len();
         writer.finalize().map_err(|error| error.to_string())?;
+        tracing::info!(
+            sample_count,
+            tail_sample_count = tail_samples.len(),
+            "dictation_capture_completed"
+        );
         Ok((dir, path, sample_count))
     });
     match tokio::time::timeout(std::time::Duration::from_secs(5), started).await {
@@ -190,9 +219,9 @@ async fn stop_inner(app: &tauri::AppHandle) -> Result<(), String> {
         .await
         .take()
         .ok_or("Dictation is not recording")?;
-    status(&app, "transcribing", 0.0, None);
     let _ = capture.stop.send(());
     let (_temp, path, sample_count) = capture.task.await.map_err(|error| error.to_string())??;
+    status(&app, "transcribing", 0.0, None);
     if sample_count < SAMPLE_RATE as usize / 4 {
         status(
             app,
@@ -279,4 +308,41 @@ async fn stop_inner(app: &tauri::AppHandle) -> Result<(), String> {
 struct SilentRuntime;
 impl BatchRuntime for SilentRuntime {
     fn emit(&self, _event: hypr_transcription_core::listener2::BatchEvent) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use futures_util::stream;
+    use hypr_audio::{CaptureFrame, CaptureStream};
+
+    use super::capture_tail_samples;
+
+    #[tokio::test]
+    async fn captures_microphone_frame_arriving_after_shortcut_release() {
+        let mut stream = CaptureStream::new(stream::once(async {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            Ok(CaptureFrame {
+                raw_mic: Arc::from([0.1, 0.2, 0.3]),
+                raw_speaker: Arc::from([]),
+                aec_mic: None,
+            })
+        }));
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(100);
+
+        let tail = capture_tail_samples(&mut stream, deadline).await.unwrap();
+
+        assert_eq!(tail, vec![0.1, 0.2, 0.3]);
+    }
+
+    #[tokio::test]
+    async fn finishes_tail_capture_when_microphone_has_no_more_frames() {
+        let mut stream = CaptureStream::new(stream::pending());
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(20);
+
+        let tail = capture_tail_samples(&mut stream, deadline).await.unwrap();
+
+        assert!(tail.is_empty());
+    }
 }
