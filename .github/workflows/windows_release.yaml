@@ -167,6 +167,15 @@ jobs:
           }
           node apps/desktop/src-tauri/scripts/build-cli-sidecar.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:WINDOWS_SIGNING_MODE -eq 'azure') {
+            $signToolRoot = Join-Path $env:LOCALAPPDATA 'ArtifactSigning\Microsoft.Windows.SDK.BuildTools'
+            $signTool = Get-ChildItem -LiteralPath $signToolRoot -Filter signtool.exe -Recurse -File -ErrorAction Stop |
+              Where-Object { $_.Directory.Name -eq 'x64' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if (-not $signTool) { throw 'Artifact Signing SignTool not found' }
+            $env:TAURI_WINDOWS_SIGNTOOL_PATH = $signTool.FullName
+          }
           pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.stable.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --config ./src-tauri/tauri.windows.stable.conf.json @signingArgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - env:
