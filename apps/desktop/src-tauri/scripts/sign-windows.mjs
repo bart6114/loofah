@@ -67,12 +67,8 @@ export function signWindows(file) {
   const signed = spawnSync(command, args, { stdio: "inherit", shell: false });
   if (signed.error || signed.status !== 0)
     throw new Error("The configured Windows signing service failed");
-  const powershell = path.join(
-    process.env.SystemRoot || "C:\\Windows",
-    "System32/WindowsPowerShell/v1.0/powershell.exe",
-  );
   const verified = spawnSync(
-    powershell,
+    "pwsh",
     [
       "-NoLogo",
       "-NoProfile",
