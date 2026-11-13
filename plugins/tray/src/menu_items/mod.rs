@@ -4,6 +4,7 @@ mod help_documentation;
 mod help_report_bug;
 mod help_suggest_feature;
 mod tray_check_update;
+mod tray_copy_dictation;
 mod tray_open;
 mod tray_quit;
 mod tray_settings;
@@ -16,6 +17,7 @@ pub use help_documentation::HelpDocumentation;
 pub use help_report_bug::HelpReportBug;
 pub use help_suggest_feature::HelpSuggestFeature;
 pub use tray_check_update::{TrayCheckUpdate, UpdateMenuState};
+pub use tray_copy_dictation::TrayCopyDictation;
 pub use tray_open::TrayOpen;
 pub use tray_quit::TrayQuit;
 pub use tray_settings::TraySettings;
@@ -71,6 +73,7 @@ macro_rules! menu_items {
 menu_items! {
     TrayOpen => TrayOpen,
     TrayStart => TrayStart,
+    TrayCopyDictation => TrayCopyDictation,
     TraySettings => TraySettings,
     TrayCheckUpdate => TrayCheckUpdate,
     TrayQuit => TrayQuit,

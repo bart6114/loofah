@@ -24,6 +24,8 @@ pub struct AppConfig {
     pub autostart: bool,
     pub auto_stop_meetings: bool,
     pub floating_bar_enabled: bool,
+    pub dictation_shortcut: String,
+    pub dictation_trigger_mode: String,
     pub floating_bar_opacity: f64,
     pub live_caption_opacity: f64,
     pub live_caption_width: f64,
@@ -68,6 +70,13 @@ impl Default for AppConfig {
             autostart: false,
             auto_stop_meetings: true,
             floating_bar_enabled: true,
+            dictation_shortcut: if cfg!(target_os = "macos") {
+                "Ctrl+Option+Space"
+            } else {
+                "Ctrl+Alt+Space"
+            }
+            .into(),
+            dictation_trigger_mode: "hold".into(),
             floating_bar_opacity: 0.78,
             live_caption_opacity: 0.3,
             live_caption_width: 440.0,

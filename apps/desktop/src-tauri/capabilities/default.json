@@ -26,6 +26,7 @@
     "windows:allow-floating-bar-update",
     "windows:allow-devtools-panel-show",
     "windows:allow-devtools-panel-hide",
+    "windows:allow-dictation-shortcut-configure",
     "tracing:default",
     "hypr-tray:default",
     "updater:default",

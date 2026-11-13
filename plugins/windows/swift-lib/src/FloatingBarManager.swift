@@ -106,7 +106,13 @@ final class FloatingBarManager {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.isApplyingExternalState = true
+      if state.showStatusText && state.status == .recording
+        && (!self.model.showStatusText || self.model.status != .recording)
+      {
+        self.model.traceBuffer.reset()
+      }
       self.model.status = state.status
+      self.model.showStatusText = state.showStatusText
       self.model.amplitude = min(max(state.amplitude, 0), 1)
       self.model.colorScheme = state.colorScheme
       self.model.title = state.title
@@ -181,7 +187,8 @@ final class FloatingBarManager {
       layout(matching: previousSize)
       ?? FloatingBarWindowLayout(
         isExpanded: !nextLayout.isExpanded,
-        showsExpand: model.liveCaptionToggleVisible)
+        showsExpand: model.liveCaptionToggleVisible,
+        showsStatusText: model.showStatusText)
     let previousAnchorOffset = controlAnchorOffset(for: previousLayout)
     let nextAnchorOffset = controlAnchorOffset(for: nextLayout)
     let anchor = placement.anchorPoint(for: panel, offset: previousAnchorOffset)
@@ -211,23 +218,26 @@ final class FloatingBarManager {
   private func layout(isExpanded: Bool) -> FloatingBarWindowLayout {
     FloatingBarWindowLayout(
       isExpanded: isExpanded,
-      showsExpand: model.liveCaptionToggleVisible
+      showsExpand: model.liveCaptionToggleVisible,
+      showsStatusText: model.showStatusText
     )
   }
 
   private func size(for layout: FloatingBarWindowLayout) -> NSSize {
     FloatingBarLayout.containerSize(
       isExpanded: layout.isExpanded,
-      showsExpand: layout.showsExpand
+      showsExpand: layout.showsExpand,
+      showsStatusText: layout.showsStatusText
     )
   }
 
   private func layout(matching size: NSSize) -> FloatingBarWindowLayout? {
     let candidates = [
-      FloatingBarWindowLayout(isExpanded: true, showsExpand: true),
-      FloatingBarWindowLayout(isExpanded: true, showsExpand: false),
-      FloatingBarWindowLayout(isExpanded: false, showsExpand: true),
-      FloatingBarWindowLayout(isExpanded: false, showsExpand: false),
+      FloatingBarWindowLayout(isExpanded: true, showsExpand: true, showsStatusText: false),
+      FloatingBarWindowLayout(isExpanded: true, showsExpand: false, showsStatusText: false),
+      FloatingBarWindowLayout(isExpanded: false, showsExpand: true, showsStatusText: false),
+      FloatingBarWindowLayout(isExpanded: false, showsExpand: false, showsStatusText: false),
+      FloatingBarWindowLayout(isExpanded: false, showsExpand: false, showsStatusText: true),
     ]
 
     return candidates.first { candidate in
@@ -250,7 +260,9 @@ final class FloatingBarManager {
     return NSPoint(
       x: FloatingBarLayout.inset
         + FloatingBarLayout.compactPillWidth(
-          hovered: true, showsExpand: layout.showsExpand),
+          hovered: true,
+          showsExpand: layout.showsExpand,
+          showsStatusText: layout.showsStatusText),
       y: FloatingBarLayout.inset + FloatingBarLayout.compactHeight
     )
   }
@@ -288,4 +300,5 @@ final class FloatingBarManager {
 private struct FloatingBarWindowLayout {
   let isExpanded: Bool
   let showsExpand: Bool
+  let showsStatusText: Bool
 }

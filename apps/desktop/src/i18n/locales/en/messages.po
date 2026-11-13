@@ -103,6 +103,10 @@ msgstr "About Loofah"
 msgid "Accept suggested tag {name}"
 msgstr "Accept suggested tag {name}"
 
+#: src/settings/general/permissions.tsx
+msgid "Accessibility"
+msgstr "Accessibility"
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Actions"
 msgstr "Actions"
@@ -426,6 +430,10 @@ msgstr "Copy my vault here"
 msgid "Copying…"
 msgstr "Copying…"
 
+#: src/settings/general/dictation.tsx
+msgid "Could not save dictation settings."
+msgstr "Could not save dictation settings."
+
 #: src/session/components/session-tags.tsx
 msgid "Could not update tags."
 msgstr "Could not update tags."
@@ -542,6 +550,11 @@ msgstr "Design theme"
 #: src/main/about-dialog.tsx
 msgid "Diagnostics"
 msgstr "Diagnostics"
+
+#: src/settings/general/dictation.tsx
+#: src/settings/general/permissions.tsx
+msgid "Dictation"
+msgstr "Dictation"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Discard changes"
@@ -732,6 +745,10 @@ msgstr "Help Loofah listen to others"
 msgid "Help Loofah listen to you"
 msgstr "Help Loofah listen to you"
 
+#: src/settings/general/dictation.tsx
+msgid "Hold to speak"
+msgstr "Hold to speak"
+
 #: src/main/about-storage.tsx
 msgid "How storage is measured"
 msgstr "How storage is measured"
@@ -790,6 +807,10 @@ msgstr "Include"
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Included automatically with on-device transcription — no setup needed."
 msgstr "Included automatically with on-device transcription — no setup needed."
+
+#: src/settings/general/permissions.tsx
+msgid "Input Monitoring"
+msgstr "Input Monitoring"
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Install Codex CLI"
@@ -1174,6 +1195,10 @@ msgstr "Preparing export..."
 msgid "Preparing transcript..."
 msgstr "Preparing transcript..."
 
+#: src/settings/general/dictation.tsx
+msgid "Press to start, press again to stop"
+msgstr "Press to start, press again to stop"
+
 #: src/main/about-debug.tsx
 msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
 msgstr "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
@@ -1305,8 +1330,16 @@ msgid "Request {0} permission"
 msgstr "Request {0} permission"
 
 #: src/settings/general/permissions.tsx
+msgid "Required for the global hold-to-speak shortcut"
+msgstr "Required for the global hold-to-speak shortcut"
+
+#: src/settings/general/permissions.tsx
 msgid "Required to capture other participants' voices in meetings"
 msgstr "Required to capture other participants' voices in meetings"
+
+#: src/settings/general/permissions.tsx
+msgid "Required to insert dictation into the original text field"
+msgstr "Required to insert dictation into the original text field"
 
 #: src/settings/general/permissions.tsx
 msgid "Required to record your voice during meetings and calls"
@@ -1465,6 +1498,10 @@ msgstr "Settings"
 msgid "Share"
 msgstr "Share"
 
+#: src/settings/general/dictation.tsx
+msgid "Shortcut"
+msgstr "Shortcut"
+
 #: src/settings/general/notification.tsx
 msgid "Show a reminder when another app uses the microphone. Recording starts only when you accept."
 msgstr "Show a reminder when another app uses the microphone. Recording starts only when you accept."
@@ -1554,6 +1591,10 @@ msgstr "Some notes could not be migrated"
 #: src/session/components/note-input/enhanced/enhance-error.tsx
 msgid "Something went wrong while generating the summary."
 msgstr "Something went wrong while generating the summary."
+
+#: src/settings/general/dictation.tsx
+msgid "Speak into a focused text field. Loofah inserts the transcription when you stop."
+msgstr "Speak into a focused text field. Loofah inserts the transcription when you stop."
 
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Speaker detection"
@@ -1815,6 +1856,10 @@ msgstr "Transcription timing"
 #: src/main/about-storage.tsx
 msgid "Trash (included)"
 msgstr "Trash (included)"
+
+#: src/settings/general/dictation.tsx
+msgid "Trigger"
+msgstr "Trigger"
 
 #: src/settings/general/storage/index.tsx
 msgid "Troubleshooting"

@@ -171,6 +171,8 @@ export type AppConfig = Partial<{
   autostart: boolean;
   auto_stop_meetings: boolean;
   floating_bar_enabled: boolean;
+  dictation_shortcut: string;
+  dictation_trigger_mode: string;
   floating_bar_opacity: number;
   live_caption_opacity: number;
   live_caption_width: number;

@@ -6,6 +6,7 @@ enum FloatingBarLayout {
   static let screenMargin: CGFloat = 8
   static let compactHeight: CGFloat = 38
   static let compactRestWidth: CGFloat = 112
+  static let dictationWidth: CGFloat = 240
   static let compactControlSize: CGFloat = 26
   static let compactControlGap: CGFloat = 2
   static let compactContentSpacing: CGFloat = 8
@@ -38,7 +39,10 @@ enum FloatingBarLayout {
     return compactControlSize
   }
 
-  static func compactPillWidth(hovered: Bool, showsExpand: Bool) -> CGFloat {
+  static func compactPillWidth(
+    hovered: Bool, showsExpand: Bool, showsStatusText: Bool = false
+  ) -> CGFloat {
+    if showsStatusText { return dictationWidth }
     guard hovered else { return compactRestWidth }
 
     return compactLeadingPadding
@@ -51,7 +55,9 @@ enum FloatingBarLayout {
   // The compact window is always sized for the fully hovered pill; hover only
   // animates content inside it. Resizing the window on hover repaints one
   // frame with stale content at the new origin, which reads as a jump.
-  static func containerSize(isExpanded: Bool, showsExpand: Bool) -> NSSize {
+  static func containerSize(
+    isExpanded: Bool, showsExpand: Bool, showsStatusText: Bool = false
+  ) -> NSSize {
     if isExpanded {
       return NSSize(
         width: expandedWidth + inset * 2,
@@ -59,7 +65,8 @@ enum FloatingBarLayout {
     }
 
     return NSSize(
-      width: compactPillWidth(hovered: true, showsExpand: showsExpand) + inset * 2,
+      width: compactPillWidth(
+        hovered: true, showsExpand: showsExpand, showsStatusText: showsStatusText) + inset * 2,
       height: compactHeight + inset * 2)
   }
 }
@@ -99,26 +106,23 @@ struct FloatingBarView: View {
     )
     let width = FloatingBarLayout.compactPillWidth(
       hovered: isBarHovered,
-      showsExpand: model.liveCaptionToggleVisible
+      showsExpand: model.liveCaptionToggleVisible,
+      showsStatusText: model.showStatusText
     )
 
-    // Content is laid out at full hover width and right-aligned; the animated
-    // frame + clip reveal it leftward, so the trace's older samples appear as
-    // the pill grows. The stop button is trailing so it never moves and stays
-    // clickable without hovering first.
-    return HStack(spacing: FloatingBarLayout.compactContentSpacing) {
-      ElapsedTimeText(startedAt: model.startedAt, color: primaryContentColor)
-        .frame(width: FloatingBarLayout.compactTimerWidth)
-        .opacity(isBarHovered ? 1 : 0)
-
-      Group {
-        if model.status == .error {
+    // The meeting pill reveals its trace on hover. Dictation keeps its status
+    // visible so the user can tell when recording has actually started.
+    return HStack(
+      spacing: model.showStatusText ? 12 : FloatingBarLayout.compactContentSpacing
+    ) {
+      if model.showStatusText {
+        if model.status == .processing {
+          ProgressView()
+            .scaleEffect(0.75)
+            .frame(width: 20, height: FloatingBarLayout.compactTraceHeight)
+        } else if model.status == .error {
           ErrorMark(color: errorAccentColor)
-            .frame(
-              width: FloatingBarLayout.compactTraceWidth,
-              height: FloatingBarLayout.compactTraceHeight,
-              alignment: .trailing
-            )
+            .frame(width: 20, height: FloatingBarLayout.compactTraceHeight)
         } else {
           InkTrace(
             buffer: model.traceBuffer,
@@ -126,10 +130,44 @@ struct FloatingBarView: View {
             inkColor: primaryContentColor,
             playheadColor: accentColor
           )
-          .frame(
-            width: FloatingBarLayout.compactTraceWidth,
-            height: FloatingBarLayout.compactTraceHeight
-          )
+          .frame(width: 48, height: FloatingBarLayout.compactTraceHeight)
+        }
+        Text(model.title)
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(primaryContentColor)
+          .lineLimit(1)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .help(model.title)
+      } else {
+        ElapsedTimeText(startedAt: model.startedAt, color: primaryContentColor)
+          .frame(width: FloatingBarLayout.compactTimerWidth)
+          .opacity(isBarHovered ? 1 : 0)
+
+        Group {
+          if model.status == .processing {
+            ProgressView()
+              .frame(
+                width: FloatingBarLayout.compactTraceWidth,
+                height: FloatingBarLayout.compactTraceHeight)
+          } else if model.status == .error {
+            ErrorMark(color: errorAccentColor)
+              .frame(
+                width: FloatingBarLayout.compactTraceWidth,
+                height: FloatingBarLayout.compactTraceHeight,
+                alignment: .trailing
+              )
+          } else {
+            InkTrace(
+              buffer: model.traceBuffer,
+              amplitude: model.amplitude,
+              inkColor: primaryContentColor,
+              playheadColor: accentColor
+            )
+            .frame(
+              width: FloatingBarLayout.compactTraceWidth,
+              height: FloatingBarLayout.compactTraceHeight
+            )
+          }
         }
       }
 
@@ -137,7 +175,7 @@ struct FloatingBarView: View {
     }
     .padding(.leading, FloatingBarLayout.compactLeadingPadding)
     .padding(.trailing, FloatingBarLayout.compactTrailingPadding)
-    .fixedSize(horizontal: true, vertical: false)
+    .fixedSize(horizontal: !model.showStatusText, vertical: false)
     .frame(width: width, height: FloatingBarLayout.compactHeight, alignment: .trailing)
     // Fade the ink out ahead of the left border so clipped trace columns
     // don't poke through the rounded edge while the pill is contracted.
@@ -311,14 +349,16 @@ struct FloatingBarView: View {
 
   private func floatingControls(isExpanded: Bool) -> some View {
     HStack(spacing: FloatingBarLayout.compactControlGap) {
-      FloatingIconButton(
-        systemName: "stop.fill",
-        accessibilityLabel: "Stop recording",
-        color: accentColor,
-        hoverFill: accentColor.opacity(0.16),
-        size: FloatingBarLayout.compactControlSize,
-        action: { performClick(RustBridge.stopListening) }
-      )
+      if model.status == .recording {
+        FloatingIconButton(
+          systemName: "stop.fill",
+          accessibilityLabel: model.showStatusText ? "Stop dictation" : "Stop recording",
+          color: accentColor,
+          hoverFill: accentColor.opacity(0.16),
+          size: FloatingBarLayout.compactControlSize,
+          action: { performClick(RustBridge.stopListening) }
+        )
+      }
 
       if model.liveCaptionToggleVisible {
         FloatingIconButton(
@@ -815,6 +855,12 @@ final class InkTraceBuffer {
   private var samples = [Double](repeating: 0, count: InkTraceBuffer.capacity)
   private var head = 0
   private var lastSampleTime: TimeInterval = 0
+
+  func reset() {
+    samples = [Double](repeating: 0, count: Self.capacity)
+    head = 0
+    lastSampleTime = 0
+  }
 
   func push(_ value: Double, at time: TimeInterval) {
     guard time - lastSampleTime >= Self.sampleInterval else { return }

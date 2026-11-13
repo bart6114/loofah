@@ -15,7 +15,7 @@ use crate::tray_icon::{RECORDING_FRAMES, TrayIconState, recording_frame};
 
 use crate::menu_items::{
     AppInfo, AppNew, HelpDocumentation, HelpReportBug, HelpSuggestFeature, MenuItemHandler,
-    TrayCheckUpdate, TrayOpen, TrayQuit, TraySettings, TrayStart, TrayVersion,
+    TrayCheckUpdate, TrayCopyDictation, TrayOpen, TrayQuit, TraySettings, TrayStart, TrayVersion,
 };
 
 const TRAY_ID: &str = "hypr-tray";
@@ -25,6 +25,11 @@ static IS_DEGRADED: AtomicBool = AtomicBool::new(false);
 static IS_UPDATE_AVAILABLE: AtomicBool = AtomicBool::new(false);
 static START_DISABLED: AtomicBool = AtomicBool::new(false);
 static ANIMATION_TASK: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
+static LATEST_DICTATION: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn latest_dictation() -> Option<String> {
+    LATEST_DICTATION.lock().ok()?.clone()
+}
 
 pub struct Tray<'a, R: tauri::Runtime, M: tauri::Manager<R>> {
     manager: &'a M,
@@ -155,6 +160,11 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
         Ok(())
     }
 
+    pub fn set_last_dictation(&self, text: String) -> Result<()> {
+        *LATEST_DICTATION.lock().unwrap() = Some(text);
+        self.refresh_menu()
+    }
+
     fn build_tray_menu(app: &AppHandle<tauri::Wry>) -> Result<Menu<tauri::Wry>> {
         let menu = Menu::new(app)?;
 
@@ -163,6 +173,9 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
             app,
             START_DISABLED.load(Ordering::SeqCst),
         )?)?;
+        if latest_dictation().is_some() {
+            menu.append(&TrayCopyDictation::build(app)?)?;
+        }
         menu.append(&TraySettings::build(app)?)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
         menu.append(&TrayVersion::build(app)?)?;

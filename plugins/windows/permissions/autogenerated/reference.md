@@ -27,6 +27,7 @@ Default permissions for the plugin
 - `allow-live-caption-update`
 - `allow-devtools-panel-show`
 - `allow-devtools-panel-hide`
+- `allow-dictation-shortcut-configure`
 
 ## Permission Table
 
@@ -85,6 +86,32 @@ Enables the devtools_panel_show command without any pre-configured scope.
 <td>
 
 Denies the devtools_panel_show command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`windows:allow-dictation-shortcut-configure`
+
+</td>
+<td>
+
+Enables the dictation_shortcut_configure command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`windows:deny-dictation-shortcut-configure`
+
+</td>
+<td>
+
+Denies the dictation_shortcut_configure command without any pre-configured scope.
 
 </td>
 </tr>
