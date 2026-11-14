@@ -1023,6 +1023,7 @@ export type EnhancedDocPatch = {
   expected_markdown?: string | null;
 };
 export type FailedAudioRange = {
+  speech_spans?: [number, number][];
   channel: number;
   start_sample: number;
   end_sample: number;

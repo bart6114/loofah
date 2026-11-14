@@ -142,6 +142,7 @@ pub(super) async fn run_soniqo_batch(
             recovery.status = BatchCompletionStatus::Failed;
             recovery.unresolved = (0..pcm.channels)
                 .map(|channel| FailedAudioRange {
+                    speech_spans: Vec::new(),
                     channel: channel as u32,
                     start_sample: 0,
                     end_sample: pcm.frames as u64,
@@ -216,6 +217,11 @@ pub(super) async fn run_soniqo_batch(
                     }
                     for chunk in plan.chunks {
                         outcome.unresolved.push(FailedAudioRange {
+                            speech_spans: chunk
+                                .speech_spans
+                                .iter()
+                                .map(|&(a, b)| (a as u64, b as u64))
+                                .collect(),
                             channel: channel as u32,
                             start_sample: chunk.sample_start as u64,
                             end_sample: chunk.sample_end as u64,
@@ -225,6 +231,7 @@ pub(super) async fn run_soniqo_batch(
                     }
                 }
                 Err(reason) => outcome.unresolved.push(FailedAudioRange {
+                    speech_spans: Vec::new(),
                     channel: channel as u32,
                     start_sample: 0,
                     end_sample: pcm.frames as u64,
@@ -380,6 +387,7 @@ impl SoniqoChannelOutcome {
                 frames as f64 / TARGET_SAMPLE_RATE as f64,
             ),
             unresolved: vec![FailedAudioRange {
+                speech_spans: Vec::new(),
                 channel: channel as u32,
                 start_sample: 0,
                 end_sample: frames as u64,
@@ -523,6 +531,11 @@ fn transcribe_soniqo_channel_chunks_with(
     };
     for (chunk_index, mut chunk) in plan.chunks.into_iter().enumerate() {
         let failure = |reason| FailedAudioRange {
+            speech_spans: chunk
+                .speech_spans
+                .iter()
+                .map(|&(a, b)| (a as u64, b as u64))
+                .collect(),
             channel: channel_index as u32,
             start_sample: chunk.sample_start as u64,
             end_sample: chunk.sample_end as u64,
@@ -688,7 +701,15 @@ fn decode_recovery_range_with(
             pack_from_range(
                 start,
                 (start + cap).min(range.end_sample as usize),
-                Vec::new(),
+                range
+                    .speech_spans
+                    .iter()
+                    .filter_map(|&(a, b)| {
+                        let a = a.max(start as u64);
+                        let b = b.min((start + cap).min(range.end_sample as usize) as u64);
+                        (a < b).then_some((a as usize, b as usize))
+                    })
+                    .collect(),
             )
         })
         .collect();
@@ -1043,6 +1064,7 @@ mod tests {
         writer.finalize().unwrap();
         let pcm = hypr_audio_utils::PcmDescriptor::open(file.path()).unwrap();
         let range = FailedAudioRange {
+            speech_spans: vec![(16000, 20000), (24000, 32000)],
             channel: 1,
             start_sample: 16000,
             end_sample: 32000,
@@ -1069,6 +1091,19 @@ mod tests {
         assert!(channels[0].text.is_empty());
         assert_eq!(channels[1].chunks[0].start_seconds, 1.0);
         assert_eq!(channels[1].chunks[0].duration_seconds, 1.0);
+        assert_eq!(
+            channels[1].chunks[0].speech_spans,
+            vec![
+                hypr_transcribe_soniqo::SpeechSpan {
+                    start_seconds: 1.0,
+                    end_seconds: 1.25
+                },
+                hypr_transcribe_soniqo::SpeechSpan {
+                    start_seconds: 1.5,
+                    end_seconds: 2.0
+                }
+            ]
+        );
     }
 
     #[test]
@@ -1131,6 +1166,7 @@ mod tests {
     fn partial_channel_retains_text_and_absolute_failure_range() {
         let mut channel = success("kept words");
         channel.unresolved.push(FailedAudioRange {
+            speech_spans: Vec::new(),
             channel: 0,
             start_sample: 16000,
             end_sample: 32000,

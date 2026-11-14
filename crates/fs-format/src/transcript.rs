@@ -173,6 +173,8 @@ pub enum BatchCompletionStatus {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Type)]
 pub struct FailedAudioRange {
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub speech_spans: Vec<(u64, u64)>,
     pub channel: u32,
     pub start_sample: u64,
     pub end_sample: u64,

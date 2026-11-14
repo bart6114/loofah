@@ -98,6 +98,15 @@ pub async fn retry_missing_audio(
             let parts: Vec<_> = (original.start_sample..original.end_sample)
                 .step_by(cap as usize)
                 .map(|start| FailedAudioRange {
+                    speech_spans: original
+                        .speech_spans
+                        .iter()
+                        .filter_map(|&(a, b)| {
+                            let a = a.max(start);
+                            let b = b.min((start + cap).min(original.end_sample));
+                            (a < b).then_some((a, b))
+                        })
+                        .collect(),
                     channel: original.channel,
                     start_sample: start,
                     end_sample: (start + cap).min(original.end_sample),

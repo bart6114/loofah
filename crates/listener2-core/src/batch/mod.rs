@@ -237,6 +237,7 @@ async fn run_batch_inner(
                 status: hypr_fs_format::BatchCompletionStatus::Incomplete,
                 unresolved: (0..prepared.pcm.channels)
                     .map(|channel| hypr_fs_format::FailedAudioRange {
+                        speech_spans: Vec::new(),
                         channel: channel as u32,
                         start_sample: 0,
                         end_sample: prepared.pcm.frames as u64,

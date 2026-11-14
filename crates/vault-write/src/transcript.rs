@@ -532,7 +532,7 @@ impl SessionStore {
         session_id: &str,
         run_id: &str,
         original: hypr_fs_format::FailedAudioRange,
-        parts: Vec<hypr_fs_format::FailedAudioRange>,
+        mut parts: Vec<hypr_fs_format::FailedAudioRange>,
     ) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
         let mut end = original.start_sample;
@@ -566,6 +566,17 @@ impl SessionStore {
         }) else {
             return Ok(());
         };
+        for part in &mut parts {
+            part.speech_spans = recovery.unresolved[index]
+                .speech_spans
+                .iter()
+                .filter_map(|&(start, end)| {
+                    let start = start.max(part.start_sample);
+                    let end = end.min(part.end_sample);
+                    (start < end).then_some((start, end))
+                })
+                .collect();
+        }
         recovery.unresolved.splice(index..=index, parts);
         self.write_transcript_json_locked(&guard, session_id, file)
             .await
@@ -2540,7 +2551,7 @@ mod tests {
             "audio": {"source": "recording", "layout": "mic_system"},
             "version": 1, "run_id": "run-1", "source_fingerprint": "sha256:audio",
             "provider": "soniqo", "model": "soniqo-parakeet-batch", "languages": ["en", "nl"],
-            "status": "incomplete", "unresolved": [{"channel": 1, "start_sample": 16000, "end_sample": 32000, "reason": "decoder failed"}],
+            "status": "incomplete", "unresolved": [{"channel": 1, "start_sample": 16000, "end_sample": 32000, "reason": "decoder failed", "speech_spans": [[16000,20000],[24000,32000]]}],
             "diarization": [{"channel": 1, "start_ms": 0, "end_ms": 2000, "speaker_index": 2}]
         })).unwrap()
     }
@@ -2738,6 +2749,7 @@ mod tests {
         first.end_sample = 24000;
         let mut second = original.clone();
         second.start_sample = 24000;
+        second.speech_spans = vec![(24000, 32000)];
         for _ in 0..2 {
             store
                 .refine_batch_recovery_range(
