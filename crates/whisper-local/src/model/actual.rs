@@ -303,7 +303,7 @@ impl Whisper {
         }
         let started = std::time::Instant::now();
         let input_audio_length_sec = audio.len() as f32 / 16000.0;
-        if input_audio_length_sec < 0.1 {
+        if audio.len() < super::MIN_TRANSCRIBE_SAMPLES {
             tracing::warn!(input_audio_length_sec = ?input_audio_length_sec, "transcribe_skipped");
             return Ok(vec![]);
         }

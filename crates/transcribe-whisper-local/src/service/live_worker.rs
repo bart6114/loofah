@@ -69,7 +69,10 @@ pub(super) fn start(
                             Job::Evidence(samples) => {
                                 resolver.add_speech(samples.len());
                                 if resolver.needs_observation() {
-                                    resolver.observe(models[0].detect_language(&samples)?);
+                                    resolver.observe(
+                                        models[0]
+                                            .detect_language(&super::inference_audio(&samples))?,
+                                    );
                                     if deadline {
                                         resolver.finish_startup();
                                     }
@@ -81,10 +84,9 @@ pub(super) fn start(
                                 if resolver.selected().is_none()
                                     && let Some(work) = pending.front()
                                 {
-                                    resolver.observe(
-                                        models[work.channel]
-                                            .detect_language(&work.chunk.samples)?,
-                                    );
+                                    resolver.observe(models[work.channel].detect_language(
+                                        &super::inference_audio(&work.chunk.samples),
+                                    )?);
                                     resolver.finish_startup();
                                 }
                             }
@@ -96,10 +98,9 @@ pub(super) fn start(
                                 if resolver.selected().is_none()
                                     && let Some(work) = pending.front()
                                 {
-                                    resolver.observe(
-                                        models[work.channel]
-                                            .detect_language(&work.chunk.samples)?,
-                                    );
+                                    resolver.observe(models[work.channel].detect_language(
+                                        &super::inference_audio(&work.chunk.samples),
+                                    )?);
                                     resolver.finish_startup();
                                 }
                                 finish = Some((duration, finalized));

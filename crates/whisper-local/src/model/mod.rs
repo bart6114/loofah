@@ -1,3 +1,5 @@
+pub const MIN_TRANSCRIBE_SAMPLES: usize = 1600;
+
 #[cfg(feature = "actual")]
 mod actual;
 #[cfg(feature = "actual")]

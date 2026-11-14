@@ -24,3 +24,6 @@ cargo test --locked --release -p whisper-local --features vulkan --test inferenc
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 cargo test --locked --release -p transcribe-whisper-local --features vulkan --test inference -- --ignored --nocapture --test-threads=1
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+cargo test --locked --release -p transcribe-whisper-local --features vulkan --lib fixed_english_and_dutch_boundaries_do_not_regress -- --ignored --nocapture --test-threads=1
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

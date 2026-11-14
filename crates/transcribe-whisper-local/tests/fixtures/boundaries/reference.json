@@ -1,0 +1,92 @@
+{
+  "en": {
+    "text": "we are checking whether every spoken word remains in the transcript when a long recording is divided into smaller pieces the conversation continues without stopping while the recorder keeps the original timing and the speaker labels each sentence should stay readable even if another piece needs a retry near the next boundary we clearly say weather road and lighthouse once and then continue discussing the journey ahead a quiet voice still matters and the final few words must not disappear when the recording comes to an abrupt stop",
+    "boundary_words": [],
+    "voice": "Daniel",
+    "words_per_minute": 170,
+    "frames": 448086,
+    "sha256": "90a77a880107ad4da63b47aeb3de5e53a81e99f330363aaa23aaf6f477fa18d4",
+    "quiet_range_seconds": [
+      11,
+      14
+    ],
+    "quiet_gain": 0.25,
+    "probe_words": [
+      "weather",
+      "road",
+      "stop"
+    ]
+  },
+  "nl": {
+    "text": "we controleren of ieder gesproken woord in het transcript blijft staan wanneer een lange opname in kleinere stukken wordt verdeeld het gesprek gaat verder zonder onderbreking terwijl de recorder de oorspronkelijke tijden en de namen van de sprekers bewaart iedere zin moet leesbaar blijven ook als een ander stukje later opnieuw verwerkt moet worden vlak bij de volgende grens zeggen we duidelijk morgen weg en vuurtoren en daarna praten we rustig verder over het weer en de reis een zachte stem blijft belangrijk en de laatste paar woorden mogen niet verdwijnen wanneer de opname plotseling eindigt en nu zeg ik stop",
+    "boundary_words": [],
+    "voice": "Ellen",
+    "words_per_minute": 170,
+    "frames": 512133,
+    "sha256": "d0bb37e8738d10da1a121761bce8ff4e2a2fae17d158351391760fd240ec2f0b",
+    "quiet_range_seconds": [
+      11,
+      14
+    ],
+    "quiet_gain": 0.25,
+    "probe_words": [
+      "morgen",
+      "weg",
+      "stop"
+    ]
+  },
+  "en-crossing": {
+    "language": "en",
+    "text": "we are checking whether every spoken word remains in the transcript when a long recording is divided into smaller pieces the conversation continues without stopping while the recorder keeps the original timing and the speaker labels each sentence should stay readable even if another piece needs a retry near the next boundary we clearly say elephant and then continue discussing the journey ahead a quiet voice still matters and the final few words must not disappear when the recording comes to an abrupt stop",
+    "boundary_words": [
+      "elephant",
+      "stop"
+    ],
+    "voice": "Daniel",
+    "prefix_words_per_minute": 125,
+    "words_per_minute": 170,
+    "frames": 539127,
+    "sha256": "2483f3dddfe683b6b808df303fc3c591fd80090ffd75392c49b388646c56c86b",
+    "quiet_range_seconds": [
+      11,
+      14
+    ],
+    "quiet_gain": 0.25,
+    "boundary_word_range_samples": [
+      396800,
+      406866
+    ],
+    "forced_boundary_sample": 400000,
+    "quiet_pause_range_samples": [
+      394880,
+      396800
+    ]
+  },
+  "nl-crossing": {
+    "language": "nl",
+    "text": "we controleren of ieder gesproken woord in het transcript blijft staan wanneer een lange opname in kleinere stukken wordt verdeeld het gesprek gaat verder zonder onderbreking terwijl de recorder de oorspronkelijke tijden en de namen van de sprekers bewaart iedere zin moet leesbaar blijven ook als een ander stukje later opnieuw verwerkt moet worden vlak bij de volgende grens zeggen we duidelijk olifant en daarna praten we rustig verder over het weer en de reis een zachte stem blijft belangrijk en de laatste paar woorden mogen niet verdwijnen wanneer de opname plotseling eindigt en nu zeg ik stop",
+    "boundary_words": [
+      "olifant",
+      "stop"
+    ],
+    "voice": "Ellen",
+    "prefix_words_per_minute": 142,
+    "words_per_minute": 170,
+    "frames": 570184,
+    "sha256": "1e6be39adab119e7dd9932e0b73cdd92df79c3c1bd49d7e67b6c83b6a101bdec",
+    "quiet_range_seconds": [
+      11,
+      14
+    ],
+    "quiet_gain": 0.25,
+    "boundary_word_range_samples": [
+      396800,
+      408171
+    ],
+    "forced_boundary_sample": 400000,
+    "quiet_pause_range_samples": [
+      394880,
+      396800
+    ]
+  }
+}
