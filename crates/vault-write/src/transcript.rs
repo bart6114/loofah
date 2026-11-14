@@ -27,6 +27,7 @@ pub(crate) fn summarize_transcripts(
             .iter()
             .map(|t| TranscriptStat {
                 id: t.id.clone(),
+                batch_recovery: t.batch_recovery.clone(),
                 started_at: t.started_at,
                 ended_at: t.ended_at,
                 words: SeqCount(t.words.len()),
@@ -68,6 +69,9 @@ fn summarize_stats(bytes: &[u8], mut transcripts: Vec<TranscriptStat>) -> Transc
         }));
         if let Some(end) = transcript.ended_at {
             metadata.ended_at = Some(metadata.ended_at.map_or(end, |current| current.max(end)));
+        }
+        if let Some(recovery) = transcript.batch_recovery {
+            metadata.batch_recoveries.push(recovery);
         }
         for label in transcript.speaker_labels {
             if seen.insert(label.clone()) {
@@ -313,22 +317,36 @@ impl SessionStore {
     pub async fn write_transcript(
         &self,
         session_id: &str,
-        t: TranscriptWithData,
+        mut t: TranscriptWithData,
     ) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
-
         let _operation = self.transcript_operations.lock(session_id).await;
         let transcript_id = t.id.clone();
-        let started_at_ms = t.started_at;
-
-        self.persist_transcript(
-            session_id,
-            &transcript_id,
-            started_at_ms,
-            t.words,
-            t.speaker_hints,
-        )
-        .await?;
+        let guard = self.lock_writes().await;
+        let mut file = self.read_transcript_json(session_id).await?;
+        if let Some(existing) = file
+            .transcripts
+            .iter_mut()
+            .find(|existing| existing.id == t.id)
+        {
+            existing.session_id = session_id.to_string();
+            existing.started_at = t.started_at;
+            existing.words = t.words;
+            existing.speaker_hints = t.speaker_hints;
+            if t.batch_recovery.is_some() {
+                existing.batch_recovery = t.batch_recovery;
+            }
+        } else {
+            t.created_at = chrono::Utc::now().to_rfc3339();
+            if t.batch_recovery.is_none() {
+                t.user_id.clear();
+                t.memo_md.clear();
+                t.ended_at = None;
+            }
+            file.transcripts.push(t);
+        }
+        self.write_transcript_json_locked(&guard, session_id, file)
+            .await?;
         let mut live = self.live.lock().await;
         if live
             .get(session_id)
@@ -351,7 +369,7 @@ impl SessionStore {
     pub async fn replace_session_transcripts(
         &self,
         session_id: &str,
-        t: TranscriptWithData,
+        mut t: TranscriptWithData,
     ) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
 
@@ -362,6 +380,23 @@ impl SessionStore {
         let guard = self.lock_writes().await;
 
         let previous = self.read_transcript_json(session_id).await?;
+        if t.batch_recovery.is_none() {
+            if let Some(existing) = previous
+                .transcripts
+                .iter()
+                .find(|existing| existing.id == t.id)
+            {
+                t.user_id = existing.user_id.clone();
+                t.created_at = existing.created_at.clone();
+                t.memo_md = existing.memo_md.clone();
+                t.ended_at = existing.ended_at;
+            } else {
+                t.user_id.clear();
+                t.created_at = chrono::Utc::now().to_rfc3339();
+                t.memo_md.clear();
+                t.ended_at = None;
+            }
+        }
         let loses_content = previous
             .transcripts
             .iter()
@@ -384,24 +419,324 @@ impl SessionStore {
             .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;
         }
 
-        let transcript_id = t.id.clone();
-        let started_at_ms = t.started_at;
-
-        // The file is now absent (trashed) or already holds only this transcript, so
-        // persist_transcript's read-merge-write lands a file with exactly one entry --
-        // and its index_set_transcripts/notify covers the removals too, since the index
-        // gets the full (single-entry) list.
-        self.persist_transcript_locked(
+        self.write_transcript_json_locked(
             &guard,
             session_id,
-            &transcript_id,
-            started_at_ms,
-            t.words,
-            t.speaker_hints,
+            TranscriptJson {
+                transcripts: vec![t],
+            },
         )
         .await?;
         self.live.lock().await.remove(session_id);
         Ok(())
+    }
+
+    pub async fn checkpoint_batch_transcript(
+        &self,
+        session_id: &str,
+        incoming: TranscriptWithData,
+        initial: bool,
+    ) -> Result<(), StoreError> {
+        let existing = self.read_transcript_json(session_id).await?.transcripts;
+        let Some(saved) = existing.iter().find(|t| t.id == incoming.id) else {
+            if initial {
+                return self.replace_session_transcripts(session_id, incoming).await;
+            }
+            return Err(StoreError::Io(
+                "The transcript was replaced while transcription was running.".into(),
+            ));
+        };
+        let recovery = incoming
+            .batch_recovery
+            .ok_or_else(|| StoreError::Io("Missing recovery metadata.".into()))?;
+        let previous = saved
+            .batch_recovery
+            .as_ref()
+            .ok_or_else(|| StoreError::Io("The recovery run was replaced.".into()))?;
+        if previous.planning_pending && !recovery.planning_pending {
+            return self
+                .complete_batch_chunk_planning(session_id, recovery)
+                .await;
+        }
+        let resolved: Vec<_> = previous
+            .unresolved
+            .iter()
+            .filter(|range| {
+                !recovery.unresolved.iter().any(|r| {
+                    r.channel == range.channel
+                        && r.start_sample == range.start_sample
+                        && r.end_sample == range.end_sample
+                })
+            })
+            .cloned()
+            .collect();
+        let words: Vec<_> = incoming
+            .words
+            .into_iter()
+            .filter(|word| {
+                resolved.iter().any(|range| {
+                    let channel = if recovery.audio.layout == hypr_fs_format::AudioLayout::Mixed {
+                        2.0
+                    } else {
+                        range.channel as f64
+                    };
+                    word.channel == channel
+                        && word.start_ms >= range.start_sample as f64 / 16.0 - 0.001
+                        && word.end_ms <= range.end_sample as f64 / 16.0 + 0.001
+                })
+            })
+            .collect();
+        let ids: std::collections::HashSet<_> =
+            words.iter().filter_map(|word| word.id.as_deref()).collect();
+        let hints = incoming
+            .speaker_hints
+            .into_iter()
+            .filter(|hint| ids.contains(hint.word_id.as_str()))
+            .collect();
+        self.merge_batch_recovery(session_id, &recovery.run_id, resolved, words, hints)
+            .await?;
+        self.update_batch_recovery_status(session_id, recovery)
+            .await
+    }
+
+    async fn complete_batch_chunk_planning(
+        &self,
+        session_id: &str,
+        incoming: hypr_fs_format::BatchRecovery,
+    ) -> Result<(), StoreError> {
+        let _operation = self.transcript_operations.lock(session_id).await;
+        let guard = self.lock_writes().await;
+        let mut file = self.read_transcript_json(session_id).await?;
+        let transcript = file
+            .transcripts
+            .iter_mut()
+            .find(|t| {
+                t.batch_recovery
+                    .as_ref()
+                    .is_some_and(|r| r.run_id == incoming.run_id)
+            })
+            .ok_or_else(|| StoreError::Io("The recovery run was replaced.".into()))?;
+        if !transcript.batch_recovery.as_ref().unwrap().planning_pending {
+            return Ok(());
+        }
+        if !transcript.words.is_empty() {
+            return Err(StoreError::Io("Text was added while audio was being planned. Transcribe the full recording again.".into()));
+        }
+        transcript.batch_recovery = Some(incoming);
+        self.write_transcript_json_locked(&guard, session_id, file)
+            .await
+    }
+
+    pub async fn refine_batch_recovery_range(
+        &self,
+        session_id: &str,
+        run_id: &str,
+        original: hypr_fs_format::FailedAudioRange,
+        parts: Vec<hypr_fs_format::FailedAudioRange>,
+    ) -> Result<(), StoreError> {
+        validate_session_id(session_id)?;
+        let mut end = original.start_sample;
+        for range in &parts {
+            if range.channel != original.channel
+                || range.start_sample != end
+                || range.end_sample <= range.start_sample
+            {
+                return Err(StoreError::Io("Invalid recovery boundaries.".into()));
+            }
+            end = range.end_sample;
+        }
+        if end != original.end_sample {
+            return Err(StoreError::Io(
+                "Recovery boundaries do not cover the missing audio.".into(),
+            ));
+        }
+        let _operation = self.transcript_operations.lock(session_id).await;
+        let guard = self.lock_writes().await;
+        let mut file = self.read_transcript_json(session_id).await?;
+        let recovery = file
+            .transcripts
+            .iter_mut()
+            .filter_map(|t| t.batch_recovery.as_mut())
+            .find(|r| r.run_id == run_id)
+            .ok_or_else(|| StoreError::Io("The recovery run was replaced.".into()))?;
+        let Some(index) = recovery.unresolved.iter().position(|r| {
+            r.channel == original.channel
+                && r.start_sample == original.start_sample
+                && r.end_sample == original.end_sample
+        }) else {
+            return Ok(());
+        };
+        recovery.unresolved.splice(index..=index, parts);
+        self.write_transcript_json_locked(&guard, session_id, file)
+            .await
+    }
+
+    pub async fn update_batch_recovery_status(
+        &self,
+        session_id: &str,
+        incoming: hypr_fs_format::BatchRecovery,
+    ) -> Result<(), StoreError> {
+        validate_session_id(session_id)?;
+        let _operation = self.transcript_operations.lock(session_id).await;
+        let guard = self.lock_writes().await;
+        let mut file = self.read_transcript_json(session_id).await?;
+        let recovery = file
+            .transcripts
+            .iter_mut()
+            .filter_map(|t| t.batch_recovery.as_mut())
+            .find(|r| r.run_id == incoming.run_id)
+            .ok_or_else(|| {
+                StoreError::Io(
+                    "The recovery run was replaced. Transcribe the full recording again.".into(),
+                )
+            })?;
+        if recovery.diarization_pending && !incoming.diarization_pending {
+            recovery.diarization = incoming.diarization.clone();
+            recovery.diarization_pending = false;
+        }
+        for range in &mut recovery.unresolved {
+            if let Some(updated) = incoming.unresolved.iter().find(|r| {
+                r.channel == range.channel
+                    && r.start_sample == range.start_sample
+                    && r.end_sample == range.end_sample
+            }) {
+                range.reason = updated.reason.clone();
+            }
+        }
+        recovery.planning_pending &= incoming.planning_pending;
+        recovery.status = if recovery.unresolved.is_empty() {
+            hypr_fs_format::BatchCompletionStatus::Complete
+        } else if incoming.status == hypr_fs_format::BatchCompletionStatus::Complete {
+            hypr_fs_format::BatchCompletionStatus::Incomplete
+        } else {
+            incoming.status
+        };
+        self.write_transcript_json_locked(&guard, session_id, file)
+            .await
+    }
+
+    pub async fn merge_batch_recovery(
+        &self,
+        session_id: &str,
+        run_id: &str,
+        resolved: Vec<hypr_fs_format::FailedAudioRange>,
+        mut words: Vec<TranscriptWord>,
+        hints: Vec<TranscriptSpeakerHint>,
+    ) -> Result<(), StoreError> {
+        validate_session_id(session_id)?;
+        let _operation = self.transcript_operations.lock(session_id).await;
+        let guard = self.lock_writes().await;
+        let mut file = self.read_transcript_json(session_id).await?;
+        let transcript = file
+            .transcripts
+            .iter_mut()
+            .find(|t| {
+                t.batch_recovery
+                    .as_ref()
+                    .is_some_and(|r| r.run_id == run_id)
+            })
+            .ok_or_else(|| {
+                StoreError::Io(
+                    "This recovery plan was replaced. Transcribe the full recording again.".into(),
+                )
+            })?;
+        let recovery = transcript.batch_recovery.as_mut().unwrap();
+        if recovery.version != 1 {
+            return Err(StoreError::Io(
+                "This recovery plan requires a newer app version.".into(),
+            ));
+        }
+        let same_range = |a: &hypr_fs_format::FailedAudioRange,
+                          b: &hypr_fs_format::FailedAudioRange| {
+            a.channel == b.channel
+                && a.start_sample == b.start_sample
+                && a.end_sample == b.end_sample
+        };
+        let pending: Vec<_> = resolved
+            .iter()
+            .filter(|range| recovery.unresolved.iter().any(|r| same_range(r, range)))
+            .collect();
+        if pending.is_empty() {
+            return Ok(());
+        }
+        if pending.len() != resolved.len() {
+            return Err(StoreError::Io(
+                "Recovery ranges have changed. Retry the remaining audio again.".into(),
+            ));
+        }
+        let word_channel = |range: &hypr_fs_format::FailedAudioRange| {
+            if recovery.audio.layout == hypr_fs_format::AudioLayout::Mixed {
+                2.0
+            } else {
+                range.channel as f64
+            }
+        };
+        let inside = |word: &TranscriptWord, range: &hypr_fs_format::FailedAudioRange| {
+            word.channel == word_channel(range)
+                && word.start_ms < range.end_sample as f64 / 16.0
+                && word.end_ms > range.start_sample as f64 / 16.0
+        };
+        if transcript
+            .words
+            .iter()
+            .any(|word| pending.iter().any(|range| inside(word, range)))
+        {
+            return Err(StoreError::Io("Text was added inside the missing audio. Keep your edits or transcribe the full recording again.".into()));
+        }
+        for word in &mut words {
+            let Some(range) = pending.iter().find(|range| {
+                word.channel == word_channel(range)
+                    && word.start_ms >= range.start_sample as f64 / 16.0 - 0.001
+                    && word.end_ms <= range.end_sample as f64 / 16.0 + 0.001
+                    && word.end_ms >= word.start_ms
+            }) else {
+                return Err(StoreError::Io(
+                    "Recovered words lie outside the requested audio ranges.".into(),
+                ));
+            };
+            word.start_ms = word.start_ms.max(range.start_sample as f64 / 16.0);
+            word.end_ms = word.end_ms.min(range.end_sample as f64 / 16.0);
+        }
+        let mut ids: std::collections::HashSet<_> = transcript
+            .words
+            .iter()
+            .filter_map(|w| w.id.as_deref())
+            .collect();
+        if words
+            .iter()
+            .any(|w| w.id.as_deref().is_none_or(|id| !ids.insert(id)))
+        {
+            return Err(StoreError::Io(
+                "Recovered words must have unique identities.".into(),
+            ));
+        }
+        let recovered_ids: std::collections::HashSet<_> =
+            words.iter().filter_map(|w| w.id.as_deref()).collect();
+        if hints
+            .iter()
+            .any(|h| !recovered_ids.contains(h.word_id.as_str()))
+        {
+            return Err(StoreError::Io(
+                "Recovered speaker assignments reference unknown words.".into(),
+            ));
+        }
+        recovery
+            .unresolved
+            .retain(|range| !pending.iter().any(|r| same_range(range, r)));
+        recovery.status = if recovery.unresolved.is_empty() {
+            hypr_fs_format::BatchCompletionStatus::Complete
+        } else {
+            hypr_fs_format::BatchCompletionStatus::Incomplete
+        };
+        transcript.words.extend(words);
+        transcript.words.sort_by(|a, b| {
+            a.start_ms
+                .total_cmp(&b.start_ms)
+                .then(a.end_ms.total_cmp(&b.end_ms))
+        });
+        transcript.speaker_hints.extend(hints);
+        self.write_transcript_json_locked(&guard, session_id, file)
+            .await
     }
 
     /// Speaker rename as a hints-only mutation: the words list is passed through
@@ -587,6 +922,7 @@ impl SessionStore {
             }
             None => {
                 file.transcripts.push(TranscriptWithData {
+                    batch_recovery: None,
                     id: transcript_id.to_string(),
                     user_id: String::new(),
                     created_at: chrono::Utc::now().to_rfc3339(),
@@ -1092,6 +1428,7 @@ mod tests {
             .write_transcript(
                 "s1",
                 TranscriptWithData {
+                    batch_recovery: None,
                     id: "t1".to_string(),
                     user_id: String::new(),
                     created_at: "2026-07-24T00:00:00Z".to_string(),
@@ -1144,6 +1481,7 @@ mod tests {
             .write_transcript(
                 "s1",
                 TranscriptWithData {
+                    batch_recovery: None,
                     id: "t1".to_string(),
                     user_id: String::new(),
                     created_at: "2026-07-24T00:00:00Z".to_string(),
@@ -1180,6 +1518,7 @@ mod tests {
             .write_transcript(
                 "s1",
                 TranscriptWithData {
+                    batch_recovery: None,
                     id: "batch".to_string(),
                     user_id: String::new(),
                     created_at: "2026-07-24T00:00:00Z".to_string(),
@@ -1382,6 +1721,7 @@ mod tests {
 
     fn batch(id: &str, word_texts: &[&str]) -> TranscriptWithData {
         TranscriptWithData {
+            batch_recovery: None,
             id: id.to_string(),
             user_id: String::new(),
             created_at: "2026-07-24T00:00:00Z".to_string(),
@@ -2192,6 +2532,345 @@ mod tests {
                 .transcripts
                 .len(),
             2
+        );
+    }
+
+    fn recovery() -> hypr_fs_format::BatchRecovery {
+        serde_json::from_value(serde_json::json!({
+            "audio": {"source": "recording", "layout": "mic_system"},
+            "version": 1, "run_id": "run-1", "source_fingerprint": "sha256:audio",
+            "provider": "soniqo", "model": "soniqo-parakeet-batch", "languages": ["en", "nl"],
+            "status": "incomplete", "unresolved": [{"channel": 1, "start_sample": 16000, "end_sample": 32000, "reason": "decoder failed"}],
+            "diarization": [{"channel": 1, "start_ms": 0, "end_ms": 2000, "speaker_index": 2}]
+        })).unwrap()
+    }
+
+    #[tokio::test]
+    async fn recovery_survives_restart_edits_and_index_rebuild() {
+        let (store, vault) = test_store().await;
+        let mut t = batch("t1", &["kept"]);
+        t.batch_recovery = Some(recovery());
+        store.replace_session_transcripts("s1", t).await.unwrap();
+        assert_eq!(
+            store.session_transcript_metadata("s1").batch_recoveries,
+            vec![recovery()]
+        );
+        let fresh = SessionStore::new(vault.path().to_path_buf());
+        let saved = fresh.read_transcript_json("s1").await.unwrap();
+        assert_eq!(saved.transcripts[0].batch_recovery, Some(recovery()));
+        let bytes = std::fs::read(vault.path().join("sessions/s1/transcript.json")).unwrap();
+        let summary = summarize_transcript_bytes(&bytes).unwrap();
+        assert_eq!(summary.metadata.batch_recoveries, vec![recovery()]);
+        let mut edit = saved.transcripts[0].clone();
+        edit.batch_recovery = None;
+        edit.words[0].text = "edited".into();
+        fresh.write_transcript("s1", edit).await.unwrap();
+        assert_eq!(
+            fresh.read_transcript_json("s1").await.unwrap().transcripts[0].batch_recovery,
+            Some(recovery())
+        );
+        fresh
+            .replace_session_transcripts("s1", batch("t2", &["replacement"]))
+            .await
+            .unwrap();
+        assert!(
+            fresh.read_transcript_json("s1").await.unwrap().transcripts[0]
+                .batch_recovery
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn recovered_ranges_merge_once_and_preserve_existing_edits() {
+        let (store, _vault) = test_store().await;
+        let mut t = batch("t1", &["edited"]);
+        t.batch_recovery = Some(recovery());
+        let original = t.words[0].clone();
+        store.replace_session_transcripts("s1", t).await.unwrap();
+        let range = recovery().unresolved;
+        let mut recovered = word("recovery-run-1-range-1-word-0", "recovered");
+        recovered.channel = 1.0;
+        recovered.start_ms = 1000.0;
+        recovered.end_ms = 2000.0 + 1e-9;
+        for _ in 0..2 {
+            store
+                .merge_batch_recovery(
+                    "s1",
+                    "run-1",
+                    range.clone(),
+                    vec![recovered.clone()],
+                    vec![],
+                )
+                .await
+                .unwrap();
+        }
+        let saved = store.read_transcript_json("s1").await.unwrap();
+        assert_eq!(saved.transcripts[0].words.len(), 2);
+        assert_eq!(saved.transcripts[0].words[1].end_ms, 2000.0);
+        assert_eq!(saved.transcripts[0].words[0], original);
+        assert!(
+            saved.transcripts[0]
+                .batch_recovery
+                .as_ref()
+                .unwrap()
+                .unresolved
+                .is_empty()
+        );
+        assert!(
+            store
+                .merge_batch_recovery("s1", "stale-run", range, vec![], vec![])
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn recovery_rejects_edits_in_missing_audio_without_changing_saved_work() {
+        let (store, _vault) = test_store().await;
+        let mut t = batch("t1", &["user edit"]);
+        t.batch_recovery = Some(recovery());
+        t.words[0].channel = 1.0;
+        t.words[0].start_ms = 1100.0;
+        t.words[0].end_ms = 1200.0;
+        store
+            .replace_session_transcripts("s1", t.clone())
+            .await
+            .unwrap();
+        let result = store
+            .merge_batch_recovery("s1", "run-1", recovery().unresolved, vec![], vec![])
+            .await;
+        assert!(result.unwrap_err().to_string().contains("Text was added"));
+        assert_eq!(
+            store.read_transcript_json("s1").await.unwrap().transcripts,
+            vec![t]
+        );
+    }
+
+    #[tokio::test]
+    async fn cumulative_checkpoints_preserve_edits_deletions_and_speaker_labels() {
+        let (store, vault) = test_store().await;
+        let mut initial = batch("t1", &[]);
+        let mut plan = recovery();
+        let later = plan.unresolved[0].clone();
+        let mut earlier = later.clone();
+        earlier.start_sample = 0;
+        earlier.end_sample = 16000;
+        plan.unresolved.insert(0, earlier);
+        initial.batch_recovery = Some(plan.clone());
+        store
+            .checkpoint_batch_transcript("s1", initial.clone(), true)
+            .await
+            .unwrap();
+        let mut first = word("first", "original");
+        first.channel = 1.0;
+        first.start_ms = 100.0;
+        first.end_ms = 500.0;
+        let mut checkpoint = initial.clone();
+        checkpoint.words = vec![first.clone()];
+        checkpoint.batch_recovery.as_mut().unwrap().unresolved = vec![later];
+        store
+            .checkpoint_batch_transcript("s1", checkpoint.clone(), false)
+            .await
+            .unwrap();
+        let fresh = SessionStore::new(vault.path().to_path_buf());
+        let mut saved = fresh
+            .read_transcript_json("s1")
+            .await
+            .unwrap()
+            .transcripts
+            .remove(0);
+        assert_eq!(saved.words.len(), 1);
+        assert_eq!(saved.batch_recovery.as_ref().unwrap().unresolved.len(), 1);
+        saved.words[0].text = "user edited".into();
+        saved.speaker_hints = vec![label_hint("first", "Alice")];
+        fresh.write_transcript("s1", saved).await.unwrap();
+        let mut second = word("second", "recovered");
+        second.channel = 1.0;
+        second.start_ms = 1100.0;
+        second.end_ms = 1500.0;
+        checkpoint.words.push(second);
+        checkpoint
+            .batch_recovery
+            .as_mut()
+            .unwrap()
+            .unresolved
+            .clear();
+        checkpoint.batch_recovery.as_mut().unwrap().status =
+            hypr_fs_format::BatchCompletionStatus::Complete;
+        fresh
+            .checkpoint_batch_transcript("s1", checkpoint.clone(), false)
+            .await
+            .unwrap();
+        let mut saved = fresh
+            .read_transcript_json("s1")
+            .await
+            .unwrap()
+            .transcripts
+            .remove(0);
+        assert_eq!(saved.words[0].text, "user edited");
+        assert_eq!(saved.speaker_hints, vec![label_hint("first", "Alice")]);
+        saved.words.remove(0);
+        saved.speaker_hints.clear();
+        fresh.write_transcript("s1", saved).await.unwrap();
+        fresh
+            .checkpoint_batch_transcript("s1", checkpoint, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            fresh.read_transcript_json("s1").await.unwrap().transcripts[0]
+                .words
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn whole_channel_retry_refines_only_missing_audio_and_preserves_restart_progress() {
+        let (store, vault) = test_store().await;
+        let mut initial = batch("t1", &[]);
+        initial.batch_recovery = Some(recovery());
+        store
+            .replace_session_transcripts("s1", initial)
+            .await
+            .unwrap();
+        let original = recovery().unresolved.remove(0);
+        let mut first = original.clone();
+        first.end_sample = 24000;
+        let mut second = original.clone();
+        second.start_sample = 24000;
+        for _ in 0..2 {
+            store
+                .refine_batch_recovery_range(
+                    "s1",
+                    "run-1",
+                    original.clone(),
+                    vec![first.clone(), second.clone()],
+                )
+                .await
+                .unwrap();
+        }
+        store
+            .merge_batch_recovery("s1", "run-1", vec![first], vec![], vec![])
+            .await
+            .unwrap();
+        let fresh = SessionStore::new(vault.path().to_path_buf());
+        assert_eq!(
+            fresh.read_transcript_json("s1").await.unwrap().transcripts[0]
+                .batch_recovery
+                .as_ref()
+                .unwrap()
+                .unresolved,
+            vec![second]
+        );
+    }
+
+    #[tokio::test]
+    async fn planning_checkpoint_restores_whole_channel_until_speech_ranges_are_saved() {
+        let (store, vault) = test_store().await;
+        let mut initial = batch("t1", &[]);
+        let mut plan = recovery();
+        plan.planning_pending = true;
+        plan.unresolved[0].start_sample = 0;
+        initial.batch_recovery = Some(plan);
+        store
+            .checkpoint_batch_transcript("s1", initial.clone(), true)
+            .await
+            .unwrap();
+        let fresh = SessionStore::new(vault.path().to_path_buf());
+        assert!(
+            fresh.read_transcript_json("s1").await.unwrap().transcripts[0]
+                .batch_recovery
+                .as_ref()
+                .unwrap()
+                .planning_pending
+        );
+        let mut planned = initial;
+        planned.batch_recovery = Some(recovery());
+        fresh
+            .checkpoint_batch_transcript("s1", planned.clone(), false)
+            .await
+            .unwrap();
+        assert_eq!(
+            fresh.read_transcript_json("s1").await.unwrap().transcripts[0].batch_recovery,
+            Some(recovery())
+        );
+        let mut resolved = word("resolved", "speech");
+        resolved.channel = 1.0;
+        resolved.start_ms = 1100.0;
+        resolved.end_ms = 1500.0;
+        let mut complete = planned.clone();
+        complete.words = vec![resolved];
+        complete.batch_recovery.as_mut().unwrap().unresolved.clear();
+        fresh
+            .checkpoint_batch_transcript("s1", complete, false)
+            .await
+            .unwrap();
+        fresh
+            .checkpoint_batch_transcript("s1", planned, false)
+            .await
+            .unwrap();
+        assert!(
+            fresh.read_transcript_json("s1").await.unwrap().transcripts[0]
+                .batch_recovery
+                .as_ref()
+                .unwrap()
+                .unresolved
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_recovery_write_keeps_text_and_ranges_together() {
+        let (store, vault) = test_store().await;
+        let mut t = batch("t1", &["kept"]);
+        t.batch_recovery = Some(recovery());
+        store.replace_session_transcripts("s1", t).await.unwrap();
+        let path = vault.path().join("sessions/s1/transcript.json");
+        let mut before = std::fs::read(&path).unwrap();
+        before.push(b'\n');
+        std::fs::write(&path, &before).unwrap();
+        std::fs::write(
+            vault.path().join(".trash"),
+            b"block backup of externally changed bytes",
+        )
+        .unwrap();
+        let mut recovered = word("recovered", "new");
+        recovered.channel = 1.0;
+        recovered.start_ms = 1100.0;
+        recovered.end_ms = 1500.0;
+        assert!(
+            store
+                .merge_batch_recovery(
+                    "s1",
+                    "run-1",
+                    recovery().unresolved,
+                    vec![recovered.clone()],
+                    vec![]
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        std::fs::remove_file(vault.path().join(".trash")).unwrap();
+        store
+            .merge_batch_recovery(
+                "s1",
+                "run-1",
+                recovery().unresolved,
+                vec![recovered],
+                vec![],
+            )
+            .await
+            .unwrap();
+        let saved = store.read_transcript_json("s1").await.unwrap();
+        assert_eq!(saved.transcripts[0].words.len(), 2);
+        assert!(
+            saved.transcripts[0]
+                .batch_recovery
+                .as_ref()
+                .unwrap()
+                .unresolved
+                .is_empty()
         );
     }
 

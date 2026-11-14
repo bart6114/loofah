@@ -12,6 +12,7 @@ permissions = [
     "allow-list-documented-language-codes-live",
     "allow-render-transcript-segments",
     "allow-start-transcription",
+    "allow-retry-missing-audio",
     "allow-stop-transcription",
     "allow-parse-subtitle",
     "allow-is-supported-languages-batch",

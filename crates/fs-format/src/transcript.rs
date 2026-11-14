@@ -18,6 +18,8 @@ pub struct TranscriptJson {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Type)]
 pub struct TranscriptWithData {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_recovery: Option<BatchRecovery>,
     pub id: String,
     #[serde(default, deserialize_with = "null_or_default")]
     pub user_id: String,
@@ -61,6 +63,8 @@ pub struct TranscriptJsonStats {
 
 #[derive(Debug, serde::Deserialize)]
 pub struct TranscriptStat {
+    #[serde(default)]
+    pub batch_recovery: Option<BatchRecovery>,
     pub id: String,
     #[serde(default, deserialize_with = "null_or_default")]
     pub started_at: f64,
@@ -156,4 +160,48 @@ pub struct TranscriptSpeakerHint {
     pub hint_type: String,
     #[serde(default, deserialize_with = "null_or_default")]
     pub value: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchCompletionStatus {
+    Complete,
+    Incomplete,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Type)]
+pub struct FailedAudioRange {
+    pub channel: u32,
+    pub start_sample: u64,
+    pub end_sample: u64,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Type)]
+pub struct BatchRecovery {
+    #[serde(default)]
+    pub planning_pending: bool,
+    #[serde(default)]
+    pub diarization_pending: bool,
+    #[serde(default)]
+    pub audio: crate::SessionAudio,
+    pub version: u32,
+    pub run_id: String,
+    pub source_fingerprint: String,
+    pub provider: String,
+    pub model: String,
+    pub languages: Vec<String>,
+    pub status: BatchCompletionStatus,
+    pub unresolved: Vec<FailedAudioRange>,
+    pub diarization: Vec<RecoverySpeakerSegment>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Type)]
+pub struct RecoverySpeakerSegment {
+    pub channel: u32,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub speaker_index: i32,
 }

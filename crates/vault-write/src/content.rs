@@ -1062,6 +1062,7 @@ mod tests {
             .write_transcript(
                 "s1",
                 hypr_fs_format::TranscriptWithData {
+                    batch_recovery: None,
                     id: "t1".to_string(),
                     user_id: String::new(),
                     created_at: "2026-07-24T00:00:00Z".to_string(),

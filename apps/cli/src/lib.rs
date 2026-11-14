@@ -182,7 +182,9 @@ async fn dispatch(
             )
             .await;
         }
-        cli::Command::Transcribe { id } => commands::transcribe::run(vault, &id, args.json).await?,
+        cli::Command::Transcribe { id } => {
+            return commands::transcribe::run(vault, &id, args.json).await;
+        }
         cli::Command::Mcp => mcp::serve(vault.to_path_buf(), cache.clone()).await?,
         cli::Command::Tags { command } => commands::tags::run(cache, command, args.json).await?,
     }

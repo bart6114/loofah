@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-retry-missing-audio"
+description = "Enables the retry_missing_audio command without any pre-configured scope."
+commands.allow = ["retry_missing_audio"]
+
+[[permission]]
+identifier = "deny-retry-missing-audio"
+description = "Denies the retry_missing_audio command without any pre-configured scope."
+commands.deny = ["retry_missing_audio"]

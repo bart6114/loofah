@@ -11,6 +11,7 @@ import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { AUDIO_IMPORT_COMPLETED_NOTIFICATION_KEY } from "./audio-import-notification";
 import { estimateUploadedAudioSessionCreatedAt } from "./audio-note-date";
+import { IncompleteTranscriptionError } from "./batch-status";
 import { useListener } from "./contexts";
 import { isStoppedTranscriptionError, useRunBatch } from "./useRunBatch";
 
@@ -59,10 +60,20 @@ export function AudioImportWorker() {
     const items = useAudioImport.getState().items;
     const done = items.filter((item) => item.status === "done").length;
     const failed = items.filter((item) => item.status === "failed").length;
+    const incomplete = items.filter(
+      (item) => item.status === "incomplete",
+    ).length;
     const lastImportedSessionId =
-      [...items].reverse().find((item) => item.status === "done")?.sessionId ??
-      null;
-    void announceImportCompleted(done, failed, lastImportedSessionId);
+      [...items]
+        .reverse()
+        .find((item) => item.status === "done" || item.status === "incomplete")
+        ?.sessionId ?? null;
+    void announceImportCompleted(
+      done,
+      failed,
+      incomplete,
+      lastImportedSessionId,
+    );
   }, [shouldAnnounceCompletion]);
 
   if (!activeItem) {
@@ -168,7 +179,15 @@ function ItemPipeline({
         if (!isStoppedTranscriptionError(error)) {
           handleBatchFailed(sessionId, errorMessage(error));
         }
-        useAudioImport.getState().finishItem(item.id, errorMessage(error));
+        useAudioImport
+          .getState()
+          .finishItem(
+            item.id,
+            errorMessage(error),
+            error instanceof IncompleteTranscriptionError
+              ? "incomplete"
+              : "failed",
+          );
       },
     );
   }, [
@@ -274,18 +293,21 @@ function importAudioToSession(
 async function announceImportCompleted(
   done: number,
   failed: number,
+  incomplete: number,
   lastImportedSessionId: string | null,
 ) {
-  const total = done + failed;
+  const total = done + failed + incomplete;
   const message =
-    failed > 0
-      ? `Imported ${done} of ${total} files. ${failed} failed.`
-      : done === 1
-        ? "Imported 1 file."
-        : `Imported ${done} files.`;
+    incomplete > 0
+      ? `${done} complete; ${incomplete} incomplete transcripts saved; ${failed} failed. Open a saved transcript to retry missing audio.`
+      : failed > 0
+        ? `Imported ${done} of ${total} files. ${failed} failed.`
+        : done === 1
+          ? "Imported 1 file."
+          : `Imported ${done} files.`;
 
   if (await isMainWindowVisibleAndFocused()) {
-    if (failed > 0) {
+    if (failed > 0 || incomplete > 0) {
       sonnerToast.warning("Audio import finished", { description: message });
     } else {
       sonnerToast.success("Audio import finished", { description: message });
@@ -298,7 +320,10 @@ async function announceImportCompleted(
     // one (nothing succeeded) the click reopens the import dialog instead.
     const result = await notificationCommands.showNotification({
       key: AUDIO_IMPORT_COMPLETED_NOTIFICATION_KEY,
-      title: "Audio import finished",
+      title:
+        failed > 0 || incomplete > 0
+          ? "Audio import needs attention"
+          : "Audio import finished",
       message,
       timeout: null,
       source: lastImportedSessionId

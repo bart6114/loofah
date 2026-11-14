@@ -231,6 +231,7 @@ mod tests {
         speaker_hints: Vec<TranscriptSpeakerHint>,
     ) -> TranscriptWithData {
         TranscriptWithData {
+            batch_recovery: None,
             id: id.to_string(),
             user_id: user_id.to_string(),
             created_at: String::new(),

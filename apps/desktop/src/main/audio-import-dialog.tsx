@@ -26,6 +26,7 @@ import {
   isFinishedAudioImportStatus,
   useAudioImport,
 } from "~/store/zustand/audio-import";
+import { useTabs } from "~/store/zustand/tabs";
 import { AUDIO_EXTENSIONS } from "~/stt/useUploadFile";
 
 type Candidate = {
@@ -267,6 +268,7 @@ function QueueRow({
   item: AudioImportItem;
   onRetry: (itemId: string) => void;
 }) {
+  const openCurrent = useTabs((state) => state.openCurrent);
   return (
     <div className="flex items-center gap-3 rounded-md px-2 py-1.5">
       <span className="min-w-0 flex-1 truncate text-sm">
@@ -295,6 +297,18 @@ function QueueRow({
       )}
       {item.status === "done" && (
         <CheckIcon className="text-muted-foreground size-4 shrink-0" />
+      )}
+      {item.status === "incomplete" && item.sessionId && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            openCurrent({ type: "sessions", id: item.sessionId! });
+            useAudioImport.getState().setDialogOpen(false);
+          }}
+        >
+          Incomplete transcript — open to retry
+        </Button>
       )}
       {item.status === "failed" && (
         <div className="flex min-w-0 shrink-0 items-center gap-2">

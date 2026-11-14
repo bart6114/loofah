@@ -7364,6 +7364,7 @@ dependencies = [
  "ractor",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "specta",
  "strum 0.28.0",
  "tauri-specta",
@@ -7375,6 +7376,7 @@ dependencies = [
  "transcribe-core",
  "transcribe-soniqo",
  "transcribe-whisper-local",
+ "uuid",
  "whisper-local-model",
 ]
 
@@ -7451,6 +7453,7 @@ dependencies = [
  "cli-docs",
  "dirs 6.0.0",
  "export-core",
+ "fs-format",
  "fs-sync-core",
  "hound",
  "insta",
@@ -13521,11 +13524,14 @@ name = "tauri-plugin-transcription"
 version = "0.1.0"
 dependencies = [
  "audio",
+ "chrono",
+ "fs-format",
  "language",
  "owhisper-client",
  "owhisper-interface",
  "ractor",
  "serde",
+ "serde_json",
  "specta",
  "specta-typescript",
  "storage",

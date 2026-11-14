@@ -3,6 +3,7 @@ use std::sync::{Arc, MutexGuard};
 use std::time::{Duration, Instant};
 
 use hypr_transcription_core::listener2 as core;
+use tauri::Manager;
 use tauri_specta::Event;
 use tokio::task::JoinHandle;
 
@@ -22,6 +23,84 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
     pub async fn start_transcription(
         &self,
         params: TranscriptionParams,
+    ) -> Result<(), core::Error> {
+        self.start_transcription_inner(params, None).await
+    }
+
+    pub async fn retry_missing_audio(
+        &self,
+        session_id: String,
+        run_id: String,
+    ) -> Result<(), core::Error> {
+        let store = self
+            .manager
+            .try_state::<Arc<hypr_vault_write::SessionStore>>()
+            .ok_or_else(|| core::Error::BatchError("Session store is unavailable".into()))?;
+        let transcripts = store
+            .session_transcripts(&session_id)
+            .await
+            .map_err(|e| core::Error::BatchError(e.to_string()))?;
+        let recovery = transcripts
+            .into_iter()
+            .filter_map(|t| t.batch_recovery)
+            .find(|r| r.run_id == run_id)
+            .ok_or_else(|| {
+                core::Error::BatchError(
+                    "This transcript was replaced. Transcribe the full recording again.".into(),
+                )
+            })?;
+        let directory = store.vault_base().join(
+            store
+                .session_dir(&session_id)
+                .await
+                .map_err(|e| core::Error::BatchError(e.to_string()))?,
+        );
+        let file_path = ["audio.mp3", "audio.wav", "audio.ogg"]
+            .into_iter()
+            .map(|name| directory.join(name))
+            .find(|path| path.is_file())
+            .ok_or_else(|| {
+                core::Error::BatchError(
+                    "The recording is unavailable. Restore the original audio or transcribe again."
+                        .into(),
+                )
+            })?;
+        let model = recovery
+            .model
+            .parse::<hypr_transcribe_soniqo::SoniqoModel>()
+            .map_err(|e| core::Error::BatchError(e.to_string()))?;
+        if !hypr_transcribe_soniqo::is_model_downloaded(model)
+            .map_err(|e| core::Error::BatchError(e.to_string()))?
+        {
+            return Err(core::Error::BatchError(format!(
+                "Download {} in Settings → Transcription, then retry missing audio.",
+                model.display_name()
+            )));
+        }
+        let params = TranscriptionParams {
+            session_id,
+            provider: core::BatchProvider::Soniqo,
+            file_path: file_path.to_string_lossy().into_owned(),
+            model: Some(recovery.model.clone()),
+            base_url: hypr_transcribe_soniqo::LOCAL_BASE_URL.into(),
+            api_key: String::new(),
+            languages: recovery
+                .languages
+                .iter()
+                .map(|l| l.parse::<hypr_language::Language>())
+                .collect::<Result<_, _>>()
+                .map_err(|e| core::Error::BatchError(e.to_string()))?,
+            num_speakers: None,
+            min_speakers: None,
+            max_speakers: None,
+        };
+        self.start_transcription_inner(params, Some(recovery)).await
+    }
+
+    async fn start_transcription_inner(
+        &self,
+        params: TranscriptionParams,
+        mut recovery: Option<hypr_fs_format::BatchRecovery>,
     ) -> Result<(), core::Error> {
         let state = self.manager.state::<crate::SharedState>();
         let guard = state.lock().await;
@@ -44,6 +123,41 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
                 .resolve_session_audio(&params.session_id)
                 .await
                 .map_err(|e| core::Error::BatchError(e.to_string()))?;
+            if let Some(requested) = &recovery {
+                let latest = store
+                    .session_transcripts(&params.session_id)
+                    .await
+                    .map_err(|e| core::Error::BatchError(e.to_string()))?;
+                let transcript = latest
+                    .iter()
+                    .find(|t| {
+                        t.batch_recovery
+                            .as_ref()
+                            .is_some_and(|r| r.run_id == requested.run_id)
+                    })
+                    .ok_or_else(|| {
+                        core::Error::BatchError(
+                            "This transcript was replaced. Transcribe the full recording again."
+                                .into(),
+                        )
+                    })?;
+                let plan = transcript.batch_recovery.as_ref().unwrap();
+                if transcript.words.iter().any(|word| {
+                    plan.unresolved.iter().any(|range| {
+                        let channel = if plan.audio.layout == hypr_fs_format::AudioLayout::Mixed {
+                            2.0
+                        } else {
+                            range.channel as f64
+                        };
+                        word.channel == channel
+                            && word.start_ms < range.end_sample as f64 / 16.0
+                            && word.end_ms > range.start_sample as f64 / 16.0
+                    })
+                }) {
+                    return Err(core::Error::BatchError("Text was added inside missing audio. Keep your edits or transcribe the full recording again.".into()));
+                }
+                recovery = Some(plan.clone());
+            }
         }
         let registry = self
             .manager
@@ -109,7 +223,37 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
             let control = control.clone();
             let session_id = session_id.clone();
             async move {
-                let _ = core::run_batch(runtime, batch_params).await;
+                if let Some(recovery) = recovery {
+                    match core::retry_missing_audio(
+                        runtime.clone(),
+                        session_id.clone(),
+                        batch_params.file_path,
+                        recovery,
+                    )
+                    .await
+                    {
+                        Ok(output) => core::BatchRuntime::emit(
+                            &*runtime,
+                            core::BatchEvent::BatchResponse {
+                                session_id: output.session_id,
+                                response: output.response,
+                                mode: output.mode,
+                                status: output.status,
+                                unresolved: output.unresolved,
+                            },
+                        ),
+                        Err(error) => core::BatchRuntime::emit(
+                            &*runtime,
+                            core::BatchEvent::BatchFailed {
+                                session_id: session_id.clone(),
+                                code: core::BatchErrorCode::Unknown,
+                                error,
+                            },
+                        ),
+                    }
+                } else {
+                    let _ = core::run_batch(runtime, batch_params).await;
+                }
                 finish_batch_session(&registry, &session_id, &control);
             }
         });
@@ -210,6 +354,105 @@ struct TauriBatchRuntime {
 }
 
 impl core::BatchRuntime for TauriBatchRuntime {
+    fn checkpoint<'a>(
+        &'a self,
+        output: &'a mut core::BatchRunOutput,
+    ) -> core::BatchCheckpointFuture<'a> {
+        Box::pin(async move {
+            let Some(recovery_value) = output.response.metadata.get("batch_recovery") else {
+                return Ok(());
+            };
+            let recovery: hypr_fs_format::BatchRecovery =
+                serde_json::from_value(recovery_value.clone()).map_err(|e| e.to_string())?;
+            let store = self
+                .app
+                .try_state::<Arc<hypr_vault_write::SessionStore>>()
+                .ok_or_else(|| "Session store is unavailable".to_string())?;
+            let memo_md = store
+                .read_note(&output.session_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .unwrap_or_default();
+            let mut sequence = 0;
+            let mut new_id = || {
+                sequence += 1;
+                format!("{}-{sequence}", recovery.run_id)
+            };
+            let transcript = core::transcript::transcript_from_batch_output(
+                output,
+                core::transcript::BatchTranscriptMeta {
+                    session_id: &output.session_id,
+                    user_id: "00000000-0000-0000-0000-000000000000",
+                    provider: &recovery.provider,
+                    created_at: chrono::Utc::now().to_rfc3339(),
+                    started_at_ms: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as f64,
+                    memo_md,
+                },
+                &mut new_id,
+            )?;
+            let transcript_id = transcript.id.clone();
+            if let Some(splits) = output.response.metadata.get("batch_recovery_split") {
+                let splits: Vec<(
+                    hypr_fs_format::FailedAudioRange,
+                    Vec<hypr_fs_format::FailedAudioRange>,
+                )> = serde_json::from_value(splits.clone()).map_err(|e| e.to_string())?;
+                for (original, parts) in splits {
+                    store
+                        .refine_batch_recovery_range(
+                            &output.session_id,
+                            &recovery.run_id,
+                            original,
+                            parts,
+                        )
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+
+            if let Some(resolved) = output.response.metadata.get("batch_recovery_resolved") {
+                let resolved =
+                    serde_json::from_value(resolved.clone()).map_err(|e| e.to_string())?;
+                store
+                    .merge_batch_recovery(
+                        &output.session_id,
+                        &recovery.run_id,
+                        resolved,
+                        transcript.words,
+                        transcript.speaker_hints,
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                store
+                    .update_batch_recovery_status(&output.session_id, recovery.clone())
+                    .await
+                    .map_err(|e| e.to_string())?;
+            } else {
+                store
+                    .checkpoint_batch_transcript(
+                        &output.session_id,
+                        transcript,
+                        output
+                            .response
+                            .metadata
+                            .get("batch_checkpoint_initial")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            output.response.metadata["batch_checkpoint_initial"] = serde_json::Value::Bool(false);
+            output.response.metadata.as_object_mut().unwrap().insert(
+                "persisted_transcript_id".into(),
+                serde_json::Value::String(transcript_id),
+            );
+            Ok(())
+        })
+    }
+
     fn is_cancelled(&self) -> bool {
         self.control.cancellation_token.is_cancelled()
     }

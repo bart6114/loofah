@@ -2,6 +2,8 @@ mod accumulator;
 mod audio;
 mod diarize;
 mod progressive;
+mod recovery;
+pub use recovery::retry_missing_audio;
 mod simple;
 pub mod transcript;
 
@@ -93,6 +95,8 @@ pub enum BatchRunMode {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct BatchRunOutput {
+    pub status: hypr_fs_format::BatchCompletionStatus,
+    pub unresolved: Vec<hypr_fs_format::FailedAudioRange>,
     pub session_id: String,
     pub mode: BatchRunMode,
     pub response: owhisper_interface::batch::Response,
@@ -107,7 +111,14 @@ pub async fn run_batch(
     });
 
     let session_id = params.session_id.clone();
-    let result = run_batch_inner(runtime.clone(), params).await;
+    let mut result = run_batch_inner(runtime.clone(), params).await;
+    if let Ok(output) = &mut result
+        && let Err(error) = runtime.checkpoint(output).await
+    {
+        result = Err(crate::Error::BatchError(format!(
+            "Failed to save transcription progress: {error}"
+        )));
+    }
 
     if let Err(error) = &result {
         let (code, message) = match error {
@@ -127,10 +138,14 @@ pub async fn run_batch(
             session_id: output.session_id.clone(),
             response: output.response.clone(),
             mode: output.mode,
+            status: output.status,
+            unresolved: output.unresolved.clone(),
         });
-        runtime.emit(BatchEvent::BatchCompleted {
-            session_id: output.session_id.clone(),
-        });
+        if output.status == hypr_fs_format::BatchCompletionStatus::Complete {
+            runtime.emit(BatchEvent::BatchCompleted {
+                session_id: output.session_id.clone(),
+            });
+        }
     }
 
     result
@@ -162,6 +177,26 @@ async fn run_batch_inner(
         }
         .into());
     }
+    let recovery_config = if matches!(params.provider, BatchProvider::Soniqo) {
+        let source = params.file_path.clone();
+        let fingerprint = tokio::task::spawn_blocking(move || {
+            source_audio_fingerprint(std::path::Path::new(&source))
+        })
+        .await
+        .map_err(|e| crate::Error::BatchError(e.to_string()))?
+        .map_err(crate::Error::BatchError)?;
+        Some((
+            fingerprint,
+            params.model.clone().unwrap_or_default(),
+            params
+                .languages
+                .iter()
+                .map(|l| l.bcp47_code())
+                .collect::<Vec<_>>(),
+        ))
+    } else {
+        None
+    };
     let prepared = audio::PreparedAudio::prepare(
         params.file_path.clone(),
         params.audio,
@@ -188,7 +223,58 @@ async fn run_batch_inner(
             run_progressive_batch_session(runtime, params, listen_params, diarization).await
         }
         BatchProvider::Soniqo => {
-            run_soniqo_batch(runtime, params, listen_params, diarization).await
+            let (source_fingerprint, model, languages) = recovery_config.unwrap();
+            let recovery = hypr_fs_format::BatchRecovery {
+                planning_pending: true,
+                audio: prepared.audio,
+                diarization_pending: true,
+                version: 1,
+                run_id: uuid::Uuid::new_v4().to_string(),
+                source_fingerprint,
+                provider: "soniqo".into(),
+                model,
+                languages,
+                status: hypr_fs_format::BatchCompletionStatus::Incomplete,
+                unresolved: (0..prepared.pcm.channels)
+                    .map(|channel| hypr_fs_format::FailedAudioRange {
+                        channel: channel as u32,
+                        start_sample: 0,
+                        end_sample: prepared.pcm.frames as u64,
+                        reason: "Audio planning is pending.".into(),
+                    })
+                    .collect(),
+                diarization: Vec::new(),
+            };
+            let model_type = recovery
+                .model
+                .parse::<hypr_transcribe_soniqo::SoniqoModel>()
+                .map_err(|e| crate::Error::BatchError(e.to_string()))?;
+            let mut response = hypr_transcribe_soniqo::batch_response_from_channels(
+                model_type,
+                (0..prepared.pcm.channels)
+                    .map(|_| {
+                        hypr_transcribe_soniqo::FileTranscript::new(
+                            String::new(),
+                            prepared.pcm.duration(),
+                        )
+                    })
+                    .collect(),
+            );
+            response.metadata["batch_recovery"] = serde_json::to_value(&recovery)
+                .map_err(|e| crate::Error::BatchError(e.to_string()))?;
+            response.metadata["batch_checkpoint_initial"] = serde_json::json!(true);
+            let mut initial = BatchRunOutput {
+                session_id: params.session_id.clone(),
+                mode: BatchRunMode::Direct,
+                status: recovery.status,
+                unresolved: recovery.unresolved.clone(),
+                response,
+            };
+            runtime
+                .checkpoint(&mut initial)
+                .await
+                .map_err(crate::Error::BatchError)?;
+            run_soniqo_batch(runtime, params, listen_params, diarization, recovery).await
         }
         BatchProvider::OpenAI => {
             if OpenAIAdapter::supports_progressive_batch_model(listen_params.model.as_deref()) {
@@ -217,6 +303,28 @@ async fn run_batch_inner(
     }?;
     prepared.stamp_response(&mut output.response);
     Ok(output)
+}
+
+pub fn source_audio_fingerprint(path: &std::path::Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 65536];
+    loop {
+        let len = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        if len == 0 {
+            break;
+        }
+        hash.update(&buffer[..len]);
+    }
+    Ok(format!(
+        "sha256:{}",
+        hash.finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    ))
 }
 
 fn build_listen_params(
