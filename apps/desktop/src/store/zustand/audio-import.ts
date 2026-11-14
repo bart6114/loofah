@@ -11,6 +11,7 @@ export type AudioImportStatus =
   | "preparing"
   | "importing"
   | "transcribing"
+  | "incomplete"
   | "done"
   | "failed";
 
@@ -31,7 +32,7 @@ const ACTIVE_STATUSES: AudioImportStatus[] = [
 ];
 
 export function isFinishedAudioImportStatus(status: AudioImportStatus) {
-  return status === "done" || status === "failed";
+  return status === "done" || status === "failed" || status === "incomplete";
 }
 
 interface AudioImportState {
@@ -45,7 +46,11 @@ interface AudioImportState {
   setItemSession: (itemId: string, sessionId: string) => void;
   setItemStatus: (itemId: string, status: "importing" | "transcribing") => void;
   setItemProgress: (itemId: string, percentage: number) => void;
-  finishItem: (itemId: string, error?: string | null) => void;
+  finishItem: (
+    itemId: string,
+    error?: string | null,
+    status?: "failed" | "incomplete",
+  ) => void;
   retryItem: (itemId: string) => void;
   clearFinished: () => void;
   markCompletionAnnounced: () => void;
@@ -120,14 +125,14 @@ export const useAudioImport = create<AudioImportState>((set, get) => ({
       items: updateItem(state.items, itemId, { percentage }),
     })),
 
-  finishItem: (itemId, error) =>
+  finishItem: (itemId, error, status = "failed") =>
     set((state) => ({
       activeItemId: state.activeItemId === itemId ? null : state.activeItemId,
       items: updateItem(
         state.items,
         itemId,
         error
-          ? { status: "failed", error }
+          ? { status, error }
           : { status: "done", percentage: 1, error: null },
       ),
     })),

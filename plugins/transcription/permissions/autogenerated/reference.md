@@ -15,6 +15,7 @@ Default permissions for the plugin
 - `allow-list-documented-language-codes-live`
 - `allow-render-transcript-segments`
 - `allow-start-transcription`
+- `allow-retry-missing-audio`
 - `allow-stop-transcription`
 - `allow-parse-subtitle`
 - `allow-is-supported-languages-batch`
@@ -286,6 +287,32 @@ Enables the render_transcript_segments command without any pre-configured scope.
 <td>
 
 Denies the render_transcript_segments command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`transcription:allow-retry-missing-audio`
+
+</td>
+<td>
+
+Enables the retry_missing_audio command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`transcription:deny-retry-missing-audio`
+
+</td>
+<td>
+
+Denies the retry_missing_audio command without any pre-configured scope.
 
 </td>
 </tr>

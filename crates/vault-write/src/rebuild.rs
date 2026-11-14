@@ -755,6 +755,7 @@ mod tests {
 
     fn transcript(id: &str, word_text: &str) -> TranscriptWithData {
         TranscriptWithData {
+            batch_recovery: None,
             id: id.to_string(),
             user_id: String::new(),
             created_at: "2026-07-24T00:00:00Z".to_string(),

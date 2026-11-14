@@ -368,6 +368,65 @@ describe("runBatchSession", () => {
     expect(showNotificationMock).not.toHaveBeenCalled();
   });
 
+  test.each(["incomplete", "failed", "cancelled"])(
+    "never reports saved %s results as complete",
+    async (status) => {
+      isFocusedMock.mockResolvedValue(false);
+      const handleBatchResponse = vi.fn();
+      const handleBatchFailed = vi.fn();
+      let deliver: (event: unknown) => void = () => {};
+      listenMock.mockImplementation(async (handler) => {
+        deliver = handler;
+        return vi.fn();
+      });
+      startTranscriptionMock.mockImplementation(async () => {
+        deliver({
+          payload: {
+            type: "completed",
+            session_id: "session-1",
+            mode: "direct",
+            response: {
+              metadata: {
+                persisted_transcript_id: "saved-transcript",
+                batch_recovery: { status },
+              },
+              results: { channels: [] },
+            },
+          },
+        });
+        return { status: "ok", data: null };
+      });
+      const store = {
+        batch: {},
+        batchPreview: {},
+        batchPersist: {},
+        handleBatchStarted: vi.fn(),
+        handleBatchResponse,
+        handleBatchCompleted: vi.fn(),
+        clearBatchPersist: vi.fn(),
+        clearBatchSession: vi.fn(),
+        handleBatchResponseStreamed: vi.fn(),
+        handleBatchFailed,
+        handleBatchStopped: vi.fn(),
+        updateBatchProgress: vi.fn(),
+        setBatchPersist: vi.fn(),
+      };
+      await expect(
+        runBatchSession(() => store, "session-1", {
+          session_id: "session-1",
+          provider: "soniqo",
+          file_path: "/tmp/audio.wav",
+          base_url: "",
+          api_key: "",
+        }),
+      ).rejects.toThrow("Incomplete transcript");
+      expect(handleBatchResponse).not.toHaveBeenCalled();
+      expect(store.handleBatchCompleted).not.toHaveBeenCalled();
+      expect(showNotificationMock).not.toHaveBeenCalled();
+      expect(handleBatchFailed).toHaveBeenCalled();
+    },
+  );
+
   test("shows a completion notification when the window is not focused", async () => {
     isFocusedMock.mockResolvedValue(false);
 

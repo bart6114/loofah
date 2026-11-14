@@ -127,6 +127,7 @@ pub struct TranscriptSummary {
 
 #[derive(Debug, Default, Clone, PartialEq, serde::Serialize, specta::Type)]
 pub struct SessionTranscriptMetadata {
+    pub batch_recoveries: Vec<hypr_fs_format::BatchRecovery>,
     pub speaker_labels: Vec<String>,
     pub started_at: Option<f64>,
     pub ended_at: Option<f64>,
@@ -984,6 +985,7 @@ mod tests {
         words: Vec<hypr_fs_format::TranscriptWord>,
     ) -> TranscriptWithData {
         TranscriptWithData {
+            batch_recovery: None,
             id: id.to_string(),
             user_id: String::new(),
             created_at: "2026-07-24T00:00:00Z".to_string(),

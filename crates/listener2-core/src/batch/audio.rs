@@ -202,6 +202,15 @@ pub(super) struct PreparedRuntime {
     pub prepared: Arc<PreparedAudio>,
 }
 impl BatchRuntime for PreparedRuntime {
+    fn checkpoint<'a>(
+        &'a self,
+        output: &'a mut crate::BatchRunOutput,
+    ) -> crate::BatchCheckpointFuture<'a> {
+        Box::pin(async move {
+            self.prepared.stamp_response(&mut output.response);
+            self.inner.checkpoint(output).await
+        })
+    }
     fn is_cancelled(&self) -> bool {
         self.inner.is_cancelled()
     }

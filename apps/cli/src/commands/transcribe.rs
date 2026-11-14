@@ -19,7 +19,7 @@ const DEFAULT_USER_ID: &str = "00000000-0000-0000-0000-000000000000";
 /// order.
 const AUDIO_FILE_NAMES: [&str; 3] = ["audio.mp3", "audio.wav", "audio.ogg"];
 
-pub async fn run(vault: &Path, id: &str, json: bool) -> Result<()> {
+pub async fn run(vault: &Path, id: &str, json: bool) -> Result<u8> {
     let store = SessionStore::new(vault.to_path_buf());
     let outcome = transcribe_session(vault, &store, id).await?;
 
@@ -31,6 +31,8 @@ pub async fn run(vault: &Path, id: &str, json: bool) -> Result<()> {
                 "transcript": {
                     "id": outcome.transcript_id,
                     "words": outcome.words,
+                    "status": outcome.status,
+                    "recovery": outcome.recovery,
                 },
             }),
             None,
@@ -39,12 +41,20 @@ pub async fn run(vault: &Path, id: &str, json: bool) -> Result<()> {
         outcome.transcript_id.clone()
     };
     output::emit(&rendered);
-    Ok(())
+    Ok(
+        if outcome.status == hypr_fs_format::BatchCompletionStatus::Complete {
+            0
+        } else {
+            1
+        },
+    )
 }
 
 pub(crate) struct TranscribeOutcome {
     pub transcript_id: String,
     pub words: usize,
+    pub status: hypr_fs_format::BatchCompletionStatus,
+    pub recovery: Option<hypr_fs_format::BatchRecovery>,
 }
 
 /// Transcribes the session's audio with the configured on-device model and
@@ -109,13 +119,50 @@ pub(crate) async fn transcribe_session(
         max_speakers: None,
     };
 
-    let output = run_batch(Arc::new(CliBatchRuntime { _audio_guard }), params)
+    let prior_runs: std::collections::HashSet<_> = store
+        .session_transcripts(session_id)
         .await
-        .map_err(|error| Error::operation(ACTION, error.to_string()))?;
+        .map_err(|error| Error::operation(ACTION, error.to_string()))?
+        .into_iter()
+        .filter_map(|t| t.batch_recovery.map(|r| r.run_id))
+        .collect();
+    crate::output::track_write(session_id)?;
+    let result = run_batch(
+        Arc::new(CliBatchRuntime {
+            _audio_guard,
+            store: store.clone(),
+        }),
+        params,
+    )
+    .await;
+    let output = match result {
+        Ok(output) => output,
+        Err(error) => {
+            let saved = store
+                .session_transcripts(session_id)
+                .await
+                .map_err(|read_error| Error::operation(ACTION, read_error.to_string()))?;
+            if let Some(transcript) = saved.into_iter().find(|t| {
+                t.batch_recovery
+                    .as_ref()
+                    .is_some_and(|r| !prior_runs.contains(&r.run_id) && !r.unresolved.is_empty())
+            }) {
+                eprintln!("transcription stopped after saving progress: {error}");
+                let recovery = transcript.batch_recovery.unwrap();
+                return Ok(TranscribeOutcome {
+                    transcript_id: transcript.id,
+                    words: transcript.words.len(),
+                    status: recovery.status,
+                    recovery: Some(recovery),
+                });
+            }
+            return Err(Error::operation(ACTION, error.to_string()));
+        }
+    };
 
     let mut new_id = || uuid::Uuid::new_v4().to_string();
-    let transcript = transcript::transcript_from_batch_response(
-        &output.response,
+    let transcript = transcript::transcript_from_batch_output(
+        &output,
         transcript::BatchTranscriptMeta {
             session_id,
             user_id: DEFAULT_USER_ID,
@@ -129,16 +176,18 @@ pub(crate) async fn transcribe_session(
         },
         &mut new_id,
     )
-    .ok_or_else(|| Error::operation(ACTION, "No speech was detected in the audio."))?;
+    .map_err(|error| Error::operation(ACTION, error))?;
 
     let outcome = TranscribeOutcome {
         transcript_id: transcript.id.clone(),
         words: transcript.words.len(),
+        status: output.status,
+        recovery: transcript.batch_recovery.clone(),
     };
 
     crate::output::track_write(session_id)?;
     store
-        .replace_session_transcripts(session_id, transcript)
+        .checkpoint_batch_transcript(session_id, transcript, false)
         .await
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
 
@@ -260,9 +309,50 @@ pub(crate) fn find_session_audio(session_dir: &Path) -> Option<PathBuf> {
 /// not); the final response is consumed from `run_batch`'s return value.
 struct CliBatchRuntime {
     _audio_guard: tokio::sync::OwnedMutexGuard<()>,
+    store: SessionStore,
 }
 
 impl BatchRuntime for CliBatchRuntime {
+    fn checkpoint<'a>(
+        &'a self,
+        output: &'a mut hypr_listener2_core::BatchRunOutput,
+    ) -> hypr_listener2_core::BatchCheckpointFuture<'a> {
+        Box::pin(async move {
+            if output.response.metadata.get("batch_recovery").is_none() {
+                return Ok(());
+            }
+            let mut new_id = || uuid::Uuid::new_v4().to_string();
+            let transcript = transcript::transcript_from_batch_output(
+                output,
+                transcript::BatchTranscriptMeta {
+                    session_id: &output.session_id,
+                    user_id: DEFAULT_USER_ID,
+                    provider: "soniqo",
+                    created_at: chrono::Utc::now()
+                        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                    started_at_ms: chrono::Utc::now().timestamp_millis() as f64,
+                    memo_md: String::new(),
+                },
+                &mut new_id,
+            )?;
+            self.store
+                .checkpoint_batch_transcript(
+                    &output.session_id,
+                    transcript,
+                    output
+                        .response
+                        .metadata
+                        .get("batch_checkpoint_initial")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            output.response.metadata["batch_checkpoint_initial"] = serde_json::Value::Bool(false);
+            Ok(())
+        })
+    }
+
     fn emit(&self, event: BatchEvent) {
         match event {
             BatchEvent::BatchStarted { .. } => eprintln!("transcribing audio..."),

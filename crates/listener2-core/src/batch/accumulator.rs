@@ -119,6 +119,8 @@ impl StreamBatchAccumulator {
             return BatchRunOutput {
                 session_id: session_id.to_string(),
                 mode: BatchRunMode::Streamed,
+                status: hypr_fs_format::BatchCompletionStatus::Complete,
+                unresolved: Vec::new(),
                 response,
             };
         }
@@ -170,6 +172,8 @@ impl StreamBatchAccumulator {
         BatchRunOutput {
             session_id: session_id.to_string(),
             mode: BatchRunMode::Streamed,
+            status: hypr_fs_format::BatchCompletionStatus::Complete,
+            unresolved: Vec::new(),
             response: owhisper_interface::batch::Response {
                 metadata: serde_json::json!({ "duration": duration }),
                 results: owhisper_interface::batch::Results { channels },

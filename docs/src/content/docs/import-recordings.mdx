@@ -54,3 +54,13 @@ See [Transcription and AI](/ai-setup) for model setup or [Troubleshooting](/trou
 Each imported recording becomes a session with its own transcript. Add your notes, review detected speakers, and generate a summary if you configured Intelligence. A hosted Intelligence provider receives the context needed for that summary; use a local provider for an [offline workflow](/offline).
 
 [Export the session](/notes#export-a-session) as Markdown, text, PDF, or Org from the desktop app. Importing a transcript file creates timed text, not a copy of the source app’s folders, comments, or sharing permissions.
+
+## Incomplete transcripts
+
+If a chunk fails, Loofah keeps the recovered text and shows **Incomplete transcript**, with the missing channels and time ranges. Choose **Retry missing audio** to process only those ranges with the original model and spoken languages. Keep reading or editing the recovered text while retry runs.
+
+Progress is saved after each chunk. After restarting Loofah, open the meeting to retry; recovery never starts automatically. Stopping recovery keeps the saved text and remaining work. Download the original model in **Settings → Transcription** if it is missing.
+
+If the recording or transcript was replaced, or you added text inside a missing range, Loofah explains the conflict. Use **Transcribe full recording again** to start over. Incomplete transcription does not show a completion notification or generate an automatic summary.
+
+With `loof import --transcribe` or `loof transcribe`, partial text is saved and the command exits nonzero. JSON output includes the saved transcript ID, completion status, and recovery plan. Retry missing audio from the desktop app.

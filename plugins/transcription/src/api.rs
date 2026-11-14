@@ -188,6 +188,8 @@ pub struct TranscriptionParams {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct TranscriptionOutput {
+    pub status: hypr_fs_format::BatchCompletionStatus,
+    pub unresolved: Vec<hypr_fs_format::FailedAudioRange>,
     pub session_id: String,
     pub mode: TranscriptionRunMode,
     pub response: owhisper_interface::batch::Response,
@@ -208,6 +210,8 @@ pub enum TranscriptionEvent {
         session_id: String,
         response: owhisper_interface::batch::Response,
         mode: TranscriptionRunMode,
+        status: hypr_fs_format::BatchCompletionStatus,
+        unresolved: Vec<hypr_fs_format::FailedAudioRange>,
     },
     #[serde(rename = "stopped")]
     Stopped { session_id: String },
@@ -632,6 +636,8 @@ impl From<listener2::BatchRunOutput> for TranscriptionOutput {
         Self {
             session_id: value.session_id,
             mode: value.mode,
+            status: value.status,
+            unresolved: value.unresolved,
             response: value.response,
         }
     }
@@ -648,10 +654,14 @@ impl From<listener2::BatchEvent> for TranscriptionEvent {
                 session_id,
                 response,
                 mode,
+                status,
+                unresolved,
             } => Self::Completed {
                 session_id,
                 response,
                 mode,
+                status,
+                unresolved,
             },
             listener2::BatchEvent::BatchResponseStreamed { session_id, event } => {
                 Self::Progress { session_id, event }

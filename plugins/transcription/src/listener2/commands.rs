@@ -77,3 +77,16 @@ pub async fn list_documented_language_codes_batch<R: tauri::Runtime>(
 ) -> Result<Vec<String>, String> {
     Ok(core::list_documented_language_codes_batch())
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn retry_missing_audio<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    run_id: String,
+) -> Result<(), String> {
+    app.listener2()
+        .retry_missing_audio(session_id, run_id)
+        .await
+        .map_err(|e| e.to_string())
+}

@@ -16,6 +16,7 @@ tempfile = { workspace = true }
 
 [dependencies]
 hypr-audio = { workspace = true }
+hypr-fs-format = { workspace = true }
 hypr-language = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true }
@@ -37,7 +38,9 @@ tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 
 ractor = { workspace = true, features = ["async-trait"] }
 
+chrono = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

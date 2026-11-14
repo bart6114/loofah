@@ -10,6 +10,7 @@ const COMMANDS: &[&str] = &[
     "list_documented_language_codes_live",
     "render_transcript_segments",
     "start_transcription",
+    "retry_missing_audio",
     "stop_transcription",
     "parse_subtitle",
     "is_supported_languages_batch",

@@ -17,6 +17,7 @@ import {
 
 import { isActiveAudioImportSession } from "~/store/zustand/audio-import";
 import { createBatchCompletedNotificationKey } from "~/stt/batch-completed-notification";
+import { IncompleteTranscriptionError } from "~/stt/batch-status";
 
 type BatchStore = BatchActions & BatchState;
 
@@ -127,6 +128,7 @@ export const runBatchSession = async <T extends BatchStore>(
   const resolveSuccess = (
     output: {
       response: Parameters<BatchStore["handleBatchResponse"]>[1];
+      persisted?: boolean;
     },
     resolve: () => void,
     reject: (reason?: unknown) => void,
@@ -138,7 +140,9 @@ export const runBatchSession = async <T extends BatchStore>(
     settled = true;
 
     try {
-      const handled = get().handleBatchResponse(sessionId, output.response);
+      const handled =
+        output.persisted ||
+        get().handleBatchResponse(sessionId, output.response);
       if (handled === false) {
         throw new Error(EMPTY_BATCH_TRANSCRIPT_ERROR);
       }
@@ -211,9 +215,27 @@ export const runBatchSession = async <T extends BatchStore>(
         }
 
         if (payload.type === "completed") {
+          const metadata = payload.response.metadata;
+          const saved =
+            metadata && typeof metadata === "object" && !Array.isArray(metadata)
+              ? metadata
+              : null;
+          const recovery = saved?.batch_recovery;
+          const recoveryStatus =
+            payload.status ??
+            (recovery &&
+            typeof recovery === "object" &&
+            !Array.isArray(recovery)
+              ? recovery.status
+              : undefined);
+          if (recoveryStatus && recoveryStatus !== "complete") {
+            rejectFailure(new IncompleteTranscriptionError(), reject);
+            return;
+          }
           resolveSuccess(
             {
               response: payload.response,
+              persisted: typeof saved?.persisted_transcript_id === "string",
             },
             resolve,
             reject,
