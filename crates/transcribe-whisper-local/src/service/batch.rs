@@ -249,17 +249,23 @@ fn transcribe_source(
     let packing_started = std::time::Instant::now();
     let channel_chunks = raw_chunks
         .iter()
-        .map(|chunks| {
-            let packed =
-                super::packing::pack_ranges(pcm.frames, chunks, super::packing::gap_override());
+        .enumerate()
+        .map(|(channel, chunks)| {
+            let mut reader = pcm.reader()?;
+            let packed = super::packing::pack_ranges(
+                pcm.frames,
+                chunks,
+                super::packing::gap_override(),
+                |range| reader.channel(channel, range),
+            )?;
             tracing::info!(
                 vad_windows = chunks.len(),
                 inference_windows = packed.len(),
                 "whisper_packing"
             );
-            packed
+            Ok::<_, crate::Error>(packed)
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, _>>()?;
     let packing_ms = packing_started.elapsed().as_millis();
     drop(raw_chunks);
     let resolved_until = channel_chunks

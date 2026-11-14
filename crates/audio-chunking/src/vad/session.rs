@@ -224,34 +224,36 @@ impl VadSession {
         audio_frame: &[f32],
     ) -> Result<Vec<VadTransition>, crate::Error> {
         self.observed_speech.clear();
-        self.retained_audio.extend_from_slice(audio_frame);
-
         let mut transitions = Vec::new();
-
-        while self.session_end_sample().saturating_sub(self.cursor_sample) >= CHUNK_SIZE_16KHZ {
-            let chunk_start = self.absolute_to_index(self.cursor_sample);
-            let chunk =
-                ArrayView1::from(&self.retained_audio[chunk_start..chunk_start + CHUNK_SIZE_16KHZ]);
-
-            let prob = self
-                .silero
-                .process_chunk(&chunk, 16000)
-                .map_err(|e| crate::Error::ProcessingFailed(e.to_string()))?;
-            self.last_prob = prob;
-            if self.config.max_chunk_samples.is_some()
-                && prob >= self.config.positive_speech_threshold
-            {
-                self.observed_speech.extend_from_slice(
+        for input in audio_frame.chunks(CHUNK_SIZE_16KHZ) {
+            self.retained_audio.extend_from_slice(input);
+            while self.session_end_sample().saturating_sub(self.cursor_sample) >= CHUNK_SIZE_16KHZ {
+                let chunk_start = self.absolute_to_index(self.cursor_sample);
+                let chunk = ArrayView1::from(
                     &self.retained_audio[chunk_start..chunk_start + CHUNK_SIZE_16KHZ],
                 );
-            }
-            self.cursor_sample += CHUNK_SIZE_16KHZ;
 
-            if let Some(t) = self.advance(prob) {
-                transitions.push(t);
+                let prob = self
+                    .silero
+                    .process_chunk(&chunk, 16000)
+                    .map_err(|e| crate::Error::ProcessingFailed(e.to_string()))?;
+                self.last_prob = prob;
+                if self.config.max_chunk_samples.is_some()
+                    && prob >= self.config.positive_speech_threshold
+                {
+                    self.observed_speech.extend_from_slice(
+                        &self.retained_audio[chunk_start..chunk_start + CHUNK_SIZE_16KHZ],
+                    );
+                }
+                self.cursor_sample += CHUNK_SIZE_16KHZ;
+
+                if let Some(t) = self.advance(prob) {
+                    transitions.push(t);
+                }
             }
+
+            self.trim_buffer();
         }
-
         self.trim_buffer();
         Ok(transitions)
     }
@@ -270,18 +272,29 @@ impl VadSession {
         } = self.state
         {
             let end_sample = self.session_end_sample();
-            let mut start = start_sample;
-            while start < end_sample {
-                let end = self
-                    .config
-                    .max_chunk_samples
-                    .map_or(end_sample, |max| end_sample.min(start + max));
+            let ranges = if let Some(max) = self.config.max_chunk_samples {
+                crate::split_audio_range(
+                    start_sample..end_sample,
+                    max,
+                    SAMPLE_RATE as u32,
+                    |range| {
+                        Ok::<_, std::convert::Infallible>(
+                            self.retained_audio[self.absolute_to_index(range.start)
+                                ..self.absolute_to_index(range.end)]
+                                .to_vec(),
+                        )
+                    },
+                )
+                .unwrap()
+            } else {
+                vec![start_sample..end_sample]
+            };
+            for range in ranges {
                 transitions.push(self.speech_end_transition(
-                    start,
-                    end,
-                    speech_samples.min(end - start),
+                    range.start,
+                    range.end,
+                    speech_samples.min(range.len()),
                 ));
-                start = end;
             }
         }
 
@@ -362,12 +375,24 @@ impl VadSession {
                 }
 
                 if confirmed
+                    && self.silent_samples < redemption_samples
                     && self
                         .config
                         .max_chunk_samples
                         .is_some_and(|max| self.cursor_sample - start_sample >= max)
                 {
-                    let end = start_sample + self.config.max_chunk_samples.unwrap();
+                    let max = self.config.max_chunk_samples.unwrap();
+                    let retained = (SAMPLE_RATE / 2).min(max / 2);
+                    let proposed = start_sample + max - retained;
+                    let window_start = start_sample.max(proposed.saturating_sub(4 * SAMPLE_RATE));
+                    let end = crate::pause_boundary(
+                        &self.retained_audio[self.absolute_to_index(window_start)
+                            ..self.absolute_to_index(proposed)],
+                        window_start,
+                        proposed,
+                        start_sample + retained,
+                        SAMPLE_RATE as u32,
+                    );
                     let transition = self.speech_end_transition(start_sample, end, speech_samples);
                     self.state = VadState::Speech {
                         start_sample: end,
@@ -378,7 +403,15 @@ impl VadSession {
                 }
 
                 if confirmed && self.silent_samples >= redemption_samples {
-                    let speech_end_sample = self.cursor_sample.saturating_sub(self.silent_samples);
+                    let speech_end_sample = self
+                        .cursor_sample
+                        .saturating_sub(self.silent_samples)
+                        .max(start_sample);
+                    if speech_end_sample == start_sample {
+                        self.reset_to_silence();
+                        self.trim_buffer();
+                        return None;
+                    }
                     let transition = self.speech_end_transition(
                         start_sample,
                         speech_end_sample,
@@ -442,7 +475,8 @@ mod tests {
                 _ => 0,
             })
             .collect();
-        assert_eq!(lengths, [160000, 10]);
+        assert_eq!(lengths, [152010, 8000]);
+        assert!(session.finish(&[]).unwrap().is_empty());
     }
 
     #[test]
@@ -462,6 +496,9 @@ mod tests {
             session.retained_audio.extend(std::iter::repeat_n(1.0, 512));
             session.cursor_sample += 512;
             if let Some(transition) = session.advance(1.0) {
+                if let VadTransition::SpeechEnd { sample_end, .. } = &transition {
+                    assert!(session.cursor_sample - sample_end >= 8000);
+                }
                 output.push(transition);
             }
             session.trim_buffer();
@@ -484,6 +521,52 @@ mod tests {
             }
         }
         assert_eq!(cursor, 512123);
+    }
+
+    #[test]
+    fn live_forced_cut_selects_a_pause_and_flushes_the_retained_tail_once() {
+        let mut session = VadSession::new(VadChunkerConfig {
+            max_chunk_samples: Some(160000),
+            ..Default::default()
+        })
+        .unwrap();
+        let mut audio = vec![1.0; 160000];
+        audio[128000..131200].fill(0.0);
+        session.retained_audio = audio.clone();
+        session.cursor_sample = audio.len();
+        session.state = VadState::Speech {
+            start_sample: 0,
+            confirmed: true,
+            speech_samples: 159488,
+        };
+        let first = session.advance(1.0).unwrap();
+        let VadTransition::SpeechEnd {
+            sample_end,
+            samples,
+            ..
+        } = first
+        else {
+            panic!("forced speech cut");
+        };
+        assert_eq!(sample_end, 129600);
+        assert_eq!(samples, audio[..129600]);
+        session.trim_buffer();
+        assert_eq!(session.retained_audio, audio[129600..]);
+        let tail = session.finish(&[]).unwrap();
+        assert_eq!(tail.len(), 1);
+        let VadTransition::SpeechEnd {
+            sample_start,
+            sample_end,
+            samples,
+            ..
+        } = &tail[0]
+        else {
+            panic!("retained tail");
+        };
+        assert_eq!(*sample_start, 129600);
+        assert_eq!(*sample_end, 160000);
+        assert_eq!(samples, &audio[129600..]);
+        assert!(session.finish(&[]).unwrap().is_empty());
     }
 
     #[test]

@@ -27,18 +27,30 @@ where
     let mut normalized = Vec::new();
 
     for chunk in chunks {
-        if chunk.samples.len() <= MAX_CHUNK_SAMPLES {
-            normalized.push(chunk);
-            continue;
-        }
-
-        for (index, window) in chunk.samples.chunks(MAX_CHUNK_SAMPLES).enumerate() {
-            let sample_start = chunk.sample_start + index * MAX_CHUNK_SAMPLES;
-            let sample_end = sample_start + window.len();
+        let ranges = hypr_audio_chunking::split_audio_range(
+            chunk.sample_start..chunk.sample_end,
+            MAX_CHUNK_SAMPLES,
+            TARGET_SAMPLE_RATE,
+            |range| {
+                Ok::<_, C::Error>(
+                    samples
+                        .get(range.clone())
+                        .unwrap_or_else(|| {
+                            &chunk.samples
+                                [range.start - chunk.sample_start..range.end - chunk.sample_start]
+                        })
+                        .to_vec(),
+                )
+            },
+        )?;
+        for range in ranges {
+            let audio = samples.get(range.clone()).unwrap_or_else(|| {
+                &chunk.samples[range.start - chunk.sample_start..range.end - chunk.sample_start]
+            });
             normalized.push(AudioChunk {
-                samples: window.to_vec(),
-                sample_start,
-                sample_end,
+                samples: audio.to_vec(),
+                sample_start: range.start,
+                sample_end: range.end,
             });
         }
     }
@@ -107,6 +119,76 @@ mod tests {
             pcm.duration(),
             ranges.len()
         );
+    }
+
+    #[test]
+    fn file_and_memory_splits_agree_for_pauses_and_unequal_channels() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut writer = hound::WavWriter::create(
+            file.path(),
+            hound::WavSpec {
+                channels: 2,
+                sample_rate: TARGET_SAMPLE_RATE,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        let mut channels = [Vec::new(), Vec::new()];
+        for index in 0..40 * 16000 {
+            for (channel, samples) in channels.iter_mut().enumerate() {
+                let quiet = if channel == 0 {
+                    (22 * 16000..23 * 16000).contains(&index)
+                } else {
+                    (23 * 16000..23 * 16000 + 3200).contains(&index)
+                };
+                let sample = if quiet {
+                    0.01 + index as f32 * 1e-9
+                } else {
+                    1.0 + index as f32 / 640000.0
+                };
+                let sample = if channel == 0 { sample } else { -sample };
+                writer.write_sample(sample).unwrap();
+                samples.push(sample);
+            }
+        }
+        writer.finalize().unwrap();
+        let pcm = hypr_audio_utils::PcmDescriptor::open(file.path()).unwrap();
+        let mut cuts = Vec::new();
+        for (channel, samples) in channels.iter().enumerate() {
+            let selected = if channel == 0 {
+                123..samples.len() - 17
+            } else {
+                5000..30 * 16000
+            };
+            let memory = hypr_audio_chunking::split_audio_range(
+                selected.clone(),
+                MAX_CHUNK_SAMPLES,
+                TARGET_SAMPLE_RATE,
+                |range| Ok::<_, std::io::Error>(samples[range].to_vec()),
+            )
+            .unwrap();
+            let mut reader = pcm.reader().unwrap();
+            let disk = hypr_audio_chunking::split_audio_range(
+                selected.clone(),
+                MAX_CHUNK_SAMPLES,
+                TARGET_SAMPLE_RATE,
+                |range| {
+                    assert!(range.len() <= 4 * TARGET_SAMPLE_RATE as usize);
+                    reader.channel(channel, range)
+                },
+            )
+            .unwrap();
+            assert_eq!(memory, disk);
+            assert_eq!(disk.len(), 2);
+            let recovered: Vec<_> = disk
+                .iter()
+                .flat_map(|range| reader.channel(channel, range.clone()).unwrap())
+                .collect();
+            assert_eq!(recovered, samples[selected]);
+            cuts.push(disk[0].end);
+        }
+        assert_ne!(cuts[0], cuts[1]);
     }
 
     struct FakeChunker {
@@ -220,17 +302,6 @@ where
     let mut chunker =
         hypr_audio_chunking::LiveSpeechChunker::ranges(DEFAULT_SPEECH_REDEMPTION_TIME)?;
     let mut ranges = Vec::new();
-    let mut retain = |chunks: Vec<AudioChunk>| {
-        for chunk in chunks {
-            for start in (chunk.sample_start..chunk.sample_end).step_by(MAX_CHUNK_SAMPLES) {
-                ranges.push(AudioChunk {
-                    sample_start: start,
-                    sample_end: (start + MAX_CHUNK_SAMPLES).min(chunk.sample_end),
-                    samples: Vec::new(),
-                });
-            }
-        }
-    };
     for start in (0..pcm.frames).step_by(hypr_audio_utils::PCM_BLOCK_FRAMES) {
         if cancelled() {
             return Err(hypr_audio_utils::Error::Io(std::io::Error::new(
@@ -243,8 +314,23 @@ where
             channel,
             start..(start + hypr_audio_utils::PCM_BLOCK_FRAMES).min(pcm.frames),
         )?;
-        retain(chunker.push(&samples)?);
+        ranges.extend(chunker.push(&samples)?);
     }
-    retain(chunker.finish()?);
-    Ok(ranges)
+    ranges.extend(chunker.finish()?);
+    let mut normalized = Vec::new();
+    for chunk in ranges {
+        for range in hypr_audio_chunking::split_audio_range(
+            chunk.sample_start..chunk.sample_end,
+            MAX_CHUNK_SAMPLES,
+            TARGET_SAMPLE_RATE,
+            |window| reader.channel(channel, window),
+        )? {
+            normalized.push(AudioChunk {
+                sample_start: range.start,
+                sample_end: range.end,
+                samples: Vec::new(),
+            });
+        }
+    }
+    Ok(normalized)
 }

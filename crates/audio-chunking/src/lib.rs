@@ -1,4 +1,6 @@
+mod boundary;
 mod chunk;
+pub use boundary::{pause_boundary, split_audio_range};
 #[cfg(feature = "vad")]
 mod error;
 #[cfg(feature = "vad")]

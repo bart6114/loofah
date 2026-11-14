@@ -14599,8 +14599,10 @@ dependencies = [
  "audio-utils",
  "axum",
  "futures-util",
+ "hound",
  "owhisper-interface",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]

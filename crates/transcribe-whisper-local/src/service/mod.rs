@@ -1,4 +1,6 @@
 mod batch;
+#[cfg(test)]
+mod boundary_qa;
 mod language;
 mod live_input;
 mod live_worker;
@@ -109,7 +111,11 @@ pub(crate) fn transcribe_chunk(
     samples: &[f32],
     chunk_start_sec: f64,
 ) -> Result<Vec<Segment>, crate::Error> {
-    let raw_segments = model.transcribe(samples)?;
+    if samples.is_empty() {
+        return Ok(Vec::new());
+    }
+    let inference = inference_audio(samples);
+    let raw_segments = model.transcribe(&inference)?;
     let chunk_duration_sec = samples.len() as f64 / TARGET_SAMPLE_RATE as f64;
 
     Ok(build_chunk_segments(
@@ -117,6 +123,15 @@ pub(crate) fn transcribe_chunk(
         chunk_start_sec,
         chunk_duration_sec,
     ))
+}
+
+fn inference_audio(samples: &[f32]) -> std::borrow::Cow<'_, [f32]> {
+    if samples.len() >= hypr_whisper_local::MIN_TRANSCRIBE_SAMPLES || samples.is_empty() {
+        return std::borrow::Cow::Borrowed(samples);
+    }
+    let mut padded = samples.to_vec();
+    padded.resize(hypr_whisper_local::MIN_TRANSCRIBE_SAMPLES, 0.0);
+    std::borrow::Cow::Owned(padded)
 }
 
 fn build_chunk_segments(
@@ -202,6 +217,39 @@ mod tests {
         let params = parse_listen_params("language=en").unwrap();
         assert_eq!(params.channels, 1);
         assert_eq!(params.sample_rate, TARGET_SAMPLE_RATE);
+    }
+
+    #[test]
+    fn pads_only_short_inference_inputs_and_clamps_to_real_duration() {
+        let audio = vec![0.2; 800];
+        let inference = inference_audio(&audio);
+        assert_eq!(inference.len(), hypr_whisper_local::MIN_TRANSCRIBE_SAMPLES);
+        assert_eq!(&inference[..800], &audio);
+        assert!(inference[800..].iter().all(|sample| *sample == 0.0));
+        assert_eq!(audio.len(), 800);
+        let segments = build_chunk_segments(
+            vec![
+                hypr_whisper_local::Segment {
+                    text: "tail".into(),
+                    start: 0.0,
+                    end: 0.1,
+                    ..Default::default()
+                },
+                hypr_whisper_local::Segment {
+                    text: "padding".into(),
+                    start: 0.08,
+                    end: 0.1,
+                    ..Default::default()
+                },
+            ],
+            3.0,
+            0.05,
+        );
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[1].start, 3.05);
+        assert_eq!(segments[1].duration, 0.0);
+        assert_eq!(segments[0].start, 3.0);
+        assert_eq!(segments[0].duration, 0.05);
     }
 
     #[test]
