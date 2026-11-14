@@ -924,6 +924,27 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
+export type AudioLayout = "mixed" | "mic_system";
+export type AudioSource = "import" | "recording" | "unknown";
+export type BatchCompletionStatus =
+  | "complete"
+  | "incomplete"
+  | "failed"
+  | "cancelled";
+export type BatchRecovery = {
+  planning_pending?: boolean;
+  diarization_pending?: boolean;
+  audio?: SessionAudio;
+  version: number;
+  run_id: string;
+  source_fingerprint: string;
+  provider: string;
+  model: string;
+  languages: string[];
+  status: BatchCompletionStatus;
+  unresolved: FailedAudioRange[];
+  diarization: RecoverySpeakerSegment[];
+};
 export type ChatgptAccount = { email: string; planType: string };
 export type ChatgptError = {
   code: string;
@@ -1001,6 +1022,12 @@ export type EnhancedDocPatch = {
   expected_title?: string | null;
   expected_markdown?: string | null;
 };
+export type FailedAudioRange = {
+  channel: number;
+  start_sample: number;
+  end_sample: number;
+  reason: string;
+};
 /**
  * Emitted (coalesced) to every webview as the `index-changed` event.
  */
@@ -1059,7 +1086,14 @@ export type RebuildReport = {
   ghost_sessions: string[];
   errors: string[];
 };
+export type RecoverySpeakerSegment = {
+  channel: number;
+  start_ms: number;
+  end_ms: number;
+  speaker_index: number;
+};
 export type ScoredTagSuggestion = { name: string; confidence: number };
+export type SessionAudio = { source: AudioSource; layout: AudioLayout };
 /**
  * The slim `session_list_headers` row -- exactly what the always-mounted list
  * subscribers (timeline, summaries, tags, float) consume.
@@ -1124,6 +1158,7 @@ export type SessionMetaPatch = {
  */
 export type SessionRecord = { meta: SessionMeta; note_markdown: string | null };
 export type SessionTranscriptMetadata = {
+  batch_recoveries: BatchRecovery[];
   speaker_labels: string[];
   started_at: number | null;
   ended_at: number | null;
@@ -1219,6 +1254,7 @@ export type TranscriptSpeakerHint = {
   value?: JsonValue;
 };
 export type TranscriptWithData = {
+  batch_recovery?: BatchRecovery | null;
   id: string;
   user_id?: string;
   created_at?: string;

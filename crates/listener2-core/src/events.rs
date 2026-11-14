@@ -39,6 +39,8 @@ pub enum BatchEvent {
         session_id: String,
         response: BatchResponse,
         mode: BatchRunMode,
+        status: hypr_fs_format::BatchCompletionStatus,
+        unresolved: Vec<hypr_fs_format::FailedAudioRange>,
     },
     #[serde(rename = "batchProgress")]
     BatchResponseStreamed {

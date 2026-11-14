@@ -78,6 +78,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             listener::commands::list_documented_language_codes_live::<tauri::Wry>,
             listener::commands::render_transcript_segments,
             listener2::commands::start_transcription::<tauri::Wry>,
+            listener2::commands::retry_missing_audio::<tauri::Wry>,
             listener2::commands::stop_transcription::<tauri::Wry>,
             listener2::commands::parse_subtitle::<tauri::Wry>,
             listener2::commands::is_supported_languages_batch::<tauri::Wry>,

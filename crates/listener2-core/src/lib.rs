@@ -6,7 +6,8 @@ mod subtitle;
 
 pub use batch::transcript;
 pub use batch::{
-    BatchParams, BatchProvider, BatchRunMode, BatchRunOutput, expects_progressive_batch, run_batch,
+    BatchParams, BatchProvider, BatchRunMode, BatchRunOutput, expects_progressive_batch,
+    retry_missing_audio, run_batch, source_audio_fingerprint,
 };
 pub use error::*;
 pub use events::*;

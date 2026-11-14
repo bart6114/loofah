@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useRegenerateTranscript } from "./actions";
 import { TranscriptLoadingState, TranscriptLoadError } from "./loading";
+import { IncompleteTranscript } from "./recovery";
 import { TranscriptViewer } from "./renderer";
 import { BatchState } from "./screens/batch";
 import { TranscriptEmptyState } from "./screens/empty";
@@ -106,6 +107,9 @@ export function TranscriptContent({
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
+      {screen.kind !== "running_batch" && (
+        <IncompleteTranscript sessionId={sessionId} />
+      )}
       {screen.kind === "running_batch" && (
         <TranscriptEmptyState
           isBatching

@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -11,6 +10,7 @@ use owhisper_interface::batch_stream::BatchStreamEvent;
 use tracing::Instrument;
 
 use hypr_audio_chunking::AudioChunk;
+use hypr_fs_format::{BatchCompletionStatus, FailedAudioRange};
 use hypr_transcribe_core::{TARGET_SAMPLE_RATE, chunk_pcm_channel};
 
 use super::diarize::{SharedDiarization, stamp_batch_response};
@@ -108,6 +108,8 @@ async fn run_direct_batch<A: BatchSttAdapter>(
         Ok(BatchRunOutput {
             session_id: params.session_id,
             mode: BatchRunMode::Direct,
+            status: hypr_fs_format::BatchCompletionStatus::Complete,
+            unresolved: Vec::new(),
             response,
         })
     }
@@ -120,204 +122,203 @@ pub(super) async fn run_soniqo_batch(
     params: BatchParams,
     listen_params: owhisper_interface::ListenParams,
     diarization: SharedDiarization,
+    mut recovery: hypr_fs_format::BatchRecovery,
 ) -> crate::Result<BatchRunOutput> {
-    let span = session_span(&params.session_id);
-
-    async {
-        let model = listen_params
-            .model
-            .as_deref()
-            .ok_or_else(|| crate::BatchFailure::DirectRequestFailed {
-                provider: "soniqo".to_string(),
-                message: "Missing Soniqo model.".to_string(),
-            })?
-            .parse::<hypr_transcribe_soniqo::SoniqoModel>()
-            .map_err(|e| crate::BatchFailure::DirectRequestFailed {
-                provider: "soniqo".to_string(),
-                message: e.to_string(),
-            })?;
-
-        if !model.supports_languages(&listen_params.languages) {
-            return Err(crate::BatchFailure::DirectRequestFailed {
-                provider: "soniqo".to_string(),
-                message: format!("{} does not support the selected meeting languages. Choose another model or change your spoken languages.", model.display_name()),
-            }.into());
-        }
-
-        let file_path = params.file_path.clone();
-        let file_extension = Path::new(&file_path)
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .unwrap_or_default()
-            .to_string();
-        let language = listen_params
-            .languages
-            .first()
-            .map(hypr_language::Language::bcp47_code);
-        let language_config = model.language_config(&listen_params.languages);
-        let language_label = language.as_deref().unwrap_or("auto").to_string();
-        let language_hint_label = language_config.language.as_deref().unwrap_or("auto").to_string();
-        let started_at = Instant::now();
-
-        tracing::info!(
-            fmtr.stt.provider.name = "soniqo",
-            fmtr.stt.model = %model,
-            fmtr.stt.language = %language_label,
-            fmtr.stt.language_hint = %language_hint_label,
-            fmtr.stt.expected_languages = ?language_config.expected_languages,
-            file.extension = %file_extension,
-            "soniqo_batch_start"
-        );
-
-        let session_id = params.session_id.clone();
-        struct CancelOnDrop(Arc<std::sync::atomic::AtomicBool>);
-        impl Drop for CancelOnDrop {
-            fn drop(&mut self) { self.0.store(true, std::sync::atomic::Ordering::Relaxed); }
-        }
-        let cancel = CancelOnDrop(Arc::new(std::sync::atomic::AtomicBool::new(false)));
-        let cancelled = cancel.0.clone();
-        let transcribed = tokio::task::spawn_blocking(move || {
-            let progress = SoniqoProgressReporter {
-                runtime,
-                session_id,
-                cancelled,
-            };
-            transcribe_soniqo_file(model, &file_path, &language_config, Some(&progress))
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!(
-                fmtr.stt.provider.name = "soniqo",
-                fmtr.stt.model = %model,
-                error = %e,
-                "soniqo_batch_task_join_failed"
-            );
-            crate::BatchFailure::DirectRequestFailed {
-                provider: "soniqo".to_string(),
-                message: format!("Soniqo transcription task failed: {e}"),
-            }
-        })?
-        .map_err(|e| {
-            let message = format_user_friendly_error(&e);
-            tracing::error!(
-                fmtr.stt.provider.name = "soniqo",
-                fmtr.stt.model = %model,
-                error = %e,
-                fmtr.error.user_message = %message,
-                "soniqo_batch_failed"
-            );
-            crate::BatchFailure::DirectRequestFailed {
-                provider: "soniqo".to_string(),
-                message,
-            }
-        })?;
-
-        tracing::info!(
-            fmtr.stt.provider.name = "soniqo",
-            fmtr.stt.model = %model,
-            elapsed_ms = started_at.elapsed().as_millis() as u64,
-            transcript.channel_count = transcribed.len(),
-            "soniqo_batch_completed"
-        );
-
-        let mut response = hypr_transcribe_soniqo::batch_response_from_channels(model, transcribed);
-        stamp_batch_response(&mut response, &*diarization.segments().await?);
-
-        Ok(BatchRunOutput {
-            session_id: params.session_id,
-            mode: BatchRunMode::Direct,
-            response,
-        })
+    let model = recovery
+        .model
+        .parse::<hypr_transcribe_soniqo::SoniqoModel>()
+        .map_err(|e| crate::Error::BatchError(e.to_string()))?;
+    if !model.supports_languages(&listen_params.languages) {
+        return Err(crate::Error::BatchError(
+            "This model does not support the selected meeting languages.".into(),
+        ));
     }
-    .instrument(span)
-    .await
-}
-
-fn transcribe_soniqo_file(
-    model: hypr_transcribe_soniqo::SoniqoModel,
-    file_path: &str,
-    language: &hypr_transcribe_soniqo::LanguageConfig,
-    progress: Option<&SoniqoProgressReporter>,
-) -> std::result::Result<Vec<hypr_transcribe_soniqo::FileTranscript>, String> {
-    let pcm_file = hypr_audio_utils::PcmFile::prepare(file_path, || {
-        progress.is_some_and(|p| p.is_cancelled())
-    })
-    .map_err(|e| e.to_string())?;
-    let pcm = &pcm_file.descriptor;
-    let channel_count = pcm.channels;
-    if channel_count <= 1 && !uses_resilient_soniqo_chunking(model) {
-        if let Some(progress) = progress {
-            progress.emit(SONIQO_PROGRESS_PLANNED);
-        }
-        tracing::info!(
-            fmtr.stt.provider.name = "soniqo",
-            fmtr.stt.model = %model,
-            "soniqo_single_channel_native_inference_start"
-        );
-        return hypr_transcribe_soniqo::transcribe_file_with_config(model, file_path, language)
-            .map(|transcript| {
-                if let Some(progress) = progress {
-                    progress.emit(SONIQO_PROGRESS_MAX);
-                }
-                vec![transcript]
-            })
-            .map_err(|e| e.to_string());
-    }
-
-    let plans = (0..channel_count)
-        .map(|channel_index| {
-            soniqo_channel_plan(
+    let segments = match diarization.segments().await {
+        Ok(segments) => segments,
+        Err(error) => {
+            let pcm = hypr_audio_utils::PcmDescriptor::open(&params.file_path)
+                .map_err(|e| crate::Error::BatchError(e.to_string()))?;
+            recovery.diarization_pending = true;
+            recovery.status = BatchCompletionStatus::Failed;
+            recovery.unresolved = (0..pcm.channels)
+                .map(|channel| FailedAudioRange {
+                    channel: channel as u32,
+                    start_sample: 0,
+                    end_sample: pcm.frames as u64,
+                    reason: error.to_string(),
+                })
+                .collect();
+            let mut response = hypr_transcribe_soniqo::batch_response_from_channels(
                 model,
-                channel_index,
-                pcm,
-                channel_count == 2 && channel_index == 0,
-                || progress.is_some_and(|p| p.is_cancelled()),
-            )
+                (0..pcm.channels)
+                    .map(|_| {
+                        hypr_transcribe_soniqo::FileTranscript::new(String::new(), pcm.duration())
+                    })
+                    .collect(),
+            );
+            response.metadata["batch_recovery"] = serde_json::to_value(&recovery)
+                .map_err(|e| crate::Error::BatchError(e.to_string()))?;
+            response.metadata["batch_checkpoint_initial"] = serde_json::json!(true);
+            let mut output = BatchRunOutput {
+                session_id: params.session_id,
+                mode: BatchRunMode::Direct,
+                status: recovery.status,
+                unresolved: recovery.unresolved.clone(),
+                response,
+            };
+            runtime
+                .checkpoint(&mut output)
+                .await
+                .map_err(crate::Error::BatchError)?;
+            return Ok(output);
+        }
+    };
+    recovery.planning_pending = false;
+    recovery.diarization_pending = false;
+    recovery.diarization = segments
+        .iter()
+        .flat_map(|(channel, segments)| {
+            segments
+                .iter()
+                .map(move |segment| hypr_fs_format::RecoverySpeakerSegment {
+                    channel: *channel as u32,
+                    start_ms: segment.start_ms,
+                    end_ms: segment.end_ms,
+                    speaker_index: segment.speaker_index,
+                })
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    let total_chunks = plans.iter().map(|plan| plan.chunks.len()).sum::<usize>();
-    let mut completed_chunks = 0usize;
-
-    if let Some(progress) = progress {
-        progress.emit(soniqo_batch_progress(0, total_chunks));
-    }
-
-    collect_soniqo_channel_transcripts(plans.into_iter().map(|plan| {
-        transcribe_soniqo_channel_chunks(
-            model,
-            plan,
-            pcm,
-            language,
-            || progress.is_some_and(|p| p.is_cancelled()),
-            || {
-                completed_chunks += 1;
-                if let Some(progress) = progress {
-                    progress.emit(soniqo_batch_progress(completed_chunks, total_chunks));
+        .collect();
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || {
+        let language = model.language_config(&listen_params.languages);
+        let pcm =
+            hypr_audio_utils::PcmDescriptor::open(&params.file_path).map_err(|e| e.to_string())?;
+        let mut plans = Vec::new();
+        let mut outcome = SoniqoOutcome {
+            channels: (0..pcm.channels)
+                .map(|_| hypr_transcribe_soniqo::FileTranscript::new(String::new(), pcm.duration()))
+                .collect(),
+            unresolved: Vec::new(),
+            processed_chunks: 0,
+            cancelled: false,
+        };
+        for channel in 0..pcm.channels {
+            match soniqo_channel_plan(
+                model,
+                channel,
+                &pcm,
+                pcm.channels == 2 && channel == 0,
+                || runtime.is_cancelled(),
+            ) {
+                Ok(plan) => {
+                    if plan.chunks.is_empty() {
+                        outcome.processed_chunks += 1;
+                    }
+                    for chunk in plan.chunks {
+                        outcome.unresolved.push(FailedAudioRange {
+                            channel: channel as u32,
+                            start_sample: chunk.sample_start as u64,
+                            end_sample: chunk.sample_end as u64,
+                            reason: "Audio has not been processed yet.".into(),
+                        });
+                        plans.push((channel, plan.is_direct_mic, chunk));
+                    }
                 }
-            },
-        )
-    }))
-}
-
-struct SoniqoProgressReporter {
-    cancelled: Arc<std::sync::atomic::AtomicBool>,
-    runtime: Arc<dyn BatchRuntime>,
-    session_id: String,
-}
-
-impl SoniqoProgressReporter {
-    fn is_cancelled(&self) -> bool {
-        self.cancelled.load(std::sync::atomic::Ordering::Relaxed) || self.runtime.is_cancelled()
-    }
-    fn emit(&self, percentage: f64) {
-        self.runtime.emit(BatchEvent::BatchResponseStreamed {
-            session_id: self.session_id.clone(),
-            event: BatchStreamEvent::Progress {
-                percentage,
-                partial_text: None,
-            },
-        });
-    }
+                Err(reason) => outcome.unresolved.push(FailedAudioRange {
+                    channel: channel as u32,
+                    start_sample: 0,
+                    end_sample: pcm.frames as u64,
+                    reason,
+                }),
+            }
+        }
+        let checkpoint =
+            |outcome: &SoniqoOutcome, initial: bool| -> Result<BatchRunOutput, String> {
+                let mut response = hypr_transcribe_soniqo::batch_response_from_channels(
+                    model,
+                    outcome.channels.clone(),
+                );
+                stamp_batch_response(&mut response, &segments);
+                let mut recovery = recovery.clone();
+                recovery.status = outcome.status();
+                recovery.unresolved = outcome.unresolved.clone();
+                response.metadata.as_object_mut().unwrap().insert(
+                    "batch_recovery".into(),
+                    serde_json::to_value(recovery).map_err(|e| e.to_string())?,
+                );
+                response.metadata.as_object_mut().unwrap().insert(
+                    "batch_checkpoint_initial".into(),
+                    serde_json::Value::Bool(initial),
+                );
+                let mut output = BatchRunOutput {
+                    session_id: params.session_id.clone(),
+                    mode: BatchRunMode::Direct,
+                    status: outcome.status(),
+                    unresolved: outcome.unresolved.clone(),
+                    response,
+                };
+                handle.block_on(runtime.checkpoint(&mut output))?;
+                Ok(output)
+            };
+        outcome.cancelled = runtime.is_cancelled();
+        let mut output = checkpoint(&outcome, false)?;
+        let count = plans.len();
+        for (index, (channel, is_direct_mic, chunk)) in plans.into_iter().enumerate() {
+            if runtime.is_cancelled() {
+                outcome.cancelled = true;
+                for range in &mut outcome.unresolved {
+                    range.reason = "Transcription cancelled".into();
+                }
+                output = checkpoint(&outcome, false)?;
+                break;
+            }
+            let (start, end) = (chunk.sample_start as u64, chunk.sample_end as u64);
+            let decoded = transcribe_soniqo_channel_chunks(
+                model,
+                SoniqoChannelPlan {
+                    channel_index: channel,
+                    duration_seconds: pcm.duration(),
+                    is_direct_mic,
+                    chunks: vec![chunk],
+                },
+                &pcm,
+                &language,
+                || runtime.is_cancelled(),
+                || {},
+            );
+            if decoded.unresolved.is_empty() {
+                outcome.unresolved.retain(|r| {
+                    !(r.channel == channel as u32 && r.start_sample == start && r.end_sample == end)
+                });
+                outcome.processed_chunks += decoded.processed_chunks;
+                let saved = &mut outcome.channels[channel];
+                saved.chunks.extend(decoded.transcript.chunks);
+                saved.text = saved
+                    .chunks
+                    .iter()
+                    .map(|part| part.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+            } else if let Some(range) = outcome.unresolved.iter_mut().find(|r| {
+                r.channel == channel as u32 && r.start_sample == start && r.end_sample == end
+            }) {
+                range.reason = decoded.unresolved[0].reason.clone();
+            }
+            outcome.cancelled |= decoded.cancelled;
+            output = checkpoint(&outcome, false)?;
+            runtime.emit(BatchEvent::BatchResponseStreamed {
+                session_id: params.session_id.clone(),
+                event: BatchStreamEvent::Progress {
+                    percentage: soniqo_batch_progress(index + 1, count),
+                    partial_text: None,
+                },
+            });
+        }
+        Ok::<_, String>(output)
+    })
+    .await
+    .map_err(|e| crate::Error::BatchError(e.to_string()))?
+    .map_err(crate::Error::BatchError)
 }
 
 struct SoniqoChannelPlan {
@@ -345,6 +346,7 @@ impl From<AudioChunk> for ChannelChunk {
     }
 }
 
+#[cfg(test)]
 fn uses_resilient_soniqo_chunking(model: hypr_transcribe_soniqo::SoniqoModel) -> bool {
     matches!(
         model,
@@ -363,44 +365,70 @@ fn soniqo_batch_progress(completed_chunks: usize, total_chunks: usize) -> f64 {
     (SONIQO_PROGRESS_PLANNED + ratio * SONIQO_PROGRESS_RANGE).min(SONIQO_PROGRESS_MAX)
 }
 
-fn collect_soniqo_channel_transcripts<I>(
-    transcripts: I,
-) -> std::result::Result<Vec<hypr_transcribe_soniqo::FileTranscript>, String>
-where
-    I: IntoIterator<Item = std::result::Result<hypr_transcribe_soniqo::FileTranscript, String>>,
-{
-    let mut output = Vec::new();
-    let mut successful_channels = 0usize;
-    let mut failed_channels = 0usize;
+struct SoniqoChannelOutcome {
+    transcript: hypr_transcribe_soniqo::FileTranscript,
+    unresolved: Vec<FailedAudioRange>,
+    processed_chunks: usize,
+    cancelled: bool,
+}
 
-    for transcript in transcripts {
-        match transcript {
-            Ok(transcript) => {
-                successful_channels += 1;
-                output.push(transcript);
-            }
-            Err(error) => {
-                failed_channels += 1;
-                tracing::warn!(
-                    fmtr.stt.provider.name = "soniqo",
-                    error = %error,
-                    "soniqo_channel_transcription_failed"
-                );
-                output.push(hypr_transcribe_soniqo::FileTranscript::new(
-                    String::new(),
-                    0.05,
-                ));
-            }
+impl SoniqoChannelOutcome {
+    fn failed(channel: usize, frames: usize, reason: String) -> Self {
+        Self {
+            transcript: hypr_transcribe_soniqo::FileTranscript::new(
+                String::new(),
+                frames as f64 / TARGET_SAMPLE_RATE as f64,
+            ),
+            unresolved: vec![FailedAudioRange {
+                channel: channel as u32,
+                start_sample: 0,
+                end_sample: frames as u64,
+                reason,
+            }],
+            processed_chunks: 0,
+            cancelled: false,
         }
     }
+}
 
-    if successful_channels == 0 && failed_channels > 0 {
-        return Err(format!(
-            "Soniqo failed to transcribe all {failed_channels} audio channel(s)."
-        ));
+struct SoniqoOutcome {
+    channels: Vec<hypr_transcribe_soniqo::FileTranscript>,
+    unresolved: Vec<FailedAudioRange>,
+    processed_chunks: usize,
+    cancelled: bool,
+}
+
+impl SoniqoOutcome {
+    fn status(&self) -> BatchCompletionStatus {
+        if self.cancelled {
+            BatchCompletionStatus::Cancelled
+        } else if self.unresolved.is_empty() {
+            BatchCompletionStatus::Complete
+        } else if self.processed_chunks == 0 {
+            BatchCompletionStatus::Failed
+        } else {
+            BatchCompletionStatus::Incomplete
+        }
     }
+}
 
-    Ok(output)
+#[cfg(test)]
+fn collect_soniqo_channel_transcripts(
+    transcripts: impl IntoIterator<Item = SoniqoChannelOutcome>,
+) -> SoniqoOutcome {
+    let mut output = SoniqoOutcome {
+        channels: Vec::new(),
+        unresolved: Vec::new(),
+        processed_chunks: 0,
+        cancelled: false,
+    };
+    for channel in transcripts {
+        output.channels.push(channel.transcript);
+        output.unresolved.extend(channel.unresolved);
+        output.processed_chunks += channel.processed_chunks;
+        output.cancelled |= channel.cancelled;
+    }
+    output
 }
 
 fn soniqo_channel_plan(
@@ -459,27 +487,65 @@ fn transcribe_soniqo_channel_chunks(
     pcm: &hypr_audio_utils::PcmDescriptor,
     language: &hypr_transcribe_soniqo::LanguageConfig,
     cancelled: impl Fn() -> bool,
+    on_chunk_completed: impl FnMut(),
+) -> SoniqoChannelOutcome {
+    transcribe_soniqo_channel_chunks_with(
+        model,
+        plan,
+        pcm,
+        cancelled,
+        on_chunk_completed,
+        |samples| transcribe_soniqo_samples(model, samples, language),
+    )
+}
+
+fn transcribe_soniqo_channel_chunks_with(
+    model: hypr_transcribe_soniqo::SoniqoModel,
+    plan: SoniqoChannelPlan,
+    pcm: &hypr_audio_utils::PcmDescriptor,
+    cancelled: impl Fn() -> bool,
     mut on_chunk_completed: impl FnMut(),
-) -> std::result::Result<hypr_transcribe_soniqo::FileTranscript, String> {
+    mut decode: impl FnMut(&[f32]) -> Result<hypr_transcribe_soniqo::FileTranscript, String>,
+) -> SoniqoChannelOutcome {
     let mut texts = Vec::new();
     let mut transcript_chunks = Vec::new();
     let mut successful_chunks = 0usize;
-    let mut failed_chunks = 0usize;
+    let mut unresolved = Vec::new();
+    let mut was_cancelled = false;
     let channel_index = plan.channel_index;
     let is_direct_mic = plan.is_direct_mic;
 
-    let mut reader = pcm.reader().map_err(|e| e.to_string())?;
-    for (chunk_index, mut chunk) in plan.chunks.into_iter().enumerate() {
-        if cancelled() {
-            return Err("Transcription cancelled".into());
+    let mut reader = match pcm.reader() {
+        Ok(reader) => reader,
+        Err(error) => {
+            return SoniqoChannelOutcome::failed(channel_index, pcm.frames, error.to_string());
         }
-        chunk.samples = reader
-            .channel(channel_index, chunk.sample_start..chunk.sample_end)
-            .map_err(|e| e.to_string())?;
+    };
+    for (chunk_index, mut chunk) in plan.chunks.into_iter().enumerate() {
+        let failure = |reason| FailedAudioRange {
+            channel: channel_index as u32,
+            start_sample: chunk.sample_start as u64,
+            end_sample: chunk.sample_end as u64,
+            reason,
+        };
+        if cancelled() {
+            was_cancelled = true;
+            unresolved.push(failure("Transcription cancelled".into()));
+            continue;
+        }
+        chunk.samples = match reader.channel(channel_index, chunk.sample_start..chunk.sample_end) {
+            Ok(samples) => samples,
+            Err(error) => {
+                unresolved.push(failure(error.to_string()));
+                on_chunk_completed();
+                continue;
+            }
+        };
         let chunk_duration_ms =
             (chunk.sample_end - chunk.sample_start) * 1000 / TARGET_SAMPLE_RATE as usize;
         let chunk_rms = chunk_speech_rms(&chunk);
         if is_direct_mic && chunk_rms < SONIQO_DIRECT_MIC_MIN_RMS {
+            successful_chunks += 1;
             on_chunk_completed();
             tracing::info!(
                 fmtr.stt.provider.name = "soniqo",
@@ -506,13 +572,13 @@ fn transcribe_soniqo_channel_chunks(
             "soniqo_chunk_native_inference_start"
         );
 
-        let transcript = match transcribe_soniqo_samples(model, &chunk.samples, language) {
+        let transcript = match decode(&chunk.samples) {
             Ok(transcript) => {
                 successful_chunks += 1;
                 transcript
             }
             Err(e) => {
-                failed_chunks += 1;
+                unresolved.push(failure(e.clone()));
                 tracing::warn!(
                     fmtr.stt.provider.name = "soniqo",
                     fmtr.stt.model = %model,
@@ -543,6 +609,12 @@ fn transcribe_soniqo_channel_chunks(
         {
             let offset = chunk.sample_start as f64 / TARGET_SAMPLE_RATE as f64;
             for mut part in transcript.chunks {
+                let real_duration =
+                    (chunk.sample_end - chunk.sample_start) as f64 / TARGET_SAMPLE_RATE as f64;
+                part.start_seconds = part.start_seconds.clamp(0.0, real_duration);
+                part.duration_seconds = part
+                    .duration_seconds
+                    .clamp(0.0, real_duration - part.start_seconds);
                 part.start_seconds += offset;
                 for span in &mut part.speech_spans {
                     span.start_seconds += offset;
@@ -572,23 +644,75 @@ fn transcribe_soniqo_channel_chunks(
         }
     }
 
-    if failed_chunks > 0 {
-        return Err(format!(
-            "Transcription incomplete: {failed_chunks} chunk(s) failed and {successful_chunks} succeeded on channel {channel_index}. The recording has been kept so you can retry."
-        ));
+    // A VAD-empty channel is successfully processed silence.
+    if successful_chunks == 0 && unresolved.is_empty() {
+        successful_chunks = 1;
     }
-
-    if transcript_chunks.is_empty() {
-        return Ok(hypr_transcribe_soniqo::FileTranscript::new(
-            texts.join(" "),
+    let transcript = if transcript_chunks.is_empty() {
+        hypr_transcribe_soniqo::FileTranscript::new(texts.join(" "), plan.duration_seconds)
+    } else {
+        hypr_transcribe_soniqo::FileTranscript::from_chunks(
+            transcript_chunks,
             plan.duration_seconds,
-        ));
+        )
+    };
+    SoniqoChannelOutcome {
+        transcript,
+        unresolved,
+        processed_chunks: successful_chunks,
+        cancelled: was_cancelled,
     }
+}
 
-    Ok(hypr_transcribe_soniqo::FileTranscript::from_chunks(
-        transcript_chunks,
-        plan.duration_seconds,
-    ))
+pub(super) fn decode_recovery_range(
+    model: hypr_transcribe_soniqo::SoniqoModel,
+    pcm: &hypr_audio_utils::PcmDescriptor,
+    range: &FailedAudioRange,
+    language: &hypr_transcribe_soniqo::LanguageConfig,
+) -> Result<Vec<hypr_transcribe_soniqo::FileTranscript>, String> {
+    decode_recovery_range_with(model, pcm, range, |samples| {
+        transcribe_soniqo_samples(model, samples, language)
+    })
+}
+
+fn decode_recovery_range_with(
+    model: hypr_transcribe_soniqo::SoniqoModel,
+    pcm: &hypr_audio_utils::PcmDescriptor,
+    range: &FailedAudioRange,
+    decode: impl FnMut(&[f32]) -> Result<hypr_transcribe_soniqo::FileTranscript, String>,
+) -> Result<Vec<hypr_transcribe_soniqo::FileTranscript>, String> {
+    let cap = SONIQO_PARAKEET_MAX_CHUNK_SAMPLES;
+    let chunks = (range.start_sample as usize..range.end_sample as usize)
+        .step_by(cap)
+        .map(|start| {
+            pack_from_range(
+                start,
+                (start + cap).min(range.end_sample as usize),
+                Vec::new(),
+            )
+        })
+        .collect();
+    let result = transcribe_soniqo_channel_chunks_with(
+        model,
+        SoniqoChannelPlan {
+            channel_index: range.channel as usize,
+            duration_seconds: pcm.duration(),
+            is_direct_mic: false,
+            chunks,
+        },
+        pcm,
+        || false,
+        || {},
+        decode,
+    );
+    if !result.unresolved.is_empty() {
+        return Err(result.unresolved[0].reason.clone());
+    }
+    let mut channels: Vec<_> = (0..pcm.channels)
+        .map(|_| hypr_transcribe_soniqo::FileTranscript::new(String::new(), pcm.duration()))
+        .collect();
+    channels[range.channel as usize] = result.transcript;
+    Ok(channels)
 }
 
 fn transcribe_soniqo_samples(
@@ -843,52 +967,211 @@ mod tests {
     }
 
     #[test]
-    fn collect_soniqo_channel_transcripts_keeps_channel_slots() {
-        let transcripts = collect_soniqo_channel_transcripts([
-            Ok(hypr_transcribe_soniqo::FileTranscript::new(
-                "hello".to_string(),
-                1.0,
-            )),
-            Err("native chunk failed".to_string()),
-        ])
+    fn decoder_failure_retains_successful_chunks_and_empty_decode_resolves_audio() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut writer = hound::WavWriter::create(
+            file.path(),
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: TARGET_SAMPLE_RATE,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
         .unwrap();
-
-        assert_eq!(transcripts.len(), 2);
-        assert_eq!(transcripts[0].text, "hello");
-        assert_eq!(transcripts[1].text, "");
+        for _ in 0..48000 {
+            writer.write_sample(0.1_f32).unwrap();
+        }
+        writer.finalize().unwrap();
+        let pcm = hypr_audio_utils::PcmDescriptor::open(file.path()).unwrap();
+        let plan = SoniqoChannelPlan {
+            channel_index: 0,
+            duration_seconds: 3.0,
+            is_direct_mic: false,
+            chunks: (0..3)
+                .map(|index| pack_from_range(index * 16000, (index + 1) * 16000, vec![]))
+                .collect(),
+        };
+        let mut index = 0;
+        let mut completed = 0;
+        let outcome = transcribe_soniqo_channel_chunks_with(
+            hypr_transcribe_soniqo::SoniqoModel::OnnxParakeetBatch,
+            plan,
+            &pcm,
+            || false,
+            || completed += 1,
+            |_| {
+                index += 1;
+                match index {
+                    1 => Ok(hypr_transcribe_soniqo::FileTranscript::new(
+                        "kept words".into(),
+                        1.0,
+                    )),
+                    2 => Err("injected decoder failure".into()),
+                    _ => Ok(hypr_transcribe_soniqo::FileTranscript::new(
+                        String::new(),
+                        1.0,
+                    )),
+                }
+            },
+        );
+        assert_eq!(completed, 3);
+        assert_eq!(outcome.transcript.text, "kept words");
+        assert_eq!(outcome.processed_chunks, 2);
+        assert_eq!(outcome.unresolved.len(), 1);
+        assert_eq!(outcome.unresolved[0].start_sample, 16000);
+        assert_eq!(outcome.unresolved[0].end_sample, 32000);
     }
 
     #[test]
-    fn collect_soniqo_channel_transcripts_preserves_later_channel_index() {
-        let transcripts = collect_soniqo_channel_transcripts([
-            Err("first failed".to_string()),
-            Ok(hypr_transcribe_soniqo::FileTranscript::new(
-                "system audio".to_string(),
-                1.0,
-            )),
-        ])
+    fn recovery_reads_only_the_saved_channel_and_sample_interval() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut writer = hound::WavWriter::create(
+            file.path(),
+            hound::WavSpec {
+                channels: 2,
+                sample_rate: TARGET_SAMPLE_RATE,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
         .unwrap();
+        for index in 0..48000 {
+            writer.write_sample(-0.1_f32).unwrap();
+            writer.write_sample(index as f32 / 16000.0).unwrap();
+        }
+        writer.finalize().unwrap();
+        let pcm = hypr_audio_utils::PcmDescriptor::open(file.path()).unwrap();
+        let range = FailedAudioRange {
+            channel: 1,
+            start_sample: 16000,
+            end_sample: 32000,
+            reason: "missing".into(),
+        };
+        let mut calls = 0;
+        let channels = decode_recovery_range_with(
+            hypr_transcribe_soniqo::SoniqoModel::OnnxParakeetBatch,
+            &pcm,
+            &range,
+            |samples| {
+                calls += 1;
+                assert_eq!(samples.len(), 16000);
+                assert_eq!(samples[0], 1.0);
+                assert!(samples.iter().all(|sample| *sample >= 1.0 && *sample < 2.0));
+                Ok(hypr_transcribe_soniqo::FileTranscript::new(
+                    "missing words".into(),
+                    1.0,
+                ))
+            },
+        )
+        .unwrap();
+        assert_eq!(calls, 1);
+        assert!(channels[0].text.is_empty());
+        assert_eq!(channels[1].chunks[0].start_seconds, 1.0);
+        assert_eq!(channels[1].chunks[0].duration_seconds, 1.0);
+    }
 
+    #[test]
+    fn cancellation_retains_prior_text_and_does_not_decode_remaining_ranges() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut writer = hound::WavWriter::create(
+            file.path(),
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: TARGET_SAMPLE_RATE,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        for _ in 0..32000 {
+            writer.write_sample(0.1_f32).unwrap();
+        }
+        writer.finalize().unwrap();
+        let pcm = hypr_audio_utils::PcmDescriptor::open(file.path()).unwrap();
+        let cancelled = std::cell::Cell::new(false);
+        let result = transcribe_soniqo_channel_chunks_with(
+            hypr_transcribe_soniqo::SoniqoModel::OnnxParakeetBatch,
+            SoniqoChannelPlan {
+                channel_index: 0,
+                duration_seconds: 2.0,
+                is_direct_mic: false,
+                chunks: vec![
+                    pack_from_range(0, 16000, vec![]),
+                    pack_from_range(16000, 32000, vec![]),
+                ],
+            },
+            &pcm,
+            || cancelled.get(),
+            || {},
+            |_| {
+                cancelled.set(true);
+                Ok(hypr_transcribe_soniqo::FileTranscript::new(
+                    "kept".into(),
+                    1.0,
+                ))
+            },
+        );
+        assert!(result.cancelled);
+        assert_eq!(result.transcript.text, "kept");
+        assert_eq!(result.unresolved.len(), 1);
+        assert_eq!(result.unresolved[0].start_sample, 16000);
+    }
+
+    fn success(text: &str) -> SoniqoChannelOutcome {
+        SoniqoChannelOutcome {
+            transcript: hypr_transcribe_soniqo::FileTranscript::new(text.into(), 1.0),
+            unresolved: Vec::new(),
+            processed_chunks: 1,
+            cancelled: false,
+        }
+    }
+
+    #[test]
+    fn partial_channel_retains_text_and_absolute_failure_range() {
+        let mut channel = success("kept words");
+        channel.unresolved.push(FailedAudioRange {
+            channel: 0,
+            start_sample: 16000,
+            end_sample: 32000,
+            reason: "decoder failed".into(),
+        });
+        let output = collect_soniqo_channel_transcripts([channel, success("")]);
+        assert_eq!(output.status(), BatchCompletionStatus::Incomplete);
+        assert_eq!(output.channels[0].text, "kept words");
+        assert_eq!(output.unresolved[0].start_sample, 16000);
+        assert_eq!(output.unresolved.len(), 1);
+    }
+
+    #[test]
+    fn whole_channel_failure_preserves_channel_slots() {
+        let output = collect_soniqo_channel_transcripts([
+            SoniqoChannelOutcome::failed(0, 32000, "read failed".into()),
+            success("system audio"),
+        ]);
+        assert_eq!(output.status(), BatchCompletionStatus::Incomplete);
         let response = hypr_transcribe_soniqo::batch_response_from_channels(
             hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch,
-            transcripts,
+            output.channels,
         );
-        let alternative = &response.results.channels[1].alternatives[0];
-
-        assert_eq!(response.results.channels.len(), 2);
-        assert_eq!(response.results.channels[0].alternatives[0].transcript, "");
-        assert_eq!(alternative.transcript, "system audio");
-        assert_eq!(alternative.words[0].channel, 1);
+        assert_eq!(
+            response.results.channels[1].alternatives[0].words[0].channel,
+            1
+        );
     }
 
     #[test]
-    fn collect_soniqo_channel_transcripts_errors_when_all_channels_fail() {
-        let error = collect_soniqo_channel_transcripts([
-            Err("first failed".to_string()),
-            Err("second failed".to_string()),
-        ])
-        .unwrap_err();
-
-        assert_eq!(error, "Soniqo failed to transcribe all 2 audio channel(s).");
+    fn total_failure_and_silence_have_distinct_status() {
+        let output = collect_soniqo_channel_transcripts([SoniqoChannelOutcome::failed(
+            0,
+            16000,
+            "failed".into(),
+        )]);
+        assert_eq!(output.status(), BatchCompletionStatus::Failed);
+        assert_eq!(output.unresolved[0].end_sample, 16000);
+        assert_eq!(
+            collect_soniqo_channel_transcripts([success("")]).status(),
+            BatchCompletionStatus::Complete
+        );
     }
 }

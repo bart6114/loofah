@@ -136,9 +136,14 @@ pub async fn run(
     if transcribe {
         match super::transcribe::transcribe_session(vault, &store, &session_id).await {
             Ok(outcome) => {
+                if outcome.status != hypr_fs_format::BatchCompletionStatus::Complete {
+                    exit_code = 1;
+                }
                 data["transcript"] = serde_json::json!({
                     "id": outcome.transcript_id,
                     "words": outcome.words,
+                    "status": outcome.status,
+                    "recovery": outcome.recovery,
                 });
             }
             Err(error) => {

@@ -19,6 +19,8 @@ const { useListenerMock, useAudioPlayerMock, regenerateTranscriptMock } =
     regenerateTranscriptMock: vi.fn(),
   }));
 
+vi.mock("./recovery", () => ({ IncompleteTranscript: () => null }));
+
 vi.mock("./actions", () => ({
   useRegenerateTranscript: () => regenerateTranscriptMock,
 }));

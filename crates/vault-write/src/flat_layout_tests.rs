@@ -41,6 +41,7 @@ async fn test_store() -> (SessionStore, tempfile::TempDir) {
 
 fn transcript(id: &str, word_text: &str) -> hypr_fs_format::TranscriptWithData {
     hypr_fs_format::TranscriptWithData {
+        batch_recovery: None,
         id: id.to_string(),
         user_id: String::new(),
         created_at: "2026-07-24T00:00:00Z".to_string(),

@@ -100,6 +100,8 @@ Supported models include **Soniqo Parakeet Streaming**, **Soniqo Parakeet Batch*
 
 The command fails with a clear message and a non-zero exit code when the meeting or its audio is missing, when no speech-to-text model is configured, when the configured provider or model is not supported by the CLI (on-device Soniqo models on macOS and Parakeet ONNX models on Windows), or when the model has not been downloaded yet. The CLI never downloads models, so open the desktop app once to download it. On-device transcription supports Apple Silicon macOS and Windows 11 with their platform-specific models.
 
+Partial transcription also exits nonzero, after saving the recovered text. With `--json`, `data.transcript` contains `id`, `words`, `status` (`complete`, `incomplete`, `failed`, or `cancelled`), and `recovery`. The same fields appear with `loof import --transcribe`. Use **Retry missing audio** in the desktop app to finish the saved plan. A valid silent decode counts as processed audio.
+
 ## JSON response contract
 
 Successful `--json` responses contain:

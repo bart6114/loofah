@@ -29,6 +29,7 @@ pub struct BatchWordHint {
 
 /// The fields the persist callback added around the mapped words in TS
 /// (`createTranscript` in `apps/desktop/src/stt/queries.ts`).
+#[derive(Clone)]
 pub struct BatchTranscriptMeta<'a> {
     pub session_id: &'a str,
     pub user_id: &'a str,
@@ -145,6 +146,7 @@ pub fn transcript_from_batch_response(
         .collect();
 
     Some(TranscriptWithData {
+        batch_recovery: None,
         id: new_id(),
         user_id: meta.user_id.to_string(),
         created_at: meta.created_at,
@@ -155,6 +157,71 @@ pub fn transcript_from_batch_response(
         words,
         speaker_hints,
     })
+}
+
+pub fn transcript_from_batch_output(
+    output: &super::BatchRunOutput,
+    meta: BatchTranscriptMeta<'_>,
+    new_id: &mut dyn FnMut() -> String,
+) -> Result<TranscriptWithData, String> {
+    let recovery = output
+        .response
+        .metadata
+        .get("batch_recovery")
+        .map(|value| serde_json::from_value::<hypr_fs_format::BatchRecovery>(value.clone()))
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    let mut transcript =
+        match transcript_from_batch_response(&output.response, meta.clone(), new_id) {
+            Some(transcript) => transcript,
+            None if recovery.is_some() => TranscriptWithData {
+                batch_recovery: None,
+                id: new_id(),
+                user_id: meta.user_id.into(),
+                created_at: meta.created_at,
+                session_id: meta.session_id.into(),
+                started_at: meta.started_at_ms,
+                ended_at: None,
+                memo_md: meta.memo_md,
+                words: Vec::new(),
+                speaker_hints: Vec::new(),
+            },
+            None => return Err("No speech was detected in the audio.".into()),
+        };
+    if let Some(recovery) = &recovery {
+        let mut channel_indices = std::collections::BTreeMap::new();
+        let mut identities = std::collections::HashMap::new();
+        for word in &mut transcript.words {
+            let index = channel_indices
+                .entry((
+                    word.channel as i64,
+                    word.start_ms.to_bits(),
+                    word.end_ms.to_bits(),
+                ))
+                .or_insert(0usize);
+            let id = format!(
+                "{}:{}:{}:{}:{}",
+                recovery.run_id,
+                word.channel,
+                word.start_ms.to_bits(),
+                word.end_ms.to_bits(),
+                index
+            );
+            *index += 1;
+            if let Some(old) = word.id.replace(id.clone()) {
+                identities.insert(old, id);
+            }
+        }
+        for hint in &mut transcript.speaker_hints {
+            if let Some(id) = identities.get(&hint.word_id) {
+                hint.word_id = id.clone();
+                hint.id = Some(format!("{id}:provider"));
+            }
+        }
+        transcript.id = format!("batch-{}", recovery.run_id);
+    }
+    transcript.batch_recovery = recovery;
+    Ok(transcript)
 }
 
 #[derive(Debug, Clone)]
@@ -547,6 +614,7 @@ mod tests {
         assert_eq!(
             transcript,
             TranscriptWithData {
+                batch_recovery: None,
                 id: "id-4".to_string(),
                 user_id: "00000000-0000-0000-0000-000000000000".to_string(),
                 created_at: "2026-08-09T00:00:00.000Z".to_string(),
