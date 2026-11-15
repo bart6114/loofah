@@ -376,6 +376,9 @@ pub async fn dictation_discard(
     let state = app.state::<DictationState>();
     let mut inner = state.0.lock().unwrap();
     if inner.accepts(attempt_id) && inner.operation.is_none() {
+        if let Err(error) = app.tray().clear_last_dictation(attempt_id) {
+            tracing::warn!(%error, "dictation_tray_clear_failed");
+        }
         inner.failed_audio = None;
         inner.text = None;
         inner.status.phase = DictationPhase::Idle;
@@ -546,7 +549,7 @@ async fn run_attempt(
         match result {
             Ok(Some(text)) => {
                 inner.failed_audio = None;
-                if let Err(error) = app.tray().set_last_dictation(text.clone()) {
+                if let Err(error) = app.tray().set_last_dictation(id, text.clone()) {
                     tracing::warn!(%error, "dictation_tray_update_failed");
                 }
                 inner.status.problem = None;
