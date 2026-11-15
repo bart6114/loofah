@@ -539,7 +539,10 @@ mod tests {
     #[test]
     fn defaults_soniqo_streaming_capture_to_platform_mode() {
         let params = capture_params("soniqo://local", "soniqo-parakeet-streaming");
-        let expected = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        let expected = if cfg!(any(
+            target_os = "windows",
+            all(target_os = "macos", target_arch = "aarch64")
+        )) {
             TranscriptionMode::Live
         } else {
             TranscriptionMode::Batch
@@ -551,7 +554,10 @@ mod tests {
     #[test]
     fn defaults_soniqo_streaming_with_loopback_base_to_platform_mode() {
         let params = capture_params("http://localhost:50060/v1", "soniqo-parakeet-streaming");
-        let expected = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        let expected = if cfg!(any(
+            target_os = "windows",
+            all(target_os = "macos", target_arch = "aarch64")
+        )) {
             TranscriptionMode::Live
         } else {
             TranscriptionMode::Batch
