@@ -391,7 +391,7 @@ msgid "Clear"
 msgstr ""
 
 #: src/dictation/host.tsx
-msgid "Click a text field"
+msgid "Click a text field to record into"
 msgstr ""
 
 #: src/changelog/index.tsx
@@ -565,6 +565,10 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t remove attachment"
+msgstr ""
+
+#: src/settings/general/dictation.tsx
+msgid "Couldn’t restore your previous shortcut. Try setting it again."
 msgstr ""
 
 #: src/settings/general/dictation.tsx

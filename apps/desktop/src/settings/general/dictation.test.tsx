@@ -48,10 +48,11 @@ import { DictationSettings, parseDictationShortcut } from "./dictation";
 
 import { useDictationShortcut } from "~/dictation/state";
 
-function mount() {
-  const client = new QueryClient({
+function mount(
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
-  });
+  }),
+) {
   return render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
@@ -120,6 +121,150 @@ describe("dictation shortcut editing", () => {
     expect(mocks.save).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(useDictationShortcut.getState().capturing).toBe(false),
+    );
+  });
+  it.each(["Escape", "Tab", "blur"])(
+    "cancels deferred registration on %s without saving",
+    async (cancel) => {
+      let finishRegistration!: () => void;
+      const registration = new Promise<void>((resolve) => {
+        finishRegistration = resolve;
+      });
+      mocks.invoke.mockImplementation(async (command, args) => {
+        if (command === "dictation_get_status")
+          return { attemptId: 0, revision: 0, phase: "idle", busy: false };
+        if (args?.shortcut === "Ctrl+Shift+K") await registration;
+        return null;
+      });
+      mount();
+      const input = await captureInput();
+      fireEvent.keyDown(input, { key: "k", ctrlKey: true, shiftKey: true });
+      await waitFor(() =>
+        expect(mocks.invoke).toHaveBeenCalledWith(
+          "plugin:windows|dictation_shortcut_configure",
+          { shortcut: "Ctrl+Shift+K" },
+        ),
+      );
+      if (cancel === "blur") fireEvent.blur(input);
+      else fireEvent.keyDown(input, { key: cancel });
+      await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+      expect(
+        screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled"),
+      ).toBe(true);
+      await act(async () => finishRegistration());
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: "Change shortcut" })
+            .hasAttribute("disabled"),
+        ).toBe(false),
+      );
+      expect(mocks.save).not.toHaveBeenCalled();
+      expect(mocks.invoke).toHaveBeenLastCalledWith(
+        "plugin:windows|dictation_shortcut_configure",
+        { shortcut: "Ctrl+Shift+D" },
+      );
+    },
+  );
+  it("waits for a cancelled save and rollback before allowing another edit", async () => {
+    let finishSave!: () => void;
+    let finishRollback!: () => void;
+    mocks.save
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishSave = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishRollback = resolve;
+          }),
+      );
+    mount();
+    const input = await captureInput();
+    fireEvent.keyDown(input, { key: "k", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(
+      screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled"),
+    ).toBe(true);
+    await act(async () => finishSave());
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(2));
+    expect(mocks.save).toHaveBeenLastCalledWith({
+      dictation_shortcut: "Ctrl+Shift+D",
+    });
+    expect(
+      screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled"),
+    ).toBe(true);
+    await act(async () => finishRollback());
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Change shortcut" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    expect(screen.getByText("Ctrl+Shift+D")).toBeTruthy();
+    expect(mocks.invoke).toHaveBeenLastCalledWith(
+      "plugin:windows|dictation_shortcut_configure",
+      { shortcut: "Ctrl+Shift+D" },
+    );
+  });
+  it("restores a pending edit after unmount and blocks capture on remount until settled", async () => {
+    let finishSave!: () => void;
+    mocks.save.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSave = resolve;
+        }),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = mount(client);
+    fireEvent.keyDown(await captureInput(), {
+      key: "k",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(1));
+    view.unmount();
+    mount(client);
+    expect(
+      screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled"),
+    ).toBe(true);
+    await act(async () => finishSave());
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Change shortcut" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    expect(mocks.save).toHaveBeenLastCalledWith({
+      dictation_shortcut: "Ctrl+Shift+D",
+    });
+  });
+  it("reports failed cancellation rollback without claiming the shortcut is unchanged", async () => {
+    let finishSave!: () => void;
+    mocks.save
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishSave = resolve;
+          }),
+      )
+      .mockRejectedValueOnce(new Error("disk"));
+    mount();
+    const input = await captureInput();
+    fireEvent.keyDown(input, { key: "k", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(input, { key: "Escape" });
+    await act(async () => finishSave());
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Couldn’t restore your previous shortcut. Try setting it again.",
     );
   });
   it("explains rejected shortcuts", async () => {

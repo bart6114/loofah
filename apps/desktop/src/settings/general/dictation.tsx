@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useForm } from "@tanstack/react-form";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery } from "@tanstack/react-query";
 import { Info } from "lucide-react";
 import { useEffect, useRef } from "react";
 
@@ -55,6 +55,8 @@ export function parseDictationShortcut(
   return modifiers.length >= 2 ? [...modifiers, key].join("+") : null;
 }
 
+const shortcutMutationKey = ["dictation-shortcut-edit"];
+
 export function DictationSettings({
   storedSettings,
 }: {
@@ -62,6 +64,10 @@ export function DictationSettings({
 }) {
   const { t } = useLingui();
   const changeButton = useRef<HTMLButtonElement>(null);
+  const shortcutEdit = useRef<{ cancelled: boolean } | null>(null);
+  const mounted = useRef(true);
+  const shortcutPending =
+    useIsMutating({ mutationKey: shortcutMutationKey }) > 0;
   const values = resolveConfigValues(
     [
       "dictation_enabled",
@@ -89,6 +95,7 @@ export function DictationSettings({
     onError: () => useDictationShortcut.setState({ capturing: false }),
   });
   const shortcut = useMutation({
+    mutationKey: shortcutMutationKey,
     mutationFn: async (event: Parameters<typeof parseDictationShortcut>[0]) => {
       const value = parseDictationShortcut(
         event,
@@ -100,42 +107,70 @@ export function DictationSettings({
             ? t`Use two modifier keys and a letter, number, or Space. With Option, try Space.`
             : t`Press two modifier keys with a letter, number, or Space. Escape cancels.`,
         );
+      if (shortcutEdit.current) return false;
+      const edit = { cancelled: false };
+      shortcutEdit.current = edit;
       const previous = form.state.values.dictation_shortcut;
+      let saveStarted = false;
+      let failed = false;
       try {
-        await configureDictationShortcut(value);
-        await setSettingValues({
-          ...form.state.values,
-          dictation_shortcut: value,
-        });
-        form.setFieldValue("dictation_shortcut", value);
-        return value;
-      } catch {
-        await configureDictationShortcut(previous).catch(() => {});
+        try {
+          await configureDictationShortcut(value);
+          if (!edit.cancelled) {
+            saveStarted = true;
+            await setSettingValues({ dictation_shortcut: value });
+          }
+          if (!edit.cancelled) {
+            form.setFieldValue("dictation_shortcut", value);
+            return true;
+          }
+        } catch {
+          failed = true;
+        }
+        // A cancelled write must settle before restoring the previous value.
+        const restored = await Promise.allSettled([
+          configureDictationShortcut(previous),
+          ...(saveStarted
+            ? [setSettingValues({ dictation_shortcut: previous })]
+            : []),
+        ]);
+        if (restored.some((result) => result.status === "rejected"))
+          throw new Error(
+            t`Couldn’t restore your previous shortcut. Try setting it again.`,
+          );
+        if (failed)
+          throw new Error(
+            t`Couldn’t save this shortcut. Your previous shortcut is unchanged.`,
+          );
+        return false;
+      } finally {
+        shortcutEdit.current = null;
         useDictationShortcut.setState({ capturing: false });
         capture.reset();
-        throw new Error(
-          t`Couldn’t save this shortcut. Your previous shortcut is unchanged.`,
-        );
       }
     },
-    onSuccess: () => {
-      useDictationShortcut.setState({ capturing: false });
-      capture.reset();
-      changeButton.current?.focus();
+    onSuccess: (saved) => {
+      if (saved && mounted.current) changeButton.current?.focus();
     },
   });
   const cancelCapture = (restoreFocus = false) => {
-    useDictationShortcut.setState({ capturing: false });
     capture.reset();
-    shortcut.reset();
+    if (shortcutEdit.current) {
+      shortcutEdit.current.cancelled = true;
+    } else {
+      useDictationShortcut.setState({ capturing: false });
+      shortcut.reset();
+    }
     if (restoreFocus) changeButton.current?.focus();
   };
-  useEffect(
-    () => () => {
-      useDictationShortcut.setState({ capturing: false });
-    },
-    [],
-  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (shortcutEdit.current) shortcutEdit.current.cancelled = true;
+      else useDictationShortcut.setState({ capturing: false });
+    };
+  }, []);
 
   return (
     <section className="flex min-w-0 flex-col gap-4">
@@ -171,7 +206,7 @@ export function DictationSettings({
             <Switch
               id="dictation-enabled"
               checked={field.state.value}
-              disabled={busy || capturing || save.isPending}
+              disabled={busy || capturing || shortcutPending || save.isPending}
               onCheckedChange={(value) => {
                 field.handleChange(value);
                 void form.handleSubmit();
@@ -222,7 +257,8 @@ export function DictationSettings({
                                 "Meta",
                                 "Fn",
                               ].includes(event.key) ||
-                              event.repeat
+                              event.repeat ||
+                              shortcutEdit.current !== null
                             )
                               return;
                             shortcut.mutate({
@@ -247,7 +283,7 @@ export function DictationSettings({
                         variant="outline"
                         size="sm"
                         className="bg-card rounded-full font-normal shadow-none"
-                        disabled={capture.isPending || shortcut.isPending}
+                        disabled={capture.isPending || shortcutPending}
                         onMouseDown={(event) => {
                           if (capturing) event.preventDefault();
                         }}
@@ -270,7 +306,7 @@ export function DictationSettings({
                         variant="ghost"
                         size="sm"
                         className="text-muted-foreground rounded-full font-normal"
-                        disabled={capturing || shortcut.isPending}
+                        disabled={capturing || shortcutPending}
                         onClick={() => {
                           shortcut.mutate({
                             key: " ",
@@ -316,7 +352,13 @@ export function DictationSettings({
                     </label>
                     <Select
                       value={field.state.value}
-                      disabled={!enabled || busy || save.isPending || capturing}
+                      disabled={
+                        !enabled ||
+                        busy ||
+                        save.isPending ||
+                        capturing ||
+                        shortcutPending
+                      }
                       onValueChange={(value) => {
                         field.handleChange(value);
                         void form.handleSubmit();

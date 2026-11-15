@@ -211,7 +211,7 @@ describe("DictationHost", () => {
     await status({ phase: "error", problem: "targetUnavailable" });
     await waitFor(() => expect(mocks.update).toHaveBeenCalled());
     const state = mocks.update.mock.lastCall?.[0];
-    expect(state.title).toBe("Click a text field");
+    expect(state.title).toBe("Click a text field to record into");
     expect(state.dictation.detail).toBeNull();
     expect(state.dictation.actions).toEqual([
       { id: "dismiss", label: "Dismiss" },

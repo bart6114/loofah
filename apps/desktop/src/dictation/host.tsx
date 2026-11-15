@@ -315,7 +315,7 @@ export function DictationHost() {
         actions.push({ id: "permission", label: t`Open Settings` });
         break;
       case "targetUnavailable":
-        title = t`Click a text field`;
+        title = t`Click a text field to record into`;
         break;
       case "transcriptionFailed":
         title = t`Couldn’t transcribe`;

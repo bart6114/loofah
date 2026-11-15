@@ -391,8 +391,8 @@ msgid "Clear"
 msgstr "Clear"
 
 #: src/dictation/host.tsx
-msgid "Click a text field"
-msgstr "Click a text field"
+msgid "Click a text field to record into"
+msgstr "Click a text field to record into"
 
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
@@ -566,6 +566,10 @@ msgstr "Couldn't prepare export."
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t remove attachment"
 msgstr "Couldn’t remove attachment"
+
+#: src/settings/general/dictation.tsx
+msgid "Couldn’t restore your previous shortcut. Try setting it again."
+msgstr "Couldn’t restore your previous shortcut. Try setting it again."
 
 #: src/settings/general/dictation.tsx
 msgid "Couldn’t save this shortcut. Your previous shortcut is unchanged."
