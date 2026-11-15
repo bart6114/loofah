@@ -465,7 +465,7 @@ async fn run_attempt(
         if recorded.samples < SAMPLE_RATE as usize / 4 {
             return Err(DictationProblem::NoSpeech);
         }
-        update(&app, id, DictationPhase::LoadingModel, 0.0);
+        update(&app, id, DictationPhase::Transcribing, 0.0);
         let url = if let Some(server) = app
             .local_stt()
             .get_server_for_model(&model)
@@ -475,6 +475,7 @@ async fn run_attempt(
         {
             url
         } else {
+            update(&app, id, DictationPhase::LoadingModel, 0.0);
             app.local_stt().start_server(model).await.map_err(|error| {
                 tracing::warn!(%error, "dictation_model_failed");
                 DictationProblem::TranscriptionFailed
