@@ -42,13 +42,14 @@ enum FloatingBarLayout {
       return NSSize(width: 368, height: dictationHeight + inset * 2)
     }
     let contentWidth: CGFloat = 336
+    let rowActions = state.actions.filter { $0.id != "dismiss" }
     let actionsWidth =
-      state.actions.reduce(CGFloat(0)) { width, action in
+      rowActions.reduce(CGFloat(0)) { width, action in
         width
           + (action.label as NSString).size(withAttributes: [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium)
           ]).width + 16
-      } + CGFloat(max(0, state.actions.count - 1)) * 8
+      } + CGFloat(max(0, rowActions.count - 1)) * 8
     let iconWidth: CGFloat =
       ["starting", "loadingModel", "transcribing", "inserting", "done"].contains(state.phase)
       ? 28 : state.phase == "recording" ? 46 : 0
@@ -70,7 +71,7 @@ enum FloatingBarLayout {
             attributes: [.font: NSFont.systemFont(ofSize: 13)]
           ).height)
     }
-    if !inlineActions && !state.actions.isEmpty { height += 38 }
+    if !inlineActions && !rowActions.isEmpty { height += 38 }
     return NSSize(width: 368, height: height + inset * 2)
   }
 
@@ -78,7 +79,7 @@ enum FloatingBarLayout {
     state.detail == nil
       && (["starting", "recording", "loadingModel", "transcribing", "inserting"].contains(
         state.phase)
-        || state.actions.reduce(CGFloat(0)) { width, action in
+        || state.actions.filter { $0.id != "dismiss" }.reduce(CGFloat(0)) { width, action in
           width
             + (action.label as NSString).size(withAttributes: [
               .font: NSFont.systemFont(ofSize: 12, weight: .medium)
@@ -132,6 +133,8 @@ struct FloatingBarView: View {
   let panelOrigin: () -> NSPoint?
   let movePanel: (NSPoint) -> Void
   @State private var isBarHovered = false
+  @FocusState private var isDismissFocused: Bool
+  @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
   @State private var shouldAutoScrollTranscript = true
   @State private var suppressNextClick = false
   @State private var dragStart: FloatingBarDragStart?
@@ -193,12 +196,39 @@ struct FloatingBarView: View {
     )
     .background(VisualEffectBlur(colorScheme: model.colorScheme, cornerRadius: 18))
     .clipShape(RoundedRectangle(cornerRadius: 18))
+    .overlay(alignment: .topLeading) {
+      if let dismiss = state.actions.first(where: { $0.id == "dismiss" }) {
+        FloatingIconButton(
+          systemName: "xmark",
+          accessibilityLabel: dismiss.label,
+          color: primaryContentColor.opacity(0.62),
+          hoverFill: primaryContentColor.opacity(0.14),
+          size: 22,
+          action: {
+            performClick {
+              dismiss.id.withCString { rustOnDictationAction(state.attemptId, $0) }
+            }
+          },
+          symbolPointSize: 9.5,
+          symbolWeight: .medium,
+          normalFill: Color(nsColor: .controlBackgroundColor).opacity(0.95)
+        )
+        .focused($isDismissFocused)
+        .help(dismiss.label)
+        .accessibilityHidden(false)
+        .opacity(isBarHovered || isDismissFocused || voiceOverEnabled ? 1 : 0)
+        .allowsHitTesting(isBarHovered || isDismissFocused || voiceOverEnabled)
+        .shadow(color: .black.opacity(0.16), radius: 4, x: 0, y: 1.5)
+        .offset(x: -FloatingBarLayout.inset, y: -FloatingBarLayout.inset)
+      }
+    }
+    .onHover { isBarHovered = $0 }
     .simultaneousGesture(dragClickSuppressor)
   }
 
   private func dictationActions(_ state: DictationPresentation) -> some View {
     HStack(spacing: 8) {
-      ForEach(state.actions) { action in
+      ForEach(state.actions.filter { $0.id != "dismiss" }) { action in
         Button(action.label) {
           performClick {
             action.id.withCString { rustOnDictationAction(state.attemptId, $0) }
@@ -816,17 +846,20 @@ private struct FloatingIconButton: View {
   let hoverFill: Color
   let size: CGFloat
   let action: () -> Void
+  var symbolPointSize: CGFloat = 12
+  var symbolWeight: Font.Weight = .semibold
+  var normalFill: Color = .clear
   @State private var isHovered = false
 
   var body: some View {
     Button(action: action) {
       Image(systemName: systemName)
-        .font(.system(size: 12, weight: .semibold))
+        .font(.system(size: symbolPointSize, weight: symbolWeight))
         .foregroundStyle(color)
         .frame(width: size, height: size)
         .background(
           Circle()
-            .fill(isHovered ? hoverFill : Color.clear)
+            .fill(isHovered ? hoverFill : normalFill)
         )
         .contentShape(Circle())
     }

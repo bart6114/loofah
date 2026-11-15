@@ -43,6 +43,9 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
       }),
   });
   if (state.dictation) {
+    const dismiss = state.dictation.actions.find(
+      (item) => item.id === "dismiss",
+    );
     return (
       <section
         className="dictation-bar"
@@ -52,6 +55,16 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
           backgroundColor: `rgb(var(--surface) / ${Math.max(0.2, state.opacity)})`,
         }}
       >
+        {dismiss && (
+          <button
+            className="dictation-dismiss"
+            aria-label={dismiss.label}
+            disabled={action.isPending}
+            onClick={() => action.mutate(dismiss.id)}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        )}
         <div className="dictation-heading">
           <span className="grip" data-tauri-drag-region aria-hidden="true">
             ⠿
@@ -77,15 +90,17 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
         </div>
         {state.dictation.detail && <p>{state.dictation.detail}</p>}
         <div className="dictation-actions">
-          {state.dictation.actions.map((item) => (
-            <button
-              key={item.id}
-              disabled={action.isPending}
-              onClick={() => action.mutate(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
+          {state.dictation.actions
+            .filter((item) => item.id !== "dismiss")
+            .map((item) => (
+              <button
+                key={item.id}
+                disabled={action.isPending}
+                onClick={() => action.mutate(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
         </div>
       </section>
     );

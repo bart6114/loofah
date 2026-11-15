@@ -104,6 +104,16 @@ export function DictationHost() {
           }
           if (action === "stop" && !isDictationCapturing(current)) return;
           if (action === "cancel" && !isDictationActive(current)) return;
+          if (action === "dismiss") {
+            if (
+              !current ||
+              isDictationActive(current) ||
+              current.canRetry ||
+              current.canCopy
+            )
+              return;
+            action = "discard";
+          }
           if (action === "settings") {
             useTabs.getState().openNew({
               type: "settings",
@@ -305,8 +315,7 @@ export function DictationHost() {
         actions.push({ id: "permission", label: t`Open Settings` });
         break;
       case "targetUnavailable":
-        title = t`Click where you want to type`;
-        detail = t`Then use your dictation shortcut again.`;
+        title = t`Click a text field`;
         break;
       case "transcriptionFailed":
         title = t`Couldn’t transcribe`;
@@ -331,13 +340,13 @@ export function DictationHost() {
       actions.push({ id: "copy", label: t`Copy text` });
     if (
       !isDictationActive(status) &&
-      (status.phase === "error" || status.phase === "ready") &&
-      status.problem !== "noSpeech"
+      (status.phase === "error" || status.phase === "ready")
     ) {
-      actions.push({
-        id: "discard",
-        label: status.canRetry ? t`Discard` : t`Dismiss`,
-      });
+      actions.push(
+        status.canRetry || status.canCopy
+          ? { id: "discard", label: t`Discard` }
+          : { id: "dismiss", label: t`Dismiss` },
+      );
     }
     const state = {
       amplitude: status.amplitude,

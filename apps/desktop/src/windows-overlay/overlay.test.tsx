@@ -179,3 +179,35 @@ it("offers direct recovery without meeting controls or opening the app", async (
   expect(screen.queryByRole("button", { name: "Stop recording" })).toBeNull();
   expect(mocks.open).not.toHaveBeenCalled();
 });
+
+it("dismisses informational dictation through an accessible close control", async () => {
+  mocks.snapshot.mockResolvedValue({
+    revision: 1,
+    state: {
+      type: "floatingBar",
+      state: {
+        ...recording,
+        title: "Click a text field",
+        status: "error",
+        dictation: {
+          phase: "error",
+          attemptId: 43,
+          detail: null,
+          actions: [{ id: "dismiss", label: "Sluiten" }],
+        },
+      },
+    },
+  });
+  mount();
+  const close = await screen.findByRole("button", { name: "Sluiten" });
+  expect(close.textContent).toBe("×");
+  expect(close.closest(".dictation-actions")).toBeNull();
+  fireEvent.click(close);
+  await waitFor(() =>
+    expect(mocks.dictation).toHaveBeenCalledWith({
+      attemptId: 43,
+      action: "dismiss",
+    }),
+  );
+  expect(mocks.stop).not.toHaveBeenCalled();
+});

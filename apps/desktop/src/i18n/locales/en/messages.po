@@ -391,8 +391,8 @@ msgid "Clear"
 msgstr "Clear"
 
 #: src/dictation/host.tsx
-msgid "Click where you want to type"
-msgstr "Click where you want to type"
+msgid "Click a text field"
+msgstr "Click a text field"
 
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
@@ -1941,10 +1941,6 @@ msgstr "The app will restart after onboarding to apply your storage changes"
 #: src/settings/ai/llm/configure.tsx
 msgid "The selected provider processes the text you send for summaries. API usage may have separate charges."
 msgstr "The selected provider processes the text you send for summaries. API usage may have separate charges."
-
-#: src/dictation/host.tsx
-msgid "Then use your dictation shortcut again."
-msgstr "Then use your dictation shortcut again."
 
 #: src/settings/general/storage/change-location.tsx
 msgid "This folder already has files in it"

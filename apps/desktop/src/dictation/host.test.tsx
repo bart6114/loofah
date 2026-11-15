@@ -190,7 +190,9 @@ describe("DictationHost", () => {
       "dictation_cancel",
       expect.anything(),
     );
-    expect(mocks.update.mock.lastCall?.[0].title).toBe("Listening…");
+    await waitFor(() =>
+      expect(mocks.update.mock.lastCall?.[0].title).toBe("Listening…"),
+    );
   });
   it("offers direct copy recovery without the tray or a hide timer", async () => {
     mount();
@@ -199,9 +201,55 @@ describe("DictationHost", () => {
     const state = mocks.update.mock.lastCall?.[0];
     expect(state.dictation.actions).toEqual([
       { id: "copy", label: "Copy text" },
-      { id: "discard", label: "Dismiss" },
+      { id: "discard", label: "Discard" },
     ]);
     expect(mocks.hide).not.toHaveBeenCalled();
+  });
+  it("offers a single-line field hint with safe dismissal", async () => {
+    mocks.invoke.mockImplementation(async () => idle);
+    mount();
+    await status({ phase: "error", problem: "targetUnavailable" });
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    const state = mocks.update.mock.lastCall?.[0];
+    expect(state.title).toBe("Click a text field");
+    expect(state.dictation.detail).toBeNull();
+    expect(state.dictation.actions).toEqual([
+      { id: "dismiss", label: "Dismiss" },
+    ]);
+    await emit("plugin:windows:dictation-action", {
+      attemptId: 1,
+      action: "dismiss",
+    });
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("dictation_discard", {
+        attemptId: 1,
+      }),
+    );
+  });
+  it("does not let dismissal cancel recording or clear recovery", async () => {
+    mount();
+    for (const [index, next] of [
+      { phase: "recording", busy: true },
+      { phase: "error", canRetry: true },
+      { phase: "error", canCopy: true },
+    ].entries()) {
+      await status({
+        ...next,
+        revision: index + 1,
+      });
+      await emit("plugin:windows:dictation-action", {
+        attemptId: 1,
+        action: "dismiss",
+      });
+    }
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "dictation_discard",
+      expect.anything(),
+    );
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "dictation_cancel",
+      expect.anything(),
+    );
   });
   it("success shows a completion state without redundant copy controls", async () => {
     mount();
