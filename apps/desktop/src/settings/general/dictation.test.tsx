@@ -9,6 +9,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@hypr/ui/components/ui/tooltip";
+
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   save: vi.fn(),
@@ -52,20 +54,22 @@ function mount() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <DictationSettings
-        storedSettings={{
-          values: {
-            dictation_enabled: true,
-            dictation_shortcut: "Ctrl+Shift+D",
-            dictation_trigger_mode: "hold",
-          },
-          hasValues: new Set([
-            "dictation_enabled",
-            "dictation_shortcut",
-            "dictation_trigger_mode",
-          ]),
-        }}
-      />
+      <TooltipProvider>
+        <DictationSettings
+          storedSettings={{
+            values: {
+              dictation_enabled: true,
+              dictation_shortcut: "Ctrl+Shift+D",
+              dictation_trigger_mode: "hold",
+            },
+            hasValues: new Set([
+              "dictation_enabled",
+              "dictation_shortcut",
+              "dictation_trigger_mode",
+            ]),
+          }}
+        />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

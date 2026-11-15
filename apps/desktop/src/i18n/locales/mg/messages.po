@@ -99,6 +99,10 @@ msgstr ""
 msgid "A meeting is recording"
 msgstr ""
 
+#: src/settings/general/dictation.tsx
+msgid "About dictation"
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "About Loofah"
 msgstr ""
@@ -386,20 +390,8 @@ msgstr ""
 msgid "Clear"
 msgstr ""
 
-#: src/settings/general/dictation.tsx
-msgid "Click here and use your shortcut."
-msgstr ""
-
 #: src/dictation/host.tsx
 msgid "Click where you want to type"
-msgstr ""
-
-#: src/settings/general/dictation.tsx
-msgid "Click where you want to type. Hold {key}, speak, then release."
-msgstr ""
-
-#: src/settings/general/dictation.tsx
-msgid "Click where you want to type. Press {key}, speak, then press it again."
 msgstr ""
 
 #: src/changelog/index.tsx
@@ -790,10 +782,6 @@ msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Exporting..."
-msgstr ""
-
-#: src/settings/general/dictation.tsx
-msgid "Failed recordings stay available to retry until you discard them, start a new dictation, or quit Loofah."
 msgstr ""
 
 #: src/task/resource-view.tsx
@@ -2055,16 +2043,8 @@ msgstr ""
 msgid "Try copying again."
 msgstr ""
 
-#: src/settings/general/dictation.tsx
-msgid "Try dictation"
-msgstr ""
-
 #: src/dictation/host.tsx
 msgid "Try dictation after the meeting finishes."
-msgstr ""
-
-#: src/settings/general/dictation.tsx
-msgid "Try dictation here"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx
@@ -2143,11 +2123,7 @@ msgid "Uses your AI app's configured server. Choose an on-device model in that a
 msgstr ""
 
 #: src/settings/general/dictation.tsx
-msgid "Uses your system microphone. No meeting note is created."
-msgstr ""
-
-#: src/settings/general/dictation.tsx
-msgid "Uses your transcription model and language settings."
+msgid "Uses your transcription model and language settings. No meeting note is created."
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx

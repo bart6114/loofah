@@ -1,11 +1,17 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Info } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { commands as localSttCommands } from "@hypr/plugin-local-stt";
 import { Button } from "@hypr/ui/components/ui/button";
 import { Switch } from "@hypr/ui/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@hypr/ui/components/ui/tooltip";
 
 import {
   configureDictationShortcut,
@@ -127,9 +133,31 @@ export function DictationSettings({
       <form.Field name="dictation_enabled">
         {(field) => (
           <div className="flex items-center justify-between gap-3">
-            <label htmlFor="dictation-enabled" className="text-sm font-medium">
-              <Trans>Dictation</Trans>
-            </label>
+            <div className="flex items-center gap-1.5">
+              <label
+                htmlFor="dictation-enabled"
+                className="text-sm font-medium"
+              >
+                <Trans>Dictation</Trans>
+              </label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t`About dictation`}
+                    className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded-sm p-0.5 focus-visible:ring-2 focus-visible:outline-none"
+                  >
+                    <Info className="size-3.5" aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-64">
+                  <Trans>
+                    Uses your transcription model and language settings. No
+                    meeting note is created.
+                  </Trans>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <Switch
               id="dictation-enabled"
               checked={field.state.value}
@@ -142,29 +170,9 @@ export function DictationSettings({
           </div>
         )}
       </form.Field>
-      <form.Subscribe
-        selector={(state) =>
-          [
-            state.values.dictation_enabled,
-            state.values.dictation_shortcut,
-            state.values.dictation_trigger_mode,
-          ] as const
-        }
-      >
-        {([enabled, key, mode]) => (
+      <form.Subscribe selector={(state) => state.values.dictation_enabled}>
+        {(enabled) => (
           <>
-            <p className="text-muted-foreground text-xs">
-              {mode === "hold" ? (
-                <Trans>
-                  Click where you want to type. Hold {key}, speak, then release.
-                </Trans>
-              ) : (
-                <Trans>
-                  Click where you want to type. Press {key}, speak, then press
-                  it again.
-                </Trans>
-              )}
-            </p>
             <fieldset
               disabled={!enabled || busy || save.isPending}
               className="space-y-3 disabled:opacity-60"
@@ -303,22 +311,6 @@ export function DictationSettings({
               </form.Field>
             </fieldset>
             {enabled && <DictationReadiness />}
-            {enabled && (
-              <details className="text-muted-foreground text-xs">
-                <summary className="cursor-pointer">
-                  <Trans>Try dictation</Trans>
-                </summary>
-                <label className="mt-2 block">
-                  <Trans>Click here and use your shortcut.</Trans>
-                  <textarea
-                    aria-label={t`Try dictation here`}
-                    className="text-foreground mt-2 block w-full rounded border p-2 text-sm"
-                    rows={3}
-                  />
-                </label>
-              </details>
-            )}
-            <DictationDetails />
           </>
         )}
       </form.Subscribe>
@@ -450,32 +442,6 @@ function ReadinessAction({
       <Button variant="outline" size="sm" onClick={onClick}>
         {label}
       </Button>
-    </div>
-  );
-}
-
-function DictationDetails() {
-  const openNew = useTabs((state) => state.openNew);
-  return (
-    <div className="text-muted-foreground space-y-1 text-xs">
-      <button
-        type="button"
-        className="underline underline-offset-2"
-        onClick={() =>
-          openNew({ type: "settings", state: { tab: "transcription" } })
-        }
-      >
-        <Trans>Uses your transcription model and language settings.</Trans>
-      </button>
-      <p>
-        <Trans>Uses your system microphone. No meeting note is created.</Trans>
-      </p>
-      <p>
-        <Trans>
-          Failed recordings stay available to retry until you discard them,
-          start a new dictation, or quit Loofah.
-        </Trans>
-      </p>
     </div>
   );
 }

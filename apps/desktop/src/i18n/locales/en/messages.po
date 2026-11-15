@@ -99,6 +99,10 @@ msgstr "A duplicate; the original stays where it is."
 msgid "A meeting is recording"
 msgstr "A meeting is recording"
 
+#: src/settings/general/dictation.tsx
+msgid "About dictation"
+msgstr "About dictation"
+
 #: src/main/about-dialog.tsx
 msgid "About Loofah"
 msgstr "About Loofah"
@@ -386,21 +390,9 @@ msgstr "Choosing…"
 msgid "Clear"
 msgstr "Clear"
 
-#: src/settings/general/dictation.tsx
-msgid "Click here and use your shortcut."
-msgstr "Click here and use your shortcut."
-
 #: src/dictation/host.tsx
 msgid "Click where you want to type"
 msgstr "Click where you want to type"
-
-#: src/settings/general/dictation.tsx
-msgid "Click where you want to type. Hold {key}, speak, then release."
-msgstr "Click where you want to type. Hold {key}, speak, then release."
-
-#: src/settings/general/dictation.tsx
-msgid "Click where you want to type. Press {key}, speak, then press it again."
-msgstr "Click where you want to type. Press {key}, speak, then press it again."
 
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
@@ -791,10 +783,6 @@ msgstr "Export failed. Please try again."
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Exporting..."
 msgstr "Exporting..."
-
-#: src/settings/general/dictation.tsx
-msgid "Failed recordings stay available to retry until you discard them, start a new dictation, or quit Loofah."
-msgstr "Failed recordings stay available to retry until you discard them, start a new dictation, or quit Loofah."
 
 #: src/task/resource-view.tsx
 msgid "Failed to load issue"
@@ -2055,17 +2043,9 @@ msgstr "Try again"
 msgid "Try copying again."
 msgstr "Try copying again."
 
-#: src/settings/general/dictation.tsx
-msgid "Try dictation"
-msgstr "Try dictation"
-
 #: src/dictation/host.tsx
 msgid "Try dictation after the meeting finishes."
 msgstr "Try dictation after the meeting finishes."
-
-#: src/settings/general/dictation.tsx
-msgid "Try dictation here"
-msgstr "Try dictation here"
 
 #: src/settings/ai/llm/select.tsx
 msgid "Turn off summaries"
@@ -2143,12 +2123,8 @@ msgid "Uses your AI app's configured server. Choose an on-device model in that a
 msgstr "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
 
 #: src/settings/general/dictation.tsx
-msgid "Uses your system microphone. No meeting note is created."
-msgstr "Uses your system microphone. No meeting note is created."
-
-#: src/settings/general/dictation.tsx
-msgid "Uses your transcription model and language settings."
-msgstr "Uses your transcription model and language settings."
+msgid "Uses your transcription model and language settings. No meeting note is created."
+msgstr "Uses your transcription model and language settings. No meeting note is created."
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Variables"
