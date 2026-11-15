@@ -144,6 +144,7 @@ export function DictationSettings({
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-1.5">
               <label
+                id="dictation-label"
                 htmlFor="dictation-enabled"
                 className="text-sm font-medium"
               >
@@ -181,18 +182,19 @@ export function DictationSettings({
       </form.Field>
       <form.Subscribe selector={(state) => state.values.dictation_enabled}>
         {(enabled) => (
-          <>
+          <div className="space-y-3">
             <fieldset
+              aria-labelledby="dictation-label"
               disabled={!enabled || busy || save.isPending}
               className="flex min-w-0 flex-col gap-4 disabled:opacity-60"
             >
               <form.Field name="dictation_shortcut">
                 {(field) => (
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span className="text-sm font-medium">
+                    <span className="text-muted-foreground text-xs">
                       <Trans>Shortcut</Trans>
                     </span>
-                    <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+                    <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
                       {capturing && capture.isSuccess ? (
                         <Input
                           autoFocus
@@ -308,7 +310,7 @@ export function DictationSettings({
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <label
                       htmlFor="dictation-trigger-mode"
-                      className="text-sm font-medium"
+                      className="text-muted-foreground text-xs"
                     >
                       <Trans>Shortcut behavior</Trans>
                     </label>
@@ -340,7 +342,7 @@ export function DictationSettings({
               </form.Field>
             </fieldset>
             {enabled && <DictationReadiness />}
-          </>
+          </div>
         )}
       </form.Subscribe>
       {save.isError && (
@@ -465,10 +467,15 @@ function ReadinessAction({
   return (
     <div
       role="status"
-      className="flex items-center justify-between gap-3 rounded border p-3 text-xs"
+      className="flex flex-wrap items-center justify-between gap-3 text-xs"
     >
-      <span>{title}</span>
-      <Button variant="outline" size="sm" onClick={onClick}>
+      <span className="text-muted-foreground">{title}</span>
+      <Button
+        variant="outline"
+        size="sm"
+        className="bg-card rounded-full font-normal shadow-none"
+        onClick={onClick}
+      >
         {label}
       </Button>
     </div>

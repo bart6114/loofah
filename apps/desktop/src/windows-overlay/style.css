@@ -55,6 +55,9 @@ button:disabled {
   align-items: center;
   padding: 10px;
 }
+.bar, .dictation-bar {
+  border: 0;
+}
 .display-settings header {
   display: flex;
   justify-content: space-between;

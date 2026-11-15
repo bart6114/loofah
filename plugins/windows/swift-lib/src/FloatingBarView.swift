@@ -278,7 +278,7 @@ struct FloatingBarView: View {
     .padding(.trailing, FloatingBarLayout.compactTrailingPadding)
     .fixedSize(horizontal: !model.showStatusText, vertical: false)
     .frame(width: width, height: FloatingBarLayout.compactHeight, alignment: .trailing)
-    // Fade the ink out ahead of the left border so clipped trace columns
+    // Fade the ink out ahead of the left edge so clipped trace columns
     // don't poke through the rounded edge while the pill is contracted.
     .mask(
       HStack(spacing: 0) {
@@ -296,15 +296,6 @@ struct FloatingBarView: View {
         VisualEffectBlur(colorScheme: model.colorScheme, cornerRadius: radius)
         pillShape.fill(surfaceTintColor)
       }
-    )
-    .overlay(
-      pillShape
-        .strokeBorder(outerStrokeColor, lineWidth: 0.5)
-    )
-    .overlay(
-      pillShape
-        .strokeBorder(innerStrokeColor, lineWidth: 0.5)
-        .padding(1)
     )
     .clipShape(pillShape)
     .contentShape(pillShape)
@@ -432,15 +423,6 @@ struct FloatingBarView: View {
         surfaceShape.fill(surfaceTintColor)
       }
     )
-    .overlay(
-      surfaceShape
-        .strokeBorder(outerStrokeColor, lineWidth: 0.5)
-    )
-    .overlay(
-      surfaceShape
-        .strokeBorder(innerStrokeColor, lineWidth: 0.5)
-        .padding(1)
-    )
     .clipShape(surfaceShape)
     .contentShape(Rectangle())
     .simultaneousGesture(dragClickSuppressor)
@@ -497,14 +479,6 @@ struct FloatingBarView: View {
 
   private var controlHoverFill: Color {
     primaryContentColor.opacity(model.colorScheme == .dark ? 0.08 : 0.07)
-  }
-
-  private var outerStrokeColor: Color {
-    primaryContentColor.opacity(model.colorScheme == .dark ? 0.14 : 0.12)
-  }
-
-  private var innerStrokeColor: Color {
-    primaryContentColor.opacity(model.colorScheme == .dark ? 0.28 : 0.18)
   }
 
   private var dragHandleDotColor: Color {
