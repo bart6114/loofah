@@ -34,11 +34,27 @@ pub struct FloatingTranscriptBubble {
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
+pub struct DictationPresentation {
+    pub phase: String,
+    pub attempt_id: u64,
+    pub detail: Option<String>,
+    pub actions: Vec<DictationActionButton>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct DictationActionButton {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct FloatingBarState {
     pub amplitude: f64,
     pub title: String,
     pub status: FloatingBarStatus,
     pub show_status_text: bool,
+    pub dictation: Option<DictationPresentation>,
     pub color_scheme: FloatingBarColorScheme,
     pub opacity: f64,
     pub live_caption_opacity: f64,
@@ -99,6 +115,22 @@ mod platform {
             Err(Error::PanelError(
                 "failed to update native floating bar".to_string(),
             ))
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn rust_on_dictation_action(attempt_id: u64, action: *const c_char) {
+        if action.is_null() {
+            return;
+        }
+        if let Some(app) = APP_HANDLE.get() {
+            if let Ok(action) = unsafe { CStr::from_ptr(action) }.to_str() {
+                let _ = crate::events::DictationAction {
+                    attempt_id,
+                    action: action.to_string(),
+                }
+                .emit(app);
+            }
         }
     }
 

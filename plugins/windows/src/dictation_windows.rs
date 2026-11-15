@@ -44,10 +44,13 @@ static SHORTCUT: LazyLock<Mutex<Shortcut>> = LazyLock::new(|| {
         pressed: false,
     })
 });
+static ENABLED: AtomicBool = AtomicBool::new(false);
+static ACTIVE: AtomicBool = AtomicBool::new(false);
+static ESCAPE_PRESSED: AtomicBool = AtomicBool::new(false);
 static HOOK_STARTED: AtomicBool = AtomicBool::new(false);
 static TARGET: Mutex<Option<(i32, Vec<i32>)>> = Mutex::new(None);
 
-pub fn configure(shortcut: &str) -> Result<(), String> {
+fn parse_shortcut(shortcut: &str) -> Result<Shortcut, String> {
     let parts = shortcut
         .split('+')
         .map(|part| part.to_ascii_lowercase())
@@ -72,7 +75,7 @@ pub fn configure(shortcut: &str) -> Result<(), String> {
             "ctrl" | "control" => parsed.control = true,
             "alt" | "option" => parsed.alt = true,
             "shift" => parsed.shift = true,
-            "cmd" | "command" => parsed.command = true,
+            "cmd" | "command" | "win" | "windows" => parsed.command = true,
             _ => return Err("Unsupported shortcut modifier".into()),
         }
     }
@@ -84,8 +87,25 @@ pub fn configure(shortcut: &str) -> Result<(), String> {
     {
         return Err("Use at least two modifier keys".into());
     }
-    *SHORTCUT.lock().unwrap() = parsed;
+    Ok(parsed)
+}
+
+pub fn set_active(active: bool) {
+    ACTIVE.store(active, Ordering::SeqCst);
+}
+
+pub fn configure(shortcut: &str) -> Result<(), String> {
+    if shortcut.is_empty() {
+        ENABLED.store(false, Ordering::SeqCst);
+        SHORTCUT.lock().unwrap().pressed = false;
+        return Ok(());
+    }
+    let parsed = parse_shortcut(shortcut)?;
     if HOOK_STARTED.load(Ordering::SeqCst) {
+        let mut armed = parsed;
+        armed.pressed = unsafe { GetAsyncKeyState(parsed.key as i32) } < 0;
+        *SHORTCUT.lock().unwrap() = armed;
+        ENABLED.store(true, Ordering::SeqCst);
         return Ok(());
     }
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
@@ -111,6 +131,10 @@ pub fn configure(shortcut: &str) -> Result<(), String> {
         .recv_timeout(std::time::Duration::from_secs(2))
         .unwrap_or(false)
     {
+        let mut armed = parsed;
+        armed.pressed = unsafe { GetAsyncKeyState(parsed.key as i32) } < 0;
+        *SHORTCUT.lock().unwrap() = armed;
+        ENABLED.store(true, Ordering::SeqCst);
         HOOK_STARTED.store(true, Ordering::SeqCst);
         Ok(())
     } else {
@@ -123,6 +147,22 @@ unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARA
         let key = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) }.vkCode;
         let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
         let up = matches!(wparam.0 as u32, WM_KEYUP | WM_SYSKEYUP);
+        if key == 0x1B {
+            if up && ESCAPE_PRESSED.swap(false, Ordering::SeqCst) {
+                return LRESULT(1);
+            }
+            if down && (ACTIVE.load(Ordering::SeqCst) || ESCAPE_PRESSED.load(Ordering::SeqCst)) {
+                if !ESCAPE_PRESSED.swap(true, Ordering::SeqCst) {
+                    if let Some(app) = super::APP.get() {
+                        let _ = crate::events::DictationCancel {}.emit(app);
+                    }
+                }
+                return LRESULT(1);
+            }
+        }
+        if !ENABLED.load(Ordering::SeqCst) {
+            return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+        }
         let mut shortcut = SHORTCUT.lock().unwrap();
         if key == shortcut.key && down && shortcut.pressed {
             return LRESULT(1);
@@ -257,5 +297,40 @@ pub fn insert(text: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err("Could not insert dictation into this field".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_win_and_legacy_command_modifiers() {
+        for value in ["Ctrl+Win+A", "Ctrl+Cmd+A", "Ctrl+Command+A"] {
+            let shortcut = parse_shortcut(value).unwrap();
+            assert!(shortcut.control && shortcut.command);
+            assert_eq!(shortcut.key, 0x41);
+        }
+    }
+
+    #[test]
+    fn rejects_shortcuts_without_two_distinct_modifiers() {
+        for value in [
+            "A",
+            "Ctrl+A",
+            "Ctrl+Ctrl+A",
+            "Ctrl+Alt+F8",
+            "Ctrl+Alt+Escape",
+        ] {
+            assert!(parse_shortcut(value).is_err(), "{value}");
+        }
+    }
+
+    #[test]
+    fn accepts_default_space_shortcut() {
+        let shortcut = parse_shortcut("Ctrl+Alt+Space").unwrap();
+        assert_eq!(shortcut.key, 0x20);
+        assert!(shortcut.control && shortcut.alt);
+        assert!(!shortcut.shift && !shortcut.command && !shortcut.pressed);
     }
 }

@@ -95,6 +95,17 @@ common_event_derives! {
 }
 
 common_event_derives! {
+    pub struct DictationCancel {}
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct DictationAction {
+    pub attempt_id: u64,
+    pub action: String,
+}
+
+common_event_derives! {
     pub struct DictationShortcutDown {}
 }
 

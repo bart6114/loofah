@@ -27,6 +27,7 @@
     "windows:allow-devtools-panel-show",
     "windows:allow-devtools-panel-hide",
     "windows:allow-dictation-shortcut-configure",
+    "windows:allow-dictation-set-active",
     "tracing:default",
     "hypr-tray:default",
     "updater:default",

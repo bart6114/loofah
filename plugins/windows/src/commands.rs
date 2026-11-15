@@ -523,3 +523,9 @@ pub async fn overlay_set_settings_open(open: bool) -> Result<(), String> {
         Ok(())
     }
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn dictation_set_active(active: bool) {
+    crate::dictation::dictation_set_active(active);
+}

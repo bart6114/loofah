@@ -99,7 +99,7 @@ function DictationPermissions() {
     <PermissionGroup title={<Trans>Dictation</Trans>}>
       <PermissionRow
         title={t`Input Monitoring`}
-        description={t`Required for the global hold-to-speak shortcut`}
+        description={t`Lets your dictation shortcut work in other apps`}
         status={inputMonitoring.status}
         isPending={inputMonitoring.isPending}
         onRequest={inputMonitoring.request}
@@ -107,7 +107,7 @@ function DictationPermissions() {
       />
       <PermissionRow
         title={t`Accessibility`}
-        description={t`Required to insert dictation into the original text field`}
+        description={t`Lets Loofah insert your dictated words`}
         status={accessibility.status}
         isPending={accessibility.isPending}
         onRequest={accessibility.request}
@@ -127,7 +127,7 @@ export function Permissions() {
       <PermissionGroup title={<Trans>Audio</Trans>}>
         <PermissionRow
           title={t`Microphone`}
-          description={t`Required to record your voice during meetings and calls`}
+          description={t`Records your voice for meetings and dictation`}
           status={mic.status}
           isPending={mic.isPending}
           onRequest={mic.request}

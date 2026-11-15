@@ -1,11 +1,15 @@
 import AppKit
 import ApplicationServices
+import Carbon
 
 @_silgen_name("rust_on_dictation_key_down")
 private func rustOnDictationKeyDown()
 
 @_silgen_name("rust_on_dictation_key_up")
 private func rustOnDictationKeyUp()
+
+@_silgen_name("rust_on_dictation_cancel")
+private func rustOnDictationCancel()
 
 final class DictationInput {
   static let shared = DictationInput()
@@ -15,11 +19,23 @@ final class DictationInput {
   private var keyCode: CGKeyCode = 49
   private var modifiers: CGEventFlags = [.maskControl, .maskAlternate]
   private var pressed = false
+  private var enabled = false
+  private var active = false
+  private var escapePressed = false
   private var target: AXUIElement?
 
   private init() {}
 
   func configure(_ shortcut: String) -> Bool {
+    if shortcut.isEmpty {
+      let suspend = {
+        self.enabled = false
+        self.pressed = false
+        return true
+      }
+      if Thread.isMainThread { return suspend() }
+      return DispatchQueue.main.sync(execute: suspend)
+    }
     let parts = shortcut.lowercased().split(separator: "+").map(String.init)
     var flags: CGEventFlags = []
     for part in parts.dropLast() {
@@ -35,11 +51,19 @@ final class DictationInput {
       [CGEventFlags.maskControl, .maskAlternate, .maskShift, .maskCommand]
         .filter({ flags.contains($0) }).count >= 2
     else { return false }
-    guard let key = parts.last.flatMap(Self.keyCode(for:)) else { return false }
     let install = {
-      self.keyCode = key
-      self.modifiers = flags
-      if self.tap != nil { return true }
+      guard let key = parts.last.flatMap({ Self.keyCode(for: $0, modifiers: flags) }) else {
+        return false
+      }
+      if self.tap != nil {
+        let wasPressed =
+          self.enabled && self.keyCode == key && self.modifiers == flags && self.pressed
+        self.keyCode = key
+        self.modifiers = flags
+        self.enabled = true
+        self.pressed = wasPressed
+        return true
+      }
       let mask =
         (1 << CGEventType.keyDown.rawValue)
         | (1 << CGEventType.keyUp.rawValue)
@@ -56,6 +80,10 @@ final class DictationInput {
           userInfo: nil
         )
       else { return false }
+      self.keyCode = key
+      self.modifiers = flags
+      self.enabled = true
+      self.pressed = false
       self.tap = tap
       let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
       self.source = source
@@ -67,11 +95,34 @@ final class DictationInput {
     return DispatchQueue.main.sync(execute: install)
   }
 
+  func setActive(_ active: Bool) {
+    if Thread.isMainThread {
+      self.active = active
+    } else {
+      DispatchQueue.main.sync { self.active = active }
+    }
+  }
+
   private func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
       if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
       return Unmanaged.passUnretained(event)
     }
+    let eventKey = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+    if eventKey == 53 {
+      if type == .keyUp && escapePressed {
+        escapePressed = false
+        return nil
+      }
+      if type == .keyDown && (active || escapePressed) {
+        if !escapePressed {
+          escapePressed = true
+          rustOnDictationCancel()
+        }
+        return nil
+      }
+    }
+    guard enabled else { return Unmanaged.passUnretained(event) }
     if type == .flagsChanged {
       if pressed && !event.flags.contains(modifiers) {
         pressed = false
@@ -79,13 +130,13 @@ final class DictationInput {
       }
       return Unmanaged.passUnretained(event)
     }
-    let eventKey = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
     guard eventKey == keyCode else { return Unmanaged.passUnretained(event) }
     if type == .keyDown && pressed { return nil }
     let activeModifiers = event.flags.intersection([
       .maskControl, .maskAlternate, .maskShift, .maskCommand,
     ])
     if type == .keyDown && activeModifiers == modifiers {
+      if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return nil }
       if !pressed {
         pressed = true
         rustOnDictationKeyDown()
@@ -107,9 +158,6 @@ final class DictationInput {
 
   private func captureTargetOnMain() -> Int {
     guard AXIsProcessTrusted() else {
-      let options =
-        [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-      AXIsProcessTrustedWithOptions(options)
       target = nil
       return 1
     }
@@ -181,15 +229,26 @@ final class DictationInput {
     return true
   }
 
-  private static func keyCode(for key: String) -> CGKeyCode? {
-    let keys: [String: CGKeyCode] = [
-      "space": 49, "a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3,
-      "g": 5, "h": 4, "i": 34, "j": 38, "k": 40, "l": 37, "m": 46,
-      "n": 45, "o": 31, "p": 35, "q": 12, "r": 15, "s": 1, "t": 17,
-      "u": 32, "v": 9, "w": 13, "x": 7, "y": 16, "z": 6,
-      "0": 29, "1": 18, "2": 19, "3": 20, "4": 21, "5": 23,
-      "6": 22, "7": 26, "8": 28, "9": 25,
-    ]
-    return keys[key]
+  private static func keyCode(for key: String, modifiers: CGEventFlags) -> CGKeyCode? {
+    if key == "space" { return 49 }
+    guard key.count == 1, key.range(of: "^[a-z0-9]$", options: .regularExpression) != nil,
+      let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+      let pointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+    else { return nil }
+    let data = Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue()
+    let layout = unsafeBitCast(CFDataGetBytePtr(data), to: UnsafePointer<UCKeyboardLayout>.self)
+    for code in UInt16(0)..<128 {
+      var deadKeyState: UInt32 = 0
+      var length = 0
+      var chars = [UniChar](repeating: 0, count: 4)
+      let result = UCKeyTranslate(
+        layout, code, UInt16(kUCKeyActionDown),
+        modifiers.contains(.maskShift) ? 2 : 0, UInt32(LMGetKbdType()),
+        OptionBits(kUCKeyTranslateNoDeadKeysMask), &deadKeyState, chars.count, &length, &chars)
+      if result == noErr && String(utf16CodeUnits: chars, count: length).lowercased() == key {
+        return code
+      }
+    }
+    return nil
   }
 }

@@ -25,6 +25,16 @@ static IS_DEGRADED: AtomicBool = AtomicBool::new(false);
 static IS_UPDATE_AVAILABLE: AtomicBool = AtomicBool::new(false);
 static START_DISABLED: AtomicBool = AtomicBool::new(false);
 static ANIMATION_TASK: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
+static DICTATION_COPY_LABEL: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn dictation_copy_label() -> String {
+    DICTATION_COPY_LABEL
+        .lock()
+        .ok()
+        .and_then(|label| label.clone())
+        .unwrap_or_else(|| "Copy Last Dictation".to_string())
+}
+
 static LATEST_DICTATION: Mutex<Option<String>> = Mutex::new(None);
 
 pub(crate) fn latest_dictation() -> Option<String> {
@@ -158,6 +168,11 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
             tray.set_title(title)?;
         }
         Ok(())
+    }
+
+    pub fn set_dictation_copy_label(&self, label: String) -> Result<()> {
+        *DICTATION_COPY_LABEL.lock().unwrap() = Some(label);
+        self.refresh_menu()
     }
 
     pub fn set_last_dictation(&self, text: String) -> Result<()> {

@@ -25,4 +25,5 @@ permissions = [
     "allow-devtools-panel-show",
     "allow-devtools-panel-hide",
     "allow-dictation-shortcut-configure",
+    "allow-dictation-set-active",
 ]

@@ -23,11 +23,24 @@ struct FloatingTranscriptBubblePayload: Codable, Identifiable {
   let overlapsNext: Bool
 }
 
+struct DictationActionButton: Codable, Identifiable {
+  let id: String
+  let label: String
+}
+
+struct DictationPresentation: Codable {
+  let phase: String
+  let attemptId: UInt64
+  let detail: String?
+  let actions: [DictationActionButton]
+}
+
 struct FloatingBarStatePayload: Codable {
   let amplitude: Double
   let title: String
   let status: FloatingBarStatus
   let showStatusText: Bool
+  let dictation: DictationPresentation?
   let colorScheme: FloatingBarColorScheme
   let opacity: Double
   let liveCaptionOpacity: Double

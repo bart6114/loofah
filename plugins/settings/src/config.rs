@@ -24,6 +24,7 @@ pub struct AppConfig {
     pub autostart: bool,
     pub auto_stop_meetings: bool,
     pub floating_bar_enabled: bool,
+    pub dictation_enabled: bool,
     pub dictation_shortcut: String,
     pub dictation_trigger_mode: String,
     pub floating_bar_opacity: f64,
@@ -70,6 +71,7 @@ impl Default for AppConfig {
             autostart: false,
             auto_stop_meetings: true,
             floating_bar_enabled: true,
+            dictation_enabled: true,
             dictation_shortcut: if cfg!(target_os = "macos") {
                 "Ctrl+Option+Space"
             } else {

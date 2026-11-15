@@ -153,6 +153,9 @@ async dictationShortcutConfigure(shortcut: string) : Promise<Result<null, string
     else return { status: "error", error: e  as any };
 }
 },
+async dictationSetActive(active: boolean) : Promise<void> {
+    await TAURI_INVOKE("plugin:windows|dictation_set_active", { active });
+},
 async liveCaptionShow() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:windows|live_caption_show") };
@@ -200,6 +203,8 @@ async devtoolsPanelHide() : Promise<Result<null, string>> {
 
 export const events = __makeEvents__<{
 devtoolsPanelAction: DevtoolsPanelAction,
+dictationAction: DictationAction,
+dictationCancel: DictationCancel,
 dictationShortcutDown: DictationShortcutDown,
 dictationShortcutUp: DictationShortcutUp,
 floatingBarOpenMain: FloatingBarOpenMain,
@@ -211,6 +216,8 @@ visibilityEvent: VisibilityEvent,
 windowDestroyed: WindowDestroyed
 }>({
 devtoolsPanelAction: "plugin:windows:devtools-panel-action",
+dictationAction: "plugin:windows:dictation-action",
+dictationCancel: "plugin:windows:dictation-cancel",
 dictationShortcutDown: "plugin:windows:dictation-shortcut-down",
 dictationShortcutUp: "plugin:windows:dictation-shortcut-up",
 floatingBarOpenMain: "plugin:windows:floating-bar-open-main",
@@ -234,6 +241,10 @@ export type ChangelogState = { previous: string | null; current: string }
 export type ContactsSelection = { type: "person"; id: string } | { type: "organization"; id: string }
 export type ContactsState = { selected: ContactsSelection | null }
 export type DevtoolsPanelAction = { action: string }
+export type DictationAction = { attemptId: number; action: string }
+export type DictationActionButton = { id: string; label: string }
+export type DictationCancel = Record<string, never>
+export type DictationPresentation = { phase: string; attemptId: number; detail: string | null; actions: DictationActionButton[] }
 export type DictationShortcutDown = Record<string, never>
 export type DictationShortcutUp = Record<string, never>
 export type EditorView = { type: "raw" } | { type: "summary" } | { type: "transcript" } | { type: "enhanced"; id: string } | { type: "attachments" }
@@ -241,7 +252,7 @@ export type ExtensionsState = { selectedExtension: string | null }
 export type FloatingBarColorScheme = "light" | "dark"
 export type FloatingBarOpenMain = Record<string, never>
 export type FloatingBarSettingsChange = { floatingBarOpacity: number | null; liveCaptionOpacity: number | null; liveCaptionWidth: number | null; liveCaptionLineCount: number | null; liveCaptionPosition: LiveCaptionPosition | null; liveCaptionMinimized: boolean | null }
-export type FloatingBarState = { amplitude: number; title: string; status: FloatingBarStatus; showStatusText: boolean; colorScheme: FloatingBarColorScheme; opacity: number; liveCaptionOpacity: number; liveCaptionWidth: number; liveCaptionLineCount: number; liveCaptionPosition: LiveCaptionPosition; liveCaptionMinimized: boolean; liveCaptionToggleVisible: boolean; transcriptBubbles: FloatingTranscriptBubble[] }
+export type FloatingBarState = { amplitude: number; title: string; status: FloatingBarStatus; showStatusText: boolean; dictation: DictationPresentation | null; colorScheme: FloatingBarColorScheme; opacity: number; liveCaptionOpacity: number; liveCaptionWidth: number; liveCaptionLineCount: number; liveCaptionPosition: LiveCaptionPosition; liveCaptionMinimized: boolean; liveCaptionToggleVisible: boolean; transcriptBubbles: FloatingTranscriptBubble[] }
 export type FloatingBarStatus = "recording" | "processing" | "error"
 export type FloatingBarStop = Record<string, never>
 export type FloatingTranscriptBubble = { id: string; speakerLabel: string; text: string; isSelf: boolean; isFinal: boolean; startMs: number; endMs: number; overlapsPrevious: boolean; overlapsNext: boolean }

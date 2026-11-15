@@ -443,6 +443,7 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            app.state::<dictation::DictationState>().shutdown();
             app.state::<chatgpt::ChatgptState>().shutdown();
             // Last resort for any platform path where Exit fires without the
             // ExitRequested/complete_app_exit flush having run. flush_all is a no-op when
@@ -550,6 +551,12 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             dictation::dictation_start,
             dictation::dictation_stop,
             dictation::dictation_is_recording,
+            dictation::dictation_get_status,
+            dictation::dictation_set_copy_label,
+            dictation::dictation_cancel,
+            dictation::dictation_retry,
+            dictation::dictation_copy,
+            dictation::dictation_discard,
             startup::get_startup_status::<tauri::Wry>,
             session_store::commands::session_write_meta::<tauri::Wry>,
             session_store::commands::session_update_meta::<tauri::Wry>,

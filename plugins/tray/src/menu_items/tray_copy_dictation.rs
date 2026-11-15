@@ -15,7 +15,7 @@ impl MenuItemHandler for TrayCopyDictation {
         Ok(MenuItemKind::MenuItem(MenuItem::with_id(
             app,
             Self::ID,
-            "Copy Last Dictation",
+            crate::ext::dictation_copy_label(),
             true,
             None::<&str>,
         )?))

@@ -1,6 +1,9 @@
 import AppKit
 import SwiftUI
 
+@_silgen_name("rust_on_dictation_action")
+private func rustOnDictationAction(_ attemptId: UInt64, _ action: UnsafePointer<CChar>)
+
 enum FloatingBarLayout {
   static let inset: CGFloat = 4
   static let screenMargin: CGFloat = 8
@@ -30,6 +33,51 @@ enum FloatingBarLayout {
   static let hoverHandleDotSpacing: CGFloat = 7
   static let hoverHandleHorizontalPadding: CGFloat = 17
   static let dragClickThreshold: CGFloat = 4
+
+  static func dictationSize(_ state: DictationPresentation, title: String) -> NSSize {
+    let contentWidth: CGFloat = 336
+    let actionsWidth =
+      state.actions.reduce(CGFloat(0)) { width, action in
+        width
+          + (action.label as NSString).size(withAttributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium)
+          ]).width + 16
+      } + CGFloat(max(0, state.actions.count - 1)) * 8
+    let iconWidth: CGFloat =
+      ["starting", "loadingModel", "transcribing", "inserting", "done"].contains(state.phase)
+      ? 28 : state.phase == "recording" ? 46 : 0
+    let inlineActions = dictationActionsInline(state)
+    let titleWidth = max(80, contentWidth - iconWidth - (inlineActions ? actionsWidth + 10 : 0))
+    let titleHeight = ceil(
+      (title as NSString).boundingRect(
+        with: NSSize(width: titleWidth, height: .greatestFiniteMagnitude),
+        options: [.usesLineFragmentOrigin, .usesFontLeading],
+        attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium)]
+      ).height)
+    var height = max(28, titleHeight) + 24
+    if let detail = state.detail {
+      height +=
+        10
+        + ceil(
+          (detail as NSString).boundingRect(
+            with: NSSize(width: contentWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: NSFont.systemFont(ofSize: 13)]
+          ).height)
+    }
+    if !inlineActions && !state.actions.isEmpty { height += 38 }
+    return NSSize(width: 368, height: height + inset * 2)
+  }
+
+  static func dictationActionsInline(_ state: DictationPresentation) -> Bool {
+    state.detail == nil
+      && state.actions.reduce(CGFloat(0)) { width, action in
+        width
+          + (action.label as NSString).size(withAttributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium)
+          ]).width + 24
+      } < 160
+  }
 
   static func compactControlsWidth(showsExpand: Bool) -> CGFloat {
     if showsExpand {
@@ -84,7 +132,9 @@ struct FloatingBarView: View {
 
   var body: some View {
     Group {
-      if model.isExpanded {
+      if let dictation = model.dictation {
+        dictationPill(dictation)
+      } else if model.isExpanded {
         expandedPanel
       } else {
         compactPill
@@ -95,6 +145,57 @@ struct FloatingBarView: View {
     // trailing edge; hover and drag are scoped to the visible surfaces so the
     // window's empty leading strip stays inert.
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+  }
+
+  private func dictationPill(_ state: DictationPresentation) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 10) {
+        if state.phase == "done" || state.phase == "copied" {
+          Image(systemName: "checkmark").frame(width: 18).accessibilityHidden(true)
+        } else if ["starting", "loadingModel", "transcribing", "inserting"].contains(state.phase) {
+          ProgressView().scaleEffect(0.7).frame(width: 18)
+        } else if model.status == .recording {
+          InkTrace(
+            buffer: model.traceBuffer, amplitude: model.amplitude,
+            inkColor: primaryContentColor, playheadColor: accentColor
+          )
+          .frame(width: 36, height: 20).accessibilityHidden(true)
+        }
+        Text(model.title).font(.system(size: 13, weight: .medium))
+          .fixedSize(horizontal: false, vertical: true)
+        Spacer(minLength: 0)
+        if FloatingBarLayout.dictationActionsInline(state) { dictationActions(state) }
+      }
+      if let detail = state.detail {
+        Text(detail).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+      }
+      if !FloatingBarLayout.dictationActionsInline(state) { dictationActions(state) }
+    }
+    .accessibilityElement(children: .contain)
+    .foregroundStyle(primaryContentColor)
+    .padding(12)
+    .frame(width: 360, alignment: .leading)
+    .background(VisualEffectBlur(colorScheme: model.colorScheme, cornerRadius: 18))
+    .clipShape(RoundedRectangle(cornerRadius: 18))
+    .simultaneousGesture(dragClickSuppressor)
+  }
+
+  private func dictationActions(_ state: DictationPresentation) -> some View {
+    HStack(spacing: 8) {
+      ForEach(state.actions) { action in
+        Button(action.label) {
+          performClick {
+            action.id.withCString { rustOnDictationAction(state.attemptId, $0) }
+          }
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .font(.system(size: 12, weight: .medium))
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(primaryContentColor.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+      }
+    }
   }
 
   private var compactPill: some View {

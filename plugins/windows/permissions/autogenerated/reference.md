@@ -28,6 +28,7 @@ Default permissions for the plugin
 - `allow-devtools-panel-show`
 - `allow-devtools-panel-hide`
 - `allow-dictation-shortcut-configure`
+- `allow-dictation-set-active`
 
 ## Permission Table
 
@@ -86,6 +87,32 @@ Enables the devtools_panel_show command without any pre-configured scope.
 <td>
 
 Denies the devtools_panel_show command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`windows:allow-dictation-set-active`
+
+</td>
+<td>
+
+Enables the dictation_set_active command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`windows:deny-dictation-set-active`
+
+</td>
+<td>
+
+Denies the dictation_set_active command without any pre-configured scope.
 
 </td>
 </tr>

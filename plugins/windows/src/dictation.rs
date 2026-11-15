@@ -14,6 +14,7 @@ mod platform {
 
     swift!(fn _dictation_shortcut_configure(shortcut: &SRString) -> Bool);
     swift!(fn _dictation_capture_target() -> Int);
+    swift!(fn _dictation_set_active(active: Bool));
     swift!(fn _dictation_insert(text: &SRString) -> Bool);
 
     pub fn configure(shortcut: &str) -> Result<(), String> {
@@ -23,6 +24,10 @@ mod platform {
         } else {
             Err("Could not register the global shortcut. Check Input Monitoring permission.".into())
         }
+    }
+
+    pub fn set_active(active: bool) {
+        unsafe { _dictation_set_active(active.into()) };
     }
 
     pub fn capture_target() -> Result<(), String> {
@@ -38,7 +43,7 @@ mod platform {
         if unsafe { _dictation_insert(&text) } {
             Ok(())
         } else {
-            Err("The original text field is no longer focused. Use Copy Last Dictation in the menu bar.".into())
+            Err("Could not insert dictation into this field".into())
         }
     }
 }
@@ -52,6 +57,7 @@ mod platform {
     pub fn configure(_shortcut: &str) -> Result<(), String> {
         Err("Unsupported platform".into())
     }
+    pub fn set_active(_active: bool) {}
     pub fn capture_target() -> Result<(), String> {
         Err("Unsupported platform".into())
     }
@@ -62,6 +68,10 @@ mod platform {
 
 pub fn configure(shortcut: &str) -> Result<(), String> {
     platform::configure(shortcut)
+}
+
+pub fn dictation_set_active(active: bool) {
+    platform::set_active(active);
 }
 
 pub fn dictation_capture_target() -> Result<(), String> {
@@ -83,5 +93,12 @@ pub extern "C" fn rust_on_dictation_key_down() {
 pub extern "C" fn rust_on_dictation_key_up() {
     if let Some(app) = APP.get() {
         let _ = crate::events::DictationShortcutUp {}.emit(app);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_on_dictation_cancel() {
+    if let Some(app) = APP.get() {
+        let _ = crate::events::DictationCancel {}.emit(app);
     }
 }

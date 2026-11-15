@@ -188,7 +188,7 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  async dictationStart(): Promise<Result<null, string>> {
+  async dictationStart(): Promise<Result<DictationStatus, string>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("dictation_start") };
     } catch (e) {
@@ -196,9 +196,14 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  async dictationStop(): Promise<Result<null, string>> {
+  async dictationStop(
+    attemptId: number,
+  ): Promise<Result<DictationStatus, string>> {
     try {
-      return { status: "ok", data: await TAURI_INVOKE("dictation_stop") };
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("dictation_stop", { attemptId }),
+      };
     } catch (e) {
       if (e instanceof Error) throw e;
       else return { status: "error", error: e as any };
@@ -206,6 +211,72 @@ export const commands = {
   },
   async dictationIsRecording(): Promise<boolean> {
     return await TAURI_INVOKE("dictation_is_recording");
+  },
+  async dictationGetStatus(): Promise<DictationStatus> {
+    return await TAURI_INVOKE("dictation_get_status");
+  },
+  async dictationSetCopyLabel(label: string): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("dictation_set_copy_label", { label }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async dictationCancel(
+    attemptId: number,
+  ): Promise<Result<DictationStatus, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("dictation_cancel", { attemptId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async dictationRetry(
+    attemptId: number,
+  ): Promise<Result<DictationStatus, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("dictation_retry", { attemptId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async dictationCopy(
+    attemptId: number,
+  ): Promise<Result<DictationStatus, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("dictation_copy", { attemptId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async dictationDiscard(
+    attemptId: number,
+  ): Promise<Result<DictationStatus, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("dictation_discard", { attemptId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
   },
   async getStartupStatus(): Promise<StartupStatus> {
     return await TAURI_INVOKE("get_startup_status");
@@ -973,10 +1044,39 @@ export type ChatgptModel = {
   isDefault: boolean;
   inputModalities?: string[];
 };
+export type DictationPhase =
+  | "idle"
+  | "starting"
+  | "recording"
+  | "loadingModel"
+  | "transcribing"
+  | "inserting"
+  | "done"
+  | "copied"
+  | "cancelled"
+  | "error"
+  | "ready";
+export type DictationProblem =
+  | "disabled"
+  | "meetingActive"
+  | "modelRequired"
+  | "microphone"
+  | "accessibilityRequired"
+  | "targetUnavailable"
+  | "transcriptionFailed"
+  | "noSpeech"
+  | "insertionFailed"
+  | "busy"
+  | "copyFailed";
 export type DictationStatus = {
-  phase: string;
+  attemptId: number;
+  revision: number;
+  phase: DictationPhase;
   amplitude: number;
-  message: string | null;
+  problem: DictationProblem | null;
+  canRetry: boolean;
+  canCopy: boolean;
+  busy: boolean;
 };
 export type EmbeddedCliState =
   | "installed"

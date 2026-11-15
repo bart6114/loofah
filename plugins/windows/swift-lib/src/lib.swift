@@ -6,6 +6,11 @@ public func _dictationShortcutConfigure(shortcut: SRString) -> Bool {
   DictationInput.shared.configure(shortcut.toString())
 }
 
+@_cdecl("_dictation_set_active")
+public func _dictationSetActive(active: Bool) {
+  DictationInput.shared.setActive(active)
+}
+
 @_cdecl("_dictation_capture_target")
 public func _dictationCaptureTarget() -> Int {
   DictationInput.shared.captureTarget()

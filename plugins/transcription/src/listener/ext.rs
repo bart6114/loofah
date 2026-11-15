@@ -88,8 +88,27 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener<'a, R, M> {
         snapshot
     }
 
+    pub async fn ensure_capture_idle(&self) -> Result<(), crate::Error> {
+        let cell = registry::where_is(RootActor::name())
+            .ok_or_else(|| crate::Error::ActorNotFound(RootActor::name()))?;
+        let actor: ActorRef<RootMsg> = cell.into();
+        let snapshot = call_t!(actor, RootMsg::GetSnapshot, 1000)
+            .map(CaptureSnapshot::from)
+            .map_err(|_| crate::Error::StartSessionFailed)?;
+        if snapshot.active_session_id.is_some() || !snapshot.finalizing_session_ids.is_empty() {
+            Err(crate::Error::SessionAlreadyRunning)
+        } else {
+            Ok(())
+        }
+    }
+
     #[tracing::instrument(skip_all)]
     pub async fn start_capture(&self, params: CaptureParams) -> Result<(), crate::Error> {
+        let capture_admission = self.manager.state::<crate::CaptureAdmission>();
+        let admission = capture_admission.lock().await;
+        if admission.is_dictating() {
+            return Err(crate::Error::SessionAlreadyRunning);
+        }
         let params: SessionParams = params.into();
         if let Some(cell) = registry::where_is(RootActor::name()) {
             let actor: ActorRef<RootMsg> = cell.into();

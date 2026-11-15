@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   open: vi.fn(),
   settings: vi.fn(),
   preferences: vi.fn(),
+  dictation: vi.fn(),
   listener: null as null | ((event: { payload: OverlaySnapshot }) => void),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
@@ -31,6 +32,7 @@ vi.mock("@hypr/plugin-windows", () => ({
     overlaySetSettingsOpen: mocks.preferences,
   },
   events: {
+    dictationAction: { emit: mocks.dictation },
     floatingBarStop: { emit: mocks.stop },
     floatingBarOpenMain: { emit: mocks.open },
     floatingBarSettingsChange: { emit: mocks.settings },
@@ -44,6 +46,7 @@ const recording: FloatingBarState = {
   title: "Project meeting",
   status: "recording",
   showStatusText: false,
+  dictation: null,
   colorScheme: "dark",
   opacity: 0.9,
   liveCaptionOpacity: 0.9,
@@ -139,4 +142,40 @@ it("keeps newer streamed state when an initial snapshot arrives late", async () 
   );
   expect(screen.getByRole("button", { name: "Current meeting" })).toBeTruthy();
   expect(screen.queryByText("Project meeting")).toBeNull();
+});
+
+it("offers direct recovery without meeting controls or opening the app", async () => {
+  mocks.snapshot.mockResolvedValue({
+    revision: 1,
+    state: {
+      type: "floatingBar",
+      state: {
+        ...recording,
+        title: "Couldn’t insert your text.",
+        status: "error",
+        dictation: {
+          phase: "error",
+          attemptId: 42,
+          detail: "Your text is ready to copy.",
+          actions: [
+            { id: "copy", label: "Copy text" },
+            { id: "discard", label: "Dismiss" },
+          ],
+        },
+      },
+    },
+  });
+  mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Copy text" }));
+  await waitFor(() =>
+    expect(mocks.dictation).toHaveBeenCalledWith({
+      attemptId: 42,
+      action: "copy",
+    }),
+  );
+  expect(
+    screen.queryByRole("button", { name: "Recording display settings" }),
+  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Stop recording" })).toBeNull();
+  expect(mocks.open).not.toHaveBeenCalled();
 });

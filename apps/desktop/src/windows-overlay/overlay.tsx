@@ -35,6 +35,61 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
   const preferences = useMutation({
     mutationFn: () => commands.overlaySetSettingsOpen(true),
   });
+  const action = useMutation({
+    mutationFn: (id: string) =>
+      events.dictationAction.emit({
+        attemptId: state.dictation!.attemptId,
+        action: id,
+      }),
+  });
+  if (state.dictation) {
+    return (
+      <section
+        className="dictation-bar"
+        data-theme={state.colorScheme}
+        data-detail={Boolean(state.dictation.detail)}
+        style={{
+          backgroundColor: `rgb(var(--surface) / ${Math.max(0.2, state.opacity)})`,
+        }}
+      >
+        <div className="dictation-heading">
+          <span className="grip" data-tauri-drag-region aria-hidden="true">
+            ⠿
+          </span>
+          {state.dictation.phase === "recording" && (
+            <span className="level" aria-hidden="true">
+              <span
+                style={{
+                  transform: `scaleY(${Math.max(0.15, Math.min(1, state.amplitude))})`,
+                }}
+              />
+            </span>
+          )}
+          {["starting", "loadingModel", "transcribing", "inserting"].includes(
+            state.dictation.phase,
+          ) && <span className="dictation-spinner" aria-hidden="true" />}
+          <span role="status" aria-live="polite" aria-atomic="true">
+            {state.dictation.phase === "done" ? (
+              <span aria-hidden="true">✓ </span>
+            ) : null}
+            {state.title}
+          </span>
+        </div>
+        {state.dictation.detail && <p>{state.dictation.detail}</p>}
+        <div className="dictation-actions">
+          {state.dictation.actions.map((item) => (
+            <button
+              key={item.id}
+              disabled={action.isPending}
+              onClick={() => action.mutate(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
   return (
     <section
       className="bar"

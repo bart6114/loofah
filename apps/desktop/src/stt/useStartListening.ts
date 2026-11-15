@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/react/macro";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef } from "react";
 
@@ -60,6 +61,7 @@ export function getPostCaptureAction(
 }
 
 export function useStartListening(sessionId: string) {
+  const { t } = useLingui();
   const session = useSession(sessionId);
   const hadTranscriptBeforeStart = useSessionHasTranscript(sessionId);
 
@@ -80,7 +82,7 @@ export function useStartListening(sessionId: string) {
   const startListening = useCallback(async () => {
     if (await invoke<boolean>("dictation_is_recording")) {
       sonnerToast.warning(
-        "Finish dictation before starting a meeting recording.",
+        t`Finish dictation before starting a meeting recording.`,
       );
       return;
     }
@@ -263,6 +265,7 @@ export function useStartListening(sessionId: string) {
       if (!started) activity.finish();
     }
   }, [
+    t,
     conn,
     hadTranscriptBeforeStart,
     session,
