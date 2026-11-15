@@ -226,6 +226,13 @@ final class DictationInput {
       role != "AXSecureTextField",
       ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role)
     else { return false }
+    var subroleValue: CFTypeRef?
+    if AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleValue)
+      == .success,
+      subroleValue as? String == kAXSecureTextFieldSubrole as String
+    {
+      return false
+    }
     return true
   }
 
