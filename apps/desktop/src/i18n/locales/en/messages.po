@@ -1354,8 +1354,8 @@ msgid "Press a new shortcut"
 msgstr "Press a new shortcut"
 
 #: src/settings/general/dictation.tsx
-msgid "Press to start, press again to stop"
-msgstr "Press to start, press again to stop"
+msgid "Press to start/stop"
+msgstr "Press to start/stop"
 
 #: src/settings/general/dictation.tsx
 msgid "Press two modifier keys with a letter, number, or Space. Escape cancels."

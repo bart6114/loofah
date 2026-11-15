@@ -6,6 +6,15 @@ import { useEffect, useRef } from "react";
 
 import { commands as localSttCommands } from "@hypr/plugin-local-stt";
 import { Button } from "@hypr/ui/components/ui/button";
+import { Input } from "@hypr/ui/components/ui/input";
+import { Kbd } from "@hypr/ui/components/ui/kbd";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@hypr/ui/components/ui/select";
 import { Switch } from "@hypr/ui/components/ui/switch";
 import {
   Tooltip,
@@ -129,10 +138,10 @@ export function DictationSettings({
   );
 
   return (
-    <section className="space-y-3">
+    <section className="flex min-w-0 flex-col gap-4">
       <form.Field name="dictation_enabled">
         {(field) => (
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-1.5">
               <label
                 htmlFor="dictation-enabled"
@@ -175,96 +184,104 @@ export function DictationSettings({
           <>
             <fieldset
               disabled={!enabled || busy || save.isPending}
-              className="space-y-3 disabled:opacity-60"
+              className="flex min-w-0 flex-col gap-4 disabled:opacity-60"
             >
               <form.Field name="dictation_shortcut">
                 {(field) => (
-                  <div className="flex flex-wrap items-center gap-3 text-sm">
-                    <span>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-sm font-medium">
                       <Trans>Shortcut</Trans>
                     </span>
-                    {capturing && capture.isSuccess ? (
-                      <input
-                        autoFocus
-                        readOnly
-                        value=""
-                        aria-label={t`Press a new shortcut`}
-                        placeholder={t`Press a new shortcut`}
-                        className="rounded border px-2 py-1"
-                        onBlur={() => cancelCapture()}
-                        onKeyDown={(event) => {
-                          if (event.key === "Tab") {
+                    <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+                      {capturing && capture.isSuccess ? (
+                        <Input
+                          autoFocus
+                          readOnly
+                          value=""
+                          aria-label={t`Press a new shortcut`}
+                          placeholder={t`Press a new shortcut`}
+                          className="bg-card h-7 w-48 max-w-full rounded-full text-xs shadow-none"
+                          onBlur={() => cancelCapture()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Tab") {
+                              cancelCapture(true);
+                              return;
+                            }
+                            event.preventDefault();
+                            if (event.key === "Escape") {
+                              cancelCapture(true);
+                              return;
+                            }
+                            if (
+                              [
+                                "Control",
+                                "Alt",
+                                "Shift",
+                                "Meta",
+                                "Fn",
+                              ].includes(event.key) ||
+                              event.repeat
+                            )
+                              return;
+                            shortcut.mutate({
+                              key: event.key,
+                              ctrlKey: event.ctrlKey,
+                              altKey: event.altKey,
+                              shiftKey: event.shiftKey,
+                              metaKey: event.metaKey,
+                            });
+                          }}
+                        />
+                      ) : (
+                        <Kbd className="h-7 px-2 font-normal tracking-normal normal-case">
+                          {field.state.value.replace(
+                            /Cmd/g,
+                            navigator.platform.includes("Mac") ? "Cmd" : "Win",
+                          )}
+                        </Kbd>
+                      )}
+                      <Button
+                        ref={changeButton}
+                        variant="outline"
+                        size="sm"
+                        className="bg-card rounded-full font-normal shadow-none"
+                        disabled={capture.isPending || shortcut.isPending}
+                        onMouseDown={(event) => {
+                          if (capturing) event.preventDefault();
+                        }}
+                        onClick={() => {
+                          if (capturing) {
                             cancelCapture(true);
                             return;
                           }
-                          event.preventDefault();
-                          if (event.key === "Escape") {
-                            cancelCapture(true);
-                            return;
-                          }
-                          if (
-                            ["Control", "Alt", "Shift", "Meta", "Fn"].includes(
-                              event.key,
-                            ) ||
-                            event.repeat
-                          )
-                            return;
+                          shortcut.reset();
+                          capture.mutate();
+                        }}
+                      >
+                        {capturing ? (
+                          <Trans>Cancel</Trans>
+                        ) : (
+                          <Trans>Change shortcut</Trans>
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground rounded-full font-normal"
+                        disabled={capturing || shortcut.isPending}
+                        onClick={() => {
                           shortcut.mutate({
-                            key: event.key,
-                            ctrlKey: event.ctrlKey,
-                            altKey: event.altKey,
-                            shiftKey: event.shiftKey,
-                            metaKey: event.metaKey,
+                            key: " ",
+                            ctrlKey: true,
+                            altKey: true,
+                            shiftKey: false,
+                            metaKey: false,
                           });
                         }}
-                      />
-                    ) : (
-                      <kbd className="rounded border px-2 py-1">
-                        {field.state.value.replace(
-                          /Cmd/g,
-                          navigator.platform.includes("Mac") ? "Cmd" : "Win",
-                        )}
-                      </kbd>
-                    )}
-                    <Button
-                      ref={changeButton}
-                      variant="outline"
-                      size="sm"
-                      disabled={capture.isPending || shortcut.isPending}
-                      onMouseDown={(event) => {
-                        if (capturing) event.preventDefault();
-                      }}
-                      onClick={() => {
-                        if (capturing) {
-                          cancelCapture(true);
-                          return;
-                        }
-                        shortcut.reset();
-                        capture.mutate();
-                      }}
-                    >
-                      {capturing ? (
-                        <Trans>Cancel</Trans>
-                      ) : (
-                        <Trans>Change shortcut</Trans>
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={capturing || shortcut.isPending}
-                      onClick={() => {
-                        shortcut.mutate({
-                          key: " ",
-                          ctrlKey: true,
-                          altKey: true,
-                          shiftKey: false,
-                          metaKey: false,
-                        });
-                      }}
-                    >
-                      <Trans>Reset</Trans>
-                    </Button>
+                      >
+                        <Trans>Reset</Trans>
+                      </Button>
+                    </div>
                   </div>
                 )}
               </form.Field>
@@ -288,25 +305,37 @@ export function DictationSettings({
               )}
               <form.Field name="dictation_trigger_mode">
                 {(field) => (
-                  <label className="flex items-center gap-3 text-sm">
-                    <Trans>Shortcut behavior</Trans>
-                    <select
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <label
+                      htmlFor="dictation-trigger-mode"
+                      className="text-sm font-medium"
+                    >
+                      <Trans>Shortcut behavior</Trans>
+                    </label>
+                    <Select
                       value={field.state.value}
-                      disabled={capturing}
-                      onChange={(event) => {
-                        field.handleChange(event.target.value);
+                      disabled={!enabled || busy || save.isPending || capturing}
+                      onValueChange={(value) => {
+                        field.handleChange(value);
                         void form.handleSubmit();
                       }}
-                      className="rounded border px-2 py-1"
                     >
-                      <option value="hold">
-                        <Trans>Hold to speak</Trans>
-                      </option>
-                      <option value="toggle">
-                        <Trans>Press to start, press again to stop</Trans>
-                      </option>
-                    </select>
-                  </label>
+                      <SelectTrigger
+                        id="dictation-trigger-mode"
+                        className="bg-card w-48 max-w-full rounded-full shadow-none focus:ring-0"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="hold">
+                          <Trans>Hold to speak</Trans>
+                        </SelectItem>
+                        <SelectItem value="toggle">
+                          <Trans>Press to start/stop</Trans>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
               </form.Field>
             </fieldset>
