@@ -10,6 +10,8 @@ enum FloatingBarLayout {
   static let compactHeight: CGFloat = 38
   static let compactRestWidth: CGFloat = 112
   static let dictationWidth: CGFloat = 240
+  static let dictationHeight: CGFloat = 52
+  static let dictationRowHeight: CGFloat = 28
   static let compactControlSize: CGFloat = 26
   static let compactControlGap: CGFloat = 2
   static let compactContentSpacing: CGFloat = 8
@@ -35,6 +37,10 @@ enum FloatingBarLayout {
   static let dragClickThreshold: CGFloat = 4
 
   static func dictationSize(_ state: DictationPresentation, title: String) -> NSSize {
+    let inlineActions = dictationActionsInline(state)
+    if inlineActions {
+      return NSSize(width: 368, height: dictationHeight + inset * 2)
+    }
     let contentWidth: CGFloat = 336
     let actionsWidth =
       state.actions.reduce(CGFloat(0)) { width, action in
@@ -46,7 +52,6 @@ enum FloatingBarLayout {
     let iconWidth: CGFloat =
       ["starting", "loadingModel", "transcribing", "inserting", "done"].contains(state.phase)
       ? 28 : state.phase == "recording" ? 46 : 0
-    let inlineActions = dictationActionsInline(state)
     let titleWidth = max(80, contentWidth - iconWidth - (inlineActions ? actionsWidth + 10 : 0))
     let titleHeight = ceil(
       (title as NSString).boundingRect(
@@ -54,7 +59,7 @@ enum FloatingBarLayout {
         options: [.usesLineFragmentOrigin, .usesFontLeading],
         attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium)]
       ).height)
-    var height = max(28, titleHeight) + 24
+    var height = max(dictationRowHeight, titleHeight) + 24
     if let detail = state.detail {
       height +=
         10
@@ -71,12 +76,14 @@ enum FloatingBarLayout {
 
   static func dictationActionsInline(_ state: DictationPresentation) -> Bool {
     state.detail == nil
-      && state.actions.reduce(CGFloat(0)) { width, action in
-        width
-          + (action.label as NSString).size(withAttributes: [
-            .font: NSFont.systemFont(ofSize: 12, weight: .medium)
-          ]).width + 24
-      } < 160
+      && (["starting", "recording", "loadingModel", "transcribing", "inserting"].contains(
+        state.phase)
+        || state.actions.reduce(CGFloat(0)) { width, action in
+          width
+            + (action.label as NSString).size(withAttributes: [
+              .font: NSFont.systemFont(ofSize: 12, weight: .medium)
+            ]).width + 24
+        } < 160)
   }
 
   static func compactControlsWidth(showsExpand: Bool) -> CGFloat {
@@ -148,7 +155,8 @@ struct FloatingBarView: View {
   }
 
   private func dictationPill(_ state: DictationPresentation) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
+    let inlineActions = FloatingBarLayout.dictationActionsInline(state)
+    return VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 10) {
         if state.phase == "done" || state.phase == "copied" {
           Image(systemName: "checkmark").frame(width: 18).accessibilityHidden(true)
@@ -162,19 +170,27 @@ struct FloatingBarView: View {
           .frame(width: 36, height: 20).accessibilityHidden(true)
         }
         Text(model.title).font(.system(size: 13, weight: .medium))
+          .lineLimit(inlineActions ? 1 : nil)
+          .truncationMode(.tail)
           .fixedSize(horizontal: false, vertical: true)
+          .help(model.title)
         Spacer(minLength: 0)
-        if FloatingBarLayout.dictationActionsInline(state) { dictationActions(state) }
+        if inlineActions { dictationActions(state) }
       }
+      .frame(minHeight: FloatingBarLayout.dictationRowHeight)
       if let detail = state.detail {
         Text(detail).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
       }
-      if !FloatingBarLayout.dictationActionsInline(state) { dictationActions(state) }
+      if !inlineActions { dictationActions(state) }
     }
     .accessibilityElement(children: .contain)
     .foregroundStyle(primaryContentColor)
     .padding(12)
-    .frame(width: 360, alignment: .leading)
+    .frame(
+      width: 360,
+      height: inlineActions ? FloatingBarLayout.dictationHeight : nil,
+      alignment: .leading
+    )
     .background(VisualEffectBlur(colorScheme: model.colorScheme, cornerRadius: 18))
     .clipShape(RoundedRectangle(cornerRadius: 18))
     .simultaneousGesture(dragClickSuppressor)
