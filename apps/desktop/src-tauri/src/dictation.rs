@@ -140,6 +140,21 @@ impl Inner {
         self.status.clone()
     }
 
+    fn finish_delivery(&mut self, result: Result<(), String>) {
+        match result {
+            Ok(()) => self.status.phase = DictationPhase::Done,
+            Err(error) => {
+                tracing::warn!(%error, "dictation_insert_failed");
+                self.status.phase = DictationPhase::Error;
+                self.status.problem = Some(match error.as_str() {
+                    "accessibility_permission_required" => DictationProblem::AccessibilityRequired,
+                    "target_unavailable" => DictationProblem::TargetUnavailable,
+                    _ => DictationProblem::InsertionFailed,
+                });
+            }
+        }
+    }
+
     fn begin(&mut self, shutdown: Arc<AtomicBool>) -> (u32, Arc<Operation>) {
         self.status.attempt_id = self.status.attempt_id.wrapping_add(1);
         self.status.phase = DictationPhase::Starting;
@@ -401,15 +416,6 @@ async fn run_attempt(
         if !app.settings().config().dictation_enabled {
             return Err(DictationProblem::Disabled);
         }
-        if !is_retry {
-            tauri_plugin_windows::dictation_capture_target().map_err(|error| {
-                if error == "accessibility_permission_required" {
-                    DictationProblem::AccessibilityRequired
-                } else {
-                    DictationProblem::TargetUnavailable
-                }
-            })?;
-        }
         let capture_admission = app.state::<tauri_plugin_transcription::CaptureAdmission>();
         let admission = capture_admission.lock().await;
         app.listener()
@@ -559,14 +565,8 @@ async fn run_attempt(
                     inner.status.phase = DictationPhase::Inserting;
                     emit(&app, inner.changed());
                     // Serialize cancellation with the final insertion decision.
-                    match tauri_plugin_windows::dictation_insert(&text) {
-                        Ok(()) => inner.status.phase = DictationPhase::Done,
-                        Err(error) => {
-                            tracing::warn!(%error, "dictation_insert_failed");
-                            inner.status.phase = DictationPhase::Error;
-                            inner.status.problem = Some(DictationProblem::InsertionFailed);
-                        }
-                    }
+                    let delivery = tauri_plugin_windows::dictation_insert(&text);
+                    inner.finish_delivery(delivery);
                 }
                 inner.text = Some(text);
             }
@@ -697,6 +697,36 @@ mod tests {
     use hypr_audio::{CaptureFrame, CaptureStream};
 
     use super::capture_tail_samples;
+
+    #[test]
+    fn delivery_failure_preserves_copyable_transcript_without_retrying_audio() {
+        for error in [
+            "accessibility_permission_required",
+            "target_unavailable",
+            "Input rejected",
+        ] {
+            let mut inner = super::Inner::default();
+            inner.begin(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+            inner.text = Some("Keep these words".into());
+            inner.finish_delivery(Err(error.into()));
+            inner.operation = None;
+            let status = inner.changed();
+            assert!(status.can_copy);
+            assert!(!status.can_retry);
+            assert!(!status.busy);
+            assert_eq!(status.phase, super::DictationPhase::Error);
+            assert_eq!(
+                status.problem,
+                Some(match error {
+                    "accessibility_permission_required" =>
+                        super::DictationProblem::AccessibilityRequired,
+                    "target_unavailable" => super::DictationProblem::TargetUnavailable,
+                    _ => super::DictationProblem::InsertionFailed,
+                })
+            );
+            assert_eq!(inner.text.as_deref(), Some("Keep these words"));
+        }
+    }
 
     #[tokio::test]
     async fn captures_microphone_frame_arriving_after_shortcut_release() {

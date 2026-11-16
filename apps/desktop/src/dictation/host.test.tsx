@@ -205,13 +205,38 @@ describe("DictationHost", () => {
     ]);
     expect(mocks.hide).not.toHaveBeenCalled();
   });
+  it("keeps the transcript available when Accessibility is missing at delivery", async () => {
+    mount();
+    await status({
+      phase: "error",
+      problem: "accessibilityRequired",
+      canCopy: true,
+    });
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    const state = mocks.update.mock.lastCall?.[0];
+    expect(state.dictation.actions).toEqual([
+      { id: "permission", label: "Open Settings" },
+      { id: "copy", label: "Copy text" },
+      { id: "discard", label: "Discard" },
+    ]);
+    expect(mocks.hide).not.toHaveBeenCalled();
+    await emit("plugin:windows:dictation-action", {
+      attemptId: 1,
+      action: "copy",
+    });
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("dictation_copy", {
+        attemptId: 1,
+      }),
+    );
+  });
   it("offers a single-line field hint with safe dismissal", async () => {
     mocks.invoke.mockImplementation(async () => idle);
     mount();
     await status({ phase: "error", problem: "targetUnavailable" });
     await waitFor(() => expect(mocks.update).toHaveBeenCalled());
     const state = mocks.update.mock.lastCall?.[0];
-    expect(state.title).toBe("Click a text field to record into");
+    expect(state.title).toBe("Couldn’t insert your text");
     expect(state.dictation.detail).toBeNull();
     expect(state.dictation.actions).toEqual([
       { id: "dismiss", label: "Dismiss" },

@@ -390,10 +390,6 @@ msgstr ""
 msgid "Clear"
 msgstr ""
 
-#: src/dictation/host.tsx
-msgid "Click a text field to record into"
-msgstr ""
-
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/search/bar.tsx
@@ -488,6 +484,10 @@ msgstr ""
 
 #: src/dictation/host.tsx
 msgid "Copy text"
+msgstr ""
+
+#: src/dictation/host.tsx
+msgid "Copy your text, or enable Loofah in Accessibility for automatic insertion."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -749,10 +749,6 @@ msgstr ""
 #. placeholder {0}: permissionName.toLowerCase()
 #: src/onboarding/permissions.tsx
 msgid "Enable {0}"
-msgstr ""
-
-#: src/dictation/host.tsx
-msgid "Enable Loofah in Accessibility, then try again."
 msgstr ""
 
 #: src/session/components/session-date.tsx
