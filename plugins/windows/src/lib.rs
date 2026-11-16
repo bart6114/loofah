@@ -6,7 +6,7 @@ mod ext;
 mod tab;
 mod window;
 
-pub use dictation::{dictation_capture_target, dictation_insert, dictation_set_active};
+pub use dictation::{dictation_insert, dictation_set_active};
 pub use errors::*;
 pub use events::*;
 pub use ext::{Windows, WindowsPluginExt};

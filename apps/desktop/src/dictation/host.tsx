@@ -311,11 +311,11 @@ export function DictationHost() {
         break;
       case "accessibilityRequired":
         title = t`Allow Loofah to insert text`;
-        detail = t`Enable Loofah in Accessibility, then try again.`;
+        detail = t`Copy your text, or enable Loofah in Accessibility for automatic insertion.`;
         actions.push({ id: "permission", label: t`Open Settings` });
         break;
       case "targetUnavailable":
-        title = t`Click a text field to record into`;
+        title = t`Couldn’t insert your text`;
         break;
       case "transcriptionFailed":
         title = t`Couldn’t transcribe`;

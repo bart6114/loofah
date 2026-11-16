@@ -140,6 +140,21 @@ impl Inner {
         self.status.clone()
     }
 
+    fn finish_delivery(&mut self, result: Result<(), String>) {
+        match result {
+            Ok(()) => self.status.phase = DictationPhase::Done,
+            Err(error) => {
+                tracing::warn!(%error, "dictation_insert_failed");
+                self.status.phase = DictationPhase::Error;
+                self.status.problem = Some(match error.as_str() {
+                    "accessibility_permission_required" => DictationProblem::AccessibilityRequired,
+                    "target_unavailable" => DictationProblem::TargetUnavailable,
+                    _ => DictationProblem::InsertionFailed,
+                });
+            }
+        }
+    }
+
     fn begin(&mut self, shutdown: Arc<AtomicBool>) -> (u32, Arc<Operation>) {
         self.status.attempt_id = self.status.attempt_id.wrapping_add(1);
         self.status.phase = DictationPhase::Starting;
@@ -401,15 +416,6 @@ async fn run_attempt(
         if !app.settings().config().dictation_enabled {
             return Err(DictationProblem::Disabled);
         }
-        if !is_retry {
-            tauri_plugin_windows::dictation_capture_target().map_err(|error| {
-                if error == "accessibility_permission_required" {
-                    DictationProblem::AccessibilityRequired
-                } else {
-                    DictationProblem::TargetUnavailable
-                }
-            })?;
-        }
         let capture_admission = app.state::<tauri_plugin_transcription::CaptureAdmission>();
         let admission = capture_admission.lock().await;
         app.listener()
@@ -559,14 +565,8 @@ async fn run_attempt(
                     inner.status.phase = DictationPhase::Inserting;
                     emit(&app, inner.changed());
                     // Serialize cancellation with the final insertion decision.
-                    match tauri_plugin_windows::dictation_insert(&text) {
-                        Ok(()) => inner.status.phase = DictationPhase::Done,
-                        Err(error) => {
-                            tracing::warn!(%error, "dictation_insert_failed");
-                            inner.status.phase = DictationPhase::Error;
-                            inner.status.problem = Some(DictationProblem::InsertionFailed);
-                        }
-                    }
+                    let delivery = tauri_plugin_windows::dictation_insert(&text);
+                    inner.finish_delivery(delivery);
                 }
                 inner.text = Some(text);
             }
@@ -632,6 +632,7 @@ async fn record(
         .map_err(|error| error.to_string())?;
     let mut samples = 0;
     let mut last_level = std::time::Instant::now();
+    let mut amplitude = 0.0;
     loop {
         if operation.is_cancelled() || operation.stop.load(Ordering::SeqCst) {
             break;
@@ -642,7 +643,7 @@ async fn record(
             frame = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next()) => {
                 let frame = frame.map_err(|_| "Microphone timed out")?.ok_or("Microphone stream ended")?.map_err(|error| error.to_string())?;
                 if frame.raw_mic.is_empty() { continue; }
-                let amplitude = (frame.raw_mic.iter().map(|sample| f64::from(*sample).powi(2)).sum::<f64>() / frame.raw_mic.len() as f64).sqrt().min(1.0);
+                amplitude = hypr_audio_utils::smoothed_audio_level(amplitude, &frame.raw_mic);
                 for sample in frame.raw_mic.iter() { writer.write_sample(*sample).map_err(|error| error.to_string())?; }
                 if samples == 0 {
                     let state = app.state::<DictationState>();
@@ -651,7 +652,7 @@ async fn record(
                 }
                 samples += frame.raw_mic.len();
                 if samples == frame.raw_mic.len() || last_level.elapsed() >= std::time::Duration::from_millis(100) {
-                    update(app, id, DictationPhase::Recording, amplitude);
+                    update(app, id, DictationPhase::Recording, f64::from(amplitude));
                     last_level = std::time::Instant::now();
                 }
             }
@@ -697,6 +698,36 @@ mod tests {
     use hypr_audio::{CaptureFrame, CaptureStream};
 
     use super::capture_tail_samples;
+
+    #[test]
+    fn delivery_failure_preserves_copyable_transcript_without_retrying_audio() {
+        for error in [
+            "accessibility_permission_required",
+            "target_unavailable",
+            "Input rejected",
+        ] {
+            let mut inner = super::Inner::default();
+            inner.begin(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+            inner.text = Some("Keep these words".into());
+            inner.finish_delivery(Err(error.into()));
+            inner.operation = None;
+            let status = inner.changed();
+            assert!(status.can_copy);
+            assert!(!status.can_retry);
+            assert!(!status.busy);
+            assert_eq!(status.phase, super::DictationPhase::Error);
+            assert_eq!(
+                status.problem,
+                Some(match error {
+                    "accessibility_permission_required" =>
+                        super::DictationProblem::AccessibilityRequired,
+                    "target_unavailable" => super::DictationProblem::TargetUnavailable,
+                    _ => super::DictationProblem::InsertionFailed,
+                })
+            );
+            assert_eq!(inner.text.as_deref(), Some("Keep these words"));
+        }
+    }
 
     #[tokio::test]
     async fn captures_microphone_frame_arriving_after_shortcut_release() {

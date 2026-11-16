@@ -22,7 +22,6 @@ final class DictationInput {
   private var enabled = false
   private var active = false
   private var escapePressed = false
-  private var target: AXUIElement?
 
   private init() {}
 
@@ -72,7 +71,7 @@ final class DictationInput {
         let tap = CGEvent.tapCreate(
           tap: .cgSessionEventTap,
           place: .headInsertEventTap,
-          options: .defaultTap,
+          options: AXIsProcessTrusted() ? .defaultTap : .listenOnly,
           eventsOfInterest: CGEventMask(mask),
           callback: { _, type, event, _ in
             DictationInput.shared.handle(type, event)
@@ -151,34 +150,14 @@ final class DictationInput {
     return Unmanaged.passUnretained(event)
   }
 
-  func captureTarget() -> Int {
-    if Thread.isMainThread { return captureTargetOnMain() }
-    return DispatchQueue.main.sync { self.captureTargetOnMain() }
-  }
-
-  private func captureTargetOnMain() -> Int {
-    guard AXIsProcessTrusted() else {
-      target = nil
-      return 1
-    }
-    guard let current = focusedElement(), editable(current) else {
-      target = nil
-      return 2
-    }
-    target = current
-    return 0
-  }
-
-  func insert(_ text: String) -> Bool {
+  func insert(_ text: String) -> Int {
     if Thread.isMainThread { return insertOnMain(text) }
     return DispatchQueue.main.sync { self.insertOnMain(text) }
   }
 
-  private func insertOnMain(_ text: String) -> Bool {
-    guard let target, let current = focusedElement(), CFEqual(target, current), editable(current)
-    else {
-      return false
-    }
+  private func insertOnMain(_ text: String) -> Int {
+    guard AXIsProcessTrusted() else { return 1 }
+    guard let current = focusedElement(), editable(current) else { return 2 }
     let board = NSPasteboard.general
     let previous = board.pasteboardItems?.map { item -> NSPasteboardItem in
       let copy = NSPasteboardItem()
@@ -188,11 +167,11 @@ final class DictationInput {
       return copy
     }
     board.clearContents()
-    guard board.setString(text, forType: .string) else { return false }
+    guard board.setString(text, forType: .string) else { return 3 }
     let writtenChange = board.changeCount
     guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true),
       let up = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: false)
-    else { return false }
+    else { return 3 }
     down.flags = .maskCommand
     up.flags = .maskCommand
     down.post(tap: .cghidEventTap)
@@ -202,8 +181,7 @@ final class DictationInput {
       board.clearContents()
       if let previous, !previous.isEmpty { board.writeObjects(previous) }
     }
-    self.target = nil
-    return true
+    return 0
   }
 
   private func focusedElement() -> AXUIElement? {
@@ -215,7 +193,8 @@ final class DictationInput {
     else {
       return nil
     }
-    return (result as! AXUIElement)
+    guard let result, CFGetTypeID(result) == AXUIElementGetTypeID() else { return nil }
+    return unsafeBitCast(result, to: AXUIElement.self)
   }
 
   private func editable(_ element: AXUIElement) -> Bool {

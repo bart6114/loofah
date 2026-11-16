@@ -390,10 +390,6 @@ msgstr "Choosing…"
 msgid "Clear"
 msgstr "Clear"
 
-#: src/dictation/host.tsx
-msgid "Click a text field to record into"
-msgstr "Click a text field to record into"
-
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/search/bar.tsx
@@ -489,6 +485,10 @@ msgstr "Copy my vault here"
 #: src/dictation/host.tsx
 msgid "Copy text"
 msgstr "Copy text"
+
+#: src/dictation/host.tsx
+msgid "Copy your text, or enable Loofah in Accessibility for automatic insertion."
+msgstr "Copy your text, or enable Loofah in Accessibility for automatic insertion."
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Copying…"
@@ -750,10 +750,6 @@ msgstr "Edit global summary prompt"
 #: src/onboarding/permissions.tsx
 msgid "Enable {0}"
 msgstr "Enable {0}"
-
-#: src/dictation/host.tsx
-msgid "Enable Loofah in Accessibility, then try again."
-msgstr "Enable Loofah in Accessibility, then try again."
 
 #: src/session/components/session-date.tsx
 msgid "Enter a valid date and time"

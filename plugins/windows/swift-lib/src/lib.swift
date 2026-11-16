@@ -11,13 +11,8 @@ public func _dictationSetActive(active: Bool) {
   DictationInput.shared.setActive(active)
 }
 
-@_cdecl("_dictation_capture_target")
-public func _dictationCaptureTarget() -> Int {
-  DictationInput.shared.captureTarget()
-}
-
 @_cdecl("_dictation_insert")
-public func _dictationInsert(text: SRString) -> Bool {
+public func _dictationInsert(text: SRString) -> Int {
   DictationInput.shared.insert(text.toString())
 }
 

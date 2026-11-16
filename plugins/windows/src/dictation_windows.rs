@@ -9,9 +9,6 @@ use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Ole::{
-    SafeArrayDestroy, SafeArrayGetDim, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound,
-};
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, UIA_DocumentControlTypeId, UIA_EditControlTypeId,
 };
@@ -48,7 +45,6 @@ static ENABLED: AtomicBool = AtomicBool::new(false);
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static ESCAPE_PRESSED: AtomicBool = AtomicBool::new(false);
 static HOOK_STARTED: AtomicBool = AtomicBool::new(false);
-static TARGET: Mutex<Option<(i32, Vec<i32>)>> = Mutex::new(None);
 
 fn parse_shortcut(shortcut: &str) -> Result<Shortcut, String> {
     let parts = shortcut
@@ -204,7 +200,7 @@ fn modifiers_down(shortcut: &Shortcut) -> bool {
         && (down(VK_LWIN) || down(VK_RWIN)) == shortcut.command
 }
 
-fn focused_target() -> Result<(i32, Vec<i32>), String> {
+fn ensure_editable_focus() -> Result<(), String> {
     std::thread::spawn(|| unsafe {
         CoInitializeEx(None, COINIT_MULTITHREADED)
             .ok()
@@ -233,27 +229,7 @@ fn focused_target() -> Result<(i32, Vec<i32>), String> {
             {
                 return Err("This field cannot accept dictation".into());
             }
-            let process = element
-                .CurrentProcessId()
-                .map_err(|error| error.to_string())?;
-            let array = element.GetRuntimeId().map_err(|error| error.to_string())?;
-            if array.is_null() || SafeArrayGetDim(array) != 1 {
-                return Err("Could not identify the focused text field".into());
-            }
-            let id = (|| {
-                let start = SafeArrayGetLBound(array, 1).map_err(|error| error.to_string())?;
-                let end = SafeArrayGetUBound(array, 1).map_err(|error| error.to_string())?;
-                let mut values = Vec::new();
-                for index in start..=end {
-                    let mut value = 0i32;
-                    SafeArrayGetElement(array, &index, (&mut value as *mut i32).cast())
-                        .map_err(|error| error.to_string())?;
-                    values.push(value);
-                }
-                Ok::<_, String>(values)
-            })();
-            let _ = SafeArrayDestroy(array);
-            Ok((process, id?))
+            Ok(())
         })();
         CoUninitialize();
         result
@@ -262,19 +238,8 @@ fn focused_target() -> Result<(i32, Vec<i32>), String> {
     .map_err(|_| "Could not inspect the focused field".to_string())?
 }
 
-pub fn capture_target() -> Result<(), String> {
-    *TARGET.lock().unwrap() = Some(focused_target()?);
-    Ok(())
-}
-
 pub fn insert(text: &str) -> Result<(), String> {
-    let original = TARGET.lock().unwrap().take().ok_or("No dictation target")?;
-    if focused_target()? != original {
-        return Err(
-            "The original text field is no longer focused. Use Copy Last Dictation in the taskbar."
-                .into(),
-        );
-    }
+    ensure_editable_focus().map_err(|_| "target_unavailable".to_string())?;
     let mut inputs = Vec::with_capacity(text.len() * 2);
     for unit in text.encode_utf16() {
         for flags in [KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP] {

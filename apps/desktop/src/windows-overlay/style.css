@@ -192,34 +192,13 @@ header button {
   overflow-wrap: anywhere;
 }
 .dictation-actions {
+  margin-left: auto;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 .dictation-actions button {
   padding: 5px 8px;
-}
-.dictation-dismiss {
-  position: fixed;
-  top: 5px;
-  left: 5px;
-  z-index: 1;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: rgb(var(--surface));
-  box-shadow: 0 1px 4px #0003;
-  font-size: 16px;
-  line-height: 1;
-  opacity: 0;
-  pointer-events: none;
-}
-.dictation-bar:hover .dictation-dismiss,
-.dictation-dismiss:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
 }
 .dictation-spinner {
   width: 14px;
