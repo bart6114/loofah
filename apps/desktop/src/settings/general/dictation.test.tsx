@@ -16,12 +16,23 @@ const mocks = vi.hoisted(() => ({
   save: vi.fn(),
   permission: vi.fn(),
   open: vi.fn(),
+  checkPermission: vi.fn(),
+  requestPermission: vi.fn(),
+  openPermission: vi.fn(),
+  permissionStatuses: {} as Record<string, string>,
+}));
+vi.mock("@hypr/plugin-permissions", () => ({
+  commands: {
+    checkPermission: mocks.checkPermission,
+    requestPermission: mocks.requestPermission,
+    openPermission: mocks.openPermission,
+  },
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 vi.mock("~/settings/queries", () => ({ setSettingValues: mocks.save }));
 vi.mock("~/shared/hooks/usePermissions", () => ({
-  usePermission: () => ({
-    status: "authorized",
+  usePermission: (type: string) => ({
+    status: mocks.permissionStatuses[type] ?? "authorized",
     open: mocks.permission,
     request: mocks.permission,
   }),
@@ -76,6 +87,7 @@ function mount(
 }
 
 beforeEach(() => {
+  mocks.permissionStatuses = {};
   mocks.invoke.mockImplementation((command) =>
     Promise.resolve(
       command === "dictation_get_status"
@@ -84,11 +96,109 @@ beforeEach(() => {
     ),
   );
   mocks.save.mockResolvedValue(undefined);
+  mocks.checkPermission.mockResolvedValue({ status: "ok", data: "authorized" });
+  mocks.requestPermission.mockResolvedValue({ status: "ok", data: null });
+  mocks.openPermission.mockResolvedValue({ status: "ok", data: null });
   useDictationShortcut.setState({ capturing: false, unavailable: false });
 });
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
+});
+
+describe("dictation permission requests", () => {
+  it("prioritizes Accessibility when both macOS permissions are missing", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    mocks.permissionStatuses = {
+      accessibility: "denied",
+      inputMonitoring: "denied",
+    };
+    mount();
+    expect(
+      await screen.findByText("Allow Accessibility to insert your words."),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    await waitFor(() => expect(mocks.permission).toHaveBeenCalled());
+  });
+  it("does not require separate Input Monitoring when Accessibility is authorized", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    mocks.permissionStatuses = {
+      accessibility: "authorized",
+      inputMonitoring: "denied",
+    };
+    mount();
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(
+      screen.queryByText("Allow Input Monitoring to use your shortcut."),
+    ).toBeNull();
+    expect(mocks.requestPermission).not.toHaveBeenCalled();
+  });
+
+  async function toggle() {
+    const button = screen.getByRole("switch");
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(button);
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+  }
+
+  it("requests denied Accessibility access on every explicit re-enable", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    mocks.checkPermission.mockResolvedValue({ status: "ok", data: "denied" });
+    mount();
+    expect(mocks.requestPermission).not.toHaveBeenCalled();
+    for (let count = 1; count <= 2; count++) {
+      await toggle();
+      expect(mocks.requestPermission).toHaveBeenCalledTimes(count - 1);
+      await toggle();
+      await waitFor(() =>
+        expect(mocks.requestPermission).toHaveBeenCalledTimes(count),
+      );
+      expect(mocks.requestPermission).toHaveBeenLastCalledWith("accessibility");
+      await waitFor(() =>
+        expect(mocks.openPermission).toHaveBeenCalledTimes(count),
+      );
+    }
+  });
+
+  it.each(["authorized", "neverRequested"])(
+    "handles %s Accessibility access",
+    async (permission) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+      mocks.checkPermission.mockResolvedValue({
+        status: "ok",
+        data: permission,
+      });
+      mount();
+      await toggle();
+      await toggle();
+      await waitFor(() =>
+        expect(mocks.checkPermission).toHaveBeenCalledWith("accessibility"),
+      );
+      expect(mocks.requestPermission).toHaveBeenCalledTimes(
+        permission === "authorized" ? 0 : 1,
+      );
+      expect(mocks.openPermission).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not request macOS permissions on Windows", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+    mount();
+    await toggle();
+    await toggle();
+    expect(mocks.checkPermission).not.toHaveBeenCalled();
+  });
+
+  it("does not request access if enabling could not be saved", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    mount();
+    await toggle();
+    mocks.save.mockRejectedValueOnce(new Error("disk"));
+    await toggle();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(mocks.checkPermission).not.toHaveBeenCalled();
+  });
 });
 
 async function captureInput() {

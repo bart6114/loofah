@@ -7,6 +7,8 @@ use hypr_audio_interface::AsyncSource;
 mod error;
 mod file_pcm;
 pub use file_pcm::*;
+mod level;
+pub use level::smoothed_audio_level;
 mod pcm;
 mod vorbis;
 

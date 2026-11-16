@@ -1049,8 +1049,7 @@ private struct InkTrace: View {
     }
   }
 
-  // Raw amplitude sits around 0.05-0.3 for normal speech; compress the range
-  // so speech reads clearly while true silence still draws flat.
+  // Boost quiet normalized levels while keeping silence flat.
   private static func boosted(_ value: Double) -> Double {
     let gated = max(0, value - 0.015) / 0.985
     return min(1, pow(gated, 0.4))

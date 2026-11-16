@@ -632,6 +632,7 @@ async fn record(
         .map_err(|error| error.to_string())?;
     let mut samples = 0;
     let mut last_level = std::time::Instant::now();
+    let mut amplitude = 0.0;
     loop {
         if operation.is_cancelled() || operation.stop.load(Ordering::SeqCst) {
             break;
@@ -642,7 +643,7 @@ async fn record(
             frame = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next()) => {
                 let frame = frame.map_err(|_| "Microphone timed out")?.ok_or("Microphone stream ended")?.map_err(|error| error.to_string())?;
                 if frame.raw_mic.is_empty() { continue; }
-                let amplitude = (frame.raw_mic.iter().map(|sample| f64::from(*sample).powi(2)).sum::<f64>() / frame.raw_mic.len() as f64).sqrt().min(1.0);
+                amplitude = hypr_audio_utils::smoothed_audio_level(amplitude, &frame.raw_mic);
                 for sample in frame.raw_mic.iter() { writer.write_sample(*sample).map_err(|error| error.to_string())?; }
                 if samples == 0 {
                     let state = app.state::<DictationState>();
@@ -651,7 +652,7 @@ async fn record(
                 }
                 samples += frame.raw_mic.len();
                 if samples == frame.raw_mic.len() || last_level.elapsed() >= std::time::Duration::from_millis(100) {
-                    update(app, id, DictationPhase::Recording, amplitude);
+                    update(app, id, DictationPhase::Recording, f64::from(amplitude));
                     last_level = std::time::Instant::now();
                 }
             }

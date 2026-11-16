@@ -220,6 +220,13 @@ describe("DictationHost", () => {
       { id: "discard", label: "Discard" },
     ]);
     expect(mocks.hide).not.toHaveBeenCalled();
+    mocks.invoke.mockResolvedValueOnce({
+      ...idle,
+      attemptId: 1,
+      revision: 3,
+      phase: "copied",
+      canCopy: true,
+    });
     await emit("plugin:windows:dictation-action", {
       attemptId: 1,
       action: "copy",

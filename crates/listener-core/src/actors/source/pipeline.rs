@@ -316,10 +316,6 @@ struct AmplitudeEmitter {
 }
 
 impl AmplitudeEmitter {
-    const SMOOTHING_ALPHA: f32 = 0.7;
-    const MIN_DB: f32 = -60.0;
-    const MAX_DB: f32 = 0.0;
-
     fn new(runtime: Arc<dyn ListenerRuntime>, session_id: String) -> Self {
         Self {
             runtime,
@@ -337,16 +333,12 @@ impl AmplitudeEmitter {
     }
 
     fn observe_mic(&mut self, data: &[f32]) {
-        let amplitude = Self::amplitude_from_chunk(data);
-        self.mic_smoothed =
-            (1.0 - Self::SMOOTHING_ALPHA) * self.mic_smoothed + Self::SMOOTHING_ALPHA * amplitude;
+        self.mic_smoothed = hypr_audio_utils::smoothed_audio_level(self.mic_smoothed, data);
         self.emit_if_ready();
     }
 
     fn observe_spk(&mut self, data: &[f32]) {
-        let amplitude = Self::amplitude_from_chunk(data);
-        self.spk_smoothed =
-            (1.0 - Self::SMOOTHING_ALPHA) * self.spk_smoothed + Self::SMOOTHING_ALPHA * amplitude;
+        self.spk_smoothed = hypr_audio_utils::smoothed_audio_level(self.spk_smoothed, data);
         self.emit_if_ready();
     }
 
@@ -365,27 +357,6 @@ impl AmplitudeEmitter {
         });
 
         self.last_emit = Instant::now();
-    }
-
-    fn amplitude_from_chunk(chunk: &[f32]) -> f32 {
-        if chunk.is_empty() {
-            return 0.0;
-        }
-
-        let sum_squares: f32 = chunk.iter().filter(|x| x.is_finite()).map(|&x| x * x).sum();
-        let count = chunk.iter().filter(|x| x.is_finite()).count();
-        if count == 0 {
-            return 0.0;
-        }
-        let rms = (sum_squares / count as f32).sqrt();
-
-        let db = if rms > 0.0 {
-            20.0 * rms.log10()
-        } else {
-            Self::MIN_DB
-        };
-
-        ((db - Self::MIN_DB) / (Self::MAX_DB - Self::MIN_DB)).clamp(0.0, 1.0)
     }
 }
 

@@ -5,6 +5,7 @@ import { Info } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { commands as localSttCommands } from "@hypr/plugin-local-stt";
+import { commands as permissionsCommands } from "@hypr/plugin-permissions";
 import { Button } from "@hypr/ui/components/ui/button";
 import { Input } from "@hypr/ui/components/ui/input";
 import { Kbd } from "@hypr/ui/components/ui/kbd";
@@ -78,6 +79,24 @@ export function DictationSettings({
   );
   const { data: status } = useDictationStatus();
   const busy = isDictationActive(status);
+  const enablePermissions = useMutation({
+    mutationFn: async () => {
+      if (!navigator.platform.includes("Mac")) return;
+      const checked =
+        await permissionsCommands.checkPermission("accessibility");
+      if (checked.status === "error") throw new Error(checked.error);
+      if (checked.data === "authorized") return;
+      const requested =
+        await permissionsCommands.requestPermission("accessibility");
+      if (requested.status === "error") throw new Error(requested.error);
+      // macOS may suppress a repeated prompt after access was denied.
+      if (checked.data !== "neverRequested") {
+        const opened =
+          await permissionsCommands.openPermission("accessibility");
+        if (opened.status === "error") throw new Error(opened.error);
+      }
+    },
+  });
   const capturing = useDictationShortcut((state) => state.capturing);
   const save = useMutation({
     mutationFn: (value: typeof values) => setSettingValues(value),
@@ -206,10 +225,21 @@ export function DictationSettings({
             <Switch
               id="dictation-enabled"
               checked={field.state.value}
-              disabled={busy || capturing || shortcutPending || save.isPending}
+              disabled={
+                busy ||
+                capturing ||
+                shortcutPending ||
+                save.isPending ||
+                enablePermissions.isPending
+              }
               onCheckedChange={(value) => {
+                enablePermissions.reset();
                 field.handleChange(value);
-                void form.handleSubmit();
+                save.mutate(form.state.values, {
+                  onSuccess: () => {
+                    if (value) enablePermissions.mutate();
+                  },
+                });
               }}
             />
           </div>
@@ -392,6 +422,11 @@ export function DictationSettings({
           <Trans>Could not save dictation settings.</Trans>
         </p>
       )}
+      {enablePermissions.isError && (
+        <p role="alert" className="text-destructive text-xs">
+          <Trans>Allow Accessibility to insert your words.</Trans>
+        </p>
+      )}
     </section>
   );
 }
@@ -456,10 +491,12 @@ function MacDictationReadiness() {
   const input = usePermission("inputMonitoring");
   const accessibility = usePermission("accessibility");
   const needed =
-    input.status && input.status !== "authorized"
-      ? input
-      : accessibility.status && accessibility.status !== "authorized"
-        ? accessibility
+    accessibility.status && accessibility.status !== "authorized"
+      ? accessibility
+      : accessibility.status !== "authorized" &&
+          input.status &&
+          input.status !== "authorized"
+        ? input
         : null;
   const permission = useMutation({
     mutationFn: async () => {
