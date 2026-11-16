@@ -15,7 +15,7 @@ use crate::tray_icon::{RECORDING_FRAMES, TrayIconState, recording_frame};
 
 use crate::menu_items::{
     AppInfo, AppNew, HelpDocumentation, HelpReportBug, HelpSuggestFeature, MenuItemHandler,
-    TrayCheckUpdate, TrayOpen, TrayQuit, TraySettings, TrayStart, TrayVersion,
+    TrayCheckUpdate, TrayCopyDictation, TrayOpen, TrayQuit, TraySettings, TrayStart, TrayVersion,
 };
 
 const TRAY_ID: &str = "hypr-tray";
@@ -25,6 +25,34 @@ static IS_DEGRADED: AtomicBool = AtomicBool::new(false);
 static IS_UPDATE_AVAILABLE: AtomicBool = AtomicBool::new(false);
 static START_DISABLED: AtomicBool = AtomicBool::new(false);
 static ANIMATION_TASK: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
+static DICTATION_COPY_LABEL: Mutex<Option<String>> = Mutex::new(None);
+
+pub(crate) fn dictation_copy_label() -> String {
+    DICTATION_COPY_LABEL
+        .lock()
+        .ok()
+        .and_then(|label| label.clone())
+        .unwrap_or_else(|| "Copy Last Dictation".to_string())
+}
+
+static LATEST_DICTATION: Mutex<Option<(u32, String)>> = Mutex::new(None);
+
+pub(crate) fn latest_dictation() -> Option<String> {
+    LATEST_DICTATION
+        .lock()
+        .ok()?
+        .as_ref()
+        .map(|(_, text)| text.clone())
+}
+
+fn clear_dictation_for_attempt(last: &mut Option<(u32, String)>, attempt_id: u32) -> bool {
+    if last.as_ref().is_some_and(|(id, _)| *id == attempt_id) {
+        *last = None;
+        true
+    } else {
+        false
+    }
+}
 
 pub struct Tray<'a, R: tauri::Runtime, M: tauri::Manager<R>> {
     manager: &'a M,
@@ -155,6 +183,25 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
         Ok(())
     }
 
+    pub fn set_dictation_copy_label(&self, label: String) -> Result<()> {
+        *DICTATION_COPY_LABEL.lock().unwrap() = Some(label);
+        self.refresh_menu()
+    }
+
+    pub fn set_last_dictation(&self, attempt_id: u32, text: String) -> Result<()> {
+        *LATEST_DICTATION.lock().unwrap() = Some((attempt_id, text));
+        self.refresh_menu()
+    }
+
+    pub fn clear_last_dictation(&self, attempt_id: u32) -> Result<()> {
+        let cleared =
+            clear_dictation_for_attempt(&mut LATEST_DICTATION.lock().unwrap(), attempt_id);
+        if cleared {
+            self.refresh_menu()?;
+        }
+        Ok(())
+    }
+
     fn build_tray_menu(app: &AppHandle<tauri::Wry>) -> Result<Menu<tauri::Wry>> {
         let menu = Menu::new(app)?;
 
@@ -163,6 +210,9 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
             app,
             START_DISABLED.load(Ordering::SeqCst),
         )?)?;
+        if latest_dictation().is_some() {
+            menu.append(&TrayCopyDictation::build(app)?)?;
+        }
         menu.append(&TraySettings::build(app)?)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
         menu.append(&TrayVersion::build(app)?)?;
@@ -271,5 +321,32 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> TrayPluginExt<R> for T {
             manager: self,
             _runtime: std::marker::PhantomData,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clear_dictation_for_attempt;
+
+    #[test]
+    fn discarded_dictation_is_no_longer_copyable() {
+        let mut last = Some((42, "discarded text".to_string()));
+        assert!(clear_dictation_for_attempt(&mut last, 42));
+        assert!(last.is_none());
+        assert!(!clear_dictation_for_attempt(&mut last, 42));
+    }
+
+    #[test]
+    fn dismissing_a_new_notice_preserves_previous_dictation() {
+        let mut last = Some((41, "completed text".to_string()));
+        assert!(!clear_dictation_for_attempt(&mut last, 42));
+        assert_eq!(last, Some((41, "completed text".to_string())));
+    }
+
+    #[test]
+    fn stale_discard_preserves_newer_dictation() {
+        let mut last = Some((43, "new result".to_string()));
+        assert!(!clear_dictation_for_attempt(&mut last, 42));
+        assert_eq!(last, Some((43, "new result".to_string())));
     }
 }

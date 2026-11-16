@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-dictation-shortcut-configure"
+description = "Enables the dictation_shortcut_configure command without any pre-configured scope."
+commands.allow = ["dictation_shortcut_configure"]
+
+[[permission]]
+identifier = "deny-dictation-shortcut-configure"
+description = "Denies the dictation_shortcut_configure command without any pre-configured scope."
+commands.deny = ["dictation_shortcut_configure"]

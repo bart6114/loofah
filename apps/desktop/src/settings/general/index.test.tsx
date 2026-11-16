@@ -17,6 +17,7 @@ vi.mock("./app-settings", () => ({
   ),
   RecordingSettingsView: () => null,
 }));
+vi.mock("./dictation", () => ({ DictationSettings: () => null }));
 vi.mock("./main-language", () => ({
   MainLanguageView: ({ value }: { value: string }) => (
     <span data-testid="main-language">{value}</span>

@@ -35,6 +35,76 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
   const preferences = useMutation({
     mutationFn: () => commands.overlaySetSettingsOpen(true),
   });
+  const action = useMutation({
+    mutationFn: (id: string) =>
+      events.dictationAction.emit({
+        attemptId: state.dictation!.attemptId,
+        action: id,
+      }),
+  });
+  if (state.dictation) {
+    const dismiss = state.dictation.actions.find(
+      (item) => item.id === "dismiss",
+    );
+    return (
+      <section
+        className="dictation-bar"
+        data-theme={state.colorScheme}
+        data-detail={Boolean(state.dictation.detail)}
+        style={{
+          backgroundColor: `rgb(var(--surface) / ${Math.max(0.2, state.opacity)})`,
+        }}
+      >
+        {dismiss && (
+          <button
+            className="dictation-dismiss"
+            aria-label={dismiss.label}
+            disabled={action.isPending}
+            onClick={() => action.mutate(dismiss.id)}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        )}
+        <div className="dictation-heading">
+          <span className="grip" data-tauri-drag-region aria-hidden="true">
+            ⠿
+          </span>
+          {state.dictation.phase === "recording" && (
+            <span className="level" aria-hidden="true">
+              <span
+                style={{
+                  transform: `scaleY(${Math.max(0.15, Math.min(1, state.amplitude))})`,
+                }}
+              />
+            </span>
+          )}
+          {["starting", "loadingModel", "transcribing", "inserting"].includes(
+            state.dictation.phase,
+          ) && <span className="dictation-spinner" aria-hidden="true" />}
+          <span role="status" aria-live="polite" aria-atomic="true">
+            {state.dictation.phase === "done" ? (
+              <span aria-hidden="true">✓ </span>
+            ) : null}
+            {state.title}
+          </span>
+        </div>
+        {state.dictation.detail && <p>{state.dictation.detail}</p>}
+        <div className="dictation-actions">
+          {state.dictation.actions
+            .filter((item) => item.id !== "dismiss")
+            .map((item) => (
+              <button
+                key={item.id}
+                disabled={action.isPending}
+                onClick={() => action.mutate(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+        </div>
+      </section>
+    );
+  }
   return (
     <section
       className="bar"
@@ -53,7 +123,13 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
       </span>
       <span
         className="level"
-        aria-label={state.status === "error" ? "Recording error" : "Recording"}
+        aria-label={
+          state.status === "error"
+            ? "Recording error"
+            : state.status === "processing"
+              ? "Transcribing"
+              : "Recording"
+        }
       >
         <span
           style={{
@@ -76,14 +152,20 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
           CC
         </button>
       )}
-      <button
-        className="stop"
-        disabled={stop.isPending}
-        onClick={() => stop.mutate()}
-        aria-label="Stop recording"
-      >
-        ■ Stop
-      </button>
+      {state.status === "processing" ? (
+        <span role="status" aria-label="Transcribing">
+          …
+        </span>
+      ) : (
+        <button
+          className="stop"
+          disabled={stop.isPending || state.status === "error"}
+          onClick={() => stop.mutate()}
+          aria-label="Stop recording"
+        >
+          ■ Stop
+        </button>
+      )}
       <button
         aria-label="Recording display settings"
         onClick={() => preferences.mutate()}

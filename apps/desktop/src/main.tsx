@@ -20,6 +20,7 @@ import {
 import { Toaster } from "@hypr/ui/components/ui/toast";
 
 import { AITaskWindowSyncBridge } from "./ai/task-window-sync";
+import { DictationHost } from "./dictation/host";
 import { AppI18nProvider } from "./i18n/provider";
 import { FloatingMeetingWindowHost } from "./meeting-float/host";
 import { routeTree } from "./routeTree.gen";
@@ -89,6 +90,7 @@ function AppRoot() {
             <App />
             <ArtifactInvalidationSync />
             {isMainWindow ? <FloatingMeetingWindowHost /> : null}
+            {isMainWindow ? <DictationHost /> : null}
             {isMainWindow ? <EventListeners /> : null}
           </StartupBoundary>
           <Toaster position="bottom-right" theme={theme} />

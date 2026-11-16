@@ -95,6 +95,14 @@ msgstr "1 file"
 msgid "A duplicate; the original stays where it is."
 msgstr "A duplicate; the original stays where it is."
 
+#: src/dictation/host.tsx
+msgid "A meeting is recording"
+msgstr "A meeting is recording"
+
+#: src/settings/general/dictation.tsx
+msgid "About dictation"
+msgstr "About dictation"
+
 #: src/main/about-dialog.tsx
 msgid "About Loofah"
 msgstr "About Loofah"
@@ -102,6 +110,10 @@ msgstr "About Loofah"
 #: src/session/components/session-tags.tsx
 msgid "Accept suggested tag {name}"
 msgstr "Accept suggested tag {name}"
+
+#: src/settings/general/permissions.tsx
+msgid "Accessibility"
+msgstr "Accessibility"
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Actions"
@@ -148,6 +160,22 @@ msgstr "AI provider"
 #: src/shared/open-note-dialog.tsx
 msgid "All Notes"
 msgstr "All Notes"
+
+#: src/settings/general/dictation.tsx
+msgid "Allow Accessibility to insert your words."
+msgstr "Allow Accessibility to insert your words."
+
+#: src/settings/general/dictation.tsx
+msgid "Allow Input Monitoring to use your shortcut."
+msgstr "Allow Input Monitoring to use your shortcut."
+
+#: src/dictation/host.tsx
+msgid "Allow Loofah to insert text"
+msgstr "Allow Loofah to insert text"
+
+#: src/settings/general/dictation.tsx
+msgid "Allow microphone access to dictate."
+msgstr "Allow microphone access to dictate."
 
 #: src/settings/general/app-settings.tsx
 msgid "Always ready without manually launching."
@@ -227,10 +255,12 @@ msgstr "Calculating storage…"
 msgid "Can transcribe while the meeting is happening."
 msgstr "Can transcribe while the meeting is happening."
 
+#: src/dictation/host.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 #: src/settings/ai/llm/chatgpt.tsx
 #: src/settings/ai/llm/summary-prompt.tsx
+#: src/settings/general/dictation.tsx
 #: src/settings/general/storage/change-location.tsx
 msgid "Cancel"
 msgstr "Cancel"
@@ -238,6 +268,10 @@ msgstr "Cancel"
 #: src/session/components/session-date.tsx
 msgid "Cancel date edit"
 msgstr "Cancel date edit"
+
+#: src/dictation/host.tsx
+msgid "Cancelled"
+msgstr "Cancelled"
 
 #: src/onboarding/folder-location.tsx
 msgid "Change"
@@ -251,6 +285,10 @@ msgstr "Change connection"
 msgid "Change folder"
 msgstr "Change folder"
 
+#: src/settings/general/dictation.tsx
+msgid "Change shortcut"
+msgstr "Change shortcut"
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Change storage location?"
 msgstr "Change storage location?"
@@ -263,6 +301,10 @@ msgstr "ChatGPT subscription"
 #: src/settings/ai/llm/select.tsx
 msgid "Check connection"
 msgstr "Check connection"
+
+#: src/dictation/host.tsx
+msgid "Check microphone access and your input device."
+msgstr "Check microphone access and your input device."
 
 #: src/settings/ai/llm/select.tsx
 msgid "Check this connection's sign-in, API key, or local AI app, then try again."
@@ -284,6 +326,10 @@ msgstr "Checking transcription models…"
 msgid "Choose a connection"
 msgstr "Choose a connection"
 
+#: src/settings/general/dictation.tsx
+msgid "Choose a downloaded transcription model."
+msgstr "Choose a downloaded transcription model."
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Choose a file format and what to include."
 msgstr "Choose a file format and what to include."
@@ -301,6 +347,10 @@ msgstr "Choose a model to finish setup"
 msgid "Choose a style for your workspace. Default follows your appearance setting."
 msgstr "Choose a style for your workspace. Default follows your appearance setting."
 
+#: src/dictation/host.tsx
+msgid "Choose a transcription model"
+msgstr "Choose a transcription model"
+
 #: src/settings/ai/stt/select.tsx
 msgid "Choose another model"
 msgstr "Choose another model"
@@ -316,6 +366,11 @@ msgstr "Choose how Loofah writes your summaries."
 #: src/settings/general/theme.tsx
 msgid "Choose light, dark, or match your system setting."
 msgstr "Choose light, dark, or match your system setting."
+
+#: src/dictation/host.tsx
+#: src/settings/general/dictation.tsx
+msgid "Choose model"
+msgstr "Choose model"
 
 #: src/onboarding/folder-location.tsx
 #: src/settings/general/storage/change-location.tsx
@@ -334,6 +389,10 @@ msgstr "Choosing…"
 #: src/main/audio-import-dialog.tsx
 msgid "Clear"
 msgstr "Clear"
+
+#: src/dictation/host.tsx
+msgid "Click a text field to record into"
+msgstr "Click a text field to record into"
 
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
@@ -402,6 +461,7 @@ msgstr "Context always provided"
 msgid "Continue"
 msgstr "Continue"
 
+#: src/dictation/host.tsx
 #: src/main/about-debug.tsx
 msgid "Copied"
 msgstr "Copied"
@@ -414,6 +474,10 @@ msgstr "Copy debug information"
 msgid "Copy failed"
 msgstr "Copy failed"
 
+#: src/dictation/host.tsx
+msgid "Copy Last Dictation"
+msgstr "Copy Last Dictation"
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Copy my vault"
 msgstr "Copy my vault"
@@ -422,9 +486,17 @@ msgstr "Copy my vault"
 msgid "Copy my vault here"
 msgstr "Copy my vault here"
 
+#: src/dictation/host.tsx
+msgid "Copy text"
+msgstr "Copy text"
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Copying…"
 msgstr "Copying…"
+
+#: src/settings/general/dictation.tsx
+msgid "Could not save dictation settings."
+msgstr "Could not save dictation settings."
 
 #: src/session/components/session-tags.tsx
 msgid "Could not update tags."
@@ -442,6 +514,10 @@ msgstr "Couldn’t add 1 attachment"
 msgid "Couldn’t calculate vault storage."
 msgstr "Couldn’t calculate vault storage."
 
+#: src/settings/general/dictation.tsx
+msgid "Couldn’t change the shortcut. Try again."
+msgstr "Couldn’t change the shortcut. Try again."
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t choose attachments"
 msgstr "Couldn’t choose attachments"
@@ -449,6 +525,14 @@ msgstr "Couldn’t choose attachments"
 #: src/main/about-debug.tsx
 msgid "Couldn’t copy debug information. Try again."
 msgstr "Couldn’t copy debug information. Try again."
+
+#: src/dictation/host.tsx
+msgid "Couldn’t copy your text"
+msgstr "Couldn’t copy your text"
+
+#: src/dictation/host.tsx
+msgid "Couldn’t insert your text"
+msgstr "Couldn’t insert your text"
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t load attachments."
@@ -483,13 +567,29 @@ msgstr "Couldn't prepare export."
 msgid "Couldn’t remove attachment"
 msgstr "Couldn’t remove attachment"
 
+#: src/settings/general/dictation.tsx
+msgid "Couldn’t restore your previous shortcut. Try setting it again."
+msgstr "Couldn’t restore your previous shortcut. Try setting it again."
+
+#: src/settings/general/dictation.tsx
+msgid "Couldn’t save this shortcut. Your previous shortcut is unchanged."
+msgstr "Couldn’t save this shortcut. Your previous shortcut is unchanged."
+
 #: src/settings/general/theme.tsx
 msgid "Couldn't save your appearance. Please try again."
 msgstr "Couldn't save your appearance. Please try again."
 
+#: src/dictation/host.tsx
+msgid "Couldn’t transcribe"
+msgstr "Couldn’t transcribe"
+
 #: src/main/about-storage.tsx
 msgid "Couldn’t update storage. Showing the previous measurement."
 msgstr "Couldn’t update storage. Showing the previous measurement."
+
+#: src/dictation/host.tsx
+msgid "Couldn’t use the microphone"
+msgstr "Couldn’t use the microphone"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Created"
@@ -543,6 +643,23 @@ msgstr "Design theme"
 msgid "Diagnostics"
 msgstr "Diagnostics"
 
+#: src/settings/general/dictation.tsx
+#: src/settings/general/permissions.tsx
+msgid "Dictation"
+msgstr "Dictation"
+
+#: src/dictation/host.tsx
+msgid "Dictation couldn’t finish"
+msgstr "Dictation couldn’t finish"
+
+#: src/dictation/host.tsx
+msgid "Dictation is turned off"
+msgstr "Dictation is turned off"
+
+#: src/dictation/host.tsx
+msgid "Discard"
+msgstr "Discard"
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Discard changes"
 msgstr "Discard changes"
@@ -555,6 +672,10 @@ msgstr "Discard your unsaved instructions?"
 msgid "Disconnect"
 msgstr "Disconnect"
 
+#: src/dictation/host.tsx
+msgid "Dismiss"
+msgstr "Dismiss"
+
 #: src/session/components/session-tags.tsx
 msgid "Dismiss suggested tag {name}"
 msgstr "Dismiss suggested tag {name}"
@@ -566,6 +687,10 @@ msgstr "Don’t remind me for these apps"
 #: src/settings/general/notification.tsx
 msgid "Don't show notifications when Do-Not-Disturb is enabled on your system"
 msgstr "Don't show notifications when Do-Not-Disturb is enabled on your system"
+
+#: src/dictation/host.tsx
+msgid "Done"
+msgstr "Done"
 
 #: src/settings/ai/stt/select.tsx
 msgid "Download"
@@ -625,6 +750,10 @@ msgstr "Edit global summary prompt"
 #: src/onboarding/permissions.tsx
 msgid "Enable {0}"
 msgstr "Enable {0}"
+
+#: src/dictation/host.tsx
+msgid "Enable Loofah in Accessibility, then try again."
+msgstr "Enable Loofah in Accessibility, then try again."
 
 #: src/session/components/session-date.tsx
 msgid "Enter a valid date and time"
@@ -687,9 +816,17 @@ msgstr "Finalizing transcript"
 msgid "Find a note..."
 msgstr "Find a note..."
 
+#: src/stt/useStartListening.ts
+msgid "Finish dictation before starting a meeting recording."
+msgstr "Finish dictation before starting a meeting recording."
+
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Finish signing in in your browser…"
 msgstr "Finish signing in in your browser…"
+
+#: src/dictation/host.tsx
+msgid "Finishing your previous dictation…"
+msgstr "Finishing your previous dictation…"
 
 #: src/sidebar/settings.tsx
 msgid "General"
@@ -731,6 +868,10 @@ msgstr "Help Loofah listen to others"
 #: src/onboarding/permissions.tsx
 msgid "Help Loofah listen to you"
 msgstr "Help Loofah listen to you"
+
+#: src/settings/general/dictation.tsx
+msgid "Hold to speak"
+msgstr "Hold to speak"
 
 #: src/main/about-storage.tsx
 msgid "How storage is measured"
@@ -791,6 +932,14 @@ msgstr "Include"
 msgid "Included automatically with on-device transcription — no setup needed."
 msgstr "Included automatically with on-device transcription — no setup needed."
 
+#: src/settings/general/permissions.tsx
+msgid "Input Monitoring"
+msgstr "Input Monitoring"
+
+#: src/dictation/host.tsx
+msgid "Inserting…"
+msgstr "Inserting…"
+
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Install Codex CLI"
 msgstr "Install Codex CLI"
@@ -827,9 +976,21 @@ msgstr "Language for summaries and generated titles"
 msgid "Languages spoken in meetings"
 msgstr "Languages spoken in meetings"
 
+#: src/settings/general/permissions.tsx
+msgid "Lets Loofah insert your dictated words"
+msgstr "Lets Loofah insert your dictated words"
+
+#: src/settings/general/permissions.tsx
+msgid "Lets your dictation shortcut work in other apps"
+msgstr "Lets your dictation shortcut work in other apps"
+
 #: src/settings/general/theme.tsx
 msgid "Light"
 msgstr "Light"
+
+#: src/dictation/host.tsx
+msgid "Listening…"
+msgstr "Listening…"
 
 #: src/settings/ai/stt/select.tsx
 msgid "Live"
@@ -859,6 +1020,10 @@ msgstr "Loading connection…"
 #: src/main/about-debug.tsx
 msgid "Loading debug information…"
 msgstr "Loading debug information…"
+
+#: src/dictation/host.tsx
+msgid "Loading model…"
+msgstr "Loading model…"
 
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
@@ -959,6 +1124,10 @@ msgstr "Microphone"
 msgid "Microphone access turned on"
 msgstr "Microphone access turned on"
 
+#: src/dictation/host.tsx
+msgid "Microphone settings"
+msgstr "Microphone settings"
+
 #: src/settings/ai/llm/select.tsx
 msgid "Model"
 msgstr "Model"
@@ -1049,6 +1218,10 @@ msgstr "No notes found."
 msgid "No results found."
 msgstr "No results found."
 
+#: src/dictation/host.tsx
+msgid "No speech detected. Try again."
+msgstr "No speech detected. Try again."
+
 #: src/settings/ai/stt/select.tsx
 msgid "No transcription models are available for this device."
 msgstr "No transcription models are available for this device."
@@ -1123,6 +1296,11 @@ msgstr "Open Note"
 msgid "Open on GitHub"
 msgstr "Open on GitHub"
 
+#: src/dictation/host.tsx
+#: src/settings/general/dictation.tsx
+msgid "Open Settings"
+msgstr "Open Settings"
+
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Opening your browser…"
 msgstr "Opening your browser…"
@@ -1157,6 +1335,7 @@ msgid "Peak: {0}"
 msgstr "Peak: {0}"
 
 #: src/onboarding/index.tsx
+#: src/settings/general/dictation.tsx
 #: src/settings/general/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Permissions"
@@ -1173,6 +1352,18 @@ msgstr "Preparing export..."
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
 msgstr "Preparing transcript..."
+
+#: src/settings/general/dictation.tsx
+msgid "Press a new shortcut"
+msgstr "Press a new shortcut"
+
+#: src/settings/general/dictation.tsx
+msgid "Press to start/stop"
+msgstr "Press to start/stop"
+
+#: src/settings/general/dictation.tsx
+msgid "Press two modifier keys with a letter, number, or Space. Escape cancels."
+msgstr "Press two modifier keys with a letter, number, or Space. Escape cancels."
 
 #: src/main/about-debug.tsx
 msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
@@ -1230,6 +1421,10 @@ msgstr "Recording and transcription still work. Set up summaries when you want t
 #: src/main/about-dialog.tsx
 msgid "Recordings"
 msgstr "Recordings"
+
+#: src/settings/general/permissions.tsx
+msgid "Records your voice for meetings and dictation"
+msgstr "Records your voice for meetings and dictation"
 
 #: src/main/about-storage.tsx
 msgid "Refresh"
@@ -1308,13 +1503,13 @@ msgstr "Request {0} permission"
 msgid "Required to capture other participants' voices in meetings"
 msgstr "Required to capture other participants' voices in meetings"
 
-#: src/settings/general/permissions.tsx
-msgid "Required to record your voice during meetings and calls"
-msgstr "Required to record your voice during meetings and calls"
-
 #: src/settings/ai/llm/configure.tsx
 msgid "Requires a separate app. Install LM Studio or Ollama, download a model there, and keep its local server running while using summaries."
 msgstr "Requires a separate app. Install LM Studio or Ollama, download a model there, and keep its local server running while using summaries."
+
+#: src/settings/general/dictation.tsx
+msgid "Reset"
+msgstr "Reset"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Reset to default"
@@ -1336,6 +1531,7 @@ msgstr "Resume"
 msgid "Resume listening"
 msgstr "Resume listening"
 
+#: src/dictation/host.tsx
 #: src/main/about-storage.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/attachments.tsx
@@ -1456,6 +1652,7 @@ msgstr "Set up transcription"
 msgid "Set up transcription later"
 msgstr "Set up transcription later"
 
+#: src/dictation/host.tsx
 #: src/main/empty.tsx
 #: src/sidebar/settings.tsx
 msgid "Settings"
@@ -1464,6 +1661,14 @@ msgstr "Settings"
 #: src/main/about-storage.tsx
 msgid "Share"
 msgstr "Share"
+
+#: src/settings/general/dictation.tsx
+msgid "Shortcut"
+msgstr "Shortcut"
+
+#: src/settings/general/dictation.tsx
+msgid "Shortcut behavior"
+msgstr "Shortcut behavior"
 
 #: src/settings/general/notification.tsx
 msgid "Show a reminder when another app uses the microphone. Recording starts only when you accept."
@@ -1584,10 +1789,15 @@ msgstr "Start with permissions"
 msgid "Starting"
 msgstr "Starting"
 
+#: src/dictation/host.tsx
+msgid "Starting microphone…"
+msgstr "Starting microphone…"
+
 #: src/settings/ai/stt/select.tsx
 msgid "Starting transcription…"
 msgstr "Starting transcription…"
 
+#: src/dictation/host.tsx
 #: src/session/components/outer-header/index.tsx
 msgid "Stop"
 msgstr "Stop"
@@ -1774,6 +1984,10 @@ msgstr "Transcribe when the recording ends."
 msgid "Transcribing"
 msgstr "Transcribing"
 
+#: src/dictation/host.tsx
+msgid "Transcribing…"
+msgstr "Transcribing…"
+
 #: src/session/components/note-input/header.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Transcript"
@@ -1824,6 +2038,14 @@ msgstr "Troubleshooting"
 #: src/shared/startup-boundary.tsx
 msgid "Try again"
 msgstr "Try again"
+
+#: src/dictation/host.tsx
+msgid "Try copying again."
+msgstr "Try copying again."
+
+#: src/dictation/host.tsx
+msgid "Try dictation after the meeting finishes."
+msgstr "Try dictation after the meeting finishes."
 
 #: src/settings/ai/llm/select.tsx
 msgid "Turn off summaries"
@@ -1888,6 +2110,10 @@ msgstr "Use this connection"
 msgid "Use this folder for your vault?"
 msgstr "Use this folder for your vault?"
 
+#: src/settings/general/dictation.tsx
+msgid "Use two modifier keys and a letter, number, or Space. With Option, try Space."
+msgstr "Use two modifier keys and a letter, number, or Space. With Option, try Space."
+
 #: src/onboarding/permissions.tsx
 msgid "Use your microphone to capture your voice"
 msgstr "Use your microphone to capture your voice"
@@ -1895,6 +2121,10 @@ msgstr "Use your microphone to capture your voice"
 #: src/settings/ai/llm/select.tsx
 msgid "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
 msgstr "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
+
+#: src/settings/general/dictation.tsx
+msgid "Uses your transcription model and language settings. No meeting note is created."
+msgstr "Uses your transcription model and language settings. No meeting note is created."
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Variables"
@@ -1965,9 +2195,21 @@ msgstr "Your current vault stays untouched — switch back anytime."
 msgid "Your current vault stays where it is — nothing is moved or deleted. You can switch back the same way."
 msgstr "Your current vault stays where it is — nothing is moved or deleted. You can switch back the same way."
 
+#: src/settings/general/dictation.tsx
+msgid "Your dictation shortcut is unavailable."
+msgstr "Your dictation shortcut is unavailable."
+
 #: src/settings/general/storage/index.tsx
 msgid "Your notes, recordings, and attachments are saved as files in this folder."
 msgstr "Your notes, recordings, and attachments are saved as files in this folder."
+
+#: src/dictation/host.tsx
+msgid "Your recording is available to retry."
+msgstr "Your recording is available to retry."
+
+#: src/dictation/host.tsx
+msgid "Your text is ready"
+msgstr "Your text is ready"
 
 #: src/main/about-dialog.tsx
 msgid "Your vault"

@@ -1,3 +1,6 @@
+mod capture_admission;
+pub use capture_admission::{CaptureAdmission, DictationLease};
+
 use std::sync::Arc;
 use std::{collections::HashMap, sync::Mutex as StdMutex};
 
@@ -106,6 +109,7 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
                 app: app_handle.clone(),
             }));
             app.manage(state);
+            app.manage(CaptureAdmission::default());
             app.manage(Arc::new(BatchSessionRegistry {
                 sessions: StdMutex::new(HashMap::new()),
             }));

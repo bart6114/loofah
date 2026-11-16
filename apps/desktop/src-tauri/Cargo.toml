@@ -62,18 +62,23 @@ tauri-plugin-updater2 = { workspace = true }
 tauri-plugin-window-state = { workspace = true }
 tauri-plugin-windows = { workspace = true }
 
+hypr-audio = { workspace = true }
 hypr-audio-actual = { workspace = true }
 hypr-audio-mock = { workspace = true, optional = true }
+hypr-audio-utils = { workspace = true }
 hypr-fs-format = { workspace = true }
 hypr-host = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-supervisor = { workspace = true }
 hypr-tauri-utils = { workspace = true }
+hypr-transcription-core = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true, features = ["tauri-events"] }
 
 chrono = { workspace = true }
 dirs = { workspace = true }
+futures-util = { workspace = true }
+hound = { workspace = true }
 pico-args = { workspace = true }
 ractor = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

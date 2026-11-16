@@ -197,6 +197,15 @@ mod platform {
                 s.position,
             ),
             Some(OverlayState::Devtools) => (350.0, 360.0, LiveCaptionPosition::TopRight),
+            Some(OverlayState::FloatingBar(s)) if s.dictation.is_some() => (
+                420.0,
+                if s.dictation.as_ref().is_some_and(|d| d.detail.is_some()) {
+                    150.0
+                } else {
+                    90.0
+                },
+                LiveCaptionPosition::BottomCenter,
+            ),
             Some(OverlayState::Settings(_)) => (360.0, 395.0, LiveCaptionPosition::BottomRight),
             _ => (520.0, 76.0, LiveCaptionPosition::BottomCenter),
         };

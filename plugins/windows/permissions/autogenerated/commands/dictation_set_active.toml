@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-dictation-set-active"
+description = "Enables the dictation_set_active command without any pre-configured scope."
+commands.allow = ["dictation_set_active"]
+
+[[permission]]
+identifier = "deny-dictation-set-active"
+description = "Denies the dictation_set_active command without any pre-configured scope."
+commands.deny = ["dictation_set_active"]

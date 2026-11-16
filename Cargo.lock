@@ -3374,13 +3374,17 @@ dependencies = [
 name = "desktop"
 version = "0.0.0"
 dependencies = [
+ "audio",
  "audio-actual",
  "audio-mock",
+ "audio-utils",
  "camino",
  "chrono",
  "dirs 6.0.0",
  "fs-format",
+ "futures-util",
  "host",
+ "hound",
  "intercept",
  "pico-args",
  "ractor",
@@ -3439,6 +3443,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "transcription-core",
  "vault-read",
  "vault-write",
  "windows 0.62.2",
@@ -13099,6 +13104,7 @@ dependencies = [
  "specta-typescript",
  "tauri",
  "tauri-plugin",
+ "tauri-plugin-clipboard-manager",
  "tauri-plugin-dialog",
  "tauri-plugin-updater2",
  "tauri-plugin-windows",

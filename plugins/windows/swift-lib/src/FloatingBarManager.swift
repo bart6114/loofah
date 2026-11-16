@@ -106,7 +106,14 @@ final class FloatingBarManager {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.isApplyingExternalState = true
+      if state.showStatusText && state.status == .recording
+        && (!self.model.showStatusText || self.model.status != .recording)
+      {
+        self.model.traceBuffer.reset()
+      }
       self.model.status = state.status
+      self.model.showStatusText = state.showStatusText
+      self.model.dictation = state.dictation
       self.model.amplitude = min(max(state.amplitude, 0), 1)
       self.model.colorScheme = state.colorScheme
       self.model.title = state.title
@@ -181,8 +188,14 @@ final class FloatingBarManager {
       layout(matching: previousSize)
       ?? FloatingBarWindowLayout(
         isExpanded: !nextLayout.isExpanded,
-        showsExpand: model.liveCaptionToggleVisible)
-    let previousAnchorOffset = controlAnchorOffset(for: previousLayout)
+        showsExpand: model.liveCaptionToggleVisible,
+        showsStatusText: model.showStatusText)
+    let previousAnchorOffset =
+      model.dictation != nil
+      ? NSPoint(
+        x: previousSize.width - FloatingBarLayout.inset,
+        y: previousSize.height - FloatingBarLayout.inset)
+      : controlAnchorOffset(for: previousLayout)
     let nextAnchorOffset = controlAnchorOffset(for: nextLayout)
     let anchor = placement.anchorPoint(for: panel, offset: previousAnchorOffset)
     let frame = NSRect(
@@ -211,23 +224,29 @@ final class FloatingBarManager {
   private func layout(isExpanded: Bool) -> FloatingBarWindowLayout {
     FloatingBarWindowLayout(
       isExpanded: isExpanded,
-      showsExpand: model.liveCaptionToggleVisible
+      showsExpand: model.liveCaptionToggleVisible,
+      showsStatusText: model.showStatusText
     )
   }
 
   private func size(for layout: FloatingBarWindowLayout) -> NSSize {
-    FloatingBarLayout.containerSize(
+    if let dictation = model.dictation {
+      return FloatingBarLayout.dictationSize(dictation, title: model.title)
+    }
+    return FloatingBarLayout.containerSize(
       isExpanded: layout.isExpanded,
-      showsExpand: layout.showsExpand
+      showsExpand: layout.showsExpand,
+      showsStatusText: layout.showsStatusText
     )
   }
 
   private func layout(matching size: NSSize) -> FloatingBarWindowLayout? {
     let candidates = [
-      FloatingBarWindowLayout(isExpanded: true, showsExpand: true),
-      FloatingBarWindowLayout(isExpanded: true, showsExpand: false),
-      FloatingBarWindowLayout(isExpanded: false, showsExpand: true),
-      FloatingBarWindowLayout(isExpanded: false, showsExpand: false),
+      FloatingBarWindowLayout(isExpanded: true, showsExpand: true, showsStatusText: false),
+      FloatingBarWindowLayout(isExpanded: true, showsExpand: false, showsStatusText: false),
+      FloatingBarWindowLayout(isExpanded: false, showsExpand: true, showsStatusText: false),
+      FloatingBarWindowLayout(isExpanded: false, showsExpand: false, showsStatusText: false),
+      FloatingBarWindowLayout(isExpanded: false, showsExpand: false, showsStatusText: true),
     ]
 
     return candidates.first { candidate in
@@ -240,6 +259,11 @@ final class FloatingBarManager {
   // Anchor at the pill's top-right corner so layout changes keep the resting
   // pill in place.
   private func controlAnchorOffset(for layout: FloatingBarWindowLayout) -> NSPoint {
+    if let dictation = model.dictation {
+      let size = FloatingBarLayout.dictationSize(dictation, title: model.title)
+      return NSPoint(
+        x: size.width - FloatingBarLayout.inset, y: size.height - FloatingBarLayout.inset)
+    }
     if layout.isExpanded {
       return NSPoint(
         x: FloatingBarLayout.inset + FloatingBarLayout.expandedWidth,
@@ -250,7 +274,9 @@ final class FloatingBarManager {
     return NSPoint(
       x: FloatingBarLayout.inset
         + FloatingBarLayout.compactPillWidth(
-          hovered: true, showsExpand: layout.showsExpand),
+          hovered: true,
+          showsExpand: layout.showsExpand,
+          showsStatusText: layout.showsStatusText),
       y: FloatingBarLayout.inset + FloatingBarLayout.compactHeight
     )
   }
@@ -288,4 +314,5 @@ final class FloatingBarManager {
 private struct FloatingBarWindowLayout {
   let isExpanded: Bool
   let showsExpand: Bool
+  let showsStatusText: Bool
 }

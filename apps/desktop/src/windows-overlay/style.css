@@ -55,6 +55,9 @@ button:disabled {
   align-items: center;
   padding: 10px;
 }
+.bar, .dictation-bar {
+  border: 0;
+}
 .display-settings header {
   display: flex;
   justify-content: space-between;
@@ -160,4 +163,80 @@ header button {
   width: 100%;
   text-align: left;
   margin: 4px 0;
+}
+
+.dictation-bar {
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  overflow: auto;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.dictation-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 100px;
+  overflow-wrap: anywhere;
+}
+.dictation-bar[data-detail="true"] .dictation-heading {
+  flex-basis: 100%;
+}
+.dictation-bar p {
+  flex-basis: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.dictation-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dictation-actions button {
+  padding: 5px 8px;
+}
+.dictation-dismiss {
+  position: fixed;
+  top: 5px;
+  left: 5px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(var(--surface));
+  box-shadow: 0 1px 4px #0003;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+.dictation-bar:hover .dictation-dismiss,
+.dictation-dismiss:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.dictation-spinner {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: dictation-spin 0.8s linear infinite;
+}
+@keyframes dictation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dictation-spinner {
+    animation: none;
+  }
 }

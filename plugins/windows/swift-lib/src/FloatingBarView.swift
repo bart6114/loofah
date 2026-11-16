@@ -1,11 +1,17 @@
 import AppKit
 import SwiftUI
 
+@_silgen_name("rust_on_dictation_action")
+private func rustOnDictationAction(_ attemptId: UInt64, _ action: UnsafePointer<CChar>)
+
 enum FloatingBarLayout {
   static let inset: CGFloat = 4
   static let screenMargin: CGFloat = 8
   static let compactHeight: CGFloat = 38
   static let compactRestWidth: CGFloat = 112
+  static let dictationWidth: CGFloat = 240
+  static let dictationHeight: CGFloat = 52
+  static let dictationRowHeight: CGFloat = 28
   static let compactControlSize: CGFloat = 26
   static let compactControlGap: CGFloat = 2
   static let compactContentSpacing: CGFloat = 8
@@ -30,6 +36,57 @@ enum FloatingBarLayout {
   static let hoverHandleHorizontalPadding: CGFloat = 17
   static let dragClickThreshold: CGFloat = 4
 
+  static func dictationSize(_ state: DictationPresentation, title: String) -> NSSize {
+    let inlineActions = dictationActionsInline(state)
+    if inlineActions {
+      return NSSize(width: 368, height: dictationHeight + inset * 2)
+    }
+    let contentWidth: CGFloat = 336
+    let rowActions = state.actions.filter { $0.id != "dismiss" }
+    let actionsWidth =
+      rowActions.reduce(CGFloat(0)) { width, action in
+        width
+          + (action.label as NSString).size(withAttributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium)
+          ]).width + 16
+      } + CGFloat(max(0, rowActions.count - 1)) * 8
+    let iconWidth: CGFloat =
+      ["starting", "loadingModel", "transcribing", "inserting", "done"].contains(state.phase)
+      ? 28 : state.phase == "recording" ? 46 : 0
+    let titleWidth = max(80, contentWidth - iconWidth - (inlineActions ? actionsWidth + 10 : 0))
+    let titleHeight = ceil(
+      (title as NSString).boundingRect(
+        with: NSSize(width: titleWidth, height: .greatestFiniteMagnitude),
+        options: [.usesLineFragmentOrigin, .usesFontLeading],
+        attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium)]
+      ).height)
+    var height = max(dictationRowHeight, titleHeight) + 24
+    if let detail = state.detail {
+      height +=
+        10
+        + ceil(
+          (detail as NSString).boundingRect(
+            with: NSSize(width: contentWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: NSFont.systemFont(ofSize: 13)]
+          ).height)
+    }
+    if !inlineActions && !rowActions.isEmpty { height += 38 }
+    return NSSize(width: 368, height: height + inset * 2)
+  }
+
+  static func dictationActionsInline(_ state: DictationPresentation) -> Bool {
+    state.detail == nil
+      && (["starting", "recording", "loadingModel", "transcribing", "inserting"].contains(
+        state.phase)
+        || state.actions.filter { $0.id != "dismiss" }.reduce(CGFloat(0)) { width, action in
+          width
+            + (action.label as NSString).size(withAttributes: [
+              .font: NSFont.systemFont(ofSize: 12, weight: .medium)
+            ]).width + 24
+        } < 160)
+  }
+
   static func compactControlsWidth(showsExpand: Bool) -> CGFloat {
     if showsExpand {
       return compactControlSize * 2 + compactControlGap
@@ -38,7 +95,10 @@ enum FloatingBarLayout {
     return compactControlSize
   }
 
-  static func compactPillWidth(hovered: Bool, showsExpand: Bool) -> CGFloat {
+  static func compactPillWidth(
+    hovered: Bool, showsExpand: Bool, showsStatusText: Bool = false
+  ) -> CGFloat {
+    if showsStatusText { return dictationWidth }
     guard hovered else { return compactRestWidth }
 
     return compactLeadingPadding
@@ -51,7 +111,9 @@ enum FloatingBarLayout {
   // The compact window is always sized for the fully hovered pill; hover only
   // animates content inside it. Resizing the window on hover repaints one
   // frame with stale content at the new origin, which reads as a jump.
-  static func containerSize(isExpanded: Bool, showsExpand: Bool) -> NSSize {
+  static func containerSize(
+    isExpanded: Bool, showsExpand: Bool, showsStatusText: Bool = false
+  ) -> NSSize {
     if isExpanded {
       return NSSize(
         width: expandedWidth + inset * 2,
@@ -59,7 +121,8 @@ enum FloatingBarLayout {
     }
 
     return NSSize(
-      width: compactPillWidth(hovered: true, showsExpand: showsExpand) + inset * 2,
+      width: compactPillWidth(
+        hovered: true, showsExpand: showsExpand, showsStatusText: showsStatusText) + inset * 2,
       height: compactHeight + inset * 2)
   }
 }
@@ -70,6 +133,8 @@ struct FloatingBarView: View {
   let panelOrigin: () -> NSPoint?
   let movePanel: (NSPoint) -> Void
   @State private var isBarHovered = false
+  @FocusState private var isDismissFocused: Bool
+  @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
   @State private var shouldAutoScrollTranscript = true
   @State private var suppressNextClick = false
   @State private var dragStart: FloatingBarDragStart?
@@ -77,7 +142,9 @@ struct FloatingBarView: View {
 
   var body: some View {
     Group {
-      if model.isExpanded {
+      if let dictation = model.dictation {
+        dictationPill(dictation)
+      } else if model.isExpanded {
         expandedPanel
       } else {
         compactPill
@@ -90,6 +157,93 @@ struct FloatingBarView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
   }
 
+  private func dictationPill(_ state: DictationPresentation) -> some View {
+    let inlineActions = FloatingBarLayout.dictationActionsInline(state)
+    return VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 10) {
+        if state.phase == "done" || state.phase == "copied" {
+          Image(systemName: "checkmark").frame(width: 18).accessibilityHidden(true)
+        } else if ["starting", "loadingModel", "transcribing", "inserting"].contains(state.phase) {
+          ProgressView().scaleEffect(0.7).frame(width: 18)
+        } else if model.status == .recording {
+          InkTrace(
+            buffer: model.traceBuffer, amplitude: model.amplitude,
+            inkColor: primaryContentColor, playheadColor: accentColor
+          )
+          .frame(width: 36, height: 20).accessibilityHidden(true)
+        }
+        Text(model.title).font(.system(size: 13, weight: .medium))
+          .lineLimit(inlineActions ? 1 : nil)
+          .truncationMode(.tail)
+          .fixedSize(horizontal: false, vertical: true)
+          .help(model.title)
+        Spacer(minLength: 0)
+        if inlineActions { dictationActions(state) }
+      }
+      .frame(minHeight: FloatingBarLayout.dictationRowHeight)
+      if let detail = state.detail {
+        Text(detail).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+      }
+      if !inlineActions { dictationActions(state) }
+    }
+    .accessibilityElement(children: .contain)
+    .foregroundStyle(primaryContentColor)
+    .padding(12)
+    .frame(
+      width: 360,
+      height: inlineActions ? FloatingBarLayout.dictationHeight : nil,
+      alignment: .leading
+    )
+    .background(VisualEffectBlur(colorScheme: model.colorScheme, cornerRadius: 18))
+    .clipShape(RoundedRectangle(cornerRadius: 18))
+    .overlay(alignment: .topLeading) {
+      if let dismiss = state.actions.first(where: { $0.id == "dismiss" }) {
+        FloatingIconButton(
+          systemName: "xmark",
+          accessibilityLabel: dismiss.label,
+          color: primaryContentColor.opacity(0.62),
+          hoverFill: primaryContentColor.opacity(0.14),
+          size: 22,
+          action: {
+            performClick {
+              dismiss.id.withCString { rustOnDictationAction(state.attemptId, $0) }
+            }
+          },
+          symbolPointSize: 9.5,
+          symbolWeight: .medium,
+          normalFill: Color(nsColor: .controlBackgroundColor).opacity(0.95)
+        )
+        .focused($isDismissFocused)
+        .help(dismiss.label)
+        .accessibilityHidden(false)
+        .opacity(isBarHovered || isDismissFocused || voiceOverEnabled ? 1 : 0)
+        .allowsHitTesting(isBarHovered || isDismissFocused || voiceOverEnabled)
+        .shadow(color: .black.opacity(0.16), radius: 4, x: 0, y: 1.5)
+        .offset(x: -FloatingBarLayout.inset, y: -FloatingBarLayout.inset)
+      }
+    }
+    .onHover { isBarHovered = $0 }
+    .simultaneousGesture(dragClickSuppressor)
+  }
+
+  private func dictationActions(_ state: DictationPresentation) -> some View {
+    HStack(spacing: 8) {
+      ForEach(state.actions.filter { $0.id != "dismiss" }) { action in
+        Button(action.label) {
+          performClick {
+            action.id.withCString { rustOnDictationAction(state.attemptId, $0) }
+          }
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .font(.system(size: 12, weight: .medium))
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(primaryContentColor.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+      }
+    }
+  }
+
   private var compactPill: some View {
     let radius = FloatingBarLayout.compactHeight / 2
     let pillShape = FloatingBarSurfaceShape(
@@ -99,26 +253,23 @@ struct FloatingBarView: View {
     )
     let width = FloatingBarLayout.compactPillWidth(
       hovered: isBarHovered,
-      showsExpand: model.liveCaptionToggleVisible
+      showsExpand: model.liveCaptionToggleVisible,
+      showsStatusText: model.showStatusText
     )
 
-    // Content is laid out at full hover width and right-aligned; the animated
-    // frame + clip reveal it leftward, so the trace's older samples appear as
-    // the pill grows. The stop button is trailing so it never moves and stays
-    // clickable without hovering first.
-    return HStack(spacing: FloatingBarLayout.compactContentSpacing) {
-      ElapsedTimeText(startedAt: model.startedAt, color: primaryContentColor)
-        .frame(width: FloatingBarLayout.compactTimerWidth)
-        .opacity(isBarHovered ? 1 : 0)
-
-      Group {
-        if model.status == .error {
+    // The meeting pill reveals its trace on hover. Dictation keeps its status
+    // visible so the user can tell when recording has actually started.
+    return HStack(
+      spacing: model.showStatusText ? 12 : FloatingBarLayout.compactContentSpacing
+    ) {
+      if model.showStatusText {
+        if model.status == .processing {
+          ProgressView()
+            .scaleEffect(0.75)
+            .frame(width: 20, height: FloatingBarLayout.compactTraceHeight)
+        } else if model.status == .error {
           ErrorMark(color: errorAccentColor)
-            .frame(
-              width: FloatingBarLayout.compactTraceWidth,
-              height: FloatingBarLayout.compactTraceHeight,
-              alignment: .trailing
-            )
+            .frame(width: 20, height: FloatingBarLayout.compactTraceHeight)
         } else {
           InkTrace(
             buffer: model.traceBuffer,
@@ -126,10 +277,44 @@ struct FloatingBarView: View {
             inkColor: primaryContentColor,
             playheadColor: accentColor
           )
-          .frame(
-            width: FloatingBarLayout.compactTraceWidth,
-            height: FloatingBarLayout.compactTraceHeight
-          )
+          .frame(width: 48, height: FloatingBarLayout.compactTraceHeight)
+        }
+        Text(model.title)
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(primaryContentColor)
+          .lineLimit(1)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .help(model.title)
+      } else {
+        ElapsedTimeText(startedAt: model.startedAt, color: primaryContentColor)
+          .frame(width: FloatingBarLayout.compactTimerWidth)
+          .opacity(isBarHovered ? 1 : 0)
+
+        Group {
+          if model.status == .processing {
+            ProgressView()
+              .frame(
+                width: FloatingBarLayout.compactTraceWidth,
+                height: FloatingBarLayout.compactTraceHeight)
+          } else if model.status == .error {
+            ErrorMark(color: errorAccentColor)
+              .frame(
+                width: FloatingBarLayout.compactTraceWidth,
+                height: FloatingBarLayout.compactTraceHeight,
+                alignment: .trailing
+              )
+          } else {
+            InkTrace(
+              buffer: model.traceBuffer,
+              amplitude: model.amplitude,
+              inkColor: primaryContentColor,
+              playheadColor: accentColor
+            )
+            .frame(
+              width: FloatingBarLayout.compactTraceWidth,
+              height: FloatingBarLayout.compactTraceHeight
+            )
+          }
         }
       }
 
@@ -137,9 +322,9 @@ struct FloatingBarView: View {
     }
     .padding(.leading, FloatingBarLayout.compactLeadingPadding)
     .padding(.trailing, FloatingBarLayout.compactTrailingPadding)
-    .fixedSize(horizontal: true, vertical: false)
+    .fixedSize(horizontal: !model.showStatusText, vertical: false)
     .frame(width: width, height: FloatingBarLayout.compactHeight, alignment: .trailing)
-    // Fade the ink out ahead of the left border so clipped trace columns
+    // Fade the ink out ahead of the left edge so clipped trace columns
     // don't poke through the rounded edge while the pill is contracted.
     .mask(
       HStack(spacing: 0) {
@@ -157,15 +342,6 @@ struct FloatingBarView: View {
         VisualEffectBlur(colorScheme: model.colorScheme, cornerRadius: radius)
         pillShape.fill(surfaceTintColor)
       }
-    )
-    .overlay(
-      pillShape
-        .strokeBorder(outerStrokeColor, lineWidth: 0.5)
-    )
-    .overlay(
-      pillShape
-        .strokeBorder(innerStrokeColor, lineWidth: 0.5)
-        .padding(1)
     )
     .clipShape(pillShape)
     .contentShape(pillShape)
@@ -293,15 +469,6 @@ struct FloatingBarView: View {
         surfaceShape.fill(surfaceTintColor)
       }
     )
-    .overlay(
-      surfaceShape
-        .strokeBorder(outerStrokeColor, lineWidth: 0.5)
-    )
-    .overlay(
-      surfaceShape
-        .strokeBorder(innerStrokeColor, lineWidth: 0.5)
-        .padding(1)
-    )
     .clipShape(surfaceShape)
     .contentShape(Rectangle())
     .simultaneousGesture(dragClickSuppressor)
@@ -311,14 +478,16 @@ struct FloatingBarView: View {
 
   private func floatingControls(isExpanded: Bool) -> some View {
     HStack(spacing: FloatingBarLayout.compactControlGap) {
-      FloatingIconButton(
-        systemName: "stop.fill",
-        accessibilityLabel: "Stop recording",
-        color: accentColor,
-        hoverFill: accentColor.opacity(0.16),
-        size: FloatingBarLayout.compactControlSize,
-        action: { performClick(RustBridge.stopListening) }
-      )
+      if model.status == .recording {
+        FloatingIconButton(
+          systemName: "stop.fill",
+          accessibilityLabel: model.showStatusText ? "Stop dictation" : "Stop recording",
+          color: accentColor,
+          hoverFill: accentColor.opacity(0.16),
+          size: FloatingBarLayout.compactControlSize,
+          action: { performClick(RustBridge.stopListening) }
+        )
+      }
 
       if model.liveCaptionToggleVisible {
         FloatingIconButton(
@@ -356,14 +525,6 @@ struct FloatingBarView: View {
 
   private var controlHoverFill: Color {
     primaryContentColor.opacity(model.colorScheme == .dark ? 0.08 : 0.07)
-  }
-
-  private var outerStrokeColor: Color {
-    primaryContentColor.opacity(model.colorScheme == .dark ? 0.14 : 0.12)
-  }
-
-  private var innerStrokeColor: Color {
-    primaryContentColor.opacity(model.colorScheme == .dark ? 0.28 : 0.18)
   }
 
   private var dragHandleDotColor: Color {
@@ -685,17 +846,20 @@ private struct FloatingIconButton: View {
   let hoverFill: Color
   let size: CGFloat
   let action: () -> Void
+  var symbolPointSize: CGFloat = 12
+  var symbolWeight: Font.Weight = .semibold
+  var normalFill: Color = .clear
   @State private var isHovered = false
 
   var body: some View {
     Button(action: action) {
       Image(systemName: systemName)
-        .font(.system(size: 12, weight: .semibold))
+        .font(.system(size: symbolPointSize, weight: symbolWeight))
         .foregroundStyle(color)
         .frame(width: size, height: size)
         .background(
           Circle()
-            .fill(isHovered ? hoverFill : Color.clear)
+            .fill(isHovered ? hoverFill : normalFill)
         )
         .contentShape(Circle())
     }
@@ -815,6 +979,12 @@ final class InkTraceBuffer {
   private var samples = [Double](repeating: 0, count: InkTraceBuffer.capacity)
   private var head = 0
   private var lastSampleTime: TimeInterval = 0
+
+  func reset() {
+    samples = [Double](repeating: 0, count: Self.capacity)
+    head = 0
+    lastSampleTime = 0
+  }
 
   func push(_ value: Double, at time: TimeInterval) {
     guard time - lastSampleTime >= Self.sampleInterval else { return }

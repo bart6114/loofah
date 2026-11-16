@@ -440,6 +440,12 @@ pub async fn floating_bar_update(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn dictation_shortcut_configure(shortcut: String) -> Result<(), String> {
+    crate::dictation::configure(&shortcut)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn live_caption_show() -> Result<(), String> {
     crate::window::live_caption::show().map_err(|e| e.to_string())?;
     Ok(())
@@ -516,4 +522,10 @@ pub async fn overlay_set_settings_open(open: bool) -> Result<(), String> {
         let _ = open;
         Ok(())
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn dictation_set_active(active: bool) {
+    crate::dictation::dictation_set_active(active);
 }
