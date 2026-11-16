@@ -217,7 +217,7 @@ export function DictationSettings({
       </form.Field>
       <form.Subscribe selector={(state) => state.values.dictation_enabled}>
         {(enabled) => (
-          <div className="space-y-3">
+          <div className="flex min-w-0 flex-col gap-4">
             <fieldset
               aria-labelledby="dictation-label"
               disabled={!enabled || busy || save.isPending}
