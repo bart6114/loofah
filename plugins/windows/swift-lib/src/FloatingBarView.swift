@@ -42,7 +42,7 @@ enum FloatingBarLayout {
       return NSSize(width: 368, height: dictationHeight + inset * 2)
     }
     let contentWidth: CGFloat = 336
-    let rowActions = state.actions.filter { $0.id != "dismiss" }
+    let rowActions = state.actions
     let actionsWidth =
       rowActions.reduce(CGFloat(0)) { width, action in
         width
@@ -79,7 +79,7 @@ enum FloatingBarLayout {
     state.detail == nil
       && (["starting", "recording", "loadingModel", "transcribing", "inserting"].contains(
         state.phase)
-        || state.actions.filter { $0.id != "dismiss" }.reduce(CGFloat(0)) { width, action in
+        || state.actions.reduce(CGFloat(0)) { width, action in
           width
             + (action.label as NSString).size(withAttributes: [
               .font: NSFont.systemFont(ofSize: 12, weight: .medium)
@@ -133,8 +133,6 @@ struct FloatingBarView: View {
   let panelOrigin: () -> NSPoint?
   let movePanel: (NSPoint) -> Void
   @State private var isBarHovered = false
-  @FocusState private var isDismissFocused: Bool
-  @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
   @State private var shouldAutoScrollTranscript = true
   @State private var suppressNextClick = false
   @State private var dragStart: FloatingBarDragStart?
@@ -184,7 +182,9 @@ struct FloatingBarView: View {
       if let detail = state.detail {
         Text(detail).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
       }
-      if !inlineActions { dictationActions(state) }
+      if !inlineActions {
+        dictationActions(state).frame(maxWidth: .infinity, alignment: .trailing)
+      }
     }
     .accessibilityElement(children: .contain)
     .foregroundStyle(primaryContentColor)
@@ -196,39 +196,13 @@ struct FloatingBarView: View {
     )
     .background(VisualEffectBlur(colorScheme: model.colorScheme, cornerRadius: 18))
     .clipShape(RoundedRectangle(cornerRadius: 18))
-    .overlay(alignment: .topLeading) {
-      if let dismiss = state.actions.first(where: { $0.id == "dismiss" }) {
-        FloatingIconButton(
-          systemName: "xmark",
-          accessibilityLabel: dismiss.label,
-          color: primaryContentColor.opacity(0.62),
-          hoverFill: primaryContentColor.opacity(0.14),
-          size: 22,
-          action: {
-            performClick {
-              dismiss.id.withCString { rustOnDictationAction(state.attemptId, $0) }
-            }
-          },
-          symbolPointSize: 9.5,
-          symbolWeight: .medium,
-          normalFill: Color(nsColor: .controlBackgroundColor).opacity(0.95)
-        )
-        .focused($isDismissFocused)
-        .help(dismiss.label)
-        .accessibilityHidden(false)
-        .opacity(isBarHovered || isDismissFocused || voiceOverEnabled ? 1 : 0)
-        .allowsHitTesting(isBarHovered || isDismissFocused || voiceOverEnabled)
-        .shadow(color: .black.opacity(0.16), radius: 4, x: 0, y: 1.5)
-        .offset(x: -FloatingBarLayout.inset, y: -FloatingBarLayout.inset)
-      }
-    }
     .onHover { isBarHovered = $0 }
     .simultaneousGesture(dragClickSuppressor)
   }
 
   private func dictationActions(_ state: DictationPresentation) -> some View {
     HStack(spacing: 8) {
-      ForEach(state.actions.filter { $0.id != "dismiss" }) { action in
+      ForEach(state.actions) { action in
         Button(action.label) {
           performClick {
             action.id.withCString { rustOnDictationAction(state.attemptId, $0) }

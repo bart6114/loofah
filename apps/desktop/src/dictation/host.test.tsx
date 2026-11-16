@@ -237,27 +237,34 @@ describe("DictationHost", () => {
       }),
     );
   });
-  it("offers a single-line field hint with safe dismissal", async () => {
-    mocks.invoke.mockImplementation(async () => idle);
-    mount();
-    await status({ phase: "error", problem: "targetUnavailable" });
-    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
-    const state = mocks.update.mock.lastCall?.[0];
-    expect(state.title).toBe("Couldn’t insert your text");
-    expect(state.dictation.detail).toBeNull();
-    expect(state.dictation.actions).toEqual([
-      { id: "dismiss", label: "Dismiss" },
-    ]);
-    await emit("plugin:windows:dictation-action", {
-      attemptId: 1,
-      action: "dismiss",
-    });
-    await waitFor(() =>
-      expect(mocks.invoke).toHaveBeenCalledWith("dictation_discard", {
+  it.each(["targetUnavailable", "noSpeech"] as const)(
+    "offers safe dismissal for %s",
+    async (problem) => {
+      mocks.invoke.mockImplementation(async () => idle);
+      mount();
+      await status({ phase: "error", problem });
+      await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+      const state = mocks.update.mock.lastCall?.[0];
+      expect(state.title).toBe(
+        problem === "noSpeech"
+          ? "No speech detected. Try again."
+          : "Couldn’t insert your text",
+      );
+      expect(state.dictation.detail).toBeNull();
+      expect(state.dictation.actions).toEqual([
+        { id: "dismiss", label: "Dismiss" },
+      ]);
+      await emit("plugin:windows:dictation-action", {
         attemptId: 1,
-      }),
-    );
-  });
+        action: "dismiss",
+      });
+      await waitFor(() =>
+        expect(mocks.invoke).toHaveBeenCalledWith("dictation_discard", {
+          attemptId: 1,
+        }),
+      );
+    },
+  );
   it("does not let dismissal cancel recording or clear recovery", async () => {
     mount();
     for (const [index, next] of [
