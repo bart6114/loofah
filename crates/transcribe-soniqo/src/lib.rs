@@ -501,6 +501,11 @@ pub fn start_model_download(model: SoniqoModel) -> Result<()> {
     platform::start_model_download(model.resolved())
 }
 
+pub fn warm_model(model: SoniqoModel) -> Result<()> {
+    ensure_supported_platform(model)?;
+    platform::warm_model(model.resolved())
+}
+
 pub fn reset_model(model: SoniqoModel) -> Result<()> {
     ensure_supported_platform(model)?;
     platform::reset_model(model.resolved())
@@ -1021,6 +1026,7 @@ mod platform {
     use objc2::rc::autoreleasepool;
     use swift_rs::{Bool, SRData, SRString, swift};
 
+    swift!(fn _soniqo_warm_model(model_id: &SRString) -> SRString);
     swift!(fn _soniqo_model_cache_dir(model_id: &SRString) -> SRString);
     swift!(fn _soniqo_model_download_state(model_id: &SRString) -> SRString);
     swift!(fn _soniqo_model_start_download(model_id: &SRString) -> Bool);
@@ -1053,6 +1059,17 @@ mod platform {
     struct StatusPayload {
         running: bool,
         error: Option<String>,
+    }
+
+    pub(super) fn warm_model(model: SoniqoModel) -> Result<()> {
+        autoreleasepool(|_| {
+            let error = unsafe { _soniqo_warm_model(&sr_string(model.as_str())) };
+            if error.as_str().is_empty() {
+                Ok(())
+            } else {
+                Err(Error::Bridge(error.as_str().to_owned()))
+            }
+        })
     }
 
     pub(super) fn model_cache_dir(model: SoniqoModel) -> Result<PathBuf> {
@@ -1220,6 +1237,10 @@ mod platform;
 )))]
 mod platform {
     use super::*;
+
+    pub(super) fn warm_model(_model: SoniqoModel) -> Result<()> {
+        Err(Error::UnsupportedPlatform)
+    }
 
     pub(super) fn model_cache_dir(_model: SoniqoModel) -> Result<PathBuf> {
         Err(Error::UnsupportedPlatform)

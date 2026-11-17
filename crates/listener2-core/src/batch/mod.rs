@@ -98,16 +98,37 @@ pub struct BatchRunOutput {
     pub response: owhisper_interface::batch::Response,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BatchPurpose {
+    Meeting,
+    Dictation,
+}
+
 pub async fn run_batch(
     runtime: Arc<dyn BatchRuntime>,
     params: BatchParams,
+) -> crate::Result<BatchRunOutput> {
+    run_batch_for(runtime, params, BatchPurpose::Meeting).await
+}
+
+pub async fn run_dictation_batch(
+    runtime: Arc<dyn BatchRuntime>,
+    params: BatchParams,
+) -> crate::Result<BatchRunOutput> {
+    run_batch_for(runtime, params, BatchPurpose::Dictation).await
+}
+
+async fn run_batch_for(
+    runtime: Arc<dyn BatchRuntime>,
+    params: BatchParams,
+    purpose: BatchPurpose,
 ) -> crate::Result<BatchRunOutput> {
     runtime.emit(BatchEvent::BatchStarted {
         session_id: params.session_id.clone(),
     });
 
     let session_id = params.session_id.clone();
-    let result = run_batch_inner(runtime.clone(), params).await;
+    let result = run_batch_inner(runtime.clone(), params, purpose).await;
 
     if let Err(error) = &result {
         let (code, message) = match error {
@@ -149,6 +170,7 @@ pub fn expects_progressive_batch(params: &BatchParams) -> bool {
 async fn run_batch_inner(
     runtime: Arc<dyn BatchRuntime>,
     mut params: BatchParams,
+    purpose: BatchPurpose,
 ) -> crate::Result<BatchRunOutput> {
     if matches!(params.provider, BatchProvider::Fmtr)
         && !crate::is_supported_languages_batch("fmtr", params.model.as_deref(), &params.languages)
@@ -179,6 +201,7 @@ async fn run_batch_inner(
         prepared.pcm.sample_rate,
     );
     let diarization = diarize::SharedDiarization::for_file(
+        purpose,
         std::sync::Arc::new(diarize::SoniqoDiarizer),
         prepared.clone(),
     );

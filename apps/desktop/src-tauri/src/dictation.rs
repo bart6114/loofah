@@ -5,7 +5,9 @@ use std::sync::{
 
 use futures_util::StreamExt;
 use hypr_audio::AudioProvider;
-use hypr_transcription_core::listener2::{BatchParams, BatchProvider, BatchRuntime, run_batch};
+use hypr_transcription_core::listener2::{
+    BatchParams, BatchProvider, BatchRuntime, run_dictation_batch,
+};
 use serde::Serialize;
 use tauri::Manager;
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -432,11 +434,11 @@ async fn run_attempt(
                     DictationProblem::Busy
                 }
             })?;
-        admission_lease = Some(
+        admission_lease = Some(Arc::new(
             admission
                 .reserve_dictation()
                 .ok_or(DictationProblem::Busy)?,
-        );
+        ));
         drop(admission);
         let config = app.settings().config();
         if config.current_stt_provider.as_deref() != Some("fmtr") {
@@ -459,6 +461,18 @@ async fn run_attempt(
         if operation.is_cancelled() {
             return Ok(None);
         }
+        let warm_app = app.clone();
+        // Whisper startup can replace the active server. Keep meeting capture out
+        // until startup finishes even if this recording is cancelled mid-load.
+        let server_lease = if matches!(model, LocalModel::Whisper(_)) {
+            admission_lease.clone()
+        } else {
+            None
+        };
+        let warming = tokio::spawn(async move {
+            let _lease = server_lease;
+            warm_app.local_stt().prepare_dictation_model(model).await
+        });
         if !is_retry {
             audio = Some(Arc::new(record(&app, id, &operation).await.map_err(
                 |error| {
@@ -474,21 +488,21 @@ async fn run_attempt(
         if recorded.samples < SAMPLE_RATE as usize / 4 {
             return Err(DictationProblem::NoSpeech);
         }
-        update(&app, id, DictationPhase::Transcribing, 0.0);
-        let url = if let Some(server) = app
-            .local_stt()
-            .get_server_for_model(&model)
-            .await
-            .map_err(|_| DictationProblem::TranscriptionFailed)?
-            && let Some(url) = server.url
-        {
-            url
-        } else {
+        if !warming.is_finished() {
             update(&app, id, DictationPhase::LoadingModel, 0.0);
-            app.local_stt().start_server(model).await.map_err(|error| {
-                tracing::warn!(%error, "dictation_model_failed");
-                DictationProblem::TranscriptionFailed
-            })?
+        }
+        let cancelled = async {
+            while !operation.is_cancelled() {
+                operation.wake.notified().await;
+            }
+        };
+        let url = tokio::select! {
+            _ = cancelled => return Ok(None),
+            result = warming => result.map_err(|_| DictationProblem::TranscriptionFailed)?
+                .map_err(|error| {
+                    tracing::warn!(%error, "dictation_model_failed");
+                    DictationProblem::TranscriptionFailed
+                })?,
         };
         if operation.is_cancelled() {
             return Ok(None);
@@ -501,7 +515,7 @@ async fn run_attempt(
             .map(|language| language.parse())
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_| DictationProblem::ModelRequired)?;
-        let output = run_batch(
+        let output = run_dictation_batch(
             Arc::new(DictationRuntime {
                 operation: operation.clone(),
                 _audio: recorded.clone(),

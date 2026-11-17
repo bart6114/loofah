@@ -1,3 +1,4 @@
+use super::BatchPurpose;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -45,10 +46,11 @@ enum DiarizationState {
 
 impl SharedDiarization {
     pub(super) fn for_file(
+        purpose: BatchPurpose,
         diarizer: Arc<dyn Diarizer>,
         prepared: Arc<super::audio::PreparedAudio>,
     ) -> Self {
-        if !diarizer.is_ready() {
+        if purpose == BatchPurpose::Dictation || !diarizer.is_ready() {
             return Self::disabled();
         }
 
@@ -480,7 +482,8 @@ mod tests {
         .await
         .unwrap();
         let fake = Arc::new(FakeDiarizer::ready_with(vec![segment(0, 1000, 7)]));
-        let shared = SharedDiarization::for_file(fake.clone(), prepared.clone());
+        let shared =
+            SharedDiarization::for_file(BatchPurpose::Meeting, fake.clone(), prepared.clone());
         let segments = shared.segments().await.unwrap();
         assert_eq!(segments.keys().copied().collect::<Vec<_>>(), vec![0]);
         let received = fake.diarized_first_samples.lock().unwrap();
@@ -493,6 +496,26 @@ mod tests {
             super::super::transcript::words_and_hints_from_batch_response(&response);
         assert_eq!(words[0].channel, 2.0);
         assert_eq!(hints[0].speaker_index, 7);
+    }
+
+    #[tokio::test]
+    async fn dictation_skips_speaker_detection_with_a_ready_model() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut writer =
+            hound::WavWriter::create(file.path(), hypr_audio_utils::pcm_spec(1)).unwrap();
+        writer.write_sample(0.1_f32).unwrap();
+        writer.finalize().unwrap();
+        let prepared = super::super::audio::PreparedAudio::prepare(
+            file.path().to_string_lossy().into_owned(),
+            Default::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        let fake = Arc::new(FakeDiarizer::ready_with(vec![segment(0, 1000, 7)]));
+        let shared = SharedDiarization::for_file(BatchPurpose::Dictation, fake.clone(), prepared);
+        assert!(shared.segments().await.unwrap().is_empty());
+        assert!(fake.diarized_first_samples.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -517,8 +540,11 @@ mod tests {
         )
         .await
         .unwrap();
-        let diarization =
-            SharedDiarization::for_file(Arc::new(FakeDiarizer::not_ready()), prepared);
+        let diarization = SharedDiarization::for_file(
+            BatchPurpose::Meeting,
+            Arc::new(FakeDiarizer::not_ready()),
+            prepared,
+        );
         let segments = diarization.segments().await.unwrap();
         assert!(segments.is_empty());
 
@@ -669,6 +695,7 @@ mod lifetime_tests {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let (release_tx, release_rx) = tokio::sync::oneshot::channel();
         let shared = SharedDiarization::for_file(
+            BatchPurpose::Meeting,
             Arc::new(BlockingDiarizer {
                 started: std::sync::Mutex::new(Some(started_tx)),
                 release: std::sync::Mutex::new(Some(release_rx)),

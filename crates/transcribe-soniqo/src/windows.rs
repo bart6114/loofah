@@ -74,12 +74,9 @@ fn reset_inner(model: SoniqoModel) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn transcribe_file(
+fn loaded_batch(
     model: SoniqoModel,
-    path: &Path,
-    _: &LanguageConfig,
-) -> Result<FileTranscript> {
-    let _operation = MODEL_OPERATIONS.lock().unwrap_or_else(|e| e.into_inner());
+) -> Result<std::sync::MutexGuard<'static, Option<BatchSession>>> {
     if backend_model(model)? != Model::Batch {
         return Err(Error::UnsupportedModel(model.to_string()));
     }
@@ -87,6 +84,22 @@ pub(super) fn transcribe_file(
     if batch.is_none() {
         *batch = Some(BatchSession::load().map_err(convert_error)?);
     }
+    Ok(batch)
+}
+
+pub(super) fn warm_model(model: SoniqoModel) -> Result<()> {
+    let _operation = MODEL_OPERATIONS.lock().unwrap_or_else(|e| e.into_inner());
+    drop(loaded_batch(model)?);
+    Ok(())
+}
+
+pub(super) fn transcribe_file(
+    model: SoniqoModel,
+    path: &Path,
+    _: &LanguageConfig,
+) -> Result<FileTranscript> {
+    let _operation = MODEL_OPERATIONS.lock().unwrap_or_else(|e| e.into_inner());
+    let mut batch = loaded_batch(model)?;
     let (duration, segments) = batch
         .as_mut()
         .unwrap()

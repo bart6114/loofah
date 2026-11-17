@@ -128,6 +128,19 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
     }
 
     #[tracing::instrument(skip_all)]
+    pub async fn prepare_dictation_model(&self, model: LocalModel) -> Result<String, crate::Error> {
+        if let LocalModel::Soniqo(model) = model {
+            run_soniqo_blocking(
+                move || hypr_transcribe_soniqo::warm_model(model),
+                crate::Error::ServerStartFailed,
+            )
+            .await?;
+            return Ok(hypr_transcribe_soniqo::LOCAL_BASE_URL.to_owned());
+        }
+        self.start_server(model).await
+    }
+
+    #[tracing::instrument(skip_all)]
     pub async fn start_server(&self, model: LocalModel) -> Result<String, crate::Error> {
         Self::ensure_stt_model(&model)?;
 

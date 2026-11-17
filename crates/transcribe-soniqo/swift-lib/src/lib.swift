@@ -806,6 +806,18 @@ private actor SoniqoBridge {
     return ranges
   }
 
+  func warmModel(modelId: String) async -> String {
+    do {
+      guard let kind = SpeechModelKind.resolve(modelId), kind.filesReady() else {
+        throw SoniqoBridgeError.message("Speech model is unavailable: \(modelId)")
+      }
+      _ = try await ensureModelLoaded(kind)
+      return ""
+    } catch {
+      return error.localizedDescription
+    }
+  }
+
   private func ensureModelLoaded(_ kind: SpeechModelKind) async throws -> LoadedSpeechModel {
     refreshReadyState(for: kind)
 
@@ -814,14 +826,16 @@ private actor SoniqoBridge {
     }
 
     if let task = modelTasks[kind] {
-      let loaded = try await task.value
-      loadedModels[kind] = loaded
-      return loaded
+      return try await task.value
     }
 
-    let loaded = try await kind.load(progressHandler: nil)
-    loadedModels[kind] = loaded
-    refreshReadyState(for: kind)
+    let task = Task { try await kind.load(progressHandler: nil) }
+    modelTasks[kind] = task
+    defer {
+      if modelTasks[kind] == task { modelTasks[kind] = nil }
+    }
+    let loaded = try await task.value
+    if modelTasks[kind] == task { loadedModels[kind] = loaded }
     return loaded
   }
 
@@ -903,6 +917,11 @@ private actor SoniqoBridge {
       error: nil
     )
   }
+}
+
+@_cdecl("_soniqo_warm_model")
+public func _soniqo_warm_model(modelId: SRString) -> SRString {
+  SRString(waitForValue { await SoniqoBridge.shared.warmModel(modelId: modelId.toString()) })
 }
 
 @_cdecl("_soniqo_model_cache_dir")
