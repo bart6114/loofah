@@ -299,11 +299,15 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
 }
 
 fn set_tray_icon(tray: &TrayIcon<tauri::Wry>, image: Image<'_>) -> Result<()> {
-    tray.set_icon(Some(image))?;
-    // Replacing an icon clears the template flag in tray-icon on macOS.
     #[cfg(target_os = "macos")]
-    tray.set_icon_as_template(true)?;
-    Ok(())
+    {
+        // Avoid showing an untinted frame between main-thread updates.
+        let icon = image.try_into()?;
+        tray.with_inner_tray_icon(move |tray| tray.set_icon_with_as_template(Some(icon), true))??;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    tray.set_icon(Some(image))
 }
 
 pub trait TrayPluginExt<R: tauri::Runtime> {
