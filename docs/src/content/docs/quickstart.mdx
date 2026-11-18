@@ -48,13 +48,13 @@ If either side of the conversation is missing, start with [audio troubleshooting
 
 ## Dictate into another app
 
-Hold **Ctrl+Option+Space** on macOS or **Ctrl+Alt+Space** on Windows, wait for **Listening…**, speak, then release. When transcription finishes, Loofah tries to insert your words at the current cursor or selection. You can choose the text field while dictating or processing. If no suitable field is focused, your words are available to copy.
+Hold **Ctrl+Option+Space** on macOS or **Ctrl+Alt+Space** on Windows, wait for **Listening…**, speak, then release. You can choose where the text goes while dictating or processing. When transcription finishes, Loofah sends **Command+V** on macOS or **Ctrl+V** on Windows to the focused app, then restores your clipboard.
 
 Change the shortcut or switch to press-once/press-again mode in **Settings → App → Dictation**. Missing permissions or a transcription model appear with a setup action. Dictation uses your existing transcription model and language settings and your system microphone. The model starts loading while you speak. If it is still loading when you release the shortcut, the indicator shows **Loading model…**. Dictation skips speaker identification.
 
-On macOS, enabling dictation requests Accessibility access for automatic insertion. If access was previously denied, enabling dictation again opens Accessibility settings. You can still dictate and copy without Accessibility access; the global shortcut then needs Input Monitoring.
+On macOS, enabling dictation requests Accessibility access for automatic insertion. If access was previously denied, enabling dictation again opens Accessibility settings. With only Input Monitoring, you can still dictate and copy, and the shortcut also reaches the focused app. For example, holding the default shortcut can type spaces in a text field.
 
-Press **Escape** or click **Cancel** to discard a take. **Stop** finishes and inserts it. If insertion fails, use **Copy text** in the floating controls, then paste where you want. **Copy Last Dictation** in the menu bar or tray menu is also available.
+Press **Escape** or click **Cancel** to discard a take. **Stop** finishes and inserts it. If your words don’t appear, choose **Copy Last Dictation** in the menu bar or tray menu, then paste them where you want. The floating controls also offer **Copy text** when Loofah detects an insertion failure.
 
 If transcription fails, **Retry** processes the same recording and offers the result to copy. Only the latest failed take is kept, until you discard it, successfully start another recording, or quit Loofah. Dictation creates no meeting note or recording archive and is unavailable during meeting recording.
 

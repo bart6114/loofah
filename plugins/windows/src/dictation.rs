@@ -34,7 +34,6 @@ mod platform {
         match unsafe { _dictation_insert(&text) } {
             0 => Ok(()),
             1 => Err("accessibility_permission_required".into()),
-            2 => Err("target_unavailable".into()),
             _ => Err("Could not insert dictation into this field".into()),
         }
     }

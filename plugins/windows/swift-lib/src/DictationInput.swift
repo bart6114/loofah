@@ -16,14 +16,23 @@ final class DictationInput {
 
   private var tap: CFMachPort?
   private var source: CFRunLoopSource?
+  private var tapIsListenOnly = false
   private var keyCode: CGKeyCode = 49
   private var modifiers: CGEventFlags = [.maskControl, .maskAlternate]
   private var pressed = false
   private var enabled = false
   private var active = false
   private var escapePressed = false
+  private var pendingClipboardRestore: (changeCount: Int, items: [NSPasteboardItem])?
 
-  private init() {}
+  private init() {
+    _ = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      guard let self, self.enabled, self.tapIsListenOnly, AXIsProcessTrusted() else { return }
+      _ = self.installTap(listenOnly: false)
+    }
+  }
 
   func configure(_ shortcut: String) -> Bool {
     if shortcut.isEmpty {
@@ -54,44 +63,48 @@ final class DictationInput {
       guard let key = parts.last.flatMap({ Self.keyCode(for: $0, modifiers: flags) }) else {
         return false
       }
-      if self.tap != nil {
-        let wasPressed =
-          self.enabled && self.keyCode == key && self.modifiers == flags && self.pressed
-        self.keyCode = key
-        self.modifiers = flags
-        self.enabled = true
-        self.pressed = wasPressed
-        return true
+      guard self.installTap(listenOnly: !AXIsProcessTrusted()) || self.tap != nil else {
+        return false
       }
-      let mask =
-        (1 << CGEventType.keyDown.rawValue)
-        | (1 << CGEventType.keyUp.rawValue)
-        | (1 << CGEventType.flagsChanged.rawValue)
-      guard
-        let tap = CGEvent.tapCreate(
-          tap: .cgSessionEventTap,
-          place: .headInsertEventTap,
-          options: AXIsProcessTrusted() ? .defaultTap : .listenOnly,
-          eventsOfInterest: CGEventMask(mask),
-          callback: { _, type, event, _ in
-            DictationInput.shared.handle(type, event)
-          },
-          userInfo: nil
-        )
-      else { return false }
+      self.pressed = self.enabled && self.keyCode == key && self.modifiers == flags && self.pressed
       self.keyCode = key
       self.modifiers = flags
       self.enabled = true
-      self.pressed = false
-      self.tap = tap
-      let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-      self.source = source
-      CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-      CGEvent.tapEnable(tap: tap, enable: true)
       return true
     }
     if Thread.isMainThread { return install() }
     return DispatchQueue.main.sync(execute: install)
+  }
+
+  private func installTap(listenOnly: Bool) -> Bool {
+    if tap != nil && tapIsListenOnly == listenOnly { return true }
+    let mask =
+      (1 << CGEventType.keyDown.rawValue)
+      | (1 << CGEventType.keyUp.rawValue)
+      | (1 << CGEventType.flagsChanged.rawValue)
+    guard
+      let newTap = CGEvent.tapCreate(
+        tap: .cgSessionEventTap,
+        place: .headInsertEventTap,
+        options: listenOnly ? .listenOnly : .defaultTap,
+        eventsOfInterest: CGEventMask(mask),
+        callback: { _, type, event, _ in
+          DictationInput.shared.handle(type, event)
+        },
+        userInfo: nil
+      ),
+      let newSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, newTap, 0)
+    else { return false }
+
+    let runLoop = CFRunLoopGetMain()
+    if let source { CFRunLoopRemoveSource(runLoop, source, .commonModes) }
+    if let tap { CFMachPortInvalidate(tap) }
+    tap = newTap
+    source = newSource
+    tapIsListenOnly = listenOnly
+    CFRunLoopAddSource(runLoop, newSource, .commonModes)
+    CGEvent.tapEnable(tap: newTap, enable: true)
+    return true
   }
 
   func setActive(_ active: Bool) {
@@ -157,62 +170,45 @@ final class DictationInput {
 
   private func insertOnMain(_ text: String) -> Int {
     guard AXIsProcessTrusted() else { return 1 }
-    guard let current = focusedElement(), editable(current) else { return 2 }
-    let board = NSPasteboard.general
-    let previous = board.pasteboardItems?.map { item -> NSPasteboardItem in
-      let copy = NSPasteboardItem()
-      for type in item.types {
-        if let data = item.data(forType: type) { copy.setData(data, forType: type) }
-      }
-      return copy
-    }
-    board.clearContents()
-    guard board.setString(text, forType: .string) else { return 3 }
-    let writtenChange = board.changeCount
     guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true),
       let up = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: false)
     else { return 3 }
+
+    let board = NSPasteboard.general
+    let previous: [NSPasteboardItem]
+    if let pendingClipboardRestore, pendingClipboardRestore.changeCount == board.changeCount {
+      previous = pendingClipboardRestore.items
+    } else {
+      previous = (board.pasteboardItems ?? []).map { item in
+        let copy = NSPasteboardItem()
+        for type in item.types {
+          if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+        }
+        return copy
+      }
+    }
+    board.clearContents()
+    guard board.setString(text, forType: .string) else {
+      pendingClipboardRestore = nil
+      if !previous.isEmpty { board.writeObjects(previous) }
+      return 3
+    }
+    let writtenChange = board.changeCount
+    pendingClipboardRestore = (writtenChange, previous)
     down.flags = .maskCommand
     up.flags = .maskCommand
     down.post(tap: .cghidEventTap)
     up.post(tap: .cghidEventTap)
-    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(350)) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(350)) { [self] in
+      guard let restore = pendingClipboardRestore, restore.changeCount == writtenChange else {
+        return
+      }
+      pendingClipboardRestore = nil
       guard board.changeCount == writtenChange else { return }
       board.clearContents()
-      if let previous, !previous.isEmpty { board.writeObjects(previous) }
+      if !restore.items.isEmpty { board.writeObjects(restore.items) }
     }
     return 0
-  }
-
-  private func focusedElement() -> AXUIElement? {
-    var result: CFTypeRef?
-    let system = AXUIElementCreateSystemWide()
-    guard
-      AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &result)
-        == .success
-    else {
-      return nil
-    }
-    guard let result, CFGetTypeID(result) == AXUIElementGetTypeID() else { return nil }
-    return unsafeBitCast(result, to: AXUIElement.self)
-  }
-
-  private func editable(_ element: AXUIElement) -> Bool {
-    var roleValue: CFTypeRef?
-    guard
-      AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success,
-      let role = roleValue as? String,
-      role != "AXSecureTextField",
-      ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role)
-    else { return false }
-    var subroleValue: CFTypeRef?
-    if AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleValue)
-      == .success,
-      subroleValue as? String == kAXSecureTextFieldSubrole as String
-    {
-      return false
-    }
-    return true
   }
 
   private static func keyCode(for key: String, modifiers: CGEventFlags) -> CGKeyCode? {

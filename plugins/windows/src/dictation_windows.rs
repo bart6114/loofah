@@ -2,24 +2,25 @@ use std::sync::{
     LazyLock, Mutex,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::{Duration, Instant};
 
 use tauri_specta::Event;
 use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
-};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, UIA_DocumentControlTypeId, UIA_EditControlTypeId,
-};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-    KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT,
+    KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_V,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetMessageW, KBDLLHOOKSTRUCT, MSG, SetWindowsHookExW,
-    TranslateMessage, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallNextHookEx, DispatchMessageW, GetMessageW, KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG,
+    SetWindowsHookExW, TranslateMessage, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+    WM_SYSKEYUP,
 };
+
+#[path = "dictation_windows_clipboard.rs"]
+mod clipboard;
+
+const DICTATION_PASTE_EVENT: usize = 0x4C4F_4F46;
 
 #[derive(Clone, Copy)]
 struct Shortcut {
@@ -140,7 +141,11 @@ pub fn configure(shortcut: &str) -> Result<(), String> {
 
 unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code >= 0 {
-        let key = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) }.vkCode;
+        let event = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+        if event.flags.contains(LLKHF_INJECTED) && event.dwExtraInfo == DICTATION_PASTE_EVENT {
+            return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+        }
+        let key = event.vkCode;
         let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
         let up = matches!(wparam.0 as u32, WM_KEYUP | WM_SYSKEYUP);
         if key == 0x1B {
@@ -200,69 +205,63 @@ fn modifiers_down(shortcut: &Shortcut) -> bool {
         && (down(VK_LWIN) || down(VK_RWIN)) == shortcut.command
 }
 
-fn ensure_editable_focus() -> Result<(), String> {
-    std::thread::spawn(|| unsafe {
-        CoInitializeEx(None, COINIT_MULTITHREADED)
-            .ok()
-            .map_err(|error| error.to_string())?;
-        let result = (|| {
-            let automation: IUIAutomation =
-                CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
-                    .map_err(|error| error.to_string())?;
-            let element = automation
-                .GetFocusedElement()
-                .map_err(|error| error.to_string())?;
-            let kind = element
-                .CurrentControlType()
-                .map_err(|error| error.to_string())?;
-            if kind != UIA_EditControlTypeId && kind != UIA_DocumentControlTypeId {
-                return Err("Focus an editable text field before dictating".into());
-            }
-            if element
-                .CurrentIsPassword()
-                .map_err(|error| error.to_string())?
-                .as_bool()
-                || !element
-                    .CurrentIsEnabled()
-                    .map_err(|error| error.to_string())?
-                    .as_bool()
-            {
-                return Err("This field cannot accept dictation".into());
-            }
-            Ok(())
-        })();
-        CoUninitialize();
-        result
-    })
-    .join()
-    .map_err(|_| "Could not inspect the focused field".to_string())?
+fn wait_for_paste_keys_released() -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_millis(250);
+    while paste_keys_held() {
+        if Instant::now() >= deadline {
+            return Err("Could not send Ctrl+V while other keys were held".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    Ok(())
 }
 
-pub fn insert(text: &str) -> Result<(), String> {
-    ensure_editable_focus().map_err(|_| "target_unavailable".to_string())?;
-    let mut inputs = Vec::with_capacity(text.len() * 2);
-    for unit in text.encode_utf16() {
-        for flags in [KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP] {
-            inputs.push(INPUT {
-                r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 {
-                    ki: KEYBDINPUT {
-                        wVk: VIRTUAL_KEY(0),
-                        wScan: unit,
-                        dwFlags: flags,
-                        time: 0,
-                        dwExtraInfo: 0,
-                    },
-                },
-            });
-        }
+fn paste_keys_held() -> bool {
+    [VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN, VK_V]
+        .into_iter()
+        .any(|key| (unsafe { GetAsyncKeyState(i32::from(key.0)) }) < 0)
+}
+
+fn send_paste() -> Result<(), String> {
+    if paste_keys_held() {
+        return Err("Could not send Ctrl+V while other keys were held".into());
     }
-    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+    let key_event = |key, flags| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: key,
+                dwFlags: flags,
+                dwExtraInfo: DICTATION_PASTE_EVENT,
+                ..Default::default()
+            },
+        },
+    };
+    let inputs = [
+        key_event(VK_CONTROL, KEYBD_EVENT_FLAGS::default()),
+        key_event(VK_V, KEYBD_EVENT_FLAGS::default()),
+        key_event(VK_V, KEYEVENTF_KEYUP),
+        key_event(VK_CONTROL, KEYEVENTF_KEYUP),
+    ];
+    let input_size = std::mem::size_of::<INPUT>() as i32;
+    let sent = unsafe { SendInput(&inputs, input_size) };
     if sent as usize == inputs.len() {
         Ok(())
     } else {
-        Err("Could not insert dictation into this field".into())
+        let releases = match sent {
+            1 | 3 => &inputs[3..],
+            2 => &inputs[2..],
+            _ => &[],
+        };
+        if !releases.is_empty() {
+            unsafe { SendInput(releases, input_size) };
+        }
+        Err("Windows could not send Ctrl+V to the focused app".into())
     }
+}
+
+pub fn insert(text: &str) -> Result<(), String> {
+    clipboard::paste(text)
 }
 
 #[cfg(test)]
