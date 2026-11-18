@@ -1,51 +1,34 @@
 ---
 title: "Privacy policy"
-description: "How Loofah handles your notes, recordings, and other data on Mac and iPhone."
+description: "How Loofah handles recordings, notes, and other data on iPhone and Mac."
 ---
 
-**Effective date: November 1, 2026.** Loofah is a free app maintained by Bart Smeets. Contact [hi@barts.space](mailto:hi@barts.space) about this policy or a privacy request.
+**Effective date: November 18, 2026.** Loofah is maintained by Bart Smeets. For privacy questions or deletion requests, email [hi@barts.space](mailto:hi@barts.space).
 
-## What stays on your device
+## Loofah for iPhone
 
-Loofah does not require an account and does not operate a cloud service for your vault. Notes, recordings, transcripts, summaries, attachments, and settings are stored as files in a vault on your device. The iPhone app starts with a private local vault. The Mac app lets you choose a local vault folder.
+Loofah uses your microphone when you start a recording. You can record and write notes offline. Drafts stay in private app storage on your iPhone. While you record, the Lock Screen and Dynamic Island can show the recording status and elapsed time.
 
-Recording and transcription run on your device. After you download a speech model, your audio and transcript are processed locally. Loofah does not send app usage analytics, advertising data, or telemetry to us. We do not receive your vault content through normal app use.
+When you finish a capture, Loofah uses Apple’s iCloud Drive to send your note, timestamps, and any recording to the Mac you designate. The apps use a private inbox under your Apple Account. They also sync a receiver identifier and delivery confirmations. Apple handles the iCloud transfer and storage. Loofah has no account service or server that receives your captures. [Apple Account and iCloud privacy](https://www.apple.com/legal/privacy/data/en/apple-account/)
 
-The iPhone app stores any API key you enter in the iPhone Keychain. The Mac app uses the macOS login Keychain. Keys are used to connect to the provider you configure; they are not stored in your vault.
+Loofah keeps the finished capture on your iPhone until your Mac confirms it saved the capture. The apps then clear the capture from the phone and iCloud inbox. You can stop future handoff by turning off iCloud access for Loofah in iPhone Settings. To remove a draft or pending capture from your phone, delete the app and its local data. This removes local copies of captures that may still be waiting for your Mac. Use Apple’s iCloud storage controls for data already in iCloud.
 
-## When data leaves your device
+The iPhone app sends captures through iCloud. It has no AI provider integrations, advertising, analytics, or tracking. Loofah does not sell your data.
 
-- **Sync that you choose.** If you connect the iPhone app to an iCloud Drive vault, notes, transcripts, summaries, attachments, settings, and recordings are copied through your Apple iCloud account. A local copy remains on your iPhone. On Mac, you can place your vault in a folder managed by a sync service you choose. That service handles the files under its own terms and privacy policy.
-- **AI providers that you choose.** If you enable a hosted summary provider, Loofah sends the instructions and relevant session context, which can include notes, transcript text, titles, and participant information, to that provider. On iPhone, AI sharing is off until you explicitly give permission in Settings → Summaries. The disclosure names the selected provider and server and explains the data sent. After you give permission, a summary can be sent automatically after transcription or when you request one. Permission applies to that provider, server, and model on that installation; changing any of them requires fresh permission. Existing or synced provider settings do not grant permission. Generating a title can send the summary to the same provider. The provider may process or retain what you send according to its own policy. If you connect LM Studio, Ollama, or another server you control, the request goes to the server address you configure; that server may be on another device.
-- **Speech model downloads.** When you ask the iPhone app to download a transcription model, it connects to Hugging Face to obtain the model files. The download does not include your recordings or transcripts. The download host can receive ordinary connection data such as your IP address.
-- **Support messages.** If you email us, we receive the address and information you include. Please avoid sending recordings or sensitive notes unless needed to explain your request.
+## Loofah for Mac
 
-Loofah does not sell your data. It has no in-app purchases, paid features, or subscriptions. A provider or sync service you choose may have its own charges.
+Your Mac stores notes, recordings, transcripts, summaries, and settings as files in your vault. Your Mac transcribes audio and detects speakers on the device. A model download host may see connection information such as your IP address.
 
-## Optional AI sharing on iPhone
+If you configure a remote Intelligence provider, the Mac sends the prompt and relevant session context for optional summaries or titles. For an iPhone capture, the Mac names the recipient and asks for permission before it sends note or transcript content for a summary. Summary requests can include notes, transcript text, speaker names, and session details. Title requests can include the generated summary. Requests use the provider you chose, including any routing it performs. The Mac stores provider API keys in the macOS login Keychain.
 
-The summary request includes the selected note's text, transcript text and speaker names, note title, tags, session dates, and summary instructions, including any custom instructions saved in your vault. A title request sends the generated summary and title instructions to the same provider. Audio recordings and attachment files are not included. Requests go directly from your iPhone to the configured endpoint; Loofah does not receive or relay them. The endpoint also receives ordinary connection information, such as your IP address, and your API key to authenticate the request. Loading the model list sends authentication and connection information, but no note or transcript content.
+Choose **Keep on Mac** to decline a sharing request, or turn off your summary model to stop automatic summaries. Contact the provider about retention or deletion of data you already sent. If you put the vault in a synced folder, the sync service handles those copies under its own policy.
 
-The recipient depends on your selection: OpenAI, Anthropic, Google (Gemini), Mistral, Microsoft (Azure OpenAI or Azure AI Foundry), Cloudflare (Workers AI), or OpenRouter. OpenRouter also forwards requests to the model provider selected by its routing; review its [provider data policies](https://openrouter.ai/providers/). For Custom, LM Studio, and Ollama connections, the operator of the server address you enter is the recipient. A server on your Mac is still a separate device from your iPhone.
+Your vault keeps files until you delete them. You can remove a recording or note in Loofah. Manage any copies in your backups or sync services separately. Loofah does not receive your vault files in normal use.
 
-Third-party protection must be at least equivalent to the protections in this policy: use data only for the purposes you authorize, protect it against unauthorized access, and provide retention and deletion controls. Before connecting a provider or custom server, review its applicable API terms, privacy policy, and account settings. Retention, training use, and onward processing vary by provider and account; Loofah cannot verify or override the operator's practices. If those protections are not available, leave AI sharing off. Loofah does not authorize providers to sell your content or use it for advertising.
+## Support and website
 
-You can review the providers' policies: [OpenAI](https://openai.com/policies/privacy-policy/), [Anthropic](https://www.anthropic.com/legal/privacy), [Google](https://policies.google.com/privacy), [Mistral](https://legal.mistral.ai/terms/privacy-policy), [Microsoft](https://privacy.microsoft.com/privacystatement), [Cloudflare](https://www.cloudflare.com/privacypolicy/), and [OpenRouter](https://openrouter.ai/privacy/). For a custom or self-hosted server, obtain the policy from its operator.
+If you contact support, we receive your email address and the information you share. We keep correspondence as needed to respond and meet legal obligations. Email the address above to request access to or deletion of information you sent us.
 
-To withdraw permission for future requests, clear the AI sharing checkbox and save in Settings → Summaries, or select Off and save. Recording, transcription, and editing notes remain available without consent. Revoking permission cannot recall data already sent; contact the recipient to request deletion under its policy.
+Cloudflare serves the documentation site and may process connection data to deliver it. The site uses no Loofah analytics or advertising trackers.
 
-## Retention and your choices
-
-Loofah keeps vault files on your device until you delete them. Recordings are not automatically deleted after transcription. You can delete content in the app, remove the local vault, or disconnect optional sync. Deleting a local copy may not remove copies already synced to a cloud service or sent to an AI provider; use that service's controls for those copies. Keep your own backup before deleting the app or its files.
-
-We keep support correspondence only as needed to respond and handle follow-up requests, subject to applicable legal obligations. You can ask about or request deletion of information you sent us at [hi@barts.space](mailto:hi@barts.space). Because we do not host your vault, we cannot retrieve or delete vault files stored on your device or with a service you chose.
-
-## Website
-
-The documentation website is served through Cloudflare. Cloudflare may process connection information needed to deliver the site. The site does not include our own usage analytics or advertising trackers. If you follow a link to another site, that site's privacy policy applies.
-
-## Your responsibilities
-
-You decide what to record, sync, and send to a provider. Check recording-consent rules, your provider's terms and privacy practices, any provider fees, and your backup needs. Transcripts and generated summaries can contain mistakes; review them before relying on them. To the extent permitted by law, you are responsible for your use of Loofah and of services you connect. Nothing in this policy removes rights or liabilities that cannot legally be excluded.
-
-We may update this policy when the app or its data handling changes. The effective date above identifies the current version. For a practical explanation of the vault and optional services, see [Data, privacy, and retention](/data-and-privacy).
+For a practical guide to the vault and your choices, see [Data, privacy, and retention](/data-and-privacy).
