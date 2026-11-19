@@ -121,6 +121,7 @@ jobs:
           validation_sha="$source_sha"
           validation_event=push
           tested_merge=""
+          log_flags=()
           if [ -n "$VERIFIED_PR" ]; then
             [[ "$VERIFIED_PR" =~ ^[1-9][0-9]*$ ]]
             test "$PUBLISH_WINDOWS" = false
@@ -138,6 +139,9 @@ jobs:
             git merge-base --is-ancestor "$base_sha" "$validation_sha"
             test "$(git rev-parse "$validation_sha^{tree}")" = "$source_tree"
             validation_event=pull_request
+            if gh api --help | grep -F -- '--allow-escape-sequences' >/dev/null; then
+              log_flags+=(--allow-escape-sequences)
+            fi
           fi
           for workflow in ci.yaml desktop_ci.yaml cli_ci.yaml windows_ci.yaml; do
             run="$(gh api -X GET "repos/$GH_REPO/actions/workflows/$workflow/runs" \
@@ -160,7 +164,7 @@ jobs:
               while read -r job_id; do
                 checked_out=""
                 for attempt in 1 2 3; do
-                  if checked_out="$(gh api "repos/$GH_REPO/actions/jobs/$job_id/logs" | awk '
+                  if checked_out="$(gh api "${log_flags[@]}" "repos/$GH_REPO/actions/jobs/$job_id/logs" | awk '
                     /\[command\].*git.* log -1 --format=%H/ && !found { found = 1; next }
                     found == 1 { sub(/\r$/, ""); if (length($NF) == 40 && $NF ~ /^[0-9a-f]+$/) print $NF; found = 2 }
                   ')" && [[ "$checked_out" =~ ^[0-9a-f]{40}$ ]]; then break; fi
