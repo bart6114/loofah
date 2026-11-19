@@ -3,6 +3,10 @@ name: desktop-release
 on:
   workflow_dispatch:
     inputs:
+      verified-pr:
+        description: Reuse successful CI from this merged same-repository PR if its tested tree and base match the release source exactly
+        type: string
+        default: ""
       publish-windows:
         description: Publish Windows installers and updater feed
         type: boolean
@@ -91,6 +95,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,6 +106,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          VERIFIED_PR: ${{ inputs.verified-pr }}
+          PUBLISH_WINDOWS: ${{ inputs.publish-windows }}
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
@@ -111,12 +118,37 @@ jobs:
             test "$changed" = "$expected" || { echo 'Release commit has unexpected changes'; exit 1; }
             source_sha="$(git rev-parse HEAD^)"
           fi
+          validation_sha="$source_sha"
+          validation_event=push
+          base_sha=""
+          if [ -n "$VERIFIED_PR" ]; then
+            [[ "$VERIFIED_PR" =~ ^[1-9][0-9]*$ ]]
+            test "$PUBLISH_WINDOWS" = false
+            pr="$(gh api "repos/$GH_REPO/pulls/$VERIFIED_PR")"
+            jq -e --arg repo "$GH_REPO" --arg source "$source_sha" '
+              .merged and .merge_commit_sha == $source and .base.ref == "main"
+              and .base.repo.full_name == $repo and .head.repo.full_name == $repo
+            ' <<< "$pr" >/dev/null
+            validation_sha="$(jq -er .head.sha <<< "$pr")"
+            base_sha="$(git rev-parse "$source_sha^")"
+            git fetch --no-tags origin "refs/pull/$VERIFIED_PR/head"
+            test "$(git rev-parse FETCH_HEAD)" = "$validation_sha"
+            git merge-base --is-ancestor "$base_sha" "$validation_sha"
+            test "$(git rev-parse "$validation_sha^{tree}")" = "$(git rev-parse "$source_sha^{tree}")"
+            validation_event=pull_request
+            echo "Using required CI from PR #$VERIFIED_PR with the same source tree and base commit."
+          fi
           for workflow in ci.yaml desktop_ci.yaml cli_ci.yaml windows_ci.yaml; do
             result="$(gh api -X GET "repos/$GH_REPO/actions/workflows/$workflow/runs" \
-              -f head_sha="$source_sha" -f event=push -f per_page=20 \
-              --jq '.workflow_runs | sort_by(.run_number) | last | .conclusion // empty')"
+              -f head_sha="$validation_sha" -f event="$validation_event" -f per_page=20 \
+              | jq -r --arg pr "$VERIFIED_PR" --arg base "$base_sha" --arg head "$validation_sha" '
+                .workflow_runs | map(select($pr == "" or any(.pull_requests[];
+                  (.number | tostring) == $pr and .base.ref == "main"
+                  and .base.sha == $base and .head.sha == $head
+                ))) | sort_by(.run_number) | last | .conclusion // empty
+              ')"
             if [ "$result" != success ]; then
-              echo "::error::$workflow for $source_sha must succeed; current result: ${result:-missing or pending}"
+              echo "::error::$workflow for $validation_sha must succeed; current result: ${result:-missing or pending}"
               exit 1
             fi
           done
