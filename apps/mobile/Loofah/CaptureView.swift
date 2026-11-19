@@ -17,18 +17,16 @@ struct CaptureView: View {
     if let item = store.captures.first(where: { $0.id == id }) {
       let recording = store.recording == id
       let showControls = recording || (finishing && item.capture.recording)
+      let editable = store.canEdit(item)
       VStack(alignment: .leading, spacing: 18) {
-        if item.receipt == nil {
-          Text(item.capture.recording ? "Recording" : "Note")
-            .font(.system(size: headingSize, weight: .medium))
-            .tracking(-0.8)
-            .accessibilityAddTraits(.isHeader)
-          if item.capture.recording && !showControls {
-            Label("Recording stopped. Tap Done to keep it.", systemImage: "waveform")
-              .font(.subheadline)
-              .foregroundStyle(theme.muted)
+        if editable {
+          titleField
+          if item.isQueued {
+            deliveryDetails(item)
+          } else if item.capture.recording && !showControls {
+            recordingLabel("Recording stopped. Tap Done to keep it.")
           }
-          editor(item, recording: recording)
+          editor(item)
         } else {
           finished(item)
         }
@@ -46,12 +44,19 @@ struct CaptureView: View {
       .toolbarBackgroundVisibility(.visible, for: .navigationBar)
       .navigationBarBackButtonHidden(showControls || finishing)
       .toolbar {
-        if item.receipt == nil && !showControls {
+        if editable && !showControls {
           ToolbarItem(placement: .confirmationAction) {
             if finishing {
               ProgressView().accessibilityLabel("Saving capture")
             } else {
-              Button("Done") { finish() }
+              Button("Done") {
+                if item.isQueued {
+                  store.sync()
+                  dismiss()
+                } else {
+                  finish()
+                }
+              }
             }
           }
         }
@@ -60,7 +65,9 @@ struct CaptureView: View {
         if showControls { recordingControls(item.capture.createdAt) }
       }
       .task {
-        if !item.capture.recording && item.receipt == nil && item.capture.note.isEmpty {
+        if !item.capture.recording && !item.isQueued && item.capture.note.isEmpty
+          && item.capture.customTitle == nil
+        {
           editorFocused = true
         }
       }
@@ -76,11 +83,26 @@ struct CaptureView: View {
     }
   }
 
-  private func editor(_ item: LocalCapture, recording: Bool) -> some View {
+  private var titleField: some View {
+    TextField(
+      "Untitled",
+      text: Binding(
+        get: { store.captures.first(where: { $0.id == id })?.capture.title ?? "" },
+        set: { store.edit(id, \.title, $0.isEmpty ? nil : $0) }
+      )
+    )
+    .font(.system(size: headingSize, weight: .medium))
+    .tracking(-0.8)
+    .disabled(finishing)
+    .accessibilityLabel("Title")
+    .onSubmit { editorFocused = true }
+  }
+
+  private func editor(_ item: LocalCapture) -> some View {
     TextEditor(
       text: Binding(
         get: { store.captures.first(where: { $0.id == id })?.capture.note ?? "" },
-        set: { store.edit(id, note: $0) }
+        set: { store.edit(id, \.note, $0) }
       )
     )
     .font(.body)
@@ -92,7 +114,7 @@ struct CaptureView: View {
     .padding(.horizontal, -5)
     .overlay(alignment: .topLeading) {
       if item.capture.note.isEmpty {
-        Text(recording || item.capture.recording ? "Add notes…" : "Write a note…")
+        Text(item.capture.recording ? "Add notes…" : "Write a note…")
           .font(.body)
           .foregroundStyle(theme.muted)
           .padding(.top, 8)
@@ -103,40 +125,14 @@ struct CaptureView: View {
   }
 
   private func finished(_ item: LocalCapture) -> some View {
-    let status = store.deliveryStatus(for: item)
-    return ScrollView {
+    ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        Text(item.capture.recording ? "Recording" : "Note")
+        Text(item.title)
           .font(.system(size: headingSize, weight: .medium))
           .tracking(-0.8)
           .accessibilityAddTraits(.isHeader)
-        VStack(alignment: .leading, spacing: 5) {
-          Text(status.title).font(.subheadline.weight(.semibold))
-          if let detail = status.detail {
-            Text(detail).font(.footnote).foregroundStyle(theme.muted)
-          }
-          if status == .confirmAccount {
-            Button {
-              confirmAccount = true
-            } label: {
-              Text("Use this account")
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-            }
-            .buttonStyle(CaptureButtonStyle(theme: theme, kind: .secondary))
-            .padding(.top, 4)
-          }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.wash, in: RoundedRectangle(cornerRadius: 8))
+        deliveryDetails(item)
 
-        if item.capture.recording {
-          Label("Audio recording", systemImage: "waveform")
-            .font(.subheadline)
-            .foregroundStyle(theme.muted)
-        }
         if !item.capture.note.isEmpty {
           Text(item.capture.note)
             .font(.body)
@@ -147,6 +143,43 @@ struct CaptureView: View {
       }
       .padding(.bottom, 20)
     }
+  }
+
+  private func deliveryDetails(_ item: LocalCapture) -> some View {
+    let status = store.deliveryStatus(for: item)
+    return VStack(alignment: .leading, spacing: 8) {
+      VStack(alignment: .leading, spacing: 5) {
+        Text(status.title).font(.subheadline.weight(.semibold))
+        if let detail = status.detail {
+          Text(detail).font(.footnote).foregroundStyle(theme.muted)
+        }
+        if status == .confirmAccount {
+          Button {
+            confirmAccount = true
+          } label: {
+            Text("Use this account")
+              .font(.subheadline.weight(.semibold))
+              .padding(.horizontal, 12)
+              .frame(minHeight: 44)
+          }
+          .buttonStyle(CaptureButtonStyle(theme: theme, kind: .secondary))
+          .padding(.top, 4)
+        }
+      }
+      .padding(12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(theme.wash, in: RoundedRectangle(cornerRadius: 8))
+
+      if item.capture.recording {
+        recordingLabel("Audio recording")
+      }
+    }
+  }
+
+  private func recordingLabel(_ label: LocalizedStringKey) -> some View {
+    Label(label, systemImage: "waveform")
+      .font(.subheadline)
+      .foregroundStyle(theme.muted)
   }
 
   private func recordingControls(_ startedAt: Date) -> some View {
@@ -211,10 +244,10 @@ struct HandoffView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           Text(
-            "On your Mac, open Loofah’s Storage settings and turn on Receive iPhone captures. Use the same Apple Account with iCloud Drive on both devices."
+            "Install the latest Loofah for Mac. Open its Storage settings and turn on Receive iPhone captures. Use the same Apple Account with iCloud Drive on both devices."
           )
           Text(
-            "Completed captures stay here until your Mac saves them. Transcription runs on your Mac."
+            "You can edit a capture until your Mac starts importing it. Completed captures stay here until your Mac saves them. Transcription runs on your Mac."
           )
           Link("Privacy policy", destination: URL(string: "https://loofah.io/privacy-policy/")!)
             .fontWeight(.medium)

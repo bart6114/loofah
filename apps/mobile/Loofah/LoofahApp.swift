@@ -52,7 +52,7 @@ private struct InboxView: View {
 
           VStack(alignment: .leading, spacing: 0) {
             HStack {
-              Text("On this iPhone")
+              Text("Waiting for sync")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(theme.muted)
                 .accessibilityAddTraits(.isHeader)
@@ -152,7 +152,7 @@ private struct InboxView: View {
     if store.isFinishing(item.id) {
       status = "Saving…"
     } else {
-      status = item.receipt == nil ? "Draft" : store.deliveryStatus(for: item).title
+      status = item.isQueued ? store.deliveryStatus(for: item).title : "Draft"
     }
     let hasRecording = item.capture.recording
     let hasNote = item.capture.note.contains { !$0.isWhitespace }

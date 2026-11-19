@@ -36,7 +36,7 @@ final class CapturePackageTests: XCTestCase {
     let now = Date()
     let capture = Capture(
       id: UUID(), createdAt: now, finishedAt: now.addingTimeInterval(4),
-      note: "Studio review\nCheck the mise en page.", recording: true
+      title: "Studio review", note: "Check the mise en page.", recording: true
     )
     let audio = Data(repeating: 7, count: 320_040)
     try audio.write(to: root.appendingPathComponent(CapturePackage.audio))
@@ -48,6 +48,7 @@ final class CapturePackageTests: XCTestCase {
       try Data(contentsOf: staging.appendingPathComponent(CapturePackage.audio)), audio)
     let manifest = try Data(contentsOf: staging.appendingPathComponent(CapturePackage.manifest))
     let stagedCapture = try JSONDecoder().decode(Capture.self, from: manifest)
+    XCTAssertEqual(stagedCapture.title, capture.title)
     XCTAssertEqual(stagedCapture.note, capture.note)
     XCTAssertEqual(stagedCapture.createdAt, capture.createdAt)
     XCTAssertThrowsError(try CapturePackage.unpack(payload, into: staging, id: UUID()))
@@ -61,5 +62,24 @@ final class CapturePackageTests: XCTestCase {
     partial[partial.count - 256] ^= 1
     try partial.write(to: payload)
     XCTAssertThrowsError(try CapturePackage.unpack(payload, into: staging, id: capture.id))
+  }
+
+  func testTitleOnlyNoteRoundTrip() throws {
+    let files = FileManager.default
+    let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try files.createDirectory(at: root, withIntermediateDirectories: false)
+    defer { try? files.removeItem(at: root) }
+    let now = Date()
+    var capture = Capture(id: UUID(), createdAt: now, finishedAt: now, note: "", recording: false)
+    XCTAssertThrowsError(try CapturePackage.seal(capture, in: root))
+
+    capture.title = "Invoice"
+    let receipt = try CapturePackage.seal(capture, in: root)
+    let payload = root.appendingPathComponent(CapturePackage.payload)
+    XCTAssertEqual(try CapturePackage.unpack(payload, into: root, id: capture.id), receipt)
+    let manifest = try Data(contentsOf: root.appendingPathComponent(CapturePackage.manifest))
+    let stagedCapture = try JSONDecoder().decode(Capture.self, from: manifest)
+    XCTAssertEqual(stagedCapture.title, "Invoice")
+    XCTAssertTrue(stagedCapture.note.isEmpty)
   }
 }

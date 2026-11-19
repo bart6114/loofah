@@ -95,7 +95,7 @@ private func handle(_ request: Request) throws -> Reply {
   case "list":
     guard enabled else { break }
     let names = try inbox.names()
-    let extensions = Set(["loof", "receipt", "ack"])
+    let extensions = Set(["loof", "receipt", "ack", "offer"])
     reply.captures = Array(
       Set(
         names.compactMap { name -> UUID? in
@@ -121,6 +121,12 @@ private func handle(_ request: Request) throws -> Reply {
       try CapturePackage.unpack(
         url, into: URL(fileURLWithPath: destination, isDirectory: true), id: id)
     }
+    if reply.receipt == nil, let receiver,
+      try inbox.read(name + ".offer", as: UUID.self) == id,
+      try inbox.read(name + ".request", as: UUID.self) != receiver
+    {
+      try inbox.write(receiver, to: name + ".request")
+    }
   case "finish":
     guard let receipt = request.receipt, request.account != nil else { throw CaptureError.invalid }
     let name = receipt.id.uuidString.lowercased()
@@ -141,6 +147,8 @@ private func handle(_ request: Request) throws -> Reply {
 }
 
 private func clean(_ inbox: CaptureInbox, name: String, receipt: CaptureReceipt) throws {
+  try inbox.remove(name + ".offer")
+  try inbox.remove(name + ".request")
   try inbox.remove(name + ".loof")
   guard try inbox.read(name + ".ack", as: CaptureReceipt.self) == receipt else { return }
   try inbox.remove(name + ".receipt")

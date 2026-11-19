@@ -279,6 +279,7 @@ mod mac {
         id: String,
         created_at: f64,
         finished_at: f64,
+        title: Option<String>,
         note: String,
         recording: bool,
     }
@@ -325,7 +326,7 @@ mod mac {
             };
             let meta = serde_json::from_value(json!({
                 "id": id,
-                "title": "",
+                "title": capture.title.as_deref().unwrap_or_default().trim(),
                 "created_at": created_at,
                 "started_at": capture.recording.then_some(created_at),
                 "ended_at": capture.recording.then_some(finished_at),
