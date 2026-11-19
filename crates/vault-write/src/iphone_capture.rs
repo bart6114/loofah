@@ -107,7 +107,9 @@ impl SessionStore {
                     ));
                 }
                 fs::rename(staged, &target)?;
-                File::open(target.parent().expect("session has a parent"))?.sync_all()
+                #[cfg(unix)]
+                File::open(target.parent().expect("session has a parent"))?.sync_all()?;
+                Ok(())
             })
             .await
             .map_err(io_error)?
@@ -189,7 +191,9 @@ fn stage_files(
         dest.sync_all()?;
     }
     write_synced(&paths::meta_path_in(directory), meta)?;
-    File::open(directory)?.sync_all()
+    #[cfg(unix)]
+    File::open(directory)?.sync_all()?;
+    Ok(())
 }
 
 fn write_synced(path: &Path, content: &[u8]) -> std::io::Result<()> {

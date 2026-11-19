@@ -32,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: refs/tags/${{ inputs.verified_mac_tag }}
           fetch-depth: 0
           persist-credentials: false
       - name: Check published Mac receiver
