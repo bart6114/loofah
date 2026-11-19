@@ -1,0 +1,84 @@
+name: Loofah
+options:
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: L8GUHT98B4
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+targets:
+  Loofah:
+    type: application
+    platform: iOS
+    sources:
+      - Loofah
+      - RecordingActivity
+      - ../apple-capture
+    dependencies:
+      - target: RecordingWidget
+        embed: true
+    attributes:
+      SystemCapabilities:
+        com.apple.iCloud:
+          enabled: 1
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.loofah.notes
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Loofah
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Loofah uses your microphone to record audio for your captures.
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_ENTITLEMENTS: Capture.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  RecordingWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: RecordingWidget
+        excludes: [Info.plist]
+      - RecordingActivity
+      - Loofah/CaptureTheme.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.loofah.notes.RecordingWidget
+        INFOPLIST_FILE: RecordingWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) LOOFAH_WIDGET
+  CaptureUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: Loofah
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.loofah.notes.uitests
+  CapturePackageTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [PackageTests]
+    dependencies:
+      - target: Loofah
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.loofah.notes.packagetests
+schemes:
+  Loofah:
+    build:
+      targets:
+        Loofah: all
+    test:
+      targets:
+        - CapturePackageTests
+        - CaptureUITests

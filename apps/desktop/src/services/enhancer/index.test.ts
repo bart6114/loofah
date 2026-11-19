@@ -147,6 +147,45 @@ describe("EnhancerService", () => {
     vi.useRealTimers();
   });
 
+  it("keeps an iPhone capture on Mac when external sharing is declined", async () => {
+    snapshot = createSnapshot({ wordCount: 50 });
+    const { store, generate } = createMockAITaskStore();
+    const authorize = vi.fn().mockResolvedValue(false);
+    const service = new EnhancerService(
+      createDeps({
+        aiTaskStore: store,
+        getCaptureAuthorization: () => authorize,
+      }),
+    );
+
+    await expect(
+      service.finishImportedCaptureSummary("session-1"),
+    ).resolves.toBe(true);
+    expect(authorize).toHaveBeenCalledWith("session-1");
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("recognizes a saved iPhone summary after restart without sharing again", async () => {
+    snapshot = createSnapshot({
+      wordCount: 50,
+      notes: [createNote({ content: "Saved summary" })],
+    });
+    const { store, generate } = createMockAITaskStore();
+    const authorize = vi.fn().mockResolvedValue(true);
+    const service = new EnhancerService(
+      createDeps({
+        aiTaskStore: store,
+        getCaptureAuthorization: () => authorize,
+      }),
+    );
+
+    await expect(
+      service.finishImportedCaptureSummary("session-1"),
+    ).resolves.toBe(true);
+    expect(authorize).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+  });
+
   it("rejects empty input before creating or clearing a document", async () => {
     const service = new EnhancerService(createDeps());
     snapshot.rawMarkdown = "&nbsp;";

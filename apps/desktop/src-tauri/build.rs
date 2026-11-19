@@ -64,7 +64,10 @@ fn main() {
     println!("cargo:rustc-link-arg=-fapple-link-rtlib");
 
     #[cfg(target_os = "macos")]
-    build_check_permissions();
+    {
+        build_check_permissions();
+        build_capture_receiver();
+    }
 
     tauri_build::build()
 }
@@ -151,4 +154,43 @@ fn same_contents(a: &Path, b: &Path) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => false,
     }
+}
+
+#[cfg(target_os = "macos")]
+fn build_capture_receiver() {
+    let target = swift_target(&std::env::var("TARGET").unwrap());
+    let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is set"));
+    let sources = [
+        "../../apple-capture/Capture.swift",
+        "../../apple-capture/Inbox.swift",
+        "apple-capture/Receiver.swift",
+    ];
+    for path in sources {
+        println!("cargo:rerun-if-changed={path}");
+    }
+    let library = out_dir.join("libloofah_capture.a");
+    assert!(
+        Command::new("swiftc")
+            .args([
+                "-O",
+                "-target",
+                &target,
+                "-module-name",
+                "LoofahCapture",
+                "-emit-library",
+                "-static",
+                "-o"
+            ])
+            .arg(library)
+            .args(sources)
+            .status()
+            .expect("run swiftc for iPhone capture receiver")
+            .success(),
+        "compile iPhone capture receiver"
+    );
+    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    println!("cargo:rustc-link-lib=static=loofah_capture");
+    println!("cargo:rustc-link-lib=framework=Foundation");
+    println!("cargo:rustc-link-lib=framework=CryptoKit");
+    println!("cargo:rustc-link-lib=framework=Security");
 }

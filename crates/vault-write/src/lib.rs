@@ -11,6 +11,7 @@ pub mod enhanced;
 #[cfg(test)]
 mod flat_layout_tests;
 pub mod index;
+pub mod iphone_capture;
 pub mod journal;
 pub mod legacy_templates;
 pub mod migrate;

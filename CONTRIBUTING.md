@@ -19,6 +19,13 @@ compiler, and one CI-only `CARGO_TARGET_DIR` at the repository root. The CLI bui
 first so the desktop can reuse compatible dependencies. Bundles are under
 `target/release/bundle/`; local development keeps its existing target layout.
 
+When the two builds need separate Cargo units for Soniqo, the first publishes the
+Swift archive and Metal library to the runner's temporary directory. The second
+checks their SHA-256 hashes and copies them into its own `OUT_DIR`. Sharing is
+limited to the same native build inputs, target, Cargo profile, and Swift
+configuration in a single job. Build timing artifacts record the restore and save
+steps alongside the existing native compile timings.
+
 The release cache preserves workspace libraries and native Swift/MLX build outputs.
 Its identity includes the Rust toolchain, Cargo configuration, Xcode/SDK, hosted runner image revision, native
 sources and Swift package locks. Unused preinstalled Rust toolchains are removed
@@ -70,7 +77,45 @@ and cache time separately from runner queueing. Validate the bundled CLI, Metal
 resources, signatures and local transcription before accepting a performance
 change; the target is a 25% reduction in warm build plus cache overhead.
 
+Windows ARM64 runs Rust and signing verification alongside the installer build
+and installed-app smoke test. Both jobs must succeed when native Windows CI is
+required. The ARM64 verification job has its own Rust cache, so it can retain
+debug outputs alongside the installer job's release outputs. The `bundle-only`
+dispatch still runs the installer and Whisper smoke tests on both architectures.
+
 Linux and Intel macOS CLI builds run alongside the desktop build. The desktop
 supplies the Apple Silicon CLI archive. CLI feed publication waits for all required
 builds and verifies archive checksums. Standalone `cli-release` continues to build
 all missing platforms and publish its feed. Release retries reuse complete assets.
+
+## iPhone capture release
+
+The native iPhone app uses the existing `io.loofah.notes` App Store record on team
+`L8GUHT98B4`. The Mac receiver uses `io.loofah.stable`. Enable iCloud Documents for
+both identifiers in Apple Developer and associate both with the private
+`iCloud.io.loofah.capture` container. Create a Developer ID provisioning profile
+for the Mac app with the production container and store its base64 representation
+in the `MACOS_CAPTURE_PROFILE_BASE64` Actions secret. The stable Mac workflow
+embeds the profile and checks the signed entitlements.
+[Apple provisioning profile reference](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles)
+
+In `apps/mobile`, run `xcodegen generate` and open `Loofah.xcodeproj`. For a
+signed device test, the team’s iOS provisioning profile must include the same
+container. The TestFlight workflow exports the App Store build with the repository’s
+App Store Connect credentials and checks the signed entitlements before upload.
+
+Ship the signed Mac receiver first through the desktop release workflow. Verify
+the published receiver has production iCloud signing. Use that release tag and an
+unused iOS build number to dispatch
+`mobile-testflight`. Run the following checks on the release-signed Mac app and
+the TestFlight build before submitting the store listing in `apps/mobile/app-store`.
+
+| Scenario | Verify |
+| --- | --- |
+| Audio and notes, audio only, text only, and an empty draft | Intact captures and original dates, one vault session per finished capture, and no session for an empty draft |
+| Offline capture, phone reconnects while Mac sleeps | The phone retains the capture. After opening Loofah on Mac, the vault receives it, then the phone and iCloud inbox clear |
+| Quota exhausted, partial download, unavailable vault | The phone retains the capture and the Mac waits for a complete download and writable vault |
+| Apple Account changes | A pending capture stays on the phone and is sent only through its originating account |
+| Two Macs on one account | Only the designated Mac imports. Explicitly change the receiver and verify pending captures go to the selected vault |
+| Mac quits during download, after vault commit, or during cleanup | Restart produces one intact vault session, no duplicate saved transcript or summary, and eventual removal of the capture and receipt |
+| Intelligence off, local summary model, hosted summary model | Compare to a Mac audio import with identical settings. Verify both responses to the hosted sharing prompt and that title generation follows the Mac settings |

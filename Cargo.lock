@@ -14638,6 +14638,7 @@ dependencies = [
  "serde_json",
  "specta",
  "swift-rs 1.0.7 (git+https://github.com/yujonglee/swift-rs?rev=41a1605)",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
  "transcribe-onnx",

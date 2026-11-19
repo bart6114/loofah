@@ -1,6 +1,8 @@
 import { Trans } from "@lingui/react/macro";
+import { platform } from "@tauri-apps/plugin-os";
 
 import { ChangeLocationRow } from "./change-location";
+import { IphoneCapturesSetting } from "./iphone-captures";
 import { RebuildIndexRow } from "./rebuild-index";
 
 export function StorageSettingsView() {
@@ -17,6 +19,7 @@ export function StorageSettingsView() {
       </p>
       <div className="flex flex-col gap-3">
         <ChangeLocationRow />
+        {platform() === "macos" && <IphoneCapturesSetting />}
         <details className="rounded-lg border px-4 py-3">
           <summary className="cursor-pointer text-sm font-medium">
             <Trans>Troubleshooting</Trans>

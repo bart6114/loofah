@@ -12,6 +12,9 @@ use std::{
 const SONIQO_SWIFT_MACOS_DEPLOYMENT_TARGET: &str = "15.0";
 #[cfg(target_os = "macos")]
 const SONIQO_METALLIB_MACOS_DEPLOYMENT_TARGET: &str = "15.0";
+#[cfg(target_os = "macos")]
+#[path = "build/native_outputs.rs"]
+mod native_outputs;
 
 #[cfg(target_os = "macos")]
 fn swift_runtime_rpaths() -> Vec<String> {
@@ -69,15 +72,13 @@ fn profile_target_dir(out_dir: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "macos")]
-fn find_mlx_metallib(root: &Path, profile: &str) -> Option<PathBuf> {
-    [
-        root.join(profile).join("mlx.metallib"),
-        root.join("arm64-apple-macosx")
-            .join(profile)
-            .join("mlx.metallib"),
-    ]
-    .into_iter()
-    .find(|path| path.exists())
+fn swift_configuration() -> &'static str {
+    // SwiftLinker selects its configuration from DEBUG rather than PROFILE.
+    if env::var("DEBUG").as_deref() == Ok("true") {
+        "debug"
+    } else {
+        "release"
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -333,24 +334,11 @@ fn desktop_resource_metallib_path() -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "macos")]
-fn build_mlx_metallib() {
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set by Cargo"));
-    let swift_build_dir = out_dir.join("swift-rs").join("soniqo-swift");
-    let profile = cargo_profile();
-    let built_metallib =
-        measure_native("metal", || compile_mlx_metallib(&swift_build_dir, profile));
-    let metallib = find_mlx_metallib(&swift_build_dir, profile).unwrap_or_else(|| {
-        panic!(
-            "Soniqo MLX metallib build completed but mlx.metallib was not found under {}",
-            swift_build_dir.display()
-        )
-    });
-    assert_eq!(built_metallib, metallib);
-
-    if let Some(target_dir) = profile_target_dir(&out_dir) {
+fn publish_mlx_metallib(out_dir: &Path, metallib: &Path) {
+    if let Some(target_dir) = profile_target_dir(out_dir) {
         let destination = target_dir.join("mlx.metallib");
         println!("cargo:rerun-if-changed={}", destination.display());
-        copy_if_changed(&metallib, &destination).unwrap_or_else(|error| {
+        copy_if_changed(metallib, &destination).unwrap_or_else(|error| {
             panic!(
                 "failed to copy Soniqo MLX metallib to {}: {error}",
                 destination.display()
@@ -362,7 +350,7 @@ fn build_mlx_metallib() {
         if destination.parent().is_some_and(Path::exists) {
             // Cargo's cache does not restore resources outside OUT_DIR.
             println!("cargo:rerun-if-changed={}", destination.display());
-            copy_if_changed(&metallib, &destination).unwrap_or_else(|error| {
+            copy_if_changed(metallib, &destination).unwrap_or_else(|error| {
                 panic!(
                     "failed to copy Soniqo MLX metallib to {}: {error}",
                     destination.display()
@@ -384,21 +372,61 @@ fn main() {
 
         let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set by Cargo"));
         let swift_build_dir = out_dir.join("swift-rs").join("soniqo-swift");
-        measure_native("swift-resolve", || prepare_swift_package(&swift_build_dir));
-
-        measure_native("swift-build", || {
-            swift_rs::SwiftLinker::new(SONIQO_SWIFT_MACOS_DEPLOYMENT_TARGET)
-                .with_package("soniqo-swift", "./swift-lib/")
-                .link();
+        let profile = cargo_profile();
+        let configuration = swift_configuration();
+        let swift_output = swift_build_dir
+            .join("arm64-apple-macosx")
+            .join(configuration);
+        let archive = swift_output.join(native_outputs::SWIFT_ARCHIVE);
+        let metallib = swift_profile_dir(&swift_build_dir, profile).join(native_outputs::METALLIB);
+        let cache = env::var_os("LOOFAH_SONIQO_NATIVE_DIR").map(|root| {
+            PathBuf::from(root)
+                .join(env::var_os("TARGET").expect("TARGET is set by Cargo"))
+                .join(profile)
+                .join(configuration)
+        });
+        let restored = cache.as_ref().is_some_and(|cache| {
+            measure_native("native-cache-restore", || {
+                native_outputs::restore(cache, &archive, &metallib).unwrap_or_else(|error| {
+                    println!("cargo:warning=Could not restore Soniqo native outputs: {error}");
+                    false
+                })
+            })
         });
 
-        build_mlx_metallib();
+        let linker = swift_rs::SwiftLinker::new(SONIQO_SWIFT_MACOS_DEPLOYMENT_TARGET);
+        let metallib = if restored {
+            linker.link();
+            println!("cargo:rustc-link-search=native={}", swift_output.display());
+            println!("cargo:rustc-link-lib=static=soniqo-swift");
+            println!("cargo:rerun-if-changed=swift-lib");
+            metallib
+        } else {
+            measure_native("swift-resolve", || prepare_swift_package(&swift_build_dir));
+            measure_native("swift-build", || {
+                linker.with_package("soniqo-swift", "./swift-lib/").link();
+            });
+            let built_metallib =
+                measure_native("metal", || compile_mlx_metallib(&swift_build_dir, profile));
+            if let Some(cache) = &cache
+                && let Err(error) = measure_native("native-cache-save", || {
+                    native_outputs::save(cache, &archive, &built_metallib)
+                })
+            {
+                println!("cargo:warning=Could not save Soniqo native outputs: {error}");
+            }
+            built_metallib
+        };
+        publish_mlx_metallib(&out_dir, &metallib);
 
         for path in swift_runtime_rpaths() {
             println!("cargo:rustc-link-arg=-Wl,-rpath,{path}");
         }
 
         println!("cargo:rustc-link-lib=c++");
+        println!("cargo:rerun-if-env-changed=LOOFAH_SONIQO_NATIVE_DIR");
+        println!("cargo:rerun-if-changed={}", archive.display());
+        println!("cargo:rerun-if-changed={}", metallib.display());
         println!("cargo:rerun-if-changed=swift-lib/src");
         println!("cargo:rerun-if-changed=swift-lib/Package.swift");
         println!("cargo:rerun-if-changed=swift-lib/Package.resolved");
