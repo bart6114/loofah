@@ -254,11 +254,31 @@ jobs:
             profile="$RUNNER_TEMP/loofah-capture.provisionprofile"
             printf '%s' "$MACOS_CAPTURE_PROFILE_BASE64" | base64 -D > "$profile"
             python3 scripts/verify-icloud-profile.py "$profile" io.loofah.stable
-            configs+=(--config "$(jq -nc --arg profile "$profile" '{
-              bundle: {macOS: {
-                entitlements: "./Entitlements.capture.plist",
-                files: {"embedded.provisionprofile": $profile}
-              }}
+            # Tauri gives every external binary the app entitlements. Stage signed
+            # helpers separately so only the main app claims the iCloud profile.
+            env -u APPLE_API_KEY -u APPLE_API_ISSUER -u APPLE_API_KEY_PATH \
+              -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID \
+              pnpm -F desktop tauri bundle --ci --bundles app "${configs[@]}" \
+                --config '{"bundle":{"createUpdaterArtifacts":false}}'
+            helpers="$RUNNER_TEMP/loofah-signed-helpers"
+            mkdir -p "$helpers"
+            for name in loof check-permissions; do
+              install -m 755 "target/release/bundle/macos/Loofah.app/Contents/MacOS/$name" "$helpers/$name"
+              codesign --verify --strict "$helpers/$name"
+            done
+            "$helpers/loof" --version | grep -F "$(jq -r .version package.json)"
+            configs+=(--config "$(jq -nc --arg profile "$profile" --arg helpers "$helpers" '{
+              bundle: {
+                externalBin: [],
+                macOS: {
+                  entitlements: "./Entitlements.capture.plist",
+                  files: {
+                    "embedded.provisionprofile": $profile,
+                    "MacOS/loof": ($helpers + "/loof"),
+                    "MacOS/check-permissions": ($helpers + "/check-permissions")
+                  }
+                }
+              }
             }')")
           fi
           python3 .release-ci/.github/scripts/measure_build.py bundle -- pnpm -F desktop tauri bundle --ci --bundles app,dmg "${configs[@]}"
