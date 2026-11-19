@@ -24,7 +24,7 @@ runs:
       shell: bash
       env:
         LEGACY_LAYOUT: ${{ inputs.legacy-layout }}
-        NATIVE_SOURCES: ${{ hashFiles('**/Package.swift', '**/Package.resolved', '**/*.swift', '**/build.rs', 'vendor/whisper-rs/**', '!.release-ci/**') }}
+        NATIVE_SOURCES: ${{ hashFiles('**/Package.swift', '**/Package.resolved', '**/*.swift', '**/build.rs', 'crates/transcribe-soniqo/build/**', 'vendor/whisper-rs/**', '!.release-ci/**') }}
       run: |
         set -euo pipefail
         developer_dir=/Applications/Xcode_26.6.app/Contents/Developer
@@ -41,6 +41,7 @@ runs:
           echo "LOOFAH_BUILD_METRICS=$RUNNER_TEMP/build-metrics/native.tsv"
           if [ "$LEGACY_LAYOUT" != true ]; then
             echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/target"
+            echo "LOOFAH_SONIQO_NATIVE_DIR=$RUNNER_TEMP/soniqo-native/$native_key"
           fi
         } >> "$GITHUB_ENV"
         {
