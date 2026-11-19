@@ -1,4 +1,5 @@
 import { useRouteContext } from "@tanstack/react-router";
+import { platform } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import {
@@ -10,6 +11,7 @@ import { initEnhancerService } from "~/services/enhancer";
 import { captureAuthorization } from "~/services/enhancer/iphone-capture-sharing";
 import { useDesktopTabLifecycle } from "~/shared/desktop-tab-lifecycle";
 import { useTabs } from "~/store/zustand/tabs";
+import { IphoneCaptureWorker } from "~/stt/iphone-capture-worker";
 import { MainListenerControlBridge } from "~/stt/window-control";
 
 export function useClassicMainLifecycle() {
@@ -34,10 +36,15 @@ export function useClassicMainLifecycle() {
 }
 
 export function ClassicMainServices() {
+  const isOnboarding = useTabs(
+    (state) => state.currentTab?.type === "onboarding",
+  );
+
   return (
     <>
       <MainListenerControlBridge />
       <EnhancerInit />
+      {!isOnboarding && platform() === "macos" && <IphoneCaptureWorker />}
     </>
   );
 }
