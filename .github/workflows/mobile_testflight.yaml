@@ -21,18 +21,18 @@ concurrency:
 
 jobs:
   upload:
-    if: github.ref == 'refs/heads/main'
-    runs-on: macos-26
+    if: github.ref == 'refs/heads/chore/testflight-upload-ios27'
+    runs-on: xcode-27
     defaults:
       run:
         shell: bash
     env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       BUILD_NUMBER: ${{ inputs.build_number }}
       MAC_TAG: ${{ inputs.verified_mac_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/${{ inputs.verified_mac_tag }}
           fetch-depth: 0
           persist-credentials: false
       - name: Check published Mac receiver
@@ -42,12 +42,15 @@ jobs:
           set -euo pipefail
           [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*([.][0-9]+){0,2}$ ]]
           [[ "$MAC_TAG" =~ ^v[0-9]+[.][0-9]+[.][0-9]+$ ]]
+          test "$MAC_TAG" = v0.47.0
+          test "$(git diff --name-only "$MAC_TAG" HEAD -- apps/mobile apps/apple-capture)" = apps/mobile/RecordingWidget/Info.plist
           git cat-file -e "$MAC_TAG:apps/desktop/src-tauri/Entitlements.capture.plist"
+          xcodebuild -version
+          test "$(xcrun --sdk iphoneos --show-sdk-version)" = 27.2
           gh release view "$MAC_TAG" --json isDraft,assets | jq -e --arg dmg "Loofah_${MAC_TAG#v}_aarch64.dmg" '
             .isDraft == false and any(.assets[]; .name == $dmg) and any(.assets[]; .name == ($dmg + ".sha256"))
           '
-      - name: Archive and export iPhone app
-        env:
+      - env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -64,6 +67,26 @@ jobs:
           xcodebuild archive -scheme Loofah -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Loofah.xcarchive" "${auth[@]}" \
             MARKETING_VERSION="$marketing_version" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+      - run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/Loofah.xcarchive.tar.gz" -C "$RUNNER_TEMP" Loofah.xcarchive
+          openssl cms -encrypt -binary -aes256 -outform DER \
+            -in "$RUNNER_TEMP/Loofah.xcarchive.tar.gz" -out "$RUNNER_TEMP/Loofah.xcarchive.cms" \
+            .github/ios27-archive-transfer.crt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loofah-ios27-archive
+          path: ${{ runner.temp }}/Loofah.xcarchive.cms
+          retention-days: 3
+          compression-level: 0
+      - env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          cd apps/mobile
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8"
+            -authenticationKeyID "$APPLE_API_KEY" -authenticationKeyIssuerID "$APPLE_API_ISSUER")
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Loofah.xcarchive" \
             -exportOptionsPlist ExportOptions.plist -exportPath "$RUNNER_TEMP/loofah-ipa" "${auth[@]}"
       - name: Verify exported app and upload to TestFlight
@@ -76,6 +99,8 @@ jobs:
           ditto -x -k "$ipa" "$RUNNER_TEMP/loofah-ipa-check"
           app="$RUNNER_TEMP/loofah-ipa-check/Payload/Loofah.app"
           test "$(plutil -extract CFBundleVersion raw -o - "$app/Info.plist")" = "$BUILD_NUMBER"
+          test "$(plutil -extract DTSDKName raw -o - "$app/Info.plist")" = iphoneos27.2
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Info.plist")" = "${MAC_TAG#v}"
           test "$(plutil -extract UIDeviceFamily json -o - "$app/Info.plist")" = '[1]'
           test "$(plutil -extract NSSupportsLiveActivities raw -o - "$app/Info.plist")" = true
           widget="$app/PlugIns/RecordingWidget.appex/Info.plist"
