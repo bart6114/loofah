@@ -33,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: refs/tags/${{ inputs.verified_mac_tag }}
           fetch-depth: 0
           persist-credentials: false
       - name: Check published Mac receiver
@@ -42,9 +43,8 @@ jobs:
           set -euo pipefail
           [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*([.][0-9]+){0,2}$ ]]
           [[ "$MAC_TAG" =~ ^v[0-9]+[.][0-9]+[.][0-9]+$ ]]
-          test "$MAC_TAG" = v0.47.0
-          test "$(git diff --name-only "$MAC_TAG" HEAD -- apps/mobile apps/apple-capture)" = apps/mobile/RecordingWidget/Info.plist
           git cat-file -e "$MAC_TAG:apps/desktop/src-tauri/Entitlements.capture.plist"
+          git grep -qF '.offer' "$MAC_TAG" -- apps/desktop/src-tauri/apple-capture/Receiver.swift
           xcodebuild -version
           test "$(xcrun --sdk iphoneos --show-sdk-version)" = 27.2
           gh release view "$MAC_TAG" --json isDraft,assets | jq -e --arg dmg "Loofah_${MAC_TAG#v}_aarch64.dmg" '
@@ -67,12 +67,19 @@ jobs:
           xcodebuild archive -scheme Loofah -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Loofah.xcarchive" "${auth[@]}" \
             MARKETING_VERSION="$marketing_version" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .archive-transfer
+          sparse-checkout: .github/ios27-archive-transfer.crt
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - run: |
           set -euo pipefail
           tar -czf "$RUNNER_TEMP/Loofah.xcarchive.tar.gz" -C "$RUNNER_TEMP" Loofah.xcarchive
           openssl cms -encrypt -binary -aes256 -outform DER \
             -in "$RUNNER_TEMP/Loofah.xcarchive.tar.gz" -out "$RUNNER_TEMP/Loofah.xcarchive.cms" \
-            .github/ios27-archive-transfer.crt
+            .archive-transfer/.github/ios27-archive-transfer.crt
       - uses: actions/upload-artifact@v4
         with:
           name: loofah-ios27-archive
