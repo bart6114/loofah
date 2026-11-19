@@ -79,6 +79,7 @@ jobs:
           test "$(plutil -extract UIDeviceFamily json -o - "$app/Info.plist")" = '[1]'
           test "$(plutil -extract NSSupportsLiveActivities raw -o - "$app/Info.plist")" = true
           widget="$app/PlugIns/RecordingWidget.appex/Info.plist"
+          test "$(plutil -extract CFBundleDisplayName raw -o - "$widget")" = Loofah
           test "$(plutil -extract CFBundleIdentifier raw -o - "$widget")" = io.loofah.notes.RecordingWidget
           test "$(plutil -extract CFBundleVersion raw -o - "$widget")" = "$BUILD_NUMBER"
           test "$(plutil -extract CFBundleShortVersionString raw -o - "$widget")" = "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Info.plist")"
