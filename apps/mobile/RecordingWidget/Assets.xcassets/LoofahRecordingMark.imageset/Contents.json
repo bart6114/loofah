@@ -1,0 +1,9 @@
+{
+  "images": [
+    { "filename": "loofah-mark.png", "idiom": "universal", "scale": "1x" },
+    { "filename": "loofah-mark@2x.png", "idiom": "universal", "scale": "2x" },
+    { "filename": "loofah-mark@3x.png", "idiom": "universal", "scale": "3x" }
+  ],
+  "info": { "author": "xcode", "version": 1 },
+  "properties": { "template-rendering-intent": "template" }
+}

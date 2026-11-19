@@ -1,3 +1,4 @@
+import { platform } from "@tauri-apps/plugin-os";
 import { memo } from "react";
 
 import { AboutDialog } from "./about-dialog";
@@ -14,6 +15,7 @@ import {
 } from "~/sidebar/use-custom-sidebar";
 import { useTabs } from "~/store/zustand/tabs";
 import { AudioImportWorker } from "~/stt/audio-import-worker";
+import { IphoneCaptureWorker } from "~/stt/iphone-capture-worker";
 
 export function ClassicMainShellFrame() {
   const { leftsidebar } = useShell();
@@ -44,6 +46,7 @@ export function ClassicMainShellFrame() {
       <AboutDialog />
       <AudioImportDialog />
       <AudioImportWorker />
+      {!isOnboarding && platform() === "macos" && <IphoneCaptureWorker />}
     </MainShellScaffold>
   );
 }

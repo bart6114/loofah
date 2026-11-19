@@ -27,7 +27,14 @@ type QueueEmptySummaryResult =
   | { type: "queued" }
   | { type: "summary_exists"; noteId: string };
 
+class IphoneCaptureSharingDeclined extends Error {
+  constructor() {
+    super("Summary sharing was declined for this iPhone capture.");
+  }
+}
+
 type EnhanceOpts = {
+  awaitCompletion?: boolean;
   regenerate?: boolean;
   isAuto?: boolean;
   targetNoteId?: string;
@@ -48,6 +55,9 @@ type EnhancerDeps = {
     getState: () => Pick<TasksActions, "generate" | "getState" | "reset">;
   };
   getModel: () => LanguageModel | null;
+  getCaptureAuthorization?: () =>
+    | ((sessionId: string) => Promise<boolean>)
+    | undefined;
 };
 
 type TiptapNode = {
@@ -168,22 +178,44 @@ export class EnhancerService {
   async queueAutoEnhanceIfSummaryEmpty(
     sessionId: string,
   ): Promise<QueueEmptySummaryResult> {
+    const summary = await this.inspectSummary(sessionId);
+    if (summary.existing)
+      return { type: "summary_exists", noteId: summary.existing.id };
+
+    this.queueAutoEnhance(sessionId, false);
+    return { type: "queued" };
+  }
+
+  async finishImportedCaptureSummary(sessionId: string): Promise<boolean> {
+    const summary = await this.inspectSummary(sessionId);
+    if (summary.existing || !summary.eligible) return true;
+    try {
+      const result = await this.enhance(sessionId, {
+        isAuto: true,
+        regenerate: false,
+        awaitCompletion: true,
+      });
+      if (result.type === "no_model") return false;
+      return Boolean((await this.inspectSummary(sessionId)).existing);
+    } catch (error) {
+      if (error instanceof IphoneCaptureSharingDeclined) return true;
+      throw error;
+    }
+  }
+
+  private async inspectSummary(sessionId: string) {
     const snapshot = await this.loadSession(sessionId);
     const existingNote = selectSummaryDocument(snapshot.enhancedNotes);
 
     if (existingNote && hasSummaryContent(existingNote.content)) {
-      return { type: "summary_exists", noteId: existingNote.id };
+      return { existing: existingNote, eligible: true };
     }
 
-    if (!existingNote) {
-      const eligibility = getEligibility(snapshot.transcripts);
-      if (!eligibility.eligible && eligibility.wordCount > 0) {
-        await this.ensureNote(sessionId);
-      }
+    const eligibility = getEligibility(snapshot.transcripts);
+    if (!existingNote && !eligibility.eligible && eligibility.wordCount > 0) {
+      await this.ensureNote(sessionId);
     }
-
-    this.queueAutoEnhance(sessionId, false);
-    return { type: "queued" };
+    return { existing: null, eligible: eligibility.eligible };
   }
 
   private async tryAutoEnhance(
@@ -303,6 +335,7 @@ export class EnhancerService {
 
     const model = getModel();
     if (!model) return { type: "no_model" };
+    const authorize = this.deps.getCaptureAuthorization?.();
 
     await flushDatabaseWrites([`session:${sessionId}:note`]);
     const snapshot = await this.loadSession(sessionId);
@@ -332,7 +365,10 @@ export class EnhancerService {
       return { type: "already_active", noteId: note.id };
     }
 
-    void aiTaskStore.getState().generate(enhanceTaskId, {
+    if (authorize && !(await authorize(sessionId))) {
+      throw new IphoneCaptureSharingDeclined();
+    }
+    const generation = aiTaskStore.getState().generate(enhanceTaskId, {
       model,
       taskType: "enhance",
       args: {
@@ -340,6 +376,14 @@ export class EnhancerService {
         ...(note.kind === "summary" ? {} : { templateDocumentId: note.id }),
       },
     });
+
+    if (opts?.awaitCompletion) {
+      await generation;
+      const task = aiTaskStore.getState().getState(enhanceTaskId);
+      if (task?.status !== "success") {
+        throw task?.error ?? new Error("The summary could not be generated.");
+      }
+    }
 
     return { type: "started", noteId: note.id };
   }

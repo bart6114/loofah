@@ -1,9 +1,13 @@
 import { useRouteContext } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import { useLanguageModel } from "~/ai/hooks";
+import {
+  createLanguageModel,
+  useLLMConnection,
+} from "~/ai/hooks/useLLMConnection";
 import { takePendingWelcomeSession } from "~/onboarding/welcome-note";
 import { initEnhancerService } from "~/services/enhancer";
+import { captureAuthorization } from "~/services/enhancer/iphone-capture-sharing";
 import { useDesktopTabLifecycle } from "~/shared/desktop-tab-lifecycle";
 import { useTabs } from "~/store/zustand/tabs";
 import { MainListenerControlBridge } from "~/stt/window-control";
@@ -43,17 +47,19 @@ function EnhancerInit() {
     from: "__root__",
   });
 
-  const model = useLanguageModel();
-
-  const modelRef = useRef(model);
-  modelRef.current = model;
+  const { conn } = useLLMConnection();
+  const model = useMemo(() => conn && createLanguageModel(conn), [conn]);
+  const selection = useRef({ conn, model });
+  selection.current = { conn, model };
 
   useEffect(() => {
     if (!aiTaskStore) return;
 
     const service = initEnhancerService({
       aiTaskStore,
-      getModel: () => modelRef.current,
+      getModel: () => selection.current.model,
+      getCaptureAuthorization: () =>
+        captureAuthorization(selection.current.conn),
     });
 
     return () => service.dispose();

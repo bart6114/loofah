@@ -24,7 +24,7 @@ import { useConfigValues } from "~/shared/config";
 
 type LanguageModelV3 = Parameters<typeof wrapLanguageModel>[0]["model"];
 
-type LLMConnectionInfo = {
+export type LLMConnectionInfo = {
   providerId: ProviderId;
   modelId: string;
   baseUrl: string;
@@ -220,7 +220,9 @@ const wrapWithThinkingMiddleware = (
   });
 };
 
-const createLanguageModel = (conn: LLMConnectionInfo): LanguageModelV3 => {
+export const createLanguageModel = (
+  conn: LLMConnectionInfo,
+): LanguageModelV3 => {
   switch (conn.providerId) {
     case CHATGPT_PROVIDER:
       return createChatgptModel(conn.modelId);

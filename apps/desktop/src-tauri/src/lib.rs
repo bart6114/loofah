@@ -6,6 +6,7 @@ mod dictation;
 mod embedded_cli;
 mod ext;
 mod identifier_migration;
+mod iphone_capture;
 mod legacy_db;
 mod legacy_llm;
 mod recording_meta;
@@ -355,6 +356,11 @@ pub async fn main() {
                 }
             }
 
+            #[cfg(target_os = "macos")]
+            if iphone_capture::is_entitled() {
+                iphone_capture::spawn(app_handle.clone());
+            }
+
             if let (Some(ctx), Some(handle)) = (&root_supervisor_ctx, root_supervisor_handle) {
                 supervisor::monitor_supervisor(handle, ctx.is_exiting.clone(), app_handle.clone());
             }
@@ -558,6 +564,12 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             dictation::dictation_copy,
             dictation::dictation_discard,
             startup::get_startup_status::<tauri::Wry>,
+            iphone_capture::iphone_capture_receiver::<tauri::Wry>,
+            iphone_capture::iphone_capture_set_receiver::<tauri::Wry>,
+            iphone_capture::iphone_capture_jobs::<tauri::Wry>,
+            iphone_capture::is_iphone_capture::<tauri::Wry>,
+            iphone_capture::iphone_capture_audio::<tauri::Wry>,
+            iphone_capture::iphone_capture_advance::<tauri::Wry>,
             session_store::commands::session_write_meta::<tauri::Wry>,
             session_store::commands::session_update_meta::<tauri::Wry>,
             session_store::commands::session_tag_context::<tauri::Wry>,

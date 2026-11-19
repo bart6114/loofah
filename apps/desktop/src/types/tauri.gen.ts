@@ -281,6 +281,80 @@ export const commands = {
   async getStartupStatus(): Promise<StartupStatus> {
     return await TAURI_INVOKE("get_startup_status");
   },
+  async iphoneCaptureReceiver(): Promise<
+    Result<CaptureReceiverStatus, string>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("iphone_capture_receiver"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async iphoneCaptureSetReceiver(
+    enabled: boolean,
+    expectedReceiver: string | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("iphone_capture_set_receiver", {
+          enabled,
+          expectedReceiver,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async iphoneCaptureJobs(): Promise<Result<[string, CaptureStage][], string>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("iphone_capture_jobs") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async isIphoneCapture(id: string): Promise<Result<boolean, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("is_iphone_capture", { id }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async iphoneCaptureAudio(id: string): Promise<Result<string | null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("iphone_capture_audio", { id }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async iphoneCaptureAdvance(
+    id: string,
+    expected: CaptureStage,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("iphone_capture_advance", { id, expected }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async sessionWriteMeta(meta: SessionMeta): Promise<Result<null, string>> {
     try {
       return {
@@ -1016,6 +1090,13 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
+export type CaptureReceiverStatus = {
+  available: boolean;
+  enabled: boolean;
+  receiver: string | null;
+  vault: string;
+};
+export type CaptureStage = "transcribe" | "summarize";
 export type ChatgptAccount = { email: string; planType: string };
 export type ChatgptError = {
   code: string;

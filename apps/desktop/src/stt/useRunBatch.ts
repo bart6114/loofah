@@ -21,6 +21,7 @@ import { commands } from "~/types/tauri.gen";
 
 type RunOptions = {
   imported?: boolean;
+  persistAfterCompletion?: boolean;
   handlePersist?: BatchPersistCallback;
   model?: string;
   baseUrl?: string;
@@ -173,6 +174,30 @@ export const useRunBatch = (sessionId: string) => {
         const createdAt = new Date().toISOString();
         const memoMd = session?.raw_md ?? "";
         let transcriptId: string | null = null;
+        let completedWords: WordWithId[] = [];
+        let completedHints: SpeakerHintWithId[] = [];
+        const replaceBatchTranscript = (
+          transcriptId: string,
+          words: WordWithId[],
+          speakerHints: SpeakerHintWithId[],
+        ) =>
+          createTranscript({
+            id: transcriptId,
+            sessionId,
+            ownerUserId: session?.user_id ?? "",
+            createdAt,
+            startedAt:
+              options?.persistAfterCompletion && session
+                ? Date.parse(session.created_at)
+                : Date.now(),
+            memo: memoMd,
+            source: "batch_transcription",
+            provider: target.provider,
+            model: target.model,
+            words,
+            speakerHints,
+            replaceSession: true,
+          });
         const inferredNumSpeakers =
           options?.numSpeakers === undefined &&
           options?.minSpeakers === undefined &&
@@ -246,23 +271,18 @@ export const useRunBatch = (sessionId: string) => {
               });
             });
 
-            if (!transcriptId) {
+            if (options?.persistAfterCompletion) {
+              if (persistOptions?.mode === "replace") {
+                completedWords = newWords;
+                completedHints = newHints;
+              } else {
+                completedWords.push(...newWords);
+                completedHints.push(...newHints);
+              }
+            } else if (!transcriptId) {
               transcriptId = id();
               trackTranscriptWrite(
-                createTranscript({
-                  id: transcriptId,
-                  sessionId,
-                  ownerUserId: session?.user_id ?? "",
-                  createdAt,
-                  startedAt: Date.now(),
-                  memo: memoMd,
-                  source: "batch_transcription",
-                  provider: target.provider,
-                  model: target.model,
-                  words: newWords,
-                  speakerHints: newHints,
-                  replaceSession: true,
-                }),
+                replaceBatchTranscript(transcriptId, newWords, newHints),
               );
             } else {
               trackTranscriptWrite(
@@ -296,6 +316,9 @@ export const useRunBatch = (sessionId: string) => {
         }
 
         if (transcriptWriteError) throw transcriptWriteError;
+        if (options?.persistAfterCompletion && completedWords.length > 0) {
+          await replaceBatchTranscript(id(), completedWords, completedHints);
+        }
       } finally {
         activity.finish();
       }

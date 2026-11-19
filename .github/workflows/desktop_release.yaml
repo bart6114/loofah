@@ -3,6 +3,10 @@ name: desktop-release
 on:
   workflow_dispatch:
     inputs:
+      publish-windows:
+        description: Publish Windows installers and updater feed
+        type: boolean
+        default: true
       windows-signing-mode:
         description: Windows publisher signing
         type: choice
@@ -72,8 +76,10 @@ jobs:
           ref: ${{ steps.tag.outputs.tag }}
           persist-credentials: false
       - id: windows
+        env:
+          PUBLISH_WINDOWS: ${{ inputs.publish-windows }}
         run: |
-          if [ -f apps/desktop/src-tauri/scripts/sign-windows-azure.ps1 ]; then
+          if [ "$PUBLISH_WINDOWS" = true ] && [ -f apps/desktop/src-tauri/scripts/sign-windows-azure.ps1 ]; then
             echo 'release_windows=true' >> "$GITHUB_OUTPUT"
           else
             echo 'release_windows=false' >> "$GITHUB_OUTPUT"
@@ -170,8 +176,28 @@ jobs:
       - run: python3 .release-ci/.github/scripts/measure_build.py cli -- bash apps/desktop/src-tauri/scripts/build-cli-sidecar.sh
       - run: python3 .release-ci/.github/scripts/measure_build.py desktop -- pnpm -F desktop tauri build --ci --no-bundle --config ./src-tauri/tauri.conf.stable.json -- --timings
       - run: python3 .release-ci/.github/scripts/native_cache_inventory.py built
-      - run: python3 .release-ci/.github/scripts/measure_build.py bundle -- pnpm -F desktop tauri bundle --ci --bundles app,dmg --config ./src-tauri/tauri.conf.stable.json
+      - name: Bundle signed Mac app
+        run: |
+          set -euo pipefail
+          configs=(--config ./src-tauri/tauri.conf.stable.json)
+          if [[ -f apps/desktop/src-tauri/Entitlements.capture.plist ]]; then
+            if [[ -z "$MACOS_CAPTURE_PROFILE_BASE64" ]]; then
+              echo "::error::MACOS_CAPTURE_PROFILE_BASE64 must contain the production Mac Developer ID profile"
+              exit 1
+            fi
+            profile="$RUNNER_TEMP/loofah-capture.provisionprofile"
+            printf '%s' "$MACOS_CAPTURE_PROFILE_BASE64" | base64 -D > "$profile"
+            python3 scripts/verify-icloud-profile.py "$profile" io.loofah.stable
+            configs+=(--config "$(jq -nc --arg profile "$profile" '{
+              bundle: {macOS: {
+                entitlements: "./Entitlements.capture.plist",
+                files: {"embedded.provisionprofile": $profile}
+              }}
+            }')")
+          fi
+          python3 .release-ci/.github/scripts/measure_build.py bundle -- pnpm -F desktop tauri bundle --ci --bundles app,dmg "${configs[@]}"
         env:
+          MACOS_CAPTURE_PROFILE_BASE64: ${{ secrets.MACOS_CAPTURE_PROFILE_BASE64 }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -180,6 +206,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
       - uses: ./.release-ci/.github/actions/verify_macos_bundle
+      - name: Verify Mac capture entitlement
+        if: ${{ hashFiles('apps/desktop/src-tauri/Entitlements.capture.plist') != '' }}
+        run: |
+          app="target/release/bundle/macos/Loofah.app"
+          python3 scripts/verify-icloud-profile.py "$app/Contents/embedded.provisionprofile" io.loofah.stable --app "$app"
       - name: Find DMG
         id: dmg
         run: |

@@ -7,25 +7,25 @@ Loofah has no account or cloud backend. Your vault is the source of truth for no
 
 ## Files in the vault
 
-The app stores notes, transcripts, attachments, settings, recordings, and people as files in the vault. On Mac, the default vault is in the app's data directory. You can change its location under **Settings → App → Storage**. On iPhone, the vault starts in Loofah's private app storage.
+The app stores notes, transcripts, attachments, settings, recordings, and people as files in the vault. On Mac, the default vault is in the app's data directory. You can change its location under **Settings → Storage**. On iPhone, Loofah stores drafts and finished captures in private app storage.
 
-To use the same vault on another Mac, move it into a supported local sync folder. On iPhone, you can optionally connect an iCloud Drive vault. This copies vault files through your Apple account while keeping a local copy on the phone. See [Sync your notes](/syncing).
+To use the same vault on another Mac, move it into a supported local sync folder. The iPhone app keeps drafts locally and sends finished captures through an app-private inbox in your iCloud account. It connects to iCloud for handoff. The iPhone removes a capture once the designated Mac confirms that it saved the capture in its vault. See [Sync your notes](/syncing).
 
 You can inspect and edit the vault with other tools. The app watches for external changes and refreshes its in-memory index. If the app is about to overwrite a version it did not write, it first moves that version into the vault's `.trash/` folder.
 
 Downloaded transcription and speaker-detection models are also local, but they are managed separately from meeting files.
 
-## Remote Intelligence providers
+## Remote Intelligence on Mac
 
-Transcription runs locally on your Mac or iPhone; Mac speaker detection is local too. If you enable a remote Intelligence provider, the app sends the prompt and session context needed for summaries and titles. On iPhone, first review the data-sharing disclosure in **Settings → Summaries** and explicitly allow sharing with your selected provider, server, and model. Saving a provider alone does not grant permission. After permission is saved, summaries can run automatically after transcription. Changing the provider, server, or model requires fresh permission on that installation. Clear the permission checkbox and save, or select **Off**, to stop future sharing. iCloud or another sync service can also receive vault files if you choose to connect it.
+Transcription and speaker detection run locally on your Mac. If you enable a remote Intelligence provider, the app sends the prompt and session context needed for summaries and titles. For an iPhone capture, Loofah asks on the Mac before sharing content with an external provider. The permission prompt shows the recipient and the data involved. iCloud or another sync service can also receive vault files if you choose to connect it.
 
-API keys are stored in the macOS login Keychain or iPhone Keychain. Review a provider's retention and training policy before using it with sensitive meetings. Loofah is free, but a provider you choose may charge separately.
+API keys are stored in the macOS login Keychain. Review a provider's retention and training policy before using it with sensitive meetings. Loofah is free, but a provider you choose may charge separately.
 
-For local summaries on Mac, use LM Studio or Ollama. On iPhone, you can connect to a reachable LM Studio or Ollama server on another device. See [Use the app offline](/offline).
+For local summaries on Mac, use LM Studio or Ollama. See [Use the app offline](/offline).
 
 ## Audio retention
 
-Loofah keeps recordings indefinitely. Recording and transcription never automatically delete audio, including when you transcribe through the CLI.
+Your Mac keeps vault recordings until you delete them. Transcription keeps the vault recording, including when you transcribe through the CLI.
 
 On Mac, you can explicitly delete a recording without removing its note, summary, or transcript. To find a recording, open the meeting's **•••** menu and choose **Show in Finder**.
 
