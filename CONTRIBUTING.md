@@ -19,6 +19,13 @@ compiler, and one CI-only `CARGO_TARGET_DIR` at the repository root. The CLI bui
 first so the desktop can reuse compatible dependencies. Bundles are under
 `target/release/bundle/`; local development keeps its existing target layout.
 
+When the two builds need separate Cargo units for Soniqo, the first publishes the
+Swift archive and Metal library to the runner's temporary directory. The second
+checks their SHA-256 hashes and copies them into its own `OUT_DIR`. Sharing is
+limited to the same native build inputs, target, Cargo profile, and Swift
+configuration in a single job. Build timing artifacts record the restore and save
+steps alongside the existing native compile timings.
+
 The release cache preserves workspace libraries and native Swift/MLX build outputs.
 Its identity includes the Rust toolchain, Cargo configuration, Xcode/SDK, hosted runner image revision, native
 sources and Swift package locks. Unused preinstalled Rust toolchains are removed
@@ -69,6 +76,12 @@ notarization; stable release jobs separately notarize the outer DMG. Compare bui
 and cache time separately from runner queueing. Validate the bundled CLI, Metal
 resources, signatures and local transcription before accepting a performance
 change; the target is a 25% reduction in warm build plus cache overhead.
+
+Windows ARM64 runs Rust and signing verification alongside the installer build
+and installed-app smoke test. Both jobs must succeed when native Windows CI is
+required. The ARM64 verification job has its own Rust cache, so it can retain
+debug outputs alongside the installer job's release outputs. The `bundle-only`
+dispatch still runs the installer and Whisper smoke tests on both architectures.
 
 Linux and Intel macOS CLI builds run alongside the desktop build. The desktop
 supplies the Apple Silicon CLI archive. CLI feed publication waits for all required
