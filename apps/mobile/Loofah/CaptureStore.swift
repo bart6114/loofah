@@ -6,11 +6,14 @@ import UIKit
 struct LocalCapture: Codable, Identifiable {
   var capture: Capture
   var account: Data?
+  var queued: Bool? = nil
   var receipt: CaptureReceipt?
 
   var id: UUID { capture.id }
+  var isQueued: Bool { queued == true || receipt != nil }
 
   var title: String {
+    if let title = capture.customTitle { return title }
     let firstLine = capture.note.split(maxSplits: 1, whereSeparator: \.isNewline).first?
       .trimmingCharacters(in: .whitespaces)
     if let firstLine, !firstLine.isEmpty { return String(firstLine.prefix(80)) }
@@ -38,11 +41,12 @@ enum CaptureProblem: Equatable {
 }
 
 enum CaptureDeliveryStatus: Equatable {
-  case waiting, unavailable, confirmAccount, originalAccount, cloudStorage, deviceStorage
+  case waiting, syncing, unavailable, confirmAccount, originalAccount, cloudStorage, deviceStorage
 
   var title: String {
     switch self {
-    case .waiting: "Waiting for Mac"
+    case .waiting: "Waiting for sync"
+    case .syncing: "Syncing to Mac"
     case .unavailable: "iCloud unavailable"
     case .confirmAccount: "Confirm Apple Account"
     case .originalAccount: "Original account required"
@@ -53,7 +57,7 @@ enum CaptureDeliveryStatus: Equatable {
 
   var detail: String? {
     switch self {
-    case .waiting: nil
+    case .waiting, .syncing: nil
     case .unavailable: "Turn on iCloud Drive to send this capture."
     case .confirmAccount: "This capture was made while signed out."
     case .originalAccount: "Sign in to the Apple Account used to create this capture."
@@ -78,6 +82,7 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
   @Published private var finishing: UUID?
   @Published var problem: CaptureProblem?
   @Published private var recovering: Set<UUID> = []
+  @Published private var preparingHandoff: Set<UUID> = []
   @Published private var cloudIssue: CaptureDeliveryStatus?
 
   private let root: URL
@@ -137,7 +142,8 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
       try FileManager.default.createDirectory(
         at: directory, withIntermediateDirectories: false,
         attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
-      try Self.save(LocalCapture(capture: capture, account: account), in: directory)
+      let local = LocalCapture(capture: capture, account: account)
+      try Self.save(local, in: directory)
       if wantsAudio {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .default)
@@ -162,7 +168,7 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
         recording = capture.id
         startActivity(for: capture)
       }
-      reload()
+      captures.insert(local, at: 0)
       return capture.id
     } catch {
       try? FileManager.default.removeItem(at: directory)
@@ -174,22 +180,26 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
   }
 
-  func edit(_ id: UUID, note: String) {
-    guard !busy, !recovering.contains(id),
-      let index = captures.firstIndex(where: { $0.id == id && $0.receipt == nil })
+  func edit<Value>(_ id: UUID, _ field: WritableKeyPath<Capture, Value>, _ value: Value) {
+    guard !busy, !isFinishing(id),
+      let index = captures.firstIndex(where: { $0.id == id && canEdit($0) })
     else {
       return
     }
-    captures[index].capture.note = note
-    do { try Self.save(captures[index], in: folder(id)) } catch {
+    var local = captures[index]
+    local.capture[keyPath: field] = value
+    do {
+      try Self.save(local, in: folder(id))
+      captures[index] = local
+    } catch {
       self.problem = .operation(error.localizedDescription)
     }
   }
 
   func discardEmptyNote(_ id: UUID) {
     guard let index = captures.firstIndex(where: { $0.id == id }),
-      captures[index].receipt == nil, !captures[index].capture.recording,
-      captures[index].capture.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      !captures[index].isQueued, !captures[index].capture.recording,
+      !captures[index].capture.hasText
     else { return }
     do {
       try FileManager.default.removeItem(at: folder(id))
@@ -201,7 +211,7 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
   func finish(_ id: UUID) async -> Bool {
     guard !busy, !recovering.contains(id),
-      let local = captures.first(where: { $0.id == id && $0.receipt == nil })
+      let local = captures.first(where: { $0.id == id && !$0.isQueued })
     else {
       return false
     }
@@ -245,8 +255,12 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     finishing == id || recovering.contains(id)
   }
 
+  func canEdit(_ item: LocalCapture) -> Bool {
+    item.receipt == nil && !preparingHandoff.contains(item.id)
+  }
+
   private func recoverRecordings() {
-    let drafts = captures.filter { $0.capture.recording && $0.receipt == nil }
+    let drafts = captures.filter { $0.capture.recording && !$0.isQueued }
     guard !drafts.isEmpty else { return }
     recovering = Set(drafts.map(\.id))
     Task {
@@ -284,15 +298,13 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
       if local.capture.recording, try !RecordingWAV.finalize(at: audio) {
         local.capture = Capture(
           id: local.id, createdAt: local.capture.createdAt, finishedAt: local.capture.finishedAt,
-          note: local.capture.note, recording: false)
+          title: local.capture.title, note: local.capture.note, recording: false)
       }
-      if !local.capture.recording,
-        local.capture.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      {
+      if !local.capture.recording, !local.capture.hasText {
         try FileManager.default.removeItem(at: directory)
         return nil
       }
-      local.receipt = try CapturePackage.seal(local.capture, in: directory)
+      local.queued = true
       try Self.save(local, in: directory)
       return local
     }.value
@@ -305,13 +317,14 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
   }
 
   func useCurrentAccount(_ id: UUID) {
-    guard !busy, var local = captures.first(where: { $0.id == id && $0.account == nil }),
+    guard !busy, let index = captures.firstIndex(where: { $0.id == id && $0.account == nil }),
       let account = CaptureInbox.account()
     else { return }
     do {
+      var local = captures[index]
       local.account = try CaptureInbox.archiveAccount(account)
       try Self.save(local, in: folder(id))
-      reload()
+      captures[index] = local
       CaptureAppDelegate.scheduleHandoff()
       sync()
     } catch {
@@ -322,7 +335,7 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
   var hasAccount: Bool { CaptureInbox.account() != nil }
 
   var hasPendingHandoff: Bool {
-    if captures.contains(where: { $0.receipt != nil && $0.account != nil }) { return true }
+    if captures.contains(where: { $0.isQueued && $0.account != nil }) { return true }
     let acks = root.appendingPathComponent(".acknowledgments", isDirectory: true)
     return (try? FileManager.default.contentsOfDirectory(atPath: acks.path).isEmpty) == false
   }
@@ -335,43 +348,100 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
     cloudSyncRunning = true
     cloudSyncRequested = false
-    // Only the worker removes finished captures. Draft edits stay on the main actor.
-    let finished = captures.filter { $0.receipt != nil }
+    let finished = captures.filter(\.isQueued)
     worker.async { [root] in
-      let issue = Self.handoff(finished, in: root)
+      let (issue, requested) = Self.handoff(finished, in: root)
       Task { @MainActor [weak self] in
         guard let self else { return }
-        self.cloudSyncRunning = false
         self.cloudIssue = issue
         self.captures.removeAll {
           $0.receipt != nil && !FileManager.default.fileExists(atPath: self.folder($0.id).path)
         }
-        let completions = self.syncCompletions
-        self.syncCompletions.removeAll()
-        for completion in completions { completion() }
-        if self.cloudSyncRequested { self.sync() }
+        let claimed = self.captures.filter {
+          requested.contains($0.id) && $0.receipt == nil
+            && ($0.capture.recording || $0.capture.hasText)
+        }
+        if claimed.isEmpty {
+          self.finishSync()
+        } else {
+          self.prepareHandoff(claimed)
+        }
       }
     }
   }
 
+  private func prepareHandoff(_ captures: [LocalCapture]) {
+    // Read the latest edits on the main actor before locking the capture for transfer.
+    preparingHandoff = Set(captures.map(\.id))
+    worker.async { [root] in
+      var sealed: [UUID: LocalCapture] = [:]
+      var issue: CaptureDeliveryStatus?
+      for var local in captures {
+        let directory = root.appendingPathComponent(local.capture.name, isDirectory: true)
+        do {
+          local.receipt = try CapturePackage.seal(local.capture, in: directory)
+          try Self.save(local, in: directory)
+          sealed[local.id] = local
+        } catch {
+          issue = Self.storageIssue(error) ?? issue
+        }
+      }
+      let updates = sealed
+      let failure = issue
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        for index in self.captures.indices {
+          if let local = updates[self.captures[index].id] {
+            self.captures[index] = local
+          }
+        }
+        self.preparingHandoff = []
+        if let failure { self.cloudIssue = failure }
+        self.finishSync(sendPrepared: !updates.isEmpty)
+      }
+    }
+  }
+
+  private func finishSync(sendPrepared: Bool = false) {
+    cloudSyncRunning = false
+    if sendPrepared {
+      sync()
+      return
+    }
+    let completions = syncCompletions
+    syncCompletions.removeAll()
+    for completion in completions { completion() }
+    if cloudSyncRequested { sync() }
+  }
+
   private nonisolated static func handoff(_ captures: [LocalCapture], in root: URL)
-    -> CaptureDeliveryStatus?
+    -> (CaptureDeliveryStatus?, Set<UUID>)
   {
+    var requested: Set<UUID> = []
     do {
       guard let inbox = try CaptureInbox() else {
-        return .unavailable
+        return (.unavailable, requested)
       }
       let files = FileManager.default
       let acks = root.appendingPathComponent(".acknowledgments", isDirectory: true)
       try files.createDirectory(at: acks, withIntermediateDirectories: true)
       var issue: CaptureDeliveryStatus?
+      let receiver = (try? inbox.read("receiver.json", as: UUID?.self)) ?? nil
       for capture in captures {
-        guard let receipt = capture.receipt, let account = capture.account,
+        guard let account = capture.account,
           (try? inbox.checkAccount(account)) != nil
         else { continue }
         let name = capture.capture.name
         let directory = root.appendingPathComponent(name, isDirectory: true)
         do {
+          guard let receipt = capture.receipt else {
+            if let receiver, try inbox.read(name + ".request", as: UUID.self) == receiver {
+              requested.insert(capture.id)
+            } else if try !inbox.names().contains(name + ".offer") {
+              try inbox.write(capture.id, to: name + ".offer")
+            }
+            continue
+          }
           if try inbox.read(name + ".receipt", as: CaptureReceipt.self) == receipt {
             let ack = PendingAck(account: account, receipt: receipt)
             try JSONEncoder().encode(ack).write(
@@ -425,9 +495,9 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
           issue = storageIssue(error) ?? issue
         }
       }
-      return issue
+      return (issue, requested)
     } catch {
-      return storageIssue(error)
+      return (storageIssue(error), requested)
     }
   }
 
@@ -445,7 +515,7 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     guard let current = CaptureInbox.account() else { return .unavailable }
     guard let account = item.account else { return .confirmAccount }
     guard CaptureInbox.matches(account, current) else { return .originalAccount }
-    return cloudIssue ?? .waiting
+    return cloudIssue ?? (canEdit(item) ? .waiting : .syncing)
   }
 
   private func folder(_ id: UUID) -> URL {

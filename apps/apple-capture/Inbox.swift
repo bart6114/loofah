@@ -161,10 +161,13 @@ final class CaptureInboxObserver: NSObject {
     self.changed = changed
     super.init()
     query.searchScopes = [NSMetadataQueryUbiquitousDataScope]
-    query.predicate = NSPredicate(
-      format: "%K ENDSWITH %@ OR %K == %@ OR %K ENDSWITH %@ OR %K ENDSWITH %@",
-      NSMetadataItemFSNameKey, ".loof", NSMetadataItemFSNameKey, "receiver.json",
-      NSMetadataItemFSNameKey, ".receipt", NSMetadataItemFSNameKey, ".ack")
+    query.predicate = NSCompoundPredicate(
+      orPredicateWithSubpredicates: [
+        NSPredicate(format: "%K == %@", NSMetadataItemFSNameKey, "receiver.json")
+      ]
+        + [".loof", ".receipt", ".ack", ".offer", ".request"].map {
+          NSPredicate(format: "%K ENDSWITH %@", NSMetadataItemFSNameKey, $0)
+        })
     let center = NotificationCenter.default
     center.addObserver(
       self, selector: #selector(notify), name: .NSMetadataQueryDidFinishGathering, object: query)

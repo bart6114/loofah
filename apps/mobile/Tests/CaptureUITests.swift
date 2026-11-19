@@ -10,13 +10,18 @@ final class CaptureUITests: XCTestCase {
     app.launch()
     XCTAssertTrue(app.buttons["Record"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.buttons["New note"].exists)
+    XCTAssertTrue(app.staticTexts["Waiting for sync"].exists)
     screenshot(app, name: "01-inbox")
 
     app.buttons["New note"].tap()
+    let title = app.textFields["Title"]
+    XCTAssertTrue(title.waitForExistence(timeout: 5))
+    title.tap()
+    title.typeText("Studio check-in")
     let editor = app.textViews["Notes"]
     XCTAssertTrue(editor.waitForExistence(timeout: 5))
     editor.tap()
-    editor.typeText("Studio check-in\n\nBring the printed sketches to Thursday’s review.")
+    editor.typeText("Bring the printed sketches to Thursday’s review.")
     screenshot(app, name: "02-note")
 
     app.terminate()
@@ -34,10 +39,21 @@ final class CaptureUITests: XCTestCase {
     app.launch()
     XCTAssertTrue(capture.waitForExistence(timeout: 5))
     capture.tap()
-    XCTAssertFalse(editor.exists)
-    XCTAssertTrue(
-      app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "printed sketches"))
-        .firstMatch.exists)
+    XCTAssertEqual(title.value as? String, "Studio check-in")
+    XCTAssertTrue((editor.value as? String)?.contains("printed sketches") == true)
+    title.tap()
+    title.typeText(" follow-up")
+    editor.tap()
+    editor.typeText(" Bring pens too.")
+    let revisedTitle = title.value as? String ?? ""
+    XCTAssertTrue(revisedTitle.contains("follow-up"))
+    app.buttons["Done"].tap()
+    app.terminate()
+    app.launch()
+    let revisedCapture = app.buttons[revisedTitle].firstMatch
+    XCTAssertTrue(revisedCapture.waitForExistence(timeout: 5))
+    revisedCapture.tap()
+    XCTAssertTrue((editor.value as? String)?.contains("Bring pens too.") == true)
     screenshot(app, name: "04-finished")
   }
 
@@ -112,8 +128,7 @@ final class CaptureUITests: XCTestCase {
     XCTAssertTrue(capture.waitForExistence(timeout: 10))
     capture.tap()
     XCTAssertTrue(app.staticTexts["Audio recording"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts[title].exists)
-    XCTAssertFalse(editor.exists)
+    XCTAssertTrue((editor.value as? String)?.contains(title) == true)
   }
 
   func testRecordingContinuesOnHomeScreen() {
@@ -140,17 +155,19 @@ final class CaptureUITests: XCTestCase {
 
     app.activate()
     XCTAssertTrue(app.staticTexts["Audio recording"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Background recording check"].exists)
-    XCTAssertFalse(editor.exists)
+    XCTAssertTrue((editor.value as? String)?.contains("Background recording check") == true)
   }
 
   func testRecordingAndNotesFinishTogether() {
     let app = XCUIApplication()
     app.launch()
     startRecording(in: app)
+    let title = app.textFields["Title"]
+    title.tap()
+    title.typeText("Design review")
     let editor = app.textViews["Notes"]
     editor.tap()
-    editor.typeText("Design review\n\nDiscuss the new layout and check the print samples.")
+    editor.typeText("Discuss the new layout and check the print samples.")
     XCTAssertTrue(app.keyboards.firstMatch.exists)
     XCTAssertTrue(app.buttons["Stop"].isHittable)
     screenshot(app, name: "03-recording")
@@ -160,10 +177,8 @@ final class CaptureUITests: XCTestCase {
     XCTAssertTrue((capture.value as? String)?.hasPrefix("Recording, Note, ") == true)
     XCTAssertFalse((capture.value as? String)?.contains("Draft") == true)
     capture.tap()
-    XCTAssertFalse(editor.exists)
-    XCTAssertTrue(
-      app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "print samples"))
-        .firstMatch.exists)
+    XCTAssertEqual(title.value as? String, "Design review")
+    XCTAssertTrue((editor.value as? String)?.contains("print samples") == true)
   }
 
   private func startRecording(in app: XCUIApplication) {

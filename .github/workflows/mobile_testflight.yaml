@@ -22,12 +22,13 @@ concurrency:
 jobs:
   upload:
     if: github.ref == 'refs/heads/main'
-    runs-on: macos-26
+    runs-on: xcode-27
     defaults:
       run:
         shell: bash
     env:
       BUILD_NUMBER: ${{ inputs.build_number }}
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       MAC_TAG: ${{ inputs.verified_mac_tag }}
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +54,8 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           set -euo pipefail
+          xcodebuild -version
+          test "$(xcrun --sdk iphoneos --show-sdk-version)" = 27.2
           marketing_version="$(node -p 'require("./package.json").version')"
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           umask 077
@@ -75,6 +78,7 @@ jobs:
           ipa="$RUNNER_TEMP/loofah-ipa/Loofah.ipa"
           ditto -x -k "$ipa" "$RUNNER_TEMP/loofah-ipa-check"
           app="$RUNNER_TEMP/loofah-ipa-check/Payload/Loofah.app"
+          test "$(plutil -extract DTSDKName raw -o - "$app/Info.plist")" = iphoneos27.2
           test "$(plutil -extract CFBundleVersion raw -o - "$app/Info.plist")" = "$BUILD_NUMBER"
           test "$(plutil -extract UIDeviceFamily json -o - "$app/Info.plist")" = '[1]'
           test "$(plutil -extract NSSupportsLiveActivities raw -o - "$app/Info.plist")" = true

@@ -19,10 +19,19 @@ struct Capture: Codable {
   let id: UUID
   let createdAt: Date
   var finishedAt: Date?
+  var title: String? = nil
   var note: String
   let recording: Bool
 
   var name: String { id.uuidString.lowercased() }
+
+  var customTitle: String? {
+    guard let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty
+    else { return nil }
+    return title
+  }
+
+  var hasText: Bool { customTitle != nil || note.contains { !$0.isWhitespace } }
 }
 
 struct CaptureReceipt: Codable, Equatable {
@@ -47,9 +56,7 @@ enum CapturePackage {
   static func seal(_ capture: Capture, in directory: URL) throws -> CaptureReceipt {
     let audioURL = directory.appendingPathComponent(audio)
     let size = capture.recording ? try fileSize(audioURL) : 0
-    guard capture.finishedAt != nil,
-      capture.recording
-        ? size > 44 : !capture.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    guard capture.finishedAt != nil, capture.recording ? size > 44 : capture.hasText
     else { throw CaptureError.invalid }
     let data = try JSONEncoder().encode(PackageHeader(capture: capture, audioBytes: size))
     guard data.count <= headerLimit else { throw CaptureError.invalid }
@@ -116,8 +123,7 @@ enum CapturePackage {
       defer { try? writer.close() }
       try stream(reader, to: writer, size: header.audioBytes, hash: &hash)
     } else {
-      guard header.audioBytes == 0,
-        !capture.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      guard header.audioBytes == 0, capture.hasText
       else { throw CaptureError.invalid }
     }
 
