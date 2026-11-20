@@ -1,7 +1,11 @@
 import type { LanguageModel } from "ai";
 
 import { type EnhanceEligibilitySkipCode, getEligibility } from "./eligibility";
-import { EMPTY_SUMMARY_SOURCE_MESSAGE, hasSummarySource } from "./source";
+import {
+  EMPTY_SUMMARY_SOURCE_MESSAGE,
+  hasSummarySource,
+  summaryNoteText,
+} from "./source";
 import {
   type EnhancerNote,
   ensureSummaryDocument,
@@ -27,12 +31,6 @@ type QueueEmptySummaryResult =
   | { type: "queued" }
   | { type: "summary_exists"; noteId: string };
 
-class IphoneCaptureSharingDeclined extends Error {
-  constructor() {
-    super("Summary sharing was declined for this iPhone capture.");
-  }
-}
-
 type EnhanceOpts = {
   awaitCompletion?: boolean;
   regenerate?: boolean;
@@ -55,9 +53,6 @@ type EnhancerDeps = {
     getState: () => Pick<TasksActions, "generate" | "getState" | "reset">;
   };
   getModel: () => LanguageModel | null;
-  getCaptureAuthorization?: () =>
-    | ((sessionId: string) => Promise<boolean>)
-    | undefined;
 };
 
 type TiptapNode = {
@@ -187,23 +182,18 @@ export class EnhancerService {
   }
 
   async finishImportedCaptureSummary(sessionId: string): Promise<boolean> {
-    const summary = await this.inspectSummary(sessionId);
+    const summary = await this.inspectSummary(sessionId, true);
     if (summary.existing || !summary.eligible) return true;
-    try {
-      const result = await this.enhance(sessionId, {
-        isAuto: true,
-        regenerate: false,
-        awaitCompletion: true,
-      });
-      if (result.type === "no_model") return false;
-      return Boolean((await this.inspectSummary(sessionId)).existing);
-    } catch (error) {
-      if (error instanceof IphoneCaptureSharingDeclined) return true;
-      throw error;
-    }
+    const result = await this.enhance(sessionId, {
+      isAuto: true,
+      regenerate: false,
+      awaitCompletion: true,
+    });
+    if (result.type === "no_model") return false;
+    return Boolean((await this.inspectSummary(sessionId)).existing);
   }
 
-  private async inspectSummary(sessionId: string) {
+  private async inspectSummary(sessionId: string, includeTextCapture = false) {
     const snapshot = await this.loadSession(sessionId);
     const existingNote = selectSummaryDocument(snapshot.enhancedNotes);
 
@@ -215,7 +205,11 @@ export class EnhancerService {
     if (!existingNote && !eligibility.eligible && eligibility.wordCount > 0) {
       await this.ensureNote(sessionId);
     }
-    return { existing: null, eligible: eligibility.eligible };
+    const hasTextCapture =
+      includeTextCapture &&
+      snapshot.transcripts.length === 0 &&
+      Boolean(summaryNoteText(snapshot.rawMarkdown));
+    return { existing: null, eligible: eligibility.eligible || hasTextCapture };
   }
 
   private async tryAutoEnhance(
@@ -335,7 +329,6 @@ export class EnhancerService {
 
     const model = getModel();
     if (!model) return { type: "no_model" };
-    const authorize = this.deps.getCaptureAuthorization?.();
 
     await flushDatabaseWrites([`session:${sessionId}:note`]);
     const snapshot = await this.loadSession(sessionId);
@@ -365,9 +358,6 @@ export class EnhancerService {
       return { type: "already_active", noteId: note.id };
     }
 
-    if (authorize && !(await authorize(sessionId))) {
-      throw new IphoneCaptureSharingDeclined();
-    }
     const generation = aiTaskStore.getState().generate(enhanceTaskId, {
       model,
       taskType: "enhance",

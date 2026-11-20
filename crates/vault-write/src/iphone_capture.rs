@@ -39,16 +39,17 @@ impl SessionStore {
             return Err(StoreError::Serialize("invalid iPhone capture ID".into()));
         }
         let _audio_lease = self.lock_session_audio(id).await?;
-        if audio.is_some() {
+        let processing = if audio.is_some() {
             meta.extra.insert(
                 "audio".into(),
                 serde_json::json!({"source": "import", "layout": "mixed"}),
             );
-            meta.extra.insert(
-                CAPTURE_STAGE.into(),
-                serde_json::json!(CaptureStage::Transcribe),
-            );
-        }
+            CaptureStage::Transcribe
+        } else {
+            CaptureStage::Summarize
+        };
+        meta.extra
+            .insert(CAPTURE_STAGE.into(), serde_json::json!(processing));
         meta.extra
             .insert(CAPTURE_DIGEST.into(), digest.clone().into());
 
@@ -289,7 +290,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn interrupted_staging_is_invisible_and_text_capture_needs_no_processing() {
+    async fn interrupted_staging_is_invisible_and_text_capture_queues_summary() {
         let vault = tempfile::tempdir().unwrap();
         let id = uuid::Uuid::new_v4().to_string();
         let session_files = vault.path().join("sessions");
@@ -314,9 +315,24 @@ mod tests {
             Some("Text note")
         );
         assert!(!stage.exists());
-        assert!(store.iphone_capture_jobs().is_empty());
+        assert_eq!(
+            store.iphone_capture_jobs(),
+            vec![(id.clone(), CaptureStage::Summarize)]
+        );
         assert_eq!(store.session_list_headers()[0].title, "");
         assert!(store.session_get(&id).unwrap().is_iphone_capture);
+
+        let reopened = SessionStore::new(vault.path().to_owned());
+        reopened.rebuild_index().await.unwrap();
+        assert_eq!(
+            reopened.iphone_capture_jobs(),
+            vec![(id.clone(), CaptureStage::Summarize)]
+        );
+        reopened
+            .advance_iphone_capture(&id, CaptureStage::Summarize)
+            .await
+            .unwrap();
+        assert!(reopened.iphone_capture_jobs().is_empty());
     }
 
     #[tokio::test]

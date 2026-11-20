@@ -19,9 +19,9 @@ The iPhone app sends captures through iCloud. It has no AI provider integrations
 
 Your Mac stores notes, recordings, transcripts, summaries, and settings as files in your vault. Your Mac transcribes audio and detects speakers on the device. A model download host may see connection information such as your IP address.
 
-If you configure a remote Intelligence provider, the Mac sends the prompt and relevant session context for optional summaries or titles. For an iPhone capture, the Mac names the recipient and asks for permission before it sends note or transcript content for a summary. Summary requests can include notes, transcript text, speaker names, and session details. Title requests can include the generated summary. Requests use the provider you chose, including any routing it performs. The Mac stores provider API keys in the macOS login Keychain.
+If you configure a remote Intelligence provider, the Mac sends the prompt and relevant session context for summaries or titles. This includes automatic summaries for notes and recordings imported from your iPhone. Summary requests can include notes, transcript text, speaker names, and session details. Title requests can include the generated summary. Requests use the provider you chose, including any routing it performs. The Mac stores provider API keys in the macOS login Keychain.
 
-Choose **Keep on Mac** to decline a sharing request, or turn off your summary model to stop automatic summaries. Contact the provider about retention or deletion of data you already sent. If you put the vault in a synced folder, the sync service handles those copies under its own policy.
+Turn off your summary model to stop automatic summaries. Contact the provider about retention or deletion of data you already sent. If you put the vault in a synced folder, the sync service handles those copies under its own policy.
 
 Your vault keeps files until you delete them. You can remove a recording or note in Loofah. Manage any copies in your backups or sync services separately. Loofah does not receive your vault files in normal use.
 

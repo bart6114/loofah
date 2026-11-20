@@ -84,12 +84,6 @@ pub fn iphone_capture_jobs<R: Runtime>(
 
 #[tauri::command]
 #[specta::specta]
-pub fn is_iphone_capture<R: Runtime>(app: AppHandle<R>, id: String) -> Result<bool, String> {
-    Ok(store(&app)?.is_iphone_capture(&id))
-}
-
-#[tauri::command]
-#[specta::specta]
 pub async fn iphone_capture_audio<R: Runtime>(
     app: AppHandle<R>,
     id: String,

@@ -147,42 +147,59 @@ describe("EnhancerService", () => {
     vi.useRealTimers();
   });
 
-  it("keeps an iPhone capture on Mac when external sharing is declined", async () => {
-    snapshot = createSnapshot({ wordCount: 50 });
-    const { store, generate } = createMockAITaskStore();
-    const authorize = vi.fn().mockResolvedValue(false);
-    const service = new EnhancerService(
-      createDeps({
-        aiTaskStore: store,
-        getCaptureAuthorization: () => authorize,
-      }),
-    );
+  it.each([
+    ["written capture", "Planning notes", 0],
+    ["transcribed recording", "", 50],
+  ])(
+    "automatically summarizes a %s from iPhone",
+    async (_, note, wordCount) => {
+      snapshot = createSnapshot({ wordCount });
+      snapshot.rawMarkdown = note;
+      let saved = false;
+      const { store, generate } = createMockAITaskStore(() =>
+        saved ? { status: "success" } : undefined,
+      );
+      generate.mockImplementation(async () => {
+        snapshot.enhancedNotes[0].content = "Saved summary";
+        saved = true;
+      });
+      const service = new EnhancerService(createDeps({ aiTaskStore: store }));
 
-    await expect(
-      service.finishImportedCaptureSummary("session-1"),
-    ).resolves.toBe(true);
-    expect(authorize).toHaveBeenCalledWith("session-1");
-    expect(generate).not.toHaveBeenCalled();
-  });
+      await expect(
+        service.finishImportedCaptureSummary("session-1"),
+      ).resolves.toBe(true);
+      expect(generate).toHaveBeenCalledExactlyOnceWith(
+        "session-1-enhance",
+        expect.objectContaining({
+          taskType: "enhance",
+          args: { sessionId: "session-1" },
+        }),
+      );
+    },
+  );
 
-  it("recognizes a saved iPhone summary after restart without sharing again", async () => {
+  it("recognizes a saved iPhone summary after restart", async () => {
     snapshot = createSnapshot({
       wordCount: 50,
       notes: [createNote({ content: "Saved summary" })],
     });
     const { store, generate } = createMockAITaskStore();
-    const authorize = vi.fn().mockResolvedValue(true);
-    const service = new EnhancerService(
-      createDeps({
-        aiTaskStore: store,
-        getCaptureAuthorization: () => authorize,
-      }),
-    );
+    const service = new EnhancerService(createDeps({ aiTaskStore: store }));
 
     await expect(
       service.finishImportedCaptureSummary("session-1"),
     ).resolves.toBe(true);
-    expect(authorize).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("skips automatic summaries for empty iPhone notes", async () => {
+    snapshot.rawMarkdown = "&nbsp;";
+    const { store, generate } = createMockAITaskStore();
+    const service = new EnhancerService(createDeps({ aiTaskStore: store }));
+
+    await expect(
+      service.finishImportedCaptureSummary("session-1"),
+    ).resolves.toBe(true);
     expect(generate).not.toHaveBeenCalled();
   });
 

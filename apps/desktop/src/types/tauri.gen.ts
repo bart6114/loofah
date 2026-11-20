@@ -319,17 +319,6 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  async isIphoneCapture(id: string): Promise<Result<boolean, string>> {
-    try {
-      return {
-        status: "ok",
-        data: await TAURI_INVOKE("is_iphone_capture", { id }),
-      };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
   async iphoneCaptureAudio(id: string): Promise<Result<string | null, string>> {
     try {
       return {

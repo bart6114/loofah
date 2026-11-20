@@ -567,7 +567,6 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             iphone_capture::iphone_capture_receiver::<tauri::Wry>,
             iphone_capture::iphone_capture_set_receiver::<tauri::Wry>,
             iphone_capture::iphone_capture_jobs::<tauri::Wry>,
-            iphone_capture::is_iphone_capture::<tauri::Wry>,
             iphone_capture::iphone_capture_audio::<tauri::Wry>,
             iphone_capture::iphone_capture_advance::<tauri::Wry>,
             session_store::commands::session_write_meta::<tauri::Wry>,

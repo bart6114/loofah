@@ -8,7 +8,6 @@ import {
 } from "~/ai/hooks/useLLMConnection";
 import { takePendingWelcomeSession } from "~/onboarding/welcome-note";
 import { initEnhancerService } from "~/services/enhancer";
-import { captureAuthorization } from "~/services/enhancer/iphone-capture-sharing";
 import { useDesktopTabLifecycle } from "~/shared/desktop-tab-lifecycle";
 import { useTabs } from "~/store/zustand/tabs";
 import { IphoneCaptureWorker } from "~/stt/iphone-capture-worker";
@@ -56,17 +55,15 @@ function EnhancerInit() {
 
   const { conn } = useLLMConnection();
   const model = useMemo(() => conn && createLanguageModel(conn), [conn]);
-  const selection = useRef({ conn, model });
-  selection.current = { conn, model };
+  const modelRef = useRef(model);
+  modelRef.current = model;
 
   useEffect(() => {
     if (!aiTaskStore) return;
 
     const service = initEnhancerService({
       aiTaskStore,
-      getModel: () => selection.current.model,
-      getCaptureAuthorization: () =>
-        captureAuthorization(selection.current.conn),
+      getModel: () => modelRef.current,
     });
 
     return () => service.dispose();

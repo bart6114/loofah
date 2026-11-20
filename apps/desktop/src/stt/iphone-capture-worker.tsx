@@ -10,6 +10,7 @@ import { useLLMConnection } from "~/ai/hooks/useLLMConnection";
 import { getEnhancerService } from "~/services/enhancer";
 import { enqueueSessionAudioOperation } from "~/session/audio-operations";
 import { useSession } from "~/session/queries";
+import { useConfigStateSelector } from "~/shared/config/store";
 import { useIndexQuery } from "~/shared/index-query";
 import { type CaptureStage, commands } from "~/types/tauri.gen";
 
@@ -26,7 +27,9 @@ export function IphoneCaptureWorker() {
   const client = useQueryClient();
   const { conn: stt } = useSTTConnection();
   const { conn: llm, status } = useLLMConnection();
+  const settingsReady = useConfigStateSelector(({ snapshot }) => !!snapshot);
   const noSummaryModel =
+    settingsReady &&
     status.status === "pending" &&
     (status.reason === "missing_provider" || status.reason === "missing_model");
   const [paused, setPaused] = useState<ReadonlySet<string>>(() => new Set());
