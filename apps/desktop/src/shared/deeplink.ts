@@ -13,18 +13,27 @@ export async function subscribeThenDrainDeepLinks({
   takePendingDeepLinks: () => Promise<CommandResult<DeepLink[]>>;
   handle: (deepLink: DeepLink) => void;
 }) {
-  const unlisten = await listen(handle);
+  const drain = async () => {
+    let result: CommandResult<DeepLink[]>;
+    try {
+      result = await takePendingDeepLinks();
+    } catch {
+      return;
+    }
+    if (result.status === "ok") {
+      for (const deepLink of result.data) {
+        handle(deepLink);
+      }
+    }
+  };
 
-  let result: CommandResult<DeepLink[]>;
-  try {
-    result = await takePendingDeepLinks();
-  } catch {
-    return unlisten;
-  }
-  if (result.status === "ok") {
-    for (const deepLink of result.data) {
+  const unlisten = await listen((deepLink) => {
+    if (deepLink.to === "/meetings/open") {
+      void drain();
+    } else {
       handle(deepLink);
     }
-  }
+  });
+  await drain();
   return unlisten;
 }

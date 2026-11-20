@@ -107,6 +107,7 @@ fn ui_content(deep_link: &DeepLink) -> (bool, &'static str, &'static str) {
             "Subscription updated",
             "Click the button below to return to the app.",
         ),
+        DeepLink::OpenMeeting { .. } => default_ui_content(),
     }
 }
 

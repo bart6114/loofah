@@ -63,20 +63,26 @@ fn process_url<R: Runtime>(app_handle: &AppHandle<R>, url: &url::Url, delivery: 
     match types::IncomingDeepLink::from_str(url_str) {
         Ok(types::IncomingDeepLink::Existing(deep_link)) => {
             tracing::info!(path = deep_link.path(), "deeplink_parsed");
-            match delivery {
-                Delivery::Emit => {
-                    if let Err(error) = DeepLinkEvent(deep_link).emit(app_handle) {
-                        tracing::error!(?error, "deeplink_event_emit_failed");
-                    }
-                }
-                Delivery::Queue => {
-                    if app_handle
-                        .state::<pending_deep_link::PendingDeepLinkState>()
-                        .push(deep_link)
-                        .is_err()
-                    {
-                        tracing::error!("pending_deep_link_queue_unavailable");
-                    }
+            let is_meeting = matches!(deep_link, DeepLink::OpenMeeting { .. });
+            if (is_meeting || matches!(delivery, Delivery::Queue))
+                && app_handle
+                    .state::<pending_deep_link::PendingDeepLinkState>()
+                    .push(deep_link.clone())
+                    .is_err()
+            {
+                tracing::error!("pending_deep_link_queue_unavailable");
+                return;
+            }
+            if matches!(delivery, Delivery::Emit) {
+                let event = DeepLinkEvent(deep_link);
+                let result = if is_meeting {
+                    // macOS delivers cold-start URLs here before the webview can listen.
+                    event.emit_to(app_handle, tauri::EventTarget::webview_window("main"))
+                } else {
+                    event.emit(app_handle)
+                };
+                if let Err(error) = result {
+                    tracing::error!(?error, "deeplink_event_emit_failed");
                 }
             }
         }

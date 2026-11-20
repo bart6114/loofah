@@ -50,6 +50,8 @@ Returns `meeting_id` and `text`. The text uses one `[HH:MM:SS] Speaker: ...` lin
 | `loofah://meetings/{meeting_id}` | `text/markdown` | Meeting detail without transcript text. |
 | `loofah://meetings/{meeting_id}/transcript` | `text/plain` | The full speaker-labeled transcript. |
 
+On macOS, clicking a meeting detail link opens the matching note in Loofah’s current vault.
+
 Resource listing returns recent meeting resources in pages of 20. Its cursor is a numeric result offset.
 
 Previously issued `fmtr://meetings/...` resource URIs remain readable for client compatibility; new resource listings use `loofah://`.

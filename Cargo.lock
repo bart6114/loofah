@@ -12930,6 +12930,7 @@ dependencies = [
  "askama",
  "axum",
  "open",
+ "percent-encoding",
  "serde",
  "serde_qs",
  "specta",
@@ -12943,6 +12944,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "vault-read",
 ]
 
 [[package]]
