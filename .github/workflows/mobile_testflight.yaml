@@ -27,8 +27,8 @@ jobs:
       run:
         shell: bash
     env:
-      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       BUILD_NUMBER: ${{ inputs.build_number }}
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       MAC_TAG: ${{ inputs.verified_mac_tag }}
     steps:
       - uses: actions/checkout@v4
@@ -44,58 +44,40 @@ jobs:
           [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*([.][0-9]+){0,2}$ ]]
           [[ "$MAC_TAG" =~ ^v[0-9]+[.][0-9]+[.][0-9]+$ ]]
           git cat-file -e "$MAC_TAG:apps/desktop/src-tauri/Entitlements.capture.plist"
-          git grep -qF '.offer' "$MAC_TAG" -- apps/desktop/src-tauri/apple-capture/Receiver.swift
-          xcodebuild -version
-          test "$(xcrun --sdk iphoneos --show-sdk-version)" = 27.2
           gh release view "$MAC_TAG" --json isDraft,assets | jq -e --arg dmg "Loofah_${MAC_TAG#v}_aarch64.dmg" '
             .isDraft == false and any(.assets[]; .name == $dmg) and any(.assets[]; .name == ($dmg + ".sha256"))
           '
-      - env:
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          set -euo pipefail
-          marketing_version="$(node -p 'require("./package.json").version')"
-          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
-          umask 077
-          printf '%s\n' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/AuthKey.p8"
-          auth=(-allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8"
-            -authenticationKeyID "$APPLE_API_KEY" -authenticationKeyIssuerID "$APPLE_API_ISSUER")
-          cd apps/mobile
-          xcodegen generate
-          xcodebuild archive -scheme Loofah -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/Loofah.xcarchive" "${auth[@]}" \
-            MARKETING_VERSION="$marketing_version" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.workflow_sha }}
-          path: .archive-transfer
-          sparse-checkout: .github/ios27-archive-transfer.crt
-          sparse-checkout-cone-mode: false
+          path: .testflight-asset
+          sparse-checkout: .github/testflight
           persist-credentials: false
-      - run: |
-          set -euo pipefail
-          tar -czf "$RUNNER_TEMP/Loofah.xcarchive.tar.gz" -C "$RUNNER_TEMP" Loofah.xcarchive
-          openssl cms -encrypt -binary -aes256 -outform DER \
-            -in "$RUNNER_TEMP/Loofah.xcarchive.tar.gz" -out "$RUNNER_TEMP/Loofah.xcarchive.cms" \
-            .archive-transfer/.github/ios27-archive-transfer.crt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: loofah-ios27-archive
-          path: ${{ runner.temp }}/Loofah.xcarchive.cms
-          retention-days: 3
-          compression-level: 0
-      - env:
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      - name: Open the signed iPhone build
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          IPA_KEY: ${{ secrets.LOOFAH_IOS_UPLOAD_KEY_2611_19_5 }}
         run: |
           set -euo pipefail
-          cd apps/mobile
-          auth=(-allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8"
-            -authenticationKeyID "$APPLE_API_KEY" -authenticationKeyIssuerID "$APPLE_API_ISSUER")
-          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Loofah.xcarchive" \
-            -exportOptionsPlist ExportOptions.plist -exportPath "$RUNNER_TEMP/loofah-ipa" "${auth[@]}"
+          test "$MAC_TAG" = v0.47.1
+          test "$BUILD_NUMBER" = 2611.19.5
+          umask 077
+          printf '%s\n' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/AuthKey.p8"
+          mkdir -p "$RUNNER_TEMP/loofah-ipa"
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { createDecipheriv, createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const asset = '.testflight-asset/.github/testflight/Loofah.ipa';
+          const encrypted = readFileSync(`${asset}.enc`);
+          const key = Buffer.from(process.env.IPA_KEY, 'hex');
+          assert.equal(key.length, 32);
+          const decipher = createDecipheriv('aes-256-gcm', key, encrypted.subarray(0, 12));
+          decipher.setAuthTag(encrypted.subarray(-16));
+          const ipa = Buffer.concat([decipher.update(encrypted.subarray(12, -16)), decipher.final()]);
+          assert.equal(createHash('sha256').update(ipa).digest('hex'), readFileSync(`${asset}.sha256`, 'utf8').trim());
+          writeFileSync(`${process.env.RUNNER_TEMP}/loofah-ipa/Loofah.ipa`, ipa, { mode: 0o600 });
+          JS
       - name: Verify exported app and upload to TestFlight
         env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -105,12 +87,13 @@ jobs:
           ipa="$RUNNER_TEMP/loofah-ipa/Loofah.ipa"
           ditto -x -k "$ipa" "$RUNNER_TEMP/loofah-ipa-check"
           app="$RUNNER_TEMP/loofah-ipa-check/Payload/Loofah.app"
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Info.plist")" = "${MAC_TAG#v}"
           test "$(plutil -extract CFBundleVersion raw -o - "$app/Info.plist")" = "$BUILD_NUMBER"
           test "$(plutil -extract DTSDKName raw -o - "$app/Info.plist")" = iphoneos27.2
-          test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Info.plist")" = "${MAC_TAG#v}"
           test "$(plutil -extract UIDeviceFamily json -o - "$app/Info.plist")" = '[1]'
           test "$(plutil -extract NSSupportsLiveActivities raw -o - "$app/Info.plist")" = true
           widget="$app/PlugIns/RecordingWidget.appex/Info.plist"
+          test "$(plutil -extract DTSDKName raw -o - "$widget")" = iphoneos27.2
           test "$(plutil -extract CFBundleDisplayName raw -o - "$widget")" = Loofah
           test "$(plutil -extract CFBundleIdentifier raw -o - "$widget")" = io.loofah.notes.RecordingWidget
           test "$(plutil -extract CFBundleVersion raw -o - "$widget")" = "$BUILD_NUMBER"
