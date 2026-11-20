@@ -76,6 +76,7 @@ pub struct SessionEntry {
 pub struct SessionRecord {
     pub meta: SessionMeta,
     pub note_markdown: Option<String>,
+    pub is_iphone_capture: bool,
 }
 
 /// One `session_list` entry: full meta plus the derived flags list consumers need
@@ -132,7 +133,16 @@ pub struct SessionTranscriptMetadata {
     pub ended_at: Option<f64>,
 }
 
-fn session_has_attachments(session_dir: &std::path::Path) -> Result<bool, StoreError> {
+fn session_has_files(session_dir: &std::path::Path) -> Result<bool, StoreError> {
+    if hypr_fs_sync_core::audio::exists(session_dir)
+        .map_err(|error| StoreError::Io(format!("failed to inspect session audio: {error}")))?
+        || super::audio::list_legacy_audio(session_dir)?
+            .iter()
+            .any(|name| !name.starts_with('.'))
+    {
+        return Ok(true);
+    }
+
     let entries = std::fs::read_dir(session_dir).map_err(|error| {
         StoreError::Io(format!(
             "failed to inspect session directory {}: {error}",
@@ -239,6 +249,7 @@ impl SessionStore {
         index.sessions.get(session_id).map(|entry| SessionRecord {
             meta: entry.meta.clone(),
             note_markdown: entry.note_markdown.clone(),
+            is_iphone_capture: entry.is_iphone_capture(),
         })
     }
 
@@ -410,18 +421,23 @@ impl SessionStore {
             .map(|(session_id, _)| session_id.clone())
     }
 
-    /// Whether tab-close cleanup may discard this session. Unknown sessions are empty;
-    /// title, meaningful note content, transcripts, enhanced docs and tags are answered
-    /// from the index. Only an otherwise-empty session pays for a directory probe so
-    /// loose user attachments and editor-managed `attachments/` files also protect it.
+    /// Whether an indexed session can be discarded as empty. Only an otherwise-empty
+    /// session pays for a directory probe so recordings and attachments protect it too.
     pub async fn session_is_empty(&self, session_id: &str) -> Result<bool, StoreError> {
         {
             let index = self.index.read().unwrap();
             let Some(entry) = index.sessions.get(session_id) else {
-                return Ok(true);
+                return Ok(false);
             };
 
-            if !entry.meta.title.trim().is_empty() {
+            if !entry.meta.title.trim().is_empty()
+                || entry
+                    .meta
+                    .extra
+                    .get("audio_import_pending")
+                    .and_then(|v| v.as_bool())
+                    == Some(true)
+            {
                 return Ok(false);
             }
             if let Some(note) = &entry.note_markdown {
@@ -444,10 +460,10 @@ impl SessionStore {
         }
 
         let session_dir = self.vault_base.join(self.session_dir(session_id).await?);
-        tokio::task::spawn_blocking(move || session_has_attachments(&session_dir))
+        tokio::task::spawn_blocking(move || session_has_files(&session_dir))
             .await
-            .map_err(|error| StoreError::Io(format!("attachment probe task failed: {error}")))?
-            .map(|has_attachments| !has_attachments)
+            .map_err(|error| StoreError::Io(format!("session file probe task failed: {error}")))?
+            .map(|has_files| !has_files)
     }
 
     /// Welcome-note lookup: the first session (by `created_at`, id) carrying this
@@ -1471,11 +1487,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_is_empty_matches_the_old_sql_semantics() {
+    async fn session_is_empty_requires_an_indexed_session_without_content() {
         let (store, _vault) = test_store().await;
         assert!(
-            store.session_is_empty("ghost").await.unwrap(),
-            "unknown session is empty"
+            !store.session_is_empty("ghost").await.unwrap(),
+            "an unindexed session cannot be safely discarded"
         );
 
         store.write_meta(&meta("s1", "")).await.unwrap();
@@ -1566,11 +1582,34 @@ mod tests {
         let session_dir = vault.path().join(store.session_dir("s1").await.unwrap());
 
         std::fs::write(session_dir.join(".DS_Store"), b"hidden").unwrap();
-        std::fs::write(session_dir.join("audio.mp3"), b"recording").unwrap();
         std::fs::write(session_dir.join("audio.peaks.json"), b"cache").unwrap();
         std::fs::create_dir(session_dir.join("user-folder")).unwrap();
 
         assert!(store.session_is_empty("s1").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn tab_close_cleanup_preserves_recordings_without_notes_or_transcripts() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "")).await.unwrap();
+        let session_dir = vault.path().join(store.session_dir("s1").await.unwrap());
+        std::fs::create_dir(session_dir.join("audio")).unwrap();
+
+        for relative in ["audio.wav", "audio.mp3", "audio.ogg", "audio/recording.wav"] {
+            let recording = session_dir.join(relative);
+            std::fs::write(&recording, b"recording").unwrap();
+            assert!(
+                !store.discard_empty_session("s1").await.unwrap(),
+                "{relative}"
+            );
+            assert!(recording.is_file());
+            std::fs::remove_file(recording).unwrap();
+        }
+
+        std::fs::write(session_dir.join("audio/.DS_Store"), b"hidden").unwrap();
+        assert!(store.discard_empty_session("s1").await.unwrap());
+        assert!(!session_dir.exists());
+        assert!(!store.discard_empty_session("s1").await.unwrap());
     }
 
     #[tokio::test]

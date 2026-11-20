@@ -10,8 +10,12 @@ import {
 import { useTaskStorageOptional } from "@hypr/editor/task-storage";
 import { hydrateTaskContent } from "@hypr/editor/tasks";
 
+import { hasUnsavedNoteDraft } from "~/session/pending-note-drafts";
 import { waitForPendingSoftDelete } from "~/session/pending-soft-deletes";
-import { ensureFirstLineTitle } from "~/session/title-content";
+import {
+  ensureBlankTitleHeading,
+  ensureFirstLineTitle,
+} from "~/session/title-content";
 import { useIndexQuery } from "~/shared/index-query";
 import { DEFAULT_USER_ID, id } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
@@ -481,7 +485,7 @@ export async function createSession(
   }
 
   // No SQL placeholder note row anymore: every reader that COALESCE'd onto the old
-  // bare-id `session_documents` row (session reads, isSessionEmpty, the content
+  // bare-id `session_documents` row (session reads, discardEmptySession, the content
   // snapshot) now reads the file-backed index, where "no note yet" is simply an
   // absent `notes.md`. Rebuild pruned the file-less placeholder row on every
   // startup/focus rescan anyway, and it shadowed the real `<id>:note` row in the
@@ -540,11 +544,10 @@ export async function softDeleteSession(
   };
 }
 
-// The emptiness semantics (title, note content after trimming, transcript/
-// enhanced-doc/tag counts, and attachments) live on the Rust side now -- see
-// `SessionStore::session_is_empty`.
-export async function isSessionEmpty(sessionId: string): Promise<boolean> {
-  const result = await commands.sessionIsEmpty(sessionId);
+export async function discardEmptySession(sessionId: string): Promise<boolean> {
+  if (hasUnsavedNoteDraft(`session:${sessionId}:note`)) return false;
+
+  const result = await commands.sessionDiscardEmpty(sessionId);
   if (result.status === "error") {
     throw new Error(result.error);
   }
@@ -585,7 +588,12 @@ function mapSessionRecord(record: StoreSessionRecord): SessionRecord {
   let rawMd = record.note_markdown ?? "";
   if (rawMd) {
     try {
-      rawMd = JSON.stringify(md2json(rawMd));
+      const content = md2json(rawMd);
+      rawMd = JSON.stringify(
+        record.is_iphone_capture && !record.meta.title.trim()
+          ? ensureBlankTitleHeading(content)
+          : content,
+      );
     } catch (error) {
       console.error("[session] failed to decode note Markdown", error);
     }

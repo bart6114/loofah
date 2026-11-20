@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{IndexEntity, SessionMeta, SessionStore, StoreError, paths};
+use crate::{IndexEntity, SessionMeta, SessionStore, StoreError, index::SessionEntry, paths};
 
 const CAPTURE_DIGEST: &str = "iphone_capture_digest";
 const CAPTURE_STAGE: &str = "iphone_capture_processing";
@@ -14,6 +14,12 @@ const CAPTURE_STAGE: &str = "iphone_capture_processing";
 pub enum CaptureStage {
     Transcribe,
     Summarize,
+}
+
+impl SessionEntry {
+    pub(super) fn is_iphone_capture(&self) -> bool {
+        self.meta.extra.contains_key(CAPTURE_DIGEST)
+    }
 }
 
 impl SessionStore {
@@ -147,7 +153,7 @@ impl SessionStore {
             .unwrap()
             .sessions
             .get(id)
-            .is_some_and(|entry| entry.meta.extra.contains_key(CAPTURE_DIGEST))
+            .is_some_and(SessionEntry::is_iphone_capture)
     }
 
     pub async fn advance_iphone_capture(
@@ -309,6 +315,8 @@ mod tests {
         );
         assert!(!stage.exists());
         assert!(store.iphone_capture_jobs().is_empty());
+        assert_eq!(store.session_list_headers()[0].title, "");
+        assert!(store.session_get(&id).unwrap().is_iphone_capture);
     }
 
     #[tokio::test]

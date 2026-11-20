@@ -1,7 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef } from "react";
 
-import { isSessionEmpty, softDeleteSession } from "~/session/queries";
+import { discardEmptySession } from "~/session/queries";
 import { listenerStore } from "~/store/zustand/listener/instance";
 import {
   restorePinnedTabsToStore,
@@ -25,8 +25,7 @@ type InitializeDesktopTabsOptions = {
 type SessionTabCloseHandlerOptions = {
   invalidateSessionResource: (sessionId: string) => void;
   getSessionMode?: (sessionId: string) => string | null | undefined;
-  isSessionEmptyFn?: typeof isSessionEmpty;
-  deleteSessionFn?: typeof softDeleteSession;
+  discardEmptySessionFn?: typeof discardEmptySession;
 };
 
 export async function initializeDesktopTabs({
@@ -58,8 +57,7 @@ export function createSessionTabCloseHandler({
   invalidateSessionResource,
   getSessionMode = (sessionId) =>
     listenerStore.getState().getSessionMode(sessionId),
-  isSessionEmptyFn = isSessionEmpty,
-  deleteSessionFn = softDeleteSession,
+  discardEmptySessionFn = discardEmptySession,
 }: SessionTabCloseHandlerOptions) {
   return (tab: Tab) => {
     if (tab.type !== "sessions") {
@@ -77,10 +75,9 @@ export function createSessionTabCloseHandler({
     }
 
     void (async () => {
-      if (!(await isSessionEmptyFn(sessionId))) return;
-
-      const deleted = await deleteSessionFn(sessionId);
-      if (deleted) invalidateSessionResource(sessionId);
+      if (await discardEmptySessionFn(sessionId)) {
+        invalidateSessionResource(sessionId);
+      }
     })().catch((error) => {
       console.error("session close cleanup", error);
     });

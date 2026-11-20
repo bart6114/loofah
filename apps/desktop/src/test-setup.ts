@@ -154,7 +154,9 @@ vi.mock("./types/tauri.gen", () => ({
     sessionGet: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     sessionListHeaders: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
     sessionIds: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
-    sessionIsEmpty: vi.fn().mockResolvedValue({ status: "ok", data: true }),
+    sessionDiscardEmpty: vi
+      .fn()
+      .mockResolvedValue({ status: "ok", data: false }),
     sessionHasTranscript: vi
       .fn()
       .mockResolvedValue({ status: "ok", data: false }),

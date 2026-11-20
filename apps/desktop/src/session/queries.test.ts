@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { captureNoteDraft } from "./pending-note-drafts";
+
 const mocks = vi.hoisted(() => ({
   sessionGet: vi.fn(
     (): Promise<
@@ -7,7 +9,7 @@ const mocks = vi.hoisted(() => ({
       | { status: "error"; error: string }
     > => Promise.resolve({ status: "ok", data: null }),
   ),
-  sessionIsEmpty: vi.fn(
+  sessionDiscardEmpty: vi.fn(
     (): Promise<
       { status: "ok"; data: boolean } | { status: "error"; error: string }
     > => Promise.resolve({ status: "ok", data: true }),
@@ -68,7 +70,7 @@ vi.mock("~/types/tauri.gen", () => ({
     sessionGet: mocks.sessionGet,
     sessionSaveSummary: mocks.sessionSaveSummary,
     sessionDeleteSummary: mocks.sessionDeleteSummary,
-    sessionIsEmpty: mocks.sessionIsEmpty,
+    sessionDiscardEmpty: mocks.sessionDiscardEmpty,
     sessionWriteMeta: mocks.sessionWriteMeta,
     sessionUpdateMeta: mocks.sessionUpdateMeta,
     sessionWriteNote: mocks.sessionWriteNote,
@@ -83,7 +85,7 @@ vi.mock("~/types/tauri.gen", () => ({
 import {
   createSession,
   deleteEnhancedNote,
-  isSessionEmpty,
+  discardEmptySession,
   restoreDeletedSession,
   softDeleteSession,
   saveSessionNote,
@@ -96,7 +98,7 @@ describe("session store operations", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     mocks.sessionGet.mockResolvedValue({ status: "ok", data: null });
-    mocks.sessionIsEmpty.mockResolvedValue({ status: "ok", data: true });
+    mocks.sessionDiscardEmpty.mockResolvedValue({ status: "ok", data: true });
     mocks.sessionWriteMeta.mockResolvedValue({ status: "ok", data: null });
     mocks.sessionUpdateMeta.mockResolvedValue({ status: "ok", data: null });
     mocks.sessionWriteNote.mockResolvedValue({ status: "ok", data: null });
@@ -335,24 +337,36 @@ describe("session store operations", () => {
     await expect(softDeleteSession("session-1")).rejects.toThrow("boom");
   });
 
-  // The emptiness semantics themselves (title/event interplay, &nbsp; placeholder,
-  // transcript/doc/tag counts, and attachments) are covered by the Rust store's
-  // session_is_empty tests; the frontend is a passthrough now.
-  it("delegates emptiness to the store command", async () => {
-    mocks.sessionIsEmpty.mockResolvedValueOnce({ status: "ok", data: true });
-    await expect(isSessionEmpty("session-1")).resolves.toBe(true);
-    expect(mocks.sessionIsEmpty).toHaveBeenCalledWith("session-1");
+  it("delegates empty-session cleanup to the store command", async () => {
+    mocks.sessionDiscardEmpty.mockResolvedValueOnce({
+      status: "ok",
+      data: true,
+    });
+    await expect(discardEmptySession("session-1")).resolves.toBe(true);
+    expect(mocks.sessionDiscardEmpty).toHaveBeenCalledWith("session-1");
 
-    mocks.sessionIsEmpty.mockResolvedValueOnce({ status: "ok", data: false });
-    await expect(isSessionEmpty("session-1")).resolves.toBe(false);
+    mocks.sessionDiscardEmpty.mockResolvedValueOnce({
+      status: "ok",
+      data: false,
+    });
+    await expect(discardEmptySession("session-1")).resolves.toBe(false);
   });
 
-  it("throws when the emptiness command fails", async () => {
-    mocks.sessionIsEmpty.mockResolvedValueOnce({
+  it("throws when the cleanup command fails", async () => {
+    mocks.sessionDiscardEmpty.mockResolvedValueOnce({
       status: "error",
       error: "store gone",
     });
-    await expect(isSessionEmpty("session-1")).rejects.toThrow("store gone");
+    await expect(discardEmptySession("session-1")).rejects.toThrow(
+      "store gone",
+    );
+  });
+
+  it("keeps a session with a note draft awaiting autosave", async () => {
+    captureNoteDraft("session:unsaved-note:note", () => ({ type: "doc" }));
+
+    await expect(discardEmptySession("unsaved-note")).resolves.toBe(false);
+    expect(mocks.sessionDiscardEmpty).not.toHaveBeenCalled();
   });
 
   it("waits for a pending delete to settle, then restores through the store", async () => {

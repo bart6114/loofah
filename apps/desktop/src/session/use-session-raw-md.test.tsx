@@ -49,6 +49,7 @@ function sessionRecord(noteMarkdown: string | null) {
       folder: null,
     },
     note_markdown: noteMarkdown,
+    is_iphone_capture: false,
   };
 }
 
@@ -95,6 +96,34 @@ describe("useSessionRawMd", () => {
     await waitFor(() => expect(mocks.sessionGet).toHaveBeenCalled());
     expect(result.current).toBeNull();
   });
+
+  it.each([ORIGINAL, `# ${ORIGINAL}`, `#\n\n${ORIGINAL}`])(
+    "keeps an untitled iPhone capture's text in the body (%j)",
+    async (markdown) => {
+      const capture = sessionRecord(markdown);
+      capture.meta.title = "";
+      capture.is_iphone_capture = true;
+      mocks.sessionGet.mockResolvedValue({ status: "ok", data: capture });
+
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const { result } = renderHook(() => useSessionRawMd("session-1"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      const body = md2json(markdown.replace(/^#\n\n/, ""));
+      await waitFor(() =>
+        expect(JSON.parse(result.current ?? "null")).toEqual({
+          type: "doc",
+          content: [
+            { type: "heading", attrs: { level: 1 } },
+            ...(body.content ?? []),
+          ],
+        }),
+      );
+    },
+  );
 
   // Regression: the note body used to come from a second `session_read_note` query cached
   // under `["session-note-file", id]` with `staleTime: Infinity`. Nothing ever invalidated

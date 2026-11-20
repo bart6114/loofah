@@ -970,11 +970,11 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  async sessionIsEmpty(sessionId: string): Promise<Result<boolean, string>> {
+  async sessionDiscardEmpty(sessionId: string): Promise<Result<boolean, string>> {
     try {
       return {
         status: "ok",
-        data: await TAURI_INVOKE("session_is_empty", { sessionId }),
+        data: await TAURI_INVOKE("session_discard_empty", { sessionId }),
       };
     } catch (e) {
       if (e instanceof Error) throw e;
@@ -1329,7 +1329,11 @@ export type SessionMetaPatch = {
  * SQL fallback's legacy bare-id row was a permanently-empty placeholder, so
  * preferring the file loses nothing.
  */
-export type SessionRecord = { meta: SessionMeta; note_markdown: string | null };
+export type SessionRecord = {
+  meta: SessionMeta;
+  note_markdown: string | null;
+  is_iphone_capture: boolean;
+};
 export type SessionTranscriptMetadata = {
   speaker_labels: string[];
   started_at: number | null;

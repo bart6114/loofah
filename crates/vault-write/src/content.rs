@@ -392,10 +392,29 @@ impl SessionStore {
     /// destination. A missing session returns `None`; invalid metadata or a failed
     /// move leaves the source and in-memory state intact. Undo remains process-local.
     pub async fn delete_session(&self, id: &str) -> Result<Option<std::path::PathBuf>, StoreError> {
+        self.delete_session_impl(id, false).await
+    }
+
+    pub async fn discard_empty_session(&self, id: &str) -> Result<bool, StoreError> {
+        let discarded = self.delete_session_impl(id, true).await?.is_some();
+        if discarded {
+            tracing::info!(session_id = %id, "discarded empty session on tab close");
+        }
+        Ok(discarded)
+    }
+
+    async fn delete_session_impl(
+        &self,
+        id: &str,
+        only_if_empty: bool,
+    ) -> Result<Option<std::path::PathBuf>, StoreError> {
         let _audio_guard = self.lock_session_audio(id).await?;
         validate_session_id(id)?;
         let _operation = self.transcript_operations.lock(id).await;
         let guard = self.lock_writes().await;
+        if only_if_empty && (self.is_recording(id) || !self.session_is_empty(id).await?) {
+            return Ok(None);
+        }
         let relative_dir = self.session_dir_locked(&guard, id).await?;
 
         let vault_base = self.vault_base.clone();

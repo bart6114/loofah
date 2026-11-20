@@ -66,6 +66,31 @@ fn is_same_file_path(a: &Path, b: &Path) -> bool {
     }
 }
 
+pub(super) fn list_legacy_audio(session_dir: &Path) -> Result<Vec<String>, StoreError> {
+    let dir = paths::audio_dir_in(session_dir);
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => {
+            return Err(StoreError::Io(format!(
+                "failed to read audio directory: {e}"
+            )));
+        }
+    };
+
+    let mut names = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| StoreError::Io(format!("failed to read dir entry: {e}")))?;
+        if entry.path().is_file()
+            && let Some(name) = entry.file_name().to_str()
+        {
+            names.push(name.to_string());
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
 impl SessionStore {
     /// Settles a finished recording at the one path the rest of the app reads:
     /// `<session dir>/audio.<ext>`. The recorder already writes there, so the
@@ -119,37 +144,10 @@ impl SessionStore {
     /// written by the builds that did relocate recordings there.
     pub async fn list_audio(&self, session_id: &str) -> Result<Vec<String>, StoreError> {
         validate_session_id(session_id)?;
-        let session_dir = self.session_dir(session_id).await?;
-        let vault_base = self.vault_base.clone();
-
-        tokio::task::spawn_blocking(move || -> Result<Vec<String>, StoreError> {
-            let dir = vault_base.join(paths::audio_dir_in(&session_dir));
-            let entries = match std::fs::read_dir(&dir) {
-                Ok(entries) => entries,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-                Err(e) => {
-                    return Err(StoreError::Io(format!(
-                        "failed to read audio directory: {}",
-                        e
-                    )));
-                }
-            };
-
-            let mut names = Vec::new();
-            for entry in entries {
-                let entry = entry
-                    .map_err(|e| StoreError::Io(format!("failed to read dir entry: {}", e)))?;
-                if entry.path().is_file()
-                    && let Some(name) = entry.file_name().to_str()
-                {
-                    names.push(name.to_string());
-                }
-            }
-            names.sort();
-            Ok(names)
-        })
-        .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?
+        let session_dir = self.vault_base.join(self.session_dir(session_id).await?);
+        tokio::task::spawn_blocking(move || list_legacy_audio(&session_dir))
+            .await
+            .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?
     }
 
     /// Permanently deletes one legacy recording at the user's request.

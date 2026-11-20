@@ -16,6 +16,22 @@ export function extractFirstLineTitle(content: JSONContent) {
   return collectText(content).trim() ? "" : null;
 }
 
+export function ensureBlankTitleHeading(content: JSONContent): JSONContent {
+  const blocks = content.content ?? [];
+  const firstBlock = blocks[0];
+  if (
+    firstBlock?.type === "heading" &&
+    firstBlock.attrs?.level === 1 &&
+    !firstBlock.content?.length
+  ) {
+    return content;
+  }
+  return {
+    ...content,
+    content: [{ type: "heading", attrs: { level: 1 } }, ...blocks],
+  };
+}
+
 export function ensureFirstLineTitle(
   content: JSONContent,
   title: string | null | undefined,

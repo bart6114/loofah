@@ -18,6 +18,10 @@ const drafts = new Map<
 >();
 const listeners = new Map<string, Set<() => void>>();
 
+export function hasUnsavedNoteDraft(key: string) {
+  return drafts.get(key)?.saved === false;
+}
+
 function notify(key: string) {
   listeners.get(key)?.forEach((listener) => listener());
 }

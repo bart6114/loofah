@@ -551,12 +551,12 @@ pub async fn session_ids<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<Str
 
 #[tauri::command]
 #[specta::specta]
-pub async fn session_is_empty<R: tauri::Runtime>(
+pub async fn session_discard_empty<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<bool, String> {
     store(&app)?
-        .session_is_empty(&session_id)
+        .discard_empty_session(&session_id)
         .await
         .map_err(|error| error.to_string())
 }
