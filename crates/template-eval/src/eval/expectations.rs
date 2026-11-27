@@ -1,5 +1,6 @@
 use markdown::mdast::{Heading, List, Node};
 use markdown::{ParseOptions, to_mdast};
+use regex::Regex;
 use serde_json::Value;
 
 use crate::eval::types::Expectation;
@@ -101,6 +102,33 @@ impl Expectation {
                     }
                 }
                 Ok(())
+            }
+            Self::MarkdownListItemMatches { checked, pattern } => {
+                let regex = Regex::new(pattern)
+                    .map_err(|error| format!("invalid regex {pattern:?}: {error}"))?;
+                let ast =
+                    to_mdast(output, &ParseOptions::gfm()).map_err(|error| error.to_string())?;
+                let matches = find_lists(&ast)
+                    .into_iter()
+                    .filter(|list| !list.ordered)
+                    .flat_map(|list| &list.children)
+                    .any(|node| {
+                        matches!(node, Node::ListItem(item) if item.checked == *checked)
+                            && regex.is_match(
+                                &node
+                                    .to_string()
+                                    .split_whitespace()
+                                    .collect::<Vec<_>>()
+                                    .join(" "),
+                            )
+                    });
+                if matches {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "expected a list item with checked={checked:?} matching {pattern:?}"
+                    ))
+                }
             }
             Self::MarkdownAtLeastHeadings(min) => {
                 let ast = parse_markdown(output)?;

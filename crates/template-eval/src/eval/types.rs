@@ -46,6 +46,10 @@ pub enum Expectation {
         count: usize,
         required_terms: Vec<String>,
     },
+    MarkdownListItemMatches {
+        checked: Option<bool>,
+        pattern: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

@@ -13845,6 +13845,7 @@ dependencies = [
  "libtest-mimic",
  "markdown",
  "openrouter",
+ "regex",
  "serde",
  "serde_json",
  "tokio",
