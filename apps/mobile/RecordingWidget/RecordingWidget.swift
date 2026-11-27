@@ -14,7 +14,7 @@ struct LoofahRecordingWidget: Widget {
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          RecordingStatus(saving: context.state.savingAt != nil, theme: islandTheme)
+          RecordingStatus(state: context.state, theme: islandTheme)
             .lineLimit(1)
             .minimumScaleFactor(0.75)
         }
@@ -31,14 +31,14 @@ struct LoofahRecordingWidget: Widget {
           }
         }
       } compactLeading: {
-        RecordingMark(saving: context.state.savingAt != nil, theme: islandTheme, size: 16)
+        RecordingMark(state: context.state, theme: islandTheme, size: 16)
       } compactTrailing: {
         RecordingTimer(context: context)
           .font(.caption2.weight(.medium))
           .frame(width: 50, alignment: .trailing)
           .foregroundStyle(islandTheme.ink)
       } minimal: {
-        RecordingMark(saving: context.state.savingAt != nil, theme: islandTheme, size: 16)
+        RecordingMark(state: context.state, theme: islandTheme, size: 16)
       }
       .contentMargins(.horizontal, 32, for: .expanded)
       .keylineTint(islandTheme.recording)
@@ -47,7 +47,7 @@ struct LoofahRecordingWidget: Widget {
 }
 
 private struct RecordingMark: View {
-  let saving: Bool
+  let state: CaptureRecordingAttributes.ContentState
   let theme: CaptureTheme
   let size: CGFloat
 
@@ -57,8 +57,8 @@ private struct RecordingMark: View {
       .resizable()
       .scaledToFit()
       .frame(width: size, height: size)
-      .foregroundStyle(saving ? theme.muted : theme.recording)
-      .accessibilityLabel(saving ? "Saving recording" : "Recording")
+      .foregroundStyle(state.stoppedAt == nil ? theme.recording : theme.muted)
+      .accessibilityLabel(state.status)
   }
 }
 
@@ -77,7 +77,7 @@ private struct RecordingCard: View {
 
     layout {
       VStack(alignment: .leading, spacing: 4) {
-        RecordingStatus(saving: context.state.savingAt != nil, theme: theme)
+        RecordingStatus(state: context.state, theme: theme)
         RecordingTimer(context: context, alignment: .leading)
           .font(.title.weight(.semibold))
           .foregroundStyle(theme.ink)
@@ -98,14 +98,14 @@ private struct RecordingCard: View {
 }
 
 private struct RecordingStatus: View {
-  let saving: Bool
+  let state: CaptureRecordingAttributes.ContentState
   let theme: CaptureTheme
 
   var body: some View {
     HStack(spacing: 6) {
-      RecordingMark(saving: saving, theme: theme, size: 18)
+      RecordingMark(state: state, theme: theme, size: 18)
         .accessibilityHidden(true)
-      Text(saving ? "Saving…" : "Recording")
+      Text(state.status)
         .font(.subheadline.weight(.semibold))
     }
     .foregroundStyle(theme.ink)
@@ -117,10 +117,10 @@ private struct RecordingTimer: View {
   var alignment: TextAlignment = .trailing
 
   var body: some View {
-    let start = context.attributes.startedAt
+    let start = context.state.timerStartedAt ?? context.attributes.startedAt
     Text(
       timerInterval: start...start.addingTimeInterval(8 * 60 * 60),
-      pauseTime: context.state.savingAt, countsDown: false
+      pauseTime: context.state.stoppedAt, countsDown: false
     )
     .monospacedDigit()
     .multilineTextAlignment(alignment)
