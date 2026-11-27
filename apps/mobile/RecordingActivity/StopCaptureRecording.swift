@@ -21,7 +21,7 @@ struct StopCaptureRecording: LiveActivityIntent {
     // LiveActivityIntent executes in the app process, where the recorder lives.
     #if !LOOFAH_WIDGET
       guard let id = UUID(uuidString: captureID),
-        CaptureStore.shared.recording == id
+        CaptureStore.shared.recording?.id == id
       else { return .result() }
       if !(await CaptureStore.shared.finish(id)) {
         throw SaveCaptureError()

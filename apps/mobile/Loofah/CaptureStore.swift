@@ -1,6 +1,7 @@
 import AVFoundation
 import ActivityKit
 import Foundation
+import OSLog
 import UIKit
 
 struct LocalCapture: Codable, Identifiable {
@@ -75,9 +76,11 @@ private struct PendingAck: Codable {
 @MainActor
 final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
   static let shared = CaptureStore()
+  private nonisolated static let audioLog = Logger(
+    subsystem: "io.loofah.notes", category: "recording")
 
   @Published private(set) var captures: [LocalCapture] = []
-  @Published private(set) var recording: UUID?
+  @Published private(set) var recording: RecordingSession?
   @Published private(set) var busy = false
   @Published private var finishing: UUID?
   @Published var problem: CaptureProblem?
@@ -90,6 +93,7 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
   private var observer: CaptureInboxObserver?
   private var timer: Timer?
   private var recorder: AVAudioRecorder?
+  private var audioObservers: [NSObjectProtocol] = []
   private var activity: Activity<CaptureRecordingAttributes>?
   private var saveAssertion = UIBackgroundTaskIdentifier.invalid
   private var cloudSyncRunning = false
@@ -119,16 +123,12 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
       Task { @MainActor in self?.sync() }
     }
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(interrupted), name: AVAudioSession.interruptionNotification,
-      object: nil
-    )
     recoverRecordings()
     sync()
   }
 
   func create(recording wantsAudio: Bool) async -> UUID? {
-    guard !busy, recorder == nil else { return nil }
+    guard !busy, recording == nil else { return nil }
     busy = true
     defer { busy = false }
     if wantsAudio, !(await AVAudioApplication.requestRecordPermission()) {
@@ -145,36 +145,17 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
       let local = LocalCapture(capture: capture, account: account)
       try Self.save(local, in: directory)
       if wantsAudio {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .default)
-        try session.setActive(true)
-        let settings: [String: Any] = [
-          AVFormatIDKey: kAudioFormatLinearPCM,
-          AVSampleRateKey: 24_000,
-          AVNumberOfChannelsKey: 1,
-          AVLinearPCMBitDepthKey: 16,
-          AVLinearPCMIsBigEndianKey: false,
-          AVLinearPCMIsFloatKey: false,
-        ]
-        let audioURL = directory.appendingPathComponent(CapturePackage.audio)
-        let newRecorder = try AVAudioRecorder(url: audioURL, settings: settings)
-        newRecorder.delegate = self
-        guard newRecorder.record() else { throw CaptureError.invalid }
-        // The recorder must be able to finish its WAV header after the phone locks.
-        try FileManager.default.setAttributes(
-          [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-          ofItemAtPath: audioURL.path)
-        recorder = newRecorder
-        recording = capture.id
+        let current = RecordingSession(id: capture.id, startedAt: capture.createdAt)
+        observeAudioSession(current.observationID)
+        try startRecorder(at: directory.appendingPathComponent(CapturePackage.audio))
+        recording = current
         startActivity(for: capture)
       }
       captures.insert(local, at: 0)
       return capture.id
     } catch {
       try? FileManager.default.removeItem(at: directory)
-      if wantsAudio {
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-      }
+      if wantsAudio { removeAudioObservers() }
       self.problem = .operation(error.localizedDescription)
       return nil
     }
@@ -225,18 +206,24 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
       busy = false
       endSaveAssertion()
     }
-    let stoppingActivity = recording == id ? activity : nil
-    let recordingStoppedAt = Date()
-    let finishedAt = recording == id || !local.capture.recording ? recordingStoppedAt : nil
-    if recording == id {
-      stopRecorder()
+    let current = recording.flatMap { $0.id == id ? $0 : nil }
+    let stoppingActivity = current == nil ? nil : activity
+    let savingAt = Date()
+    let finishedAt =
+      current != nil || !local.capture.recording ? current?.pausedAt ?? savingAt : nil
+    if current != nil {
+      recording = nil
+      removeAudioObservers()
+      closeRecorder(deactivate: true)
       activity = nil
     }
     if let stoppingActivity {
       await stoppingActivity.update(
         ActivityContent(
-          state: CaptureRecordingAttributes.ContentState(savingAt: recordingStoppedAt),
-          staleDate: nil))
+          state: .init(
+            savingAt: current?.pausedAt ?? savingAt, timerStartedAt: current?.timerStartedAt),
+          staleDate: nil),
+        timestamp: savingAt)
     }
     do {
       try await finalize(local, stoppedAt: finishedAt, priority: .userInitiated)
@@ -282,11 +269,9 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
   {
     guard let initialIndex = captures.firstIndex(where: { $0.id == draft.id }) else { return }
     let directory = folder(draft.id)
-    let audio = directory.appendingPathComponent(CapturePackage.audio)
     var checkpoint = draft
     if checkpoint.capture.finishedAt == nil {
-      let lastAudioWrite = try? audio.resourceValues(forKeys: [.contentModificationDateKey])
-        .contentModificationDate
+      let lastAudioWrite = stoppedAt == nil ? try RecordingWAV.lastWrite(in: directory) : nil
       checkpoint.capture.finishedAt = max(
         stoppedAt ?? lastAudioWrite ?? draft.capture.createdAt, draft.capture.createdAt)
       captures[initialIndex].capture.finishedAt = checkpoint.capture.finishedAt
@@ -295,10 +280,14 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
       var local = checkpoint
       // Persist the end time before repairing the file, which changes its modification date.
       try Self.save(local, in: directory)
-      if local.capture.recording, try !RecordingWAV.finalize(at: audio) {
-        local.capture = Capture(
-          id: local.id, createdAt: local.capture.createdAt, finishedAt: local.capture.finishedAt,
-          title: local.capture.title, note: local.capture.note, recording: false)
+      if local.capture.recording {
+        let frames = try RecordingWAV.finalizeCapture(in: directory)
+        Self.audioLog.info("Finalized recording with \(frames, privacy: .public) frames")
+        if frames == 0 {
+          local.capture = Capture(
+            id: local.id, createdAt: local.capture.createdAt, finishedAt: local.capture.finishedAt,
+            title: local.capture.title, note: local.capture.note, recording: false)
+        }
       }
       if !local.capture.recording, !local.capture.hasText {
         try FileManager.default.removeItem(at: directory)
@@ -306,6 +295,7 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
       }
       local.queued = true
       try Self.save(local, in: directory)
+      if local.capture.recording { RecordingWAV.removeSegments(in: directory) }
       return local
     }.value
     guard let index = captures.firstIndex(where: { $0.id == draft.id }) else { return }
@@ -554,53 +544,184 @@ final class CaptureStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     saveAssertion = .invalid
   }
 
-  private func stopRecorder() {
-    let stoppedRecorder = recorder
-    recorder = nil
-    recording = nil
-    stoppedRecorder?.stop()
-    try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-  }
-
-  private func endInterruptedRecording(_ message: String) {
-    guard recording != nil else { return }
-    stopRecorder()
-    let interruptedActivity = activity
-    activity = nil
-    Task { await interruptedActivity?.end(nil, dismissalPolicy: .immediate) }
-    problem = .operation(message)
-  }
-
-  @objc private nonisolated func interrupted(_ notification: Notification) {
-    guard let type = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-      type == AVAudioSession.InterruptionType.began.rawValue
-    else { return }
-    Task { @MainActor [weak self] in
-      self?.endInterruptedRecording(
-        "Recording was interrupted. Open the draft and tap Done to keep it.")
+  private func startRecorder(at url: URL, requireInput: Bool = false) throws {
+    let session = AVAudioSession.sharedInstance()
+    do {
+      try session.setCategory(.record, mode: .default)
+      try session.setActive(true)
+      if requireInput, !session.isInputAvailable || session.currentRoute.inputs.isEmpty {
+        throw CaptureError.invalid
+      }
+      let settings: [String: Any] = [
+        AVFormatIDKey: kAudioFormatLinearPCM,
+        AVSampleRateKey: RecordingWAV.sampleRate,
+        AVNumberOfChannelsKey: 1,
+        AVLinearPCMBitDepthKey: 16,
+        AVLinearPCMIsBigEndianKey: false,
+        AVLinearPCMIsFloatKey: false,
+      ]
+      let newRecorder = try AVAudioRecorder(url: url, settings: settings)
+      guard newRecorder.prepareToRecord() else { throw CaptureError.invalid }
+      // The recorder must be able to finish its WAV header after the phone locks.
+      try FileManager.default.setAttributes(
+        [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+        ofItemAtPath: url.path)
+      newRecorder.delegate = self
+      guard newRecorder.record() else { throw CaptureError.invalid }
+      recorder = newRecorder
+      let inputs = session.currentRoute.inputs.map { $0.portType.rawValue }.joined(separator: ",")
+      Self.audioLog.info("Started recording segment; inputs=\(inputs, privacy: .public)")
+    } catch {
+      deactivateAudioSession()
+      throw error
     }
+  }
+
+  private func deactivateAudioSession() {
+    do {
+      try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    } catch {
+      let issue = error as NSError
+      Self.audioLog.error(
+        "Audio session deactivation failed; domain=\(issue.domain, privacy: .public) code=\(issue.code, privacy: .public)"
+      )
+    }
+  }
+
+  private func closeRecorder(deactivate: Bool) {
+    guard let stoppedRecorder = recorder else { return }
+    recorder = nil
+    stoppedRecorder.delegate = nil
+    stoppedRecorder.stop()
+    if deactivate { deactivateAudioSession() }
+  }
+
+  private func observeAudioSession(_ observationID: UUID) {
+    removeAudioObservers()
+    audioObservers = RecordingSessionEvent.notifications.map { name in
+      NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) {
+        [weak self] notification in
+        guard let event = RecordingSessionEvent(notification) else { return }
+        let receivedAt = Date()
+        DispatchQueue.main.async {
+          guard let self, self.recording?.observationID == observationID else { return }
+          self.handleAudioEvent(event, at: receivedAt)
+        }
+      }
+    }
+  }
+
+  private func removeAudioObservers() {
+    for observer in audioObservers { NotificationCenter.default.removeObserver(observer) }
+    audioObservers.removeAll()
+  }
+
+  private func handleAudioEvent(_ event: RecordingSessionEvent, at date: Date) {
+    switch event {
+    case .interruptionBegan(let reason, let wasSuspended):
+      Self.audioLog.info(
+        "Interruption began; reason=\(reason.map(String.init) ?? "unknown", privacy: .public) suspended=\(wasSuspended, privacy: .public)"
+      )
+      // A delayed suspension notification can arrive after a new recorder is already running.
+      if wasSuspended, recorder?.isRecording == true { return }
+      let awaitingEnd =
+        !wasSuspended
+        && (reason == nil || reason == AVAudioSession.InterruptionReason.default.rawValue)
+      pauseRecording(at: date, awaitingEnd: awaitingEnd, deactivate: false)
+    case .interruptionEnded(let options):
+      Self.audioLog.info("Interruption ended; options=\(options, privacy: .public)")
+      guard var current = recording else { return }
+      let allowsResume = AVAudioSession.InterruptionOptions(rawValue: options).contains(
+        .shouldResume)
+      let shouldResume = current.interruptionEnded(allowsResume: allowsResume)
+      recording = current
+      if shouldResume { resume(current.id, automatic: true) }
+    case .routeChanged(let reason, let previousInputs, let previousPorts):
+      let inputs = AVAudioSession.sharedInstance().currentRoute.inputs
+      let currentPorts = inputs.map { $0.portType.rawValue }.joined(separator: ",")
+      Self.audioLog.info(
+        "Route changed; reason=\(reason, privacy: .public) previous=\(previousPorts.joined(separator: ","), privacy: .public) current=\(currentPorts, privacy: .public)"
+      )
+      guard recorder != nil else { return }
+      let inputDisconnected =
+        reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue
+        && !previousInputs.isEmpty && !inputs.contains { previousInputs.contains($0.uid) }
+      if inputDisconnected
+        || reason == AVAudioSession.RouteChangeReason.noSuitableRouteForCategory.rawValue
+      {
+        pauseRecording(at: date, awaitingEnd: false, deactivate: true)
+      }
+    case .mediaServicesChanged(let reset):
+      Self.audioLog.info("Media services event; reset=\(reset, privacy: .public)")
+      pauseRecording(at: date, awaitingEnd: false, deactivate: false)
+    }
+  }
+
+  private func pauseRecording(at date: Date, awaitingEnd: Bool, deactivate: Bool) {
+    guard var current = recording else { return }
+    let changed = current.pause(at: date, awaitingEnd: awaitingEnd)
+    recording = current
+    guard changed else { return }
+    closeRecorder(deactivate: deactivate)
+    updateActivity(for: current)
+  }
+
+  func resume(_ id: UUID, automatic: Bool = false) {
+    guard !busy, var current = recording, current.id == id, current.pausedAt != nil else { return }
+    current.renewObservation()
+    recording = current
+    observeAudioSession(current.observationID)
+    var continuation: URL?
+    do {
+      let audio = try RecordingWAV.continuationURL(in: folder(id))
+      continuation = audio
+      try startRecorder(at: audio, requireInput: true)
+      current.resumed(at: Date())
+      recording = current
+      Self.audioLog.info("Recording resumed; automatic=\(automatic, privacy: .public)")
+      updateActivity(for: current)
+    } catch {
+      if let continuation { try? FileManager.default.removeItem(at: continuation) }
+      let issue = error as NSError
+      Self.audioLog.error(
+        "Recording resume failed; automatic=\(automatic, privacy: .public) domain=\(issue.domain, privacy: .public) code=\(issue.code, privacy: .public)"
+      )
+      if !automatic {
+        problem = .operation("Couldn’t resume recording. Tap Done to save the draft.")
+      }
+    }
+  }
+
+  private func updateActivity(for current: RecordingSession) {
+    guard let activity else { return }
+    let content = ActivityContent(
+      state: CaptureRecordingAttributes.ContentState(
+        savingAt: nil, pausedAt: current.pausedAt, timerStartedAt: current.timerStartedAt),
+      staleDate: nil)
+    let timestamp = Date()
+    Task { await activity.update(content, timestamp: timestamp) }
   }
 
   nonisolated func audioRecorderDidFinishRecording(
     _ recorder: AVAudioRecorder, successfully flag: Bool
   ) {
-    recorderStopped(recorder, message: "Recording stopped. Open the draft and tap Done to keep it.")
+    recorderStopped(recorder, successfully: flag, error: nil)
   }
 
   nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
-    recorderStopped(
-      recorder,
-      message: error?.localizedDescription
-        ?? "Recording stopped. Open the draft and tap Done to keep it.")
+    recorderStopped(recorder, successfully: false, error: error as NSError?)
   }
 
-  private nonisolated func recorderStopped(_ recorder: AVAudioRecorder, message: String) {
-    let identity = ObjectIdentifier(recorder)
-    Task { @MainActor [weak self] in
-      guard let self, let recorder = self.recorder, ObjectIdentifier(recorder) == identity else {
-        return
-      }
-      self.endInterruptedRecording(message)
+  private nonisolated func recorderStopped(
+    _ recorder: AVAudioRecorder, successfully: Bool, error: NSError?
+  ) {
+    let date = Date()
+    DispatchQueue.main.async { [weak self] in
+      guard let self, self.recorder === recorder else { return }
+      Self.audioLog.info(
+        "Recorder stopped; success=\(successfully, privacy: .public) domain=\(error?.domain ?? "none", privacy: .public) code=\(error?.code ?? 0, privacy: .public)"
+      )
+      self.pauseRecording(at: date, awaitingEnd: false, deactivate: true)
     }
   }
 }

@@ -15,14 +15,16 @@ struct CaptureView: View {
 
   var body: some View {
     if let item = store.captures.first(where: { $0.id == id }) {
-      let recording = store.recording == id
-      let showControls = recording || (finishing && item.capture.recording)
+      let recording = store.recording.flatMap { $0.id == id ? $0 : nil }
+      let showControls = recording != nil || (finishing && item.capture.recording)
       let editable = store.canEdit(item)
       VStack(alignment: .leading, spacing: 18) {
         if editable {
           titleField
           if item.isQueued {
             deliveryDetails(item)
+          } else if recording?.pausedAt != nil {
+            recordingLabel("Recording paused")
           } else if item.capture.recording && !showControls {
             recordingLabel("Recording stopped. Tap Done to keep it.")
           }
@@ -44,7 +46,7 @@ struct CaptureView: View {
       .toolbarBackgroundVisibility(.visible, for: .navigationBar)
       .navigationBarBackButtonHidden(showControls || finishing)
       .toolbar {
-        if editable && !showControls {
+        if editable && (!showControls || recording?.pausedAt != nil) {
           ToolbarItem(placement: .confirmationAction) {
             if finishing {
               ProgressView().accessibilityLabel("Saving capture")
@@ -62,7 +64,11 @@ struct CaptureView: View {
         }
       }
       .safeAreaInset(edge: .bottom, spacing: 0) {
-        if showControls { recordingControls(item.capture.createdAt) }
+        if showControls {
+          recordingControls(
+            recording?.timerStartedAt ?? item.capture.createdAt,
+            pausedAt: recording?.pausedAt)
+        }
       }
       .task {
         if !item.capture.recording && !item.isQueued && item.capture.note.isEmpty
@@ -182,7 +188,7 @@ struct CaptureView: View {
       .foregroundStyle(theme.muted)
   }
 
-  private func recordingControls(_ startedAt: Date) -> some View {
+  private func recordingControls(_ startedAt: Date, pausedAt: Date?) -> some View {
     let layout =
       typeSize.isAccessibilitySize
       ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
@@ -197,10 +203,13 @@ struct CaptureView: View {
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
       } else {
         TimelineView(.periodic(from: startedAt, by: 1)) { context in
-          let elapsed = Duration.seconds(max(0, context.date.timeIntervalSince(startedAt)))
-            .formatted(.time(pattern: .minuteSecond))
+          let elapsed = Duration.seconds(
+            max(0, (pausedAt ?? context.date).timeIntervalSince(startedAt))
+          )
+          .formatted(.time(pattern: .minuteSecond))
           HStack(spacing: 8) {
-            Circle().fill(theme.recording).frame(width: 8, height: 8)
+            Circle().fill(pausedAt == nil ? theme.recording : theme.muted).frame(
+              width: 8, height: 8)
             Text(elapsed).font(.body.monospacedDigit().weight(.medium))
           }
           .accessibilityElement(children: .ignore)
@@ -210,13 +219,20 @@ struct CaptureView: View {
         }
 
         Button {
-          finish()
+          if pausedAt != nil {
+            store.resume(id)
+          } else {
+            finish()
+          }
         } label: {
-          Label("Stop", systemImage: "stop.fill")
-            .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 16)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+          Label(
+            pausedAt == nil ? "Stop" : "Resume",
+            systemImage: pausedAt == nil ? "stop.fill" : "play.fill"
+          )
+          .font(.subheadline.weight(.semibold))
+          .padding(.horizontal, 16)
+          .frame(minHeight: 44)
+          .contentShape(Rectangle())
         }
         .buttonStyle(CaptureButtonStyle(theme: theme, kind: .stop))
       }
