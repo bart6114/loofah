@@ -194,11 +194,11 @@ mod tests {
 
     # Action items
 
-    - Create an # Action items section only for outstanding actions explicitly committed to or clearly assigned to the current user identified in the transcript context.
-    - Write each of those actions as an unchecked Markdown task: `- [ ] Send the revised proposal by Friday.` Include deadlines only when stated.
-    - Keep other people's actions as ordinary summary bullets outside the action-item list.
-    - Do not turn suggestions, completed work, or ambiguous collective statements such as "we should" into personal tasks.
-    - If the current user or an action's ownership is unclear, omit that task. If there are no qualifying actions, omit the section. Notes alone do not identify a transcript speaker as the current user.
+    - Use speaker attribution and transcript context to identify who explicitly agreed to do each outstanding action. A direct commitment or explicit acceptance in a later turn qualifies.
+    - Omit actions with unclear ownership, assignments or nominations without acceptance, tentative suggestions, and completed work.
+    - Check personal relevance separately. Include only actions the identified current user explicitly took on. If someone else owns the work, include only the follow-up the current user agreed to do. Keep other people's actions as ordinary summary bullets.
+    - Include a deadline only if the transcript states it for that action. Preserve relative wording such as "by Friday" and include qualifying tasks without a deadline when none is stated.
+    - Write qualifying actions under `# Action items` as unchecked Markdown tasks, for example `- [ ] Send the proposal by Friday.` Omit the section if the current user is unidentified or no actions qualify.
     - Keep the summary concise and proportional to the source while preserving concrete decisions and explicit actions.
 
     # Output metadata contract

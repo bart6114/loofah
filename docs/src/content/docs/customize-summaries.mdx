@@ -19,6 +19,10 @@ Loofah supplies notes, transcripts, session details, participants, and supported
 
 Each session gets one Summary. Older additional summaries remain available to read, edit, and regenerate.
 
+## Personal to-dos
+
+The default prompt adds a personal to-do when the transcript identifies you as the current user and shows you explicitly taking on an outstanding action. Accepting an assignment in a later turn counts. When someone else owns the work, the summary records their action and gives you a to-do only for a follow-up you agreed to handle. A to-do includes a deadline only when the meeting states one for that action, using the stated wording such as “by Friday.”
+
 ## Tags from summaries
 
 When you generate or regenerate a summary, the same model request asks for 0–3 relevant tags and a confidence score from 0 to 1 for each. The model prefers existing tag names and can propose new ones. These scores are the model's estimates, not calibrated probabilities.
